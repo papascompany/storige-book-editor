@@ -173,6 +173,13 @@ export default function ControlBar({ mobileOverlay = false }: { mobileOverlay?: 
     )
   }, [activeSelection])
 
+  // T2 그리드·기념일 안전성(2026-10-22): 캘린더 날짜 그리드(extensionType 'calendar-grid')는 GroupPlugin.unGroup 이
+  // no-op 이라 '그룹해제' 버튼을 내지 않는다(다른 그룹은 그대로). 핫키 컨텍스트 메뉴는 GroupPlugin.hideContext 가 같은 판정.
+  const isCalendarGridSelection = useMemo(() => {
+    if (!activeSelection || activeSelection.length !== 1) return false
+    return (activeSelection[0] as any)?.extensionType === 'calendar-grid'
+  }, [activeSelection])
+
   // Check if all items are locked
   const allLocked = useMemo(() => {
     return activeSelection?.every((e) => !e.hasControls) ?? false
@@ -731,8 +738,8 @@ export default function ControlBar({ mobileOverlay = false }: { mobileOverlay?: 
             </Button>
           )}
 
-          {/* Ungroup button for group selection */}
-          {selectionType === SelectionType.group && (
+          {/* Ungroup button for group selection — calendar-grid 는 비노출(T2) */}
+          {selectionType === SelectionType.group && !isCalendarGridSelection && (
             <Button
               variant="secondary"
               className="w-full h-10 mb-2"
