@@ -376,7 +376,12 @@ services:
       - "127.0.0.1:3306:3306"
     # event_scheduler=ON: 인쇄 워크플로우 v1 Phase 2 (2026-05-19) — 게스트 24h 자동삭제 EVENT
     # (evt_purge_expired_guest_sessions) 가 컨테이너 재시작 시에도 작동하도록 영구 설정.
-    command: --event-scheduler=ON
+    # max-allowed-packet=256M: P2-d D12 방어선(2026-10-23, 오너 승인) — 세션 canvasData 한 행이 기본 16MB 를
+    # 넘으면 PATCH /edit-sessions 가 "Got a packet bigger than 'max_allowed_packet'" 로 500 이 난다.
+    # 사진인화 틀 채움은 2026-10-21 부터 업로드 URL 이라 보통 걸리지 않지만, 레거시 세트의 data URL
+    # 이미지·대형 저작 템플릿을 위한 상한이다(api MAX_BODY_SIZE 100mb 가 HTTP 쪽 상한). 버퍼는
+    # 커넥션당 필요할 때만 이 크기까지 커진다(사전 할당 아님). 적용은 컨테이너 재생성 시(그 전엔 SET GLOBAL).
+    command: --event-scheduler=ON --max-allowed-packet=256M
     environment:
       - MARIADB_ROOT_PASSWORD=${MYSQL_ROOT_PASSWORD}
       - MARIADB_DATABASE=${DATABASE_NAME:-storige}
