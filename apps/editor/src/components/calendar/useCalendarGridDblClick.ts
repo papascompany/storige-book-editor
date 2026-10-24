@@ -9,6 +9,8 @@ import { useAppStore } from '@/stores/useAppStore'
  * - `mouse:dblclick` 의 target 이 CalendarPlugin.isGrid 인 경우만 `plugin.hitTestDate(target, pointer)` 로 날짜를 얻는다.
  * - 캔버스 전환(useAppStore.canvas 변경) 시 이전 캔버스 구독을 해제하고 새 캔버스에 다시 건다.
  * - 날짜칸 밖(제목·요일 헤더·빈 칸)이나 그리드가 아닌 객체는 무시한다.
+ * - 연달력(variant 'year', T3b 2026-10-24)은 기념일 폼 대상이 아니다 — 칸이 작아 기념일 문구를 그리지 않으므로
+ *   hitTestDate 를 부르지 않고 무시한다(플러그인도 'year' 에는 null 을 돌려주지만 훅에서 먼저 막는다).
  */
 export function useCalendarGridDblClick(onDate: (date: string) => void, enabled = true): void {
   const canvas = useAppStore((s) => s.canvas)
@@ -22,6 +24,7 @@ export function useCalendarGridDblClick(onDate: (date: string) => void, enabled 
     const handler = (opt: fabric.IEvent<MouseEvent>) => {
       const target = opt.target
       if (!CalendarPlugin.isGrid(target)) return
+      if ((target as { extension?: { variant?: string } }).extension?.variant === 'year') return
       const pointer = canvas.getPointer(opt.e)
       const date = plugin.hitTestDate(target, { x: pointer.x, y: pointer.y })
       if (date) onDate(date)

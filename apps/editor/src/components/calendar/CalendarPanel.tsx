@@ -1,12 +1,21 @@
 import { useCallback, useMemo, useState, useEffect } from 'react'
 import { getCalendarData, type CalendarData } from '@storige/canvas-core'
-import { DEFAULT_CALENDAR_DATA_VERSION, type CalendarAnniversary, type CalendarDisplayOptions, type YearMonth } from '@storige/types'
+import {
+  DEFAULT_CALENDAR_DATA_VERSION,
+  type CalendarAnniversary,
+  type CalendarAnniversaryStyle,
+  type CalendarDisplayOptions,
+  type CalendarYearDeltas,
+  type CalendarYearPolicy,
+  type YearMonth,
+} from '@storige/types'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { cn } from '@/lib/utils'
+import { useAppStore } from '@/stores/useAppStore'
 import { useSettingsStore } from '@/stores/useSettingsStore'
-import { useCalendarStore } from '@/stores/useCalendarStore'
+import { useCalendarStore, type CalendarYearRole } from '@/stores/useCalendarStore'
 import { rehydrateAllCalendarGrids } from '@/utils/calendarRehydrateAll'
 import CalendarGridTools from './CalendarGridTools'
 import {
@@ -15,11 +24,15 @@ import {
   findDuplicateAnniversary,
   formatAnniversaryDateLabel,
   formatDateKey,
+  formatYearCalendarLabel,
   isSolarDateInCalendarRange,
   listAllowedYearMonths,
   listAnniversaryYears,
+  mergeAnniversaryStyle,
   parseDateKey,
   resolveAnniversarySolar,
+  scanYearGrids,
+  type YearGridScan,
 } from './calendarPanelUtils'
 
 /**
@@ -29,6 +42,12 @@ import {
  * 변경은 useCalendarStore 에 쓰고 `rehydrateAllCalendarGrids()` 로 모든 캔버스의 그리드를 다시 그린다
  * (사진·텍스트 보존, dirty 마킹 → 자동저장). 활성 캔버스의 날짜칸 더블클릭은 그 날짜로 기념일 폼을 연다.
  * editMode(관리자 템플릿 제작)에서는 그리드 배치 도구(CalendarGridTools)를 추가로 노출한다.
+ *
+ * T3b 연달력(2026-10-24): 캔버스에 연달력(variant 'year')이 있으면 '연달력' 섹션을 보인다 —
+ *  - 연도 제목 표시 on/off → `metadata.calendar.show.yearTitle`(템플릿 `style.showTitle=false` 면 제목 자리 자체가 없다).
+ *  - 표지·에필로그 연도 선택 → `metadata.calendar.yearDeltas`. 프로파일 `calendar.yearPolicy.select` 가 있고 그 역할 캔버스에
+ *    연달력이 있을 때만 노출, 후보는 허용 폭(minDelta~maxDelta)만. 값은 시작연도 기준 상대값이라 시작연월을 바꿔도 유지된다(Q4).
+ * 기념일 폼은 문구 스타일 최소 2종(글자색·굵게, D1(b))을 받아 `anniversaries[].style` 에 저장한다.
  * ToolBar 가 productProfile.kind==='calendar' 세트 또는 editMode 에서만 메뉴를 노출한다.
  */
 
@@ -39,6 +58,8 @@ export const LUNAR_DATA_PENDING_MESSAGE = '음력 환산 데이터 준비 중'
 export const OUT_OF_RANGE_BADGE = '범위 밖 — 수정 또는 삭제'
 /** 임시공휴일·선거일 체크박스 라벨 — 기본 해제(키 없음 = false = 법정 공휴일만, 2026-10-17 오너 결정) */
 export const TEMPORARY_HOLIDAYS_LABEL = '임시공휴일·선거일 표시(공표분)'
+/** 기념일 글자색 지정 시 처음 고르는 색(공휴일 기본색과 같은 빨강) */
+const DEFAULT_ANNIVERSARY_FILL = '#d93025'
 
 const SELECT_CLASS =
   'h-9 rounded-md border border-editor-border bg-editor-panel px-2 text-sm text-editor-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-editor-accent disabled:cursor-not-allowed disabled:opacity-50'
@@ -52,6 +73,15 @@ interface AnniversaryFormState {
   lunar: boolean
   isLeapMonth: boolean
   text: string
+  /** 저장분 스타일(색·굵게 외 키 보존용) */
+  baseStyle?: CalendarAnniversaryStyle
+  /** null = 기본 색 */
+  fill: string | null
+  bold: boolean
+}
+
+function styleFormFields(style: CalendarAnniversaryStyle | undefined): Pick<AnniversaryFormState, 'baseStyle' | 'fill' | 'bold'> {
+  return { baseStyle: style, fill: style?.fill ?? null, bold: style?.fontWeight === 'bold' }
 }
 
 export default function CalendarPanel() {
@@ -83,9 +113,10 @@ export default function CalendarPanel() {
           lunar: existing.lunar,
           isLeapMonth: Boolean(existing.isLeapMonth),
           text: existing.text,
+          ...styleFormFields(existing.style),
         })
       } else {
-        setForm({ mode: 'add', year: p.year, month: p.month, day: p.day, lunar: false, isLeapMonth: false, text: '' })
+        setForm({ mode: 'add', year: p.year, month: p.month, day: p.day, lunar: false, isLeapMonth: false, text: '', ...styleFormFields(undefined) })
       }
     },
     [data],
@@ -99,6 +130,16 @@ export default function CalendarPanel() {
     useCalendarStore.getState().setPendingDate(null)
   }, [pendingDate, meta, openFormForDate])
 
+  // 연달력 유무·역할별 템플릿 연도 — 캔버스 목록이 바뀌거나 관리자 도구가 그리드를 바꾸면 다시 센다
+  const allCanvas = useAppStore((s) => s.allCanvas)
+  const [gridRev, setGridRev] = useState(0)
+  const onGridsChanged = useCallback(() => setGridRev((n) => n + 1), [])
+  const yearScan = useMemo(() => {
+    // gridRev: 관리자 도구가 같은 캔버스 배열 안에서 객체를 바꿨을 때 다시 세기 위한 의존성
+    void gridRev
+    return scanYearGrids(allCanvas ?? [], profile?.calendar)
+  }, [allCanvas, profile, gridRev])
+
   if (!meta) {
     return (
       <div className="w-full h-full flex flex-col">
@@ -107,7 +148,7 @@ export default function CalendarPanel() {
           <p className="text-sm text-editor-text-muted">
             {editMode ? '캘린더 상품 프로파일이 없는 세트입니다. 그리드 배치만 가능합니다.' : '캘린더 상품이 아닙니다.'}
           </p>
-          {editMode && <CalendarGridTools />}
+          {editMode && <CalendarGridTools onGridsChanged={onGridsChanged} />}
         </div>
       </div>
     )
@@ -119,6 +160,15 @@ export default function CalendarPanel() {
         <h2 className="text-sm font-semibold text-editor-text">달력</h2>
         <StartMonthSection start={{ year: meta.startYear, month: meta.startMonth }} />
         <DisplayOptionsSection show={meta.show} />
+        {yearScan.any && (
+          <YearCalendarSection
+            start={{ year: meta.startYear, month: meta.startMonth }}
+            show={meta.show}
+            yearDeltas={meta.yearDeltas}
+            policy={profile?.calendar?.yearPolicy}
+            scan={yearScan}
+          />
+        )}
         <AnniversarySection
           anniversaries={meta.anniversaries}
           start={{ year: meta.startYear, month: meta.startMonth }}
@@ -128,7 +178,7 @@ export default function CalendarPanel() {
           formError={formError}
           setFormError={setFormError}
         />
-        {editMode && <CalendarGridTools />}
+        {editMode && <CalendarGridTools onGridsChanged={onGridsChanged} />}
       </div>
     </div>
   )
@@ -244,6 +294,74 @@ function DisplayOptionsSection({ show }: { show: CalendarDisplayOptions }) {
   )
 }
 
+// ─── 연달력(T3b) ───────────────────────────────────────────────────────────
+
+const YEAR_ROLE_LABEL: Record<CalendarYearRole, string> = { cover: '표지', epilogue: '에필로그' }
+
+interface YearCalendarSectionProps {
+  start: YearMonth
+  show: CalendarDisplayOptions
+  yearDeltas: CalendarYearDeltas | undefined
+  policy: CalendarYearPolicy | undefined
+  scan: YearGridScan
+}
+
+function YearCalendarSection({ start, show, yearDeltas, policy, scan }: YearCalendarSectionProps) {
+  const select = policy?.select
+  // 정책 허용 폭이 있고 그 역할 캔버스에 연달력이 있을 때만 연도 선택을 연다
+  const roles = (['cover', 'epilogue'] as const).filter((r) => select && scan[r] !== undefined)
+  const deltas = useMemo(() => {
+    if (!select) return []
+    const out: number[] = []
+    for (let d = select.minDelta; d <= select.maxDelta; d += 1) out.push(d)
+    return out
+  }, [select])
+
+  const toggleTitle = async (value: boolean) => {
+    useCalendarStore.getState().setShow({ yearTitle: value })
+    await rehydrateAllCalendarGrids()
+  }
+  const chooseYear = async (role: CalendarYearRole, raw: string) => {
+    const ok = useCalendarStore.getState().setYearDelta(role, raw === '' ? null : Number(raw))
+    if (ok) await rehydrateAllCalendarGrids()
+  }
+
+  return (
+    <section className="flex flex-col gap-2" aria-label="연달력">
+      <h3 className="text-xs font-semibold text-editor-text">연달력</h3>
+      <label className="flex items-center gap-2 text-sm text-editor-text cursor-pointer">
+        <input
+          type="checkbox"
+          className="h-4 w-4 accent-editor-accent"
+          checked={show.yearTitle ?? true}
+          onChange={(e) => void toggleTitle(e.target.checked)}
+        />
+        연도 제목 표시
+      </label>
+      {roles.map((role) => {
+        const current = yearDeltas?.[role]
+        return (
+          <div key={role} className="flex items-center gap-2">
+            <Label htmlFor={`calendar-year-${role}`} className="w-16 shrink-0 text-sm text-editor-text">{YEAR_ROLE_LABEL[role]}</Label>
+            <select
+              id={`calendar-year-${role}`}
+              aria-label={`${YEAR_ROLE_LABEL[role]} 연달력 연도`}
+              className={cn(SELECT_CLASS, 'flex-1')}
+              value={current === undefined ? '' : String(current)}
+              onChange={(e) => void chooseYear(role, e.target.value)}
+            >
+              <option value="">기본 ({formatYearCalendarLabel(policy?.span, start, scan[role] ?? 0)})</option>
+              {deltas.map((d) => (
+                <option key={d} value={String(d)}>{formatYearCalendarLabel(policy?.span, start, d)}</option>
+              ))}
+            </select>
+          </div>
+        )
+      })}
+    </section>
+  )
+}
+
 // ─── 기념일 ────────────────────────────────────────────────────────────────
 
 interface AnniversarySectionProps {
@@ -263,12 +381,22 @@ function AnniversarySection({ anniversaries, start, data, form, setForm, formErr
 
   const openAdd = () => {
     setFormError(null)
-    setForm({ mode: 'add', year: start.year, month: start.month, day: 1, lunar: false, isLeapMonth: false, text: '' })
+    setForm({ mode: 'add', year: start.year, month: start.month, day: 1, lunar: false, isLeapMonth: false, text: '', ...styleFormFields(undefined) })
   }
   const openEdit = (a: CalendarAnniversary) => {
     const p = parseDateKey(a.date) ?? { year: start.year, month: start.month, day: 1 }
     setFormError(null)
-    setForm({ mode: 'edit', id: a.id, year: p.year, month: p.month, day: p.day, lunar: a.lunar, isLeapMonth: Boolean(a.isLeapMonth), text: a.text })
+    setForm({
+      mode: 'edit',
+      id: a.id,
+      year: p.year,
+      month: p.month,
+      day: p.day,
+      lunar: a.lunar,
+      isLeapMonth: Boolean(a.isLeapMonth),
+      text: a.text,
+      ...styleFormFields(a.style),
+    })
   }
   const remove = async (id: string) => {
     useCalendarStore.getState().removeAnniversary(id)
@@ -288,6 +416,7 @@ function AnniversarySection({ anniversaries, start, data, form, setForm, formErr
       isLeapMonth: form.lunar && lunarAvailable ? form.isLeapMonth : undefined,
       text,
     }
+    const style = mergeAnniversaryStyle(form.baseStyle, form.fill, form.bold)
     if (candidate.lunar && resolveAnniversarySolar(candidate, data) === null) {
       setFormError('해당 음력 날짜가 데이터에 없습니다(윤달·30일 확인)')
       return
@@ -299,9 +428,10 @@ function AnniversarySection({ anniversaries, start, data, form, setForm, formErr
     }
     const store = useCalendarStore.getState()
     if (form.mode === 'edit' && form.id) {
-      store.updateAnniversary(form.id, candidate)
+      // style: undefined 는 저장분 스타일 제거(색·굵게 해제 + 다른 키 없음)
+      store.updateAnniversary(form.id, { ...candidate, style })
     } else {
-      store.addAnniversary(candidate)
+      store.addAnniversary(style ? { ...candidate, style } : candidate)
     }
     setForm(null)
     setFormError(null)
@@ -423,6 +553,36 @@ function AnniversarySection({ anniversaries, start, data, form, setForm, formErr
             maxLength={40}
             onChange={(e) => setForm({ ...form, text: e.target.value })}
           />
+          <div className="flex flex-wrap items-center gap-3">
+            <label className="flex items-center gap-1.5 text-sm text-editor-text">
+              <input
+                type="checkbox"
+                className="h-4 w-4 accent-editor-accent"
+                aria-label="글자색 지정"
+                checked={form.fill !== null}
+                onChange={(e) => setForm({ ...form, fill: e.target.checked ? (form.fill ?? DEFAULT_ANNIVERSARY_FILL) : null })}
+              />
+              글자색
+            </label>
+            <input
+              type="color"
+              aria-label="기념일 글자색"
+              className="h-7 w-10 cursor-pointer rounded border border-editor-border bg-transparent disabled:cursor-not-allowed disabled:opacity-50"
+              disabled={form.fill === null}
+              value={form.fill ?? DEFAULT_ANNIVERSARY_FILL}
+              onChange={(e) => setForm({ ...form, fill: e.target.value })}
+            />
+            <label className="flex items-center gap-1.5 text-sm text-editor-text">
+              <input
+                type="checkbox"
+                className="h-4 w-4 accent-editor-accent"
+                aria-label="굵게"
+                checked={form.bold}
+                onChange={(e) => setForm({ ...form, bold: e.target.checked })}
+              />
+              굵게
+            </label>
+          </div>
           {formError && <p role="alert" className="text-xs text-red-500">{formError}</p>}
           <div className="flex justify-end gap-1">
             <Button type="button" variant="ghost" size="sm" onClick={() => { setForm(null); setFormError(null) }}>취소</Button>

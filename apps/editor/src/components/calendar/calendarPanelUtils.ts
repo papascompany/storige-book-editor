@@ -1,5 +1,18 @@
-import { resolveAnniversarySolarDate, type CalendarData } from '@storige/canvas-core'
-import { addMonths, formatMonthKey, parseMonthKey, type CalendarAnniversary, type CalendarMonthRange, type YearMonth } from '@storige/types'
+import { CALENDAR_GRID_EXTENSION_TYPE, resolveAnniversarySolarDate, type CalendarData, type CalendarGridStyle } from '@storige/canvas-core'
+import {
+  addMonths,
+  formatMonthKey,
+  parseMonthKey,
+  resolveCalendarCanvasSlot,
+  resolveCalendarYearSpan,
+  resolveCalendarYearStart,
+  type CalendarAnniversary,
+  type CalendarAnniversaryStyle,
+  type CalendarMonthRange,
+  type CalendarProfile,
+  type CalendarYearSpan,
+  type YearMonth,
+} from '@storige/types'
 
 /**
  * calendarPanelUtils.ts — CalendarPanel 순수 헬퍼 (P1-d 캘린더, 2026-10-17)
@@ -111,4 +124,99 @@ export function formatAnniversaryDateLabel(a: Pick<CalendarAnniversary, 'date' |
   const base = p ? `${p.year}년 ${p.month}월 ${p.day}일` : a.date
   if (!a.lunar) return base
   return `음력 ${a.isLeapMonth ? '윤' : ''}${base}`
+}
+
+// ─── 연달력(variant 'year', T3b 2026-10-24) ─────────────────────────────────
+
+/**
+ * 연달력 한 개의 기간 표기 — 플러그인 연도 제목과 같은 규칙.
+ * 'calendar-year' → '2027년', 'start-span' → '2027.3 – 2028.2'. 기간 기준은 `resolveCalendarYearSpan`(정책 > 기본 규칙).
+ */
+export function formatYearCalendarLabel(span: CalendarYearSpan | undefined, start: YearMonth, delta: number): string {
+  const first = resolveCalendarYearStart(span, start, delta)
+  if (resolveCalendarYearSpan(span, start) === 'calendar-year') return `${first.year}년`
+  const last = addMonths(first, 11)
+  return `${first.year}.${first.month} – ${last.year}.${last.month}`
+}
+
+/** 역할별 첫 연달력의 템플릿 연도 이동(정수가 아니면 0). 연달력이 없는 역할은 키 없음 */
+export interface YearGridScan {
+  /** 어느 캔버스에든 연달력이 하나라도 있으면 true */
+  any: boolean
+  cover?: number
+  epilogue?: number
+}
+
+interface CanvasLike {
+  getObjects?: () => unknown[]
+}
+
+/**
+ * 캔버스들의 최상위 객체에서 연달력(calendar-grid + variant 'year')을 찾는다. 캔버스 역할은 프로파일 슬롯 규칙
+ * (`resolveCalendarCanvasSlot`)으로 판정 — 고객 연도 선택은 표지·에필로그 캔버스의 연달력에만 걸린다.
+ */
+export function scanYearGrids(
+  canvases: ReadonlyArray<CanvasLike | null | undefined>,
+  cal: Pick<CalendarProfile, 'coverCanvases' | 'canvasesPerMonth' | 'epilogueCanvases'> | null | undefined,
+): YearGridScan {
+  const out: YearGridScan = { any: false }
+  canvases.forEach((cvs, index) => {
+    const objects = typeof cvs?.getObjects === 'function' ? cvs.getObjects() : []
+    for (const o of objects) {
+      const obj = o as { extensionType?: unknown; extension?: { variant?: unknown; yearDelta?: unknown } } | null
+      if (!obj || obj.extensionType !== CALENDAR_GRID_EXTENSION_TYPE || obj.extension?.variant !== 'year') continue
+      out.any = true
+      const slot = cal ? resolveCalendarCanvasSlot(cal, index) : null
+      if (slot && (slot.role === 'cover' || slot.role === 'epilogue') && out[slot.role] === undefined) {
+        const d = obj.extension.yearDelta
+        out[slot.role] = Number.isInteger(d) ? (d as number) : 0
+      }
+    }
+  })
+  return out
+}
+
+/**
+ * 관리자 그리드 스타일 입력(D1 최소 4종). 빈 값('') = 지정 안 함(키 생략 → 플러그인의 variant 별 기본값).
+ * 연도 제목은 `style.showTitle`(템플릿의 제목 자리)만 쓴다 — `extension.show.yearTitle` 은 쓰지 않는다:
+ * 플러그인이 `ext.show.yearTitle ?? ctx.show.yearTitle` 순으로 읽으므로 템플릿에 값이 있으면 고객 on/off 가 무력화된다.
+ */
+export interface GridStyleDraft {
+  fontFamily: string
+  headerLang: '' | 'en' | 'ko'
+  showTitle: '' | 'on' | 'off'
+  showLines: '' | 'on' | 'off'
+}
+
+export const EMPTY_GRID_STYLE_DRAFT: GridStyleDraft = { fontFamily: '', headerLang: '', showTitle: '', showLines: '' }
+
+/** 입력값 → `CalendarGridStyle` 부분(지정한 키만). 지정한 키가 없으면 undefined */
+export function gridStyleFromDraft(draft: GridStyleDraft): Pick<CalendarGridStyle, 'fontFamily' | 'headerLang' | 'showTitle' | 'showLines'> | undefined {
+  const style: Pick<CalendarGridStyle, 'fontFamily' | 'headerLang' | 'showTitle' | 'showLines'> = {}
+  if (draft.fontFamily !== '') style.fontFamily = draft.fontFamily
+  if (draft.headerLang !== '') style.headerLang = draft.headerLang
+  if (draft.showTitle !== '') style.showTitle = draft.showTitle === 'on'
+  if (draft.showLines !== '') style.showLines = draft.showLines === 'on'
+  return Object.keys(style).length > 0 ? style : undefined
+}
+
+// ─── 기념일 문구 스타일(D1(b) 최소: 색·굵게) ─────────────────────────────────
+
+const HEX_COLOR_RE = /^#[0-9a-fA-F]{6}$/
+
+/**
+ * 기념일 스타일 갱신 — 색(`fill`)·굵게(`fontWeight`)만 바꾸고 저장분의 다른 키(fontFamily 등)는 유지한다.
+ * fill 은 '#rrggbb' 일 때만, null 이면 키 제거. bold false 면 fontWeight 키 제거. 결과가 비면 undefined.
+ */
+export function mergeAnniversaryStyle(
+  base: CalendarAnniversaryStyle | undefined,
+  fill: string | null,
+  bold: boolean,
+): CalendarAnniversaryStyle | undefined {
+  const next: CalendarAnniversaryStyle = { ...(base ?? {}) }
+  delete next.fill
+  delete next.fontWeight
+  if (fill !== null && HEX_COLOR_RE.test(fill)) next.fill = fill.toLowerCase()
+  if (bold) next.fontWeight = 'bold'
+  return Object.keys(next).length > 0 ? next : undefined
 }

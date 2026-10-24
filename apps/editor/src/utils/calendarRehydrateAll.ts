@@ -1,4 +1,12 @@
-import type { CalendarAnniversary, CalendarDisplayOptions, CalendarSessionMeta, ProductProfile } from '@storige/types'
+import {
+  isCalendarYearDeltaAllowed,
+  type CalendarAnniversary,
+  type CalendarDisplayOptions,
+  type CalendarSessionMeta,
+  type CalendarYearDeltas,
+  type CalendarYearPolicy,
+  type ProductProfile,
+} from '@storige/types'
 import { getCalendarData } from '@storige/canvas-core'
 import { findDuplicateAnniversary } from '@/components/calendar/calendarPanelUtils'
 import { useAppStore } from '@/stores/useAppStore'
@@ -13,7 +21,8 @@ import { rehydrateCalendarGrids } from '@/utils/calendarRehydrate'
  *
  * 1. `rehydrateAllCalendarGrids()` — 시작연월·표기 옵션·기념일이 바뀐 뒤 모든 캔버스의 calendar-grid 를
  *    순서대로 다시 그리고(사진·텍스트 보존) 자동저장이 변경을 감지하도록 dirty 마킹.
- * 2. `readCalendarSessionMeta()` — `edit_sessions.metadata.calendar` 판독(재오픈 복원용).
+ * 2. `readCalendarSessionMeta()` — `edit_sessions.metadata.calendar` 판독(재오픈 복원용). 킬스위치(`VITE_ENABLE_CALENDAR='false'`)는
+ *    플러그인·메뉴만 끄고 이 판독·동봉 경로는 그대로라, 저장분의 `show.yearTitle`·`yearDeltas` 도 다음 저장에 그대로 실린다.
  * 3. `calendarSessionMetadataFields()` — 세션 PATCH 에 동봉할 `{ metadata: { productProfile, calendar } }`.
  *
  * 모든 함수는 profile 이 null/legacy 면 no-op(`{}`·0·null)이라 기존 세트의 payload 키 집합이 바뀌지 않는다.
@@ -74,13 +83,27 @@ function readAnniversary(v: unknown): CalendarAnniversary | null {
 }
 
 /**
+ * 연달력 연도 선택(T3b, 2026-10-24) 판독 — 프로파일 정책 `yearPolicy.select` 허용 폭 안의 정수만 남긴다.
+ * 정책·select 가 없으면 전부 버린다(관리자가 선택을 끈 세트는 템플릿 값으로 돌아간다). 남은 값이 없으면 undefined.
+ */
+function readYearDeltas(v: unknown, policy: CalendarYearPolicy | undefined): CalendarYearDeltas | undefined {
+  if (!isRecord(v)) return undefined
+  const out: CalendarYearDeltas = {}
+  if (isCalendarYearDeltaAllowed(policy, v.cover)) out.cover = v.cover
+  if (isCalendarYearDeltaAllowed(policy, v.epilogue)) out.epilogue = v.epilogue
+  return Object.keys(out).length > 0 ? out : undefined
+}
+
+/**
  * 세션 metadata → 캘린더 세션 메타. `startYear/startMonth` 가 정수(월 1~12)이고 `anniversaries` 가
  * 배열일 때만 유효. `show`·`dataVersion` 이 빠졌거나 형식이 틀리면 `fallback`(프로파일 기본 메타)에서 채운다.
+ * `yearDeltas` 는 `yearPolicy`(프로파일 calendar.yearPolicy) 허용 폭 안의 값만 보존한다(정책이 없으면 버림).
  * 유효하지 않으면 null(P1-b 의 setFromProfile 결과 유지).
  */
 export function readCalendarSessionMeta(
   metadata: unknown,
   fallback: CalendarSessionMeta | null,
+  yearPolicy?: CalendarYearPolicy,
 ): CalendarSessionMeta | null {
   if (!isRecord(metadata)) return null
   const cal = metadata.calendar
@@ -100,7 +123,10 @@ export function readCalendarSessionMeta(
   // 임시공휴일·선거일 표시(2026-10-17): 저장분 boolean 이면 그 값, 없으면 fallback 값, 둘 다 없으면 키 생략(= false)
   if (typeof show.temporaryHolidays === 'boolean') restoredShow.temporaryHolidays = show.temporaryHolidays
   else if (typeof fallbackShow.temporaryHolidays === 'boolean') restoredShow.temporaryHolidays = fallbackShow.temporaryHolidays
-  return {
+  // 연달력 연도 제목(T3b, 2026-10-24): 같은 규칙 — 저장분 boolean > fallback boolean > 키 생략(= 표시)
+  if (typeof show.yearTitle === 'boolean') restoredShow.yearTitle = show.yearTitle
+  else if (typeof fallbackShow.yearTitle === 'boolean') restoredShow.yearTitle = fallbackShow.yearTitle
+  const meta: CalendarSessionMeta = {
     startYear: startYear as number,
     startMonth: startMonth as number,
     show: restoredShow,
@@ -110,6 +136,9 @@ export function readCalendarSessionMeta(
         ? cal.dataVersion
         : (fallback?.dataVersion ?? ''),
   }
+  const yearDeltas = readYearDeltas(cal.yearDeltas, yearPolicy)
+  if (yearDeltas) meta.yearDeltas = yearDeltas
+  return meta
 }
 
 /**
@@ -135,7 +164,7 @@ export function restoreCalendarSessionMeta(metadata: unknown): boolean {
   const profile = useSettingsStore.getState().productProfile
   if (!isCalendarProfile(profile)) return false
   const store = useCalendarStore.getState()
-  const meta = readCalendarSessionMeta(metadata, store.meta)
+  const meta = readCalendarSessionMeta(metadata, store.meta, profile.calendar.yearPolicy)
   if (!meta) return false
   const duplicates = countDuplicateAnniversaries(meta.anniversaries, meta.dataVersion)
   if (duplicates > 0) {

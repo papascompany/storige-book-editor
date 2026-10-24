@@ -8,6 +8,7 @@
 //      useCalendarStore.pendingDate 세팅 + 선택 해제 + 달력 메뉴(tapMenu 'CALENDAR') 전환
 //  (2) 이미 달력 메뉴면 tapMenu 를 다시 부르지 않는다(토글로 닫히지 않게)
 //  (3) 프로파일 NULL(legacy) 세트는 구독하지 않는다 — 바이트 동일
+//  (4) 연달력(variant 'year', T3b)은 기념일 폼 대상이 아니다 — hitTestDate 를 부르지 않고 무시
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, act } from '@testing-library/react'
 
@@ -117,6 +118,24 @@ describe('FeatureSidebar — 캘린더 날짜칸 더블클릭 구독', () => {
     expect(plugin.hitTestDate).toHaveBeenCalledTimes(1)
     expect(useCalendarStore.getState().pendingDate).toBeNull()
     expect(tapMenu).not.toHaveBeenCalled()
+  })
+
+  it("(4) 연달력(variant 'year') 그리드 더블클릭은 hitTestDate 를 부르지 않고 폼·메뉴 전환도 없다 — month/mini 는 종전대로", () => {
+    const { handlers, plugin, tapMenu, canvas } = wire(calendarProfile, { type: 'TEXT', label: '텍스트' })
+    render(<FeatureSidebar />)
+    act(() => {
+      handlers['mouse:dblclick'][0]({ target: { extensionType: 'calendar-grid', extension: { variant: 'year', yearDelta: 0 } }, e: {} })
+    })
+    expect(plugin.hitTestDate).not.toHaveBeenCalled()
+    expect(useCalendarStore.getState().pendingDate).toBeNull()
+    expect(canvas.discardActiveObject).not.toHaveBeenCalled()
+    expect(tapMenu).not.toHaveBeenCalled()
+
+    act(() => {
+      handlers['mouse:dblclick'][0]({ target: { extensionType: 'calendar-grid', extension: { variant: 'mini', monthDelta: -1 } }, e: {} })
+    })
+    expect(plugin.hitTestDate).toHaveBeenCalledTimes(1)
+    expect(useCalendarStore.getState().pendingDate).toBe('2027-03-05')
   })
 
   it('(3) NULL 프로파일(legacy)은 구독하지 않는다', () => {

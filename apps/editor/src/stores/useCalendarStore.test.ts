@@ -228,3 +228,63 @@ describe('useCalendarStore — 같은 날짜 기념일 거부 (add/update)', () 
     expect(useCalendarStore.getState().meta?.anniversaries).toEqual(saved.anniversaries)
   })
 })
+
+describe('useCalendarStore — 연달력 연도 선택 yearDeltas (T3b)', () => {
+  const withSelect = () => calendarProfile({ yearPolicy: { select: { minDelta: 0, maxDelta: 1 } } })
+
+  it('setFromProfile 은 yearPolicy 를 복사하고 meta 에 yearDeltas 키를 만들지 않는다', () => {
+    useCalendarStore.getState().setFromProfile(withSelect())
+    expect(useCalendarStore.getState().yearPolicy).toEqual({ select: { minDelta: 0, maxDelta: 1 } })
+    expect(useCalendarStore.getState().meta).not.toHaveProperty('yearDeltas')
+    useCalendarStore.getState().setFromProfile(null)
+    expect(useCalendarStore.getState().yearPolicy).toBeNull()
+  })
+
+  it('setYearDelta: 허용 폭 안 정수만 기록, null 은 해제하고 비면 키 제거', () => {
+    useCalendarStore.getState().setFromProfile(withSelect())
+    const s = useCalendarStore.getState()
+    expect(s.setYearDelta('cover', 1)).toBe(true)
+    expect(s.setYearDelta('epilogue', 0)).toBe(true)
+    expect(useCalendarStore.getState().meta?.yearDeltas).toEqual({ cover: 1, epilogue: 0 })
+    expect(s.setYearDelta('cover', null)).toBe(true)
+    expect(useCalendarStore.getState().meta?.yearDeltas).toEqual({ epilogue: 0 })
+    expect(s.setYearDelta('epilogue', null)).toBe(true)
+    expect(useCalendarStore.getState().meta).not.toHaveProperty('yearDeltas')
+  })
+
+  it('setYearDelta: 범위 밖·비정수·NaN·거대값·잘못된 역할은 false·변경 없음', () => {
+    useCalendarStore.getState().setFromProfile(withSelect())
+    const s = useCalendarStore.getState()
+    for (const bad of [2, -1, 0.5, Number.NaN, 1e15, Number.POSITIVE_INFINITY]) {
+      expect(s.setYearDelta('cover', bad)).toBe(false)
+    }
+    expect(s.setYearDelta('month' as never, 0)).toBe(false)
+    expect(useCalendarStore.getState().meta).not.toHaveProperty('yearDeltas')
+  })
+
+  it('정책에 select 가 없거나 yearPolicy 자체가 없으면 기록하지 않는다', () => {
+    useCalendarStore.getState().setFromProfile(calendarProfile({ yearPolicy: { span: 'calendar-year' } }))
+    expect(useCalendarStore.getState().setYearDelta('cover', 0)).toBe(false)
+    useCalendarStore.getState().setFromProfile(calendarProfile())
+    expect(useCalendarStore.getState().setYearDelta('cover', 0)).toBe(false)
+    expect(useCalendarStore.getState().meta).not.toHaveProperty('yearDeltas')
+  })
+
+  it('restore 는 yearDeltas·show.yearTitle 을 복사해 보존하고, 시작연월을 바꿔도 상대값은 그대로(Q4)', () => {
+    useCalendarStore.getState().setFromProfile(withSelect())
+    const saved = {
+      startYear: 2027,
+      startMonth: 1,
+      show: { holidays: true, lunar: false, solarTerms: false, yearTitle: false },
+      anniversaries: [],
+      dataVersion: 'kr-2025-2035-v1',
+      yearDeltas: { cover: 1 },
+    }
+    useCalendarStore.getState().restore(saved)
+    expect(useCalendarStore.getState().meta).toEqual(saved)
+    expect(useCalendarStore.getState().meta?.yearDeltas).not.toBe(saved.yearDeltas)
+    expect(useCalendarStore.getState().setStartMonth(2027, 6)).toBe(true)
+    expect(useCalendarStore.getState().meta?.yearDeltas).toEqual({ cover: 1 })
+    expect(useCalendarStore.getState().meta?.show.yearTitle).toBe(false)
+  })
+})

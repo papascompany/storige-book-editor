@@ -301,3 +301,238 @@ describe('CalendarPanel — editMode 그리드 도구', () => {
     expect(screen.getByText(/날짜 데이터 준비 중/)).toBeInTheDocument()
   })
 })
+
+// ─── T3b 연달력 (2026-10-24) ─────────────────────────────────────────────────
+
+const yearGrid = (yearDelta = 0) => ({ extensionType: 'calendar-grid', extension: { variant: 'year', yearDelta } })
+
+function withYearPolicy(yearPolicy: NonNullable<ProductProfile['calendar']>['yearPolicy']): ProductProfile {
+  return { ...calendarProfile, calendar: { ...calendarProfile.calendar!, yearPolicy } }
+}
+
+/** 26캔버스 — objectsAt(index) 로 캔버스별 최상위 객체를 정한다 */
+function wireYear(profile: ProductProfile, objectsAt: (index: number) => unknown[]) {
+  const canvases = Array.from({ length: 26 }, (_, i) => ({
+    id: `c${i}`,
+    on: vi.fn(),
+    off: vi.fn(),
+    getObjects: vi.fn(() => objectsAt(i)),
+  }))
+  const editor = { getPlugin: vi.fn(() => undefined) }
+  useAppStore.setState({ ready: true, canvas: canvases[0], editor, allCanvas: canvases, allEditors: canvases.map(() => editor) } as never)
+  useSettingsStore.getState().setProductProfile(profile)
+  useCalendarStore.getState().setFromProfile(profile)
+  return render(<CalendarPanel />)
+}
+
+const yearSection = () => screen.queryByRole('region', { name: '연달력' })
+const coverYearSelect = () => screen.getByLabelText('표지 연달력 연도') as HTMLSelectElement
+
+describe('CalendarPanel — 연달력 섹션 (T3b)', () => {
+  it('연달력 그리드가 없으면 섹션 없음(기존 세트 화면 불변)', () => {
+    wireYear(withYearPolicy({ select: { minDelta: 0, maxDelta: 1 } }), () => [])
+    expect(yearSection()).toBeNull()
+  })
+
+  it('정책 select 없음: 연도 제목 on/off 만 노출, 연도 선택 없음', () => {
+    wireYear(calendarProfile, (i) => (i === 0 ? [yearGrid()] : []))
+    expect(yearSection()).not.toBeNull()
+    expect(screen.getByLabelText('연도 제목 표시')).toBeChecked()
+    expect(screen.queryByLabelText('표지 연달력 연도')).toBeNull()
+  })
+
+  it('연도 제목 토글 → meta.show.yearTitle(저장 payload metadata.calendar.show) + rehydrateAll', async () => {
+    wireYear(calendarProfile, (i) => (i === 0 ? [yearGrid()] : []))
+    await act(async () => {
+      fireEvent.click(screen.getByLabelText('연도 제목 표시'))
+    })
+    expect(useCalendarStore.getState().meta?.show.yearTitle).toBe(false)
+    expect(rehydrateAll).toHaveBeenCalledTimes(1)
+    expect(screen.getByLabelText('연도 제목 표시')).not.toBeChecked()
+  })
+
+  it('정책 select {0,1} + 표지 연달력: 표지 선택만 노출(에필로그 캔버스엔 연달력 없음), 후보 = 기본 + 허용 폭', () => {
+    wireYear(withYearPolicy({ select: { minDelta: 0, maxDelta: 1 } }), (i) => (i === 0 ? [yearGrid(1)] : []))
+    expect(screen.queryByLabelText('에필로그 연달력 연도')).toBeNull()
+    const opts = Array.from(coverYearSelect().options).map((o) => [o.value, o.textContent])
+    // 시작 2027-01 → 기본 규칙 calendar-year. 기본 = 템플릿 yearDelta 1 → 2028년
+    expect(opts).toEqual([
+      ['', '기본 (2028년)'],
+      ['0', '2027년'],
+      ['1', '2028년'],
+    ])
+    expect(coverYearSelect().value).toBe('')
+  })
+
+  it('연도 선택 → yearDeltas[cover] + rehydrateAll, 기본으로 되돌리면 키 제거; 시작연월을 바꿔도 상대값 유지(Q4)·표기는 시작연월부터(Q1)', async () => {
+    wireYear(withYearPolicy({ select: { minDelta: 0, maxDelta: 1 } }), (i) => (i === 0 || i === 25 ? [yearGrid()] : []))
+    expect(screen.getByLabelText('에필로그 연달력 연도')).toBeInTheDocument()
+    await act(async () => {
+      fireEvent.change(coverYearSelect(), { target: { value: '1' } })
+    })
+    expect(useCalendarStore.getState().meta?.yearDeltas).toEqual({ cover: 1 })
+    expect(rehydrateAll).toHaveBeenCalledTimes(1)
+
+    await act(async () => {
+      useCalendarStore.getState().setStartMonth(2027, 3)
+    })
+    expect(useCalendarStore.getState().meta?.yearDeltas).toEqual({ cover: 1 })
+    expect(Array.from(coverYearSelect().options).map((o) => o.textContent)).toEqual([
+      '기본 (2027.3 – 2028.2)',
+      '2027.3 – 2028.2',
+      '2028.3 – 2029.2',
+    ])
+
+    await act(async () => {
+      fireEvent.change(coverYearSelect(), { target: { value: '' } })
+    })
+    expect(useCalendarStore.getState().meta).not.toHaveProperty('yearDeltas')
+  })
+
+  it("정책 span 'calendar-year' 명시면 3월 시작이어도 기준 연도 1~12월 표기", async () => {
+    wireYear(withYearPolicy({ span: 'calendar-year', select: { minDelta: -1, maxDelta: 0 } }), (i) => (i === 0 ? [yearGrid()] : []))
+    await act(async () => {
+      useCalendarStore.getState().setStartMonth(2027, 3)
+    })
+    expect(Array.from(coverYearSelect().options).map((o) => o.textContent)).toEqual(['기본 (2027년)', '2026년', '2027년'])
+  })
+})
+
+describe('CalendarPanel — 기념일 문구 스타일 최소(색·굵게, D1(b))', () => {
+  it('추가: 글자색 지정 + 굵게 → anniversaries[].style {fill, fontWeight}', async () => {
+    wireCalendar()
+    fireEvent.click(screen.getByRole('button', { name: '추가' }))
+    const form = screen.getByRole('form', { name: '기념일 추가' })
+    expect(within(form).getByLabelText('기념일 글자색')).toBeDisabled()
+    fireEvent.click(within(form).getByLabelText('글자색 지정'))
+    fireEvent.change(within(form).getByLabelText('기념일 글자색'), { target: { value: '#1a56db' } })
+    fireEvent.click(within(form).getByLabelText('굵게'))
+    await submitAnniversary({ month: 4, day: 3, text: '결혼기념일' })
+    expect(useCalendarStore.getState().meta?.anniversaries[0]).toMatchObject({
+      date: '2027-04-03',
+      text: '결혼기념일',
+      style: { fill: '#1a56db', fontWeight: 'bold' },
+    })
+  })
+
+  it('스타일 없이 추가하면 style 키를 만들지 않는다(종전 저장 형태)', async () => {
+    wireCalendar()
+    fireEvent.click(screen.getByRole('button', { name: '추가' }))
+    await submitAnniversary({ month: 4, day: 4, text: '생일' })
+    expect(useCalendarStore.getState().meta?.anniversaries[0]).not.toHaveProperty('style')
+  })
+
+  it('수정: 저장분 색·굵게가 폼에 채워지고, 색 해제 시 fill 만 빠지고 다른 스타일 키(fontFamily)는 유지', async () => {
+    wireCalendar()
+    act(() => {
+      useCalendarStore.getState().addAnniversary({
+        id: 'st',
+        date: '2027-06-01',
+        lunar: false,
+        text: '창립일',
+        style: { fill: '#ff0000', fontWeight: 'bold', fontFamily: 'X' },
+      })
+    })
+    fireEvent.click(await screen.findByRole('button', { name: '기념일 수정 창립일' }))
+    const form = screen.getByRole('form', { name: '기념일 수정' })
+    expect(within(form).getByLabelText('글자색 지정')).toBeChecked()
+    expect((within(form).getByLabelText('기념일 글자색') as HTMLInputElement).value).toBe('#ff0000')
+    expect(within(form).getByLabelText('굵게')).toBeChecked()
+    fireEvent.click(within(form).getByLabelText('글자색 지정'))
+    await act(async () => {
+      fireEvent.submit(form)
+    })
+    expect(useCalendarStore.getState().meta?.anniversaries[0].style).toEqual({ fontWeight: 'bold', fontFamily: 'X' })
+  })
+})
+
+describe('CalendarGridTools — 연달력 추가·스타일 4종 (T3b, editMode)', () => {
+  function wireTools(opts: { profile?: ProductProfile; objects?: unknown[] } = {}) {
+    const workspace = { id: 'workspace', width: 1000, height: 1000, scaleX: 1, scaleY: 1, getCenterPoint: () => ({ x: 0, y: 0 }) }
+    const objects: unknown[] = [workspace, ...(opts.objects ?? [])]
+    const canvas = {
+      id: 'c0',
+      on: vi.fn(),
+      off: vi.fn(),
+      getObjects: vi.fn(() => objects),
+      offHistory: vi.fn(),
+      onHistory: vi.fn(),
+      add: vi.fn(),
+      setActiveObject: vi.fn(),
+      requestRenderAll: vi.fn(),
+    }
+    const plugin = {
+      createGrid: vi.fn<(ext: Record<string, unknown>, ctx: Record<string, unknown>, box: { width: number; height: number }) => Promise<{ id: string }>>(
+        async () => ({ id: 'new-grid' }),
+      ),
+      rehydrate: vi.fn(async () => 1),
+      hitTestDate: vi.fn(() => null),
+    }
+    const editor = { getPlugin: vi.fn((name: string) => (name === 'CalendarPlugin' ? plugin : undefined)) }
+    const profile = opts.profile ?? calendarProfile
+    useAppStore.setState({ ready: true, canvas, editor, allCanvas: [canvas], allEditors: [editor] } as never)
+    useSettingsStore.getState().setProductProfile(profile)
+    useCalendarStore.getState().setFromProfile(profile)
+    useSettingsStore.setState((s) => ({ currentSettings: { ...s.currentSettings, editMode: true } }))
+    render(<CalendarPanel />)
+    return { canvas, plugin }
+  }
+
+  it("'연달력 추가' 는 editMode 에서만 노출", () => {
+    wireCalendar({ editMode: false })
+    expect(screen.queryByRole('button', { name: '연달력 추가' })).toBeNull()
+  })
+
+  it("연달력 추가 → createGrid({variant:'year', yearDelta}) — 박스 4:3, ctx.yearSpan = 프로파일 정책, extension.show 미기록", async () => {
+    const { plugin, canvas } = wireTools({ profile: withYearPolicy({ span: 'start-span', select: { minDelta: 0, maxDelta: 1 } }) })
+    fireEvent.change(screen.getByLabelText('연달력 연도'), { target: { value: '1' } })
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: '연달력 추가' }))
+    })
+    expect(plugin.createGrid).toHaveBeenCalledTimes(1)
+    const [ext, ctx, box] = plugin.createGrid.mock.calls[0]
+    expect(ext).toEqual({ variant: 'year', yearDelta: 1 })
+    expect(ext).not.toHaveProperty('show')
+    expect(ctx).toMatchObject({ yearSpan: 'start-span', canvasMonthOffset: null })
+    expect(box.width / box.height).toBeCloseTo(4 / 3, 5)
+    expect(box.width).toBeCloseTo(800, 5)
+    expect(canvas.add).toHaveBeenCalledTimes(1)
+  })
+
+  it('스타일 4종 입력 → 새 그리드 extension.style 에 지정 키만; 비우면 style 키 없음(기존 버튼 동작 불변)', async () => {
+    const { plugin } = wireTools()
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: '날짜 그리드 추가(월)' }))
+    })
+    expect(plugin.createGrid.mock.calls[0][0]).toEqual({ variant: 'month', monthDelta: 0 })
+
+    fireEvent.change(screen.getByLabelText('그리드 글꼴'), { target: { value: '본고딕(Noto Sans) Regular' } })
+    fireEvent.change(screen.getByLabelText('요일 표기'), { target: { value: 'ko' } })
+    fireEvent.change(screen.getByLabelText('제목 표시'), { target: { value: 'off' } })
+    fireEvent.change(screen.getByLabelText('칸 구분선'), { target: { value: 'on' } })
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: '연달력 추가' }))
+    })
+    expect(plugin.createGrid.mock.calls[1][0]).toEqual({
+      variant: 'year',
+      yearDelta: 0,
+      style: { fontFamily: '본고딕(Noto Sans) Regular', headerLang: 'ko', showTitle: false, showLines: true },
+    })
+  })
+
+  it('현재 페이지 그리드에 적용 → 지정 키만 extension.style 에 병합(colors 유지·show 미기록) 후 plugin.rehydrate', async () => {
+    const month = { extensionType: 'calendar-grid', extension: { variant: 'month', style: { colors: { text: '#111111' }, showLines: false } } }
+    const year = { extensionType: 'calendar-grid', extension: { variant: 'year', yearDelta: 1 } }
+    const { plugin } = wireTools({ objects: [month, year, { extensionType: 'frame' }] })
+    const apply = screen.getByRole('button', { name: '현재 페이지 그리드에 스타일 적용' })
+    expect(apply).toBeDisabled()
+    fireEvent.change(screen.getByLabelText('칸 구분선'), { target: { value: 'on' } })
+    await act(async () => {
+      fireEvent.click(apply)
+    })
+    expect(month.extension).toEqual({ variant: 'month', style: { colors: { text: '#111111' }, showLines: true } })
+    expect(year.extension).toEqual({ variant: 'year', yearDelta: 1, style: { showLines: true } })
+    expect(year.extension).not.toHaveProperty('show')
+    expect(plugin.rehydrate).toHaveBeenCalledTimes(1)
+  })
+})

@@ -128,3 +128,67 @@ describe('rehydrateCalendarGrids', () => {
     expect(warn).toHaveBeenCalledTimes(1)
   })
 })
+
+describe('rehydrateCalendarGrids — 연달력 ctx.yearSpan·yearDelta (T3b)', () => {
+  function yearProfile(yearPolicy: NonNullable<ProductProfile['calendar']>['yearPolicy']): ProductProfile {
+    const p = calendarProfile()
+    return { ...p, calendar: { ...p.calendar!, yearPolicy } }
+  }
+
+  it('yearSpan = 프로파일 yearPolicy.span(없으면 undefined), 표지(0)·에필로그(25)는 세션 yearDeltas[역할], 월 캔버스는 yearDelta 없음', async () => {
+    getCalendarDataMock.mockReturnValue(fakeData)
+    const profile = yearProfile({ span: 'start-span', select: { minDelta: -1, maxDelta: 1 } })
+    useSettingsStore.getState().setProductProfile(profile)
+    useCalendarStore.getState().setFromProfile(profile)
+    useCalendarStore.getState().setYearDelta('cover', 1)
+    useCalendarStore.getState().setYearDelta('epilogue', -1)
+
+    await rehydrateCalendarGrids(makeEditor(true), fakeCanvas, 0)
+    await rehydrateCalendarGrids(makeEditor(true), fakeCanvas, 25)
+    await rehydrateCalendarGrids(makeEditor(true), fakeCanvas, 3)
+    const ctxs = rehydrateMock.mock.calls.map((c) => c[0])
+    expect(ctxs.map((c) => c.yearSpan)).toEqual(['start-span', 'start-span', 'start-span'])
+    expect(ctxs[0].yearDelta).toBe(1)
+    expect(ctxs[1].yearDelta).toBe(-1)
+    expect(ctxs[2]).not.toHaveProperty('yearDelta')
+  })
+
+  it('yearPolicy 없음 → yearSpan undefined·yearDelta 없음(종전 ctx 와 같은 키)', async () => {
+    getCalendarDataMock.mockReturnValue(fakeData)
+    useSettingsStore.getState().setProductProfile(calendarProfile())
+    await rehydrateCalendarGrids(makeEditor(true), fakeCanvas, 0)
+    const ctx = rehydrateMock.mock.calls[0][0]
+    expect(ctx.yearSpan).toBeUndefined()
+    expect(ctx).not.toHaveProperty('yearDelta')
+  })
+
+  it.each([
+    ['허용 폭 밖 2', 2],
+    ['거대값 1e15', 1e15],
+    ['NaN', Number.NaN],
+    ['문자열 "1"', '1'],
+    ['소수 0.5', 0.5],
+  ] as const)('스토어에 직접 들어온 %s 는 ctx.yearDelta 로 넘기지 않는다(템플릿 값 사용)', async (_label, bad) => {
+    getCalendarDataMock.mockReturnValue(fakeData)
+    const profile = yearProfile({ select: { minDelta: 0, maxDelta: 1 } })
+    useSettingsStore.getState().setProductProfile(profile)
+    useCalendarStore.getState().setFromProfile(profile)
+    const meta = useCalendarStore.getState().meta!
+    // 런처·PATCH 가 판독기를 우회해 스토어를 채운 경우를 가정
+    useCalendarStore.setState({ meta: { ...meta, yearDeltas: { cover: bad as number } } })
+    await rehydrateCalendarGrids(makeEditor(true), fakeCanvas, 0)
+    expect(rehydrateMock.mock.calls[0][0]).not.toHaveProperty('yearDelta')
+  })
+
+  it('정책에 select 가 없으면 세션 값이 있어도 무시한다', async () => {
+    getCalendarDataMock.mockReturnValue(fakeData)
+    const profile = yearProfile({ span: 'calendar-year' })
+    useSettingsStore.getState().setProductProfile(profile)
+    useCalendarStore.getState().setFromProfile(profile)
+    const meta = useCalendarStore.getState().meta!
+    useCalendarStore.setState({ meta: { ...meta, yearDeltas: { cover: 0 } } })
+    await rehydrateCalendarGrids(makeEditor(true), fakeCanvas, 0)
+    expect(rehydrateMock.mock.calls[0][0]).toMatchObject({ yearSpan: 'calendar-year' })
+    expect(rehydrateMock.mock.calls[0][0]).not.toHaveProperty('yearDelta')
+  })
+})

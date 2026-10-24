@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest'
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import type { CalendarSessionMeta, ProductProfile } from '@storige/types'
 
 const rehydrateOne = vi.fn<(editor: unknown, canvas: unknown, index: number) => Promise<number>>(async () => 0)
@@ -239,5 +239,92 @@ describe('restoreCalendarSessionMeta — 같은 날짜 기념일 비파괴 복�
     expect(countDuplicateAnniversaries([], 'kr-2025-2035-v1')).toBe(0)
     // 미지 버전: a4(음력) 는 환산 불가 → a3 와 겹치지 않음, a1/a2 만 1건
     expect(countDuplicateAnniversaries(dupAnniversaries, 'kr-unknown-v0')).toBe(1)
+  })
+})
+
+/**
+ * T3b 연달력 (2026-10-24): 판독기는 `show.yearTitle`(boolean)과 정책 허용 폭 안의 `yearDeltas` 를 보존한다.
+ * 정책(`calendar.yearPolicy.select`)이 없으면 `yearDeltas` 는 버린다. 킬스위치는 판독·동봉 경로를 바꾸지 않는다.
+ */
+describe('readCalendarSessionMeta — 연달력 show.yearTitle·yearDeltas (T3b)', () => {
+  const fallback: CalendarSessionMeta = {
+    startYear: 2027,
+    startMonth: 1,
+    show: { holidays: true, lunar: false, solarTerms: false },
+    anniversaries: [],
+    dataVersion: 'kr-2025-2035-v1',
+  }
+  const policy = { select: { minDelta: 0, maxDelta: 1 } }
+  const base = { startYear: 2027, startMonth: 4, anniversaries: [], dataVersion: 'kr-2025-2035-v1' }
+
+  it('show.yearTitle: 저장분 boolean 은 그대로, 형식 불량은 fallback, 둘 다 없으면 키 생략(= 표시)', () => {
+    const show = { holidays: true, lunar: false, solarTerms: false }
+    expect(readCalendarSessionMeta({ calendar: { ...base, show: { ...show, yearTitle: false } } }, fallback)?.show).toEqual({ ...show, yearTitle: false })
+    expect(readCalendarSessionMeta({ calendar: { ...base, show: { ...show, yearTitle: 'no' } } }, fallback)?.show).not.toHaveProperty('yearTitle')
+    expect(readCalendarSessionMeta({ calendar: { ...base, show } }, { ...fallback, show: { ...show, yearTitle: false } })?.show).toEqual({ ...show, yearTitle: false })
+  })
+
+  it('yearDeltas: 정책 허용 폭 안 정수만 보존, 밖·비정수·문자열·NaN·거대값은 그 역할만 버린다', () => {
+    const read = (yearDeltas: unknown) =>
+      readCalendarSessionMeta({ calendar: { ...base, show: fallback.show, yearDeltas } }, fallback, policy)
+    expect(read({ cover: 1, epilogue: 0 })?.yearDeltas).toEqual({ cover: 1, epilogue: 0 })
+    expect(read({ cover: 1, epilogue: 2 })?.yearDeltas).toEqual({ cover: 1 })
+    expect(read({ cover: 1e15, epilogue: Number.NaN })).not.toHaveProperty('yearDeltas')
+    expect(read({ cover: '1', epilogue: 0.5 })).not.toHaveProperty('yearDeltas')
+    expect(read({ cover: -1, month: 0 })).not.toHaveProperty('yearDeltas')
+    expect(read([1, 0])).not.toHaveProperty('yearDeltas')
+    expect(read('cover')).not.toHaveProperty('yearDeltas')
+  })
+
+  it('정책이 없거나 select 가 없으면 저장된 yearDeltas 를 버린다', () => {
+    const meta = { calendar: { ...base, show: fallback.show, yearDeltas: { cover: 0 } } }
+    expect(readCalendarSessionMeta(meta, fallback)).not.toHaveProperty('yearDeltas')
+    expect(readCalendarSessionMeta(meta, fallback, { span: 'calendar-year' })).not.toHaveProperty('yearDeltas')
+  })
+})
+
+describe('restoreCalendarSessionMeta — 연달력 보존·킬스위치 (T3b)', () => {
+  function yearProfile(): ProductProfile {
+    const p = calendarProfile()
+    return { ...p, calendar: { ...p.calendar!, yearPolicy: { select: { minDelta: 0, maxDelta: 1 } } } }
+  }
+  const saved = {
+    ...savedMeta,
+    show: { ...savedMeta.show, yearTitle: false },
+    yearDeltas: { cover: 1, epilogue: 0 },
+  }
+
+  afterEach(() => {
+    vi.unstubAllEnvs()
+  })
+
+  it('프로파일 정책 기준으로 복원하고 저장 payload metadata.calendar 에 yearTitle·yearDeltas 가 그대로 실린다', () => {
+    const profile = yearProfile()
+    useSettingsStore.getState().setProductProfile(profile)
+    useCalendarStore.getState().setFromProfile(profile)
+    expect(restoreCalendarSessionMeta({ calendar: { ...saved, yearDeltas: { cover: 1, epilogue: 9 } } })).toBe(true)
+    expect(calendarSessionMetadataFields().metadata?.calendar).toEqual({ ...saved, yearDeltas: { cover: 1 } })
+  })
+
+  it("킬스위치(VITE_ENABLE_CALENDAR='false') — 플러그인이 없어 재합성 0 이어도 저장본의 yearTitle·yearDeltas 를 다음 저장에 보존", async () => {
+    vi.stubEnv('VITE_ENABLE_CALENDAR', 'false')
+    const profile = yearProfile()
+    useSettingsStore.getState().setProductProfile(profile)
+    useCalendarStore.getState().setFromProfile(profile)
+    useAppStore.setState({ allCanvas: [{ id: 'c0' }], allEditors: [{ getPlugin: () => undefined }] } as never)
+    expect(restoreCalendarSessionMeta({ calendar: saved })).toBe(true)
+    expect(await rehydrateAllCalendarGrids()).toBe(0)
+    expect(useSaveStore.getState().isDirty).toBe(false)
+    expect(calendarSessionMetadataFields().metadata?.calendar).toEqual(saved)
+  })
+
+  it('yearPolicy 를 지운 세트로 다시 열면 yearDeltas 는 다음 저장에서 빠진다(롤백 = 템플릿 값)', () => {
+    const profile = calendarProfile()
+    useSettingsStore.getState().setProductProfile(profile)
+    useCalendarStore.getState().setFromProfile(profile)
+    expect(restoreCalendarSessionMeta({ calendar: saved })).toBe(true)
+    const cal = calendarSessionMetadataFields().metadata?.calendar
+    expect(cal).not.toHaveProperty('yearDeltas')
+    expect(cal?.show.yearTitle).toBe(false)
   })
 })
