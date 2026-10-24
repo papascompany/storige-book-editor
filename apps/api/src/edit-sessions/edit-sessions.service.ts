@@ -68,6 +68,7 @@ import {
   isSessionJobOutputLookupOn,
   isSheetMapOutputEnabled,
   isSpreadSnapshotHardFail,
+  isValidationBleedFromTemplateSetOn,
 } from '../config/feature-flags';
 
 /**
@@ -146,13 +147,22 @@ export function nextSessionRevision(metadata: Record<string, any> | null | undef
  * D9(2026-10-19): 검증 잡 orderOptions.bleed 의 기본값(세션 metadata.bleed 가 없을 때).
  * 상품 프로파일(템플릿셋 → 세션 스냅샷) 이 있는 세트에서 템플릿셋 cropMarkEnabled 가 true 가 아니거나 bleedMm 이 0 이면 0,
  * 그 밖(프로파일 NULL·템플릿셋 없음·도련 세트)은 종전 기본 3. 프로파일 검증 경고는 여기서 내지 않는다(deriveSheetValidationRules 가 냄).
+ * 2026-10-25: 재단선 세트(cropMarkEnabled true, bleedMm 이 0 보다 큰 수)는 3 대신 세트 bleedMm — 편집기 완료 PDF 의
+ * 도련(재단선 세트만 세트 bleedMm)과 같은 값. 킬스위치 VALIDATION_BLEED_FROM_TEMPLATE_SET=off 면 종전 3.
+ * 재단선 세트라도 bleedMm 이 수가 아니거나 0 이하이면 종전 3. 그 밖의 분기는 종전과 같다.
  */
 export function resolveDefaultBleedMm(
   session: Pick<EditSessionEntity, 'mode' | 'metadata'>,
   templateSet: { cropMarkEnabled?: boolean | null; bleedMm?: number | null; productProfile?: ProductProfile | null } | null,
+  env: NodeJS.ProcessEnv = process.env,
 ): number {
   if (!templateSet) return 3;
-  if (templateSet.cropMarkEnabled === true && templateSet.bleedMm !== 0) return 3;
+  if (templateSet.cropMarkEnabled === true && templateSet.bleedMm !== 0) {
+    const setBleed = templateSet.bleedMm;
+    return isValidationBleedFromTemplateSetOn(env) && typeof setBleed === 'number' && setBleed > 0
+      ? setBleed
+      : 3;
+  }
   return resolveSessionProductProfile({ session, templateSet }) !== null ? 0 : 3;
 }
 
@@ -2401,6 +2411,8 @@ export class EditSessionsService {
         // D9(2026-10-19): metadata.bleed 미기재 시 기본 3 은 종전대로이되, 상품 프로파일 세트(사진인화 chemical 등)에서
         // 템플릿셋이 재단선 없음(cropMarkEnabled≠true) 또는 bleedMm 0 이면 0 — 도련 없는 세트의 완료 PDF 가 BLEED_MISSING
         // (expected 3, actual 0) 경고를 받지 않도록. 프로파일 NULL 세트는 종전(3) 그대로.
+        // 2026-10-25: 재단선 세트(cropMarkEnabled true, bleedMm > 0)는 세트 bleedMm(킬스위치 VALIDATION_BLEED_FROM_TEMPLATE_SET).
+        // 호스트가 metadata.bleed 를 주면 그 값이 우선한다(종전과 같음).
         bleed: session.metadata?.bleed ?? resolveDefaultBleedMm(session, templateSet),
         paperThickness: session.metadata?.paperThickness,
       };

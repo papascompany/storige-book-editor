@@ -1,6 +1,7 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
-import { EditSessionsService } from './edit-sessions.service';
+import { EditSessionsService, resolveDefaultBleedMm } from './edit-sessions.service';
+import { resolveSessionProductProfile } from './sheet-validation-rules';
 import {
   EditSessionEntity,
   SessionStatus,
@@ -2543,6 +2544,154 @@ describe('EditSessionsService', () => {
     it('검증 실패 프로파일(version 99) 세트는 프로파일 NULL 과 같이 3', async () => {
       withSet({ cropMarkEnabled: false, bleedMm: 0, productProfile: { ...photoChemProfile, version: 99 } });
       await expect(bleedOf(mkSession({}))).resolves.toBe(3);
+    });
+  });
+
+  // ── 2026-10-25: 재단선 세트의 완료 검증 기본 도련 = 세트 bleedMm(킬스위치 VALIDATION_BLEED_FROM_TEMPLATE_SET) ──
+  describe('createValidationJobs — 재단선 세트 기본 도련(orderOptions.bleed = 세트 bleedMm)', () => {
+    const FLAG = 'VALIDATION_BLEED_FROM_TEMPLATE_SET';
+    let savedFindOne: typeof mockTemplateSetsService.findOne;
+    let savedFindOneWithTemplates: typeof mockTemplateSetsService.findOneWithTemplates;
+    let savedFlag: string | undefined;
+    beforeAll(() => {
+      savedFindOne = mockTemplateSetsService.findOne;
+      savedFindOneWithTemplates = mockTemplateSetsService.findOneWithTemplates;
+      savedFlag = process.env[FLAG];
+    });
+    afterAll(() => {
+      mockTemplateSetsService.findOne = savedFindOne;
+      mockTemplateSetsService.findOneWithTemplates = savedFindOneWithTemplates;
+      if (savedFlag === undefined) delete process.env[FLAG];
+      else process.env[FLAG] = savedFlag;
+    });
+    beforeEach(() => {
+      delete process.env[FLAG];
+      mockWorkerJobsService.createValidationJob.mockReset();
+      mockWorkerJobsService.createValidationJob.mockResolvedValue({ id: 'job-bleed' } as any);
+      mockTemplateSetsService.findOneWithTemplates = jest.fn().mockResolvedValue({
+        templateDetails: [{ type: 'page', spreadConfig: null }],
+      });
+    });
+
+    type SetArg = Parameters<typeof resolveDefaultBleedMm>[1];
+    type ProfileArg = NonNullable<NonNullable<SetArg>['productProfile']>;
+    /** 변경 전 resolveDefaultBleedMm 본문 그대로(종전 기준식) */
+    const legacyDefaultBleedMm = (session: Pick<EditSessionEntity, 'mode' | 'metadata'>, templateSet: SetArg): number => {
+      if (!templateSet) return 3;
+      if (templateSet.cropMarkEnabled === true && templateSet.bleedMm !== 0) return 3;
+      return resolveSessionProductProfile({ session, templateSet }) !== null ? 0 : 3;
+    };
+
+    const sheetProfile = {
+      version: 1,
+      kind: 'photo-print',
+      editorType: 'photo_chem',
+      pages: { kind: 'range', min: 1, max: 200, step: 1, labelRule: 'photo' },
+      sheet: { faces: 1, canvasLayout: 'canvas-per-sheet', binding: 'none', backRotation: 0, duplexFlip: 'short-edge' },
+      photoPrint: {
+        process: 'chemical',
+        composition: 'per-photo-free-back',
+        sizes: [{ code: '4x6', widthMm: 102, heightMm: 152, minDpi: 200 }],
+        options: { border: ['none'], fit: ['paper-full'], finish: ['matte'], brightnessFix: true, dateOverlay: true, grayscale: true },
+        copies: { min: 1, max: 99 },
+        upload: { maxPhotos: 200, maxMb: 25 },
+      },
+      output: { mode: 'single-pdf' },
+    } as unknown as ProfileArg;
+
+    const withSet = (set: Record<string, unknown>): void => {
+      mockTemplateSetsService.findOne = jest
+        .fn()
+        .mockResolvedValue({ width: 148, height: 210, editorMode: 'single', pageStep: null, ...set });
+    };
+    const mkSession = (metadata: Record<string, unknown> | null): EditSessionEntity =>
+      ({
+        id: 'session-bleed',
+        mode: SessionMode.BOTH,
+        coverFileId: 'file-cover-bleed',
+        contentFileId: null,
+        templateSetId: 'ts-bleed',
+        canvasData: [{ objects: [] }, { objects: [] }],
+        metadata,
+      }) as unknown as EditSessionEntity;
+    /** createValidationJob 호출 인자 전체(JSON 직렬화 — 바이트 비교용) */
+    const jobArgsJson = async (session: EditSessionEntity): Promise<string> => {
+      mockWorkerJobsService.createValidationJob.mockClear();
+      await (service as unknown as { createValidationJobs(s: EditSessionEntity): Promise<void> }).createValidationJobs(session);
+      expect(mockWorkerJobsService.createValidationJob).toHaveBeenCalledTimes(1);
+      return JSON.stringify(mockWorkerJobsService.createValidationJob.mock.calls[0]);
+    };
+    const orderOptionsOf = async (session: EditSessionEntity): Promise<Record<string, unknown>> =>
+      JSON.parse(await jobArgsJson(session))[0].orderOptions;
+
+    it.each<[string, Record<string, unknown>]>([
+      ['재단선 off·bleedMm 3·프로파일 NULL', { cropMarkEnabled: false, bleedMm: 3, productProfile: null }],
+      ['재단선 off·bleedMm 0·프로파일 NULL', { cropMarkEnabled: false, bleedMm: 0, productProfile: null }],
+      ['재단선 on·bleedMm 3·프로파일 NULL', { cropMarkEnabled: true, bleedMm: 3, productProfile: null }],
+      ['재단선 on·bleedMm 3·프로파일 세트', { cropMarkEnabled: true, bleedMm: 3, productProfile: sheetProfile }],
+      ['재단선 off·bleedMm 0·프로파일 세트', { cropMarkEnabled: false, bleedMm: 0, productProfile: sheetProfile }],
+      ['재단선 on·bleedMm 0·프로파일 NULL', { cropMarkEnabled: true, bleedMm: 0, productProfile: null }],
+      ['재단선 on·bleedMm 0·프로파일 세트', { cropMarkEnabled: true, bleedMm: 0, productProfile: sheetProfile }],
+    ])('%s → 검증 잡 인자가 킬스위치 off(종전 경로)와 바이트 동일', async (_label, set) => {
+      withSet(set);
+      const on = await jobArgsJson(mkSession({}));
+      process.env[FLAG] = 'off';
+      const off = await jobArgsJson(mkSession({}));
+      expect(on).toBe(off);
+      expect(JSON.parse(on)[0].orderOptions.bleed).toBe(legacyDefaultBleedMm(mkSession({}), set as SetArg));
+    });
+
+    it('재단선 on·bleedMm 1 세트 → bleed 1, 그 밖의 orderOptions 키는 킬스위치 off 와 같다', async () => {
+      withSet({ cropMarkEnabled: true, bleedMm: 1, productProfile: null });
+      const on = await orderOptionsOf(mkSession({}));
+      process.env[FLAG] = 'off';
+      const off = await orderOptionsOf(mkSession({}));
+      expect(on.bleed).toBe(1);
+      expect(off.bleed).toBe(3);
+      expect({ ...on, bleed: 3 }).toEqual(off);
+    });
+
+    it('킬스위치는 정확히 off 만 — off 면 종전 3, OFF·" off"·미설정이면 세트 bleedMm', async () => {
+      withSet({ cropMarkEnabled: true, bleedMm: 1, productProfile: null });
+      process.env[FLAG] = 'off';
+      expect((await orderOptionsOf(mkSession({}))).bleed).toBe(3);
+      for (const raw of ['OFF', ' off', 'on', '']) {
+        process.env[FLAG] = raw;
+        expect((await orderOptionsOf(mkSession({}))).bleed).toBe(1);
+      }
+      delete process.env[FLAG];
+      expect((await orderOptionsOf(mkSession({}))).bleed).toBe(1);
+    });
+
+    it('호스트 metadata.bleed 가 있으면 세트 bleedMm 보다 우선(0 포함)', async () => {
+      withSet({ cropMarkEnabled: true, bleedMm: 1, productProfile: null });
+      expect((await orderOptionsOf(mkSession({ bleed: 2 }))).bleed).toBe(2);
+      expect((await orderOptionsOf(mkSession({ bleed: 0 }))).bleed).toBe(0);
+      expect((await orderOptionsOf(mkSession({ bleed: 3 }))).bleed).toBe(3);
+    });
+
+    it('resolveDefaultBleedMm — 재단선 on·bleedMm 0 보다 큰 수만 세트 값, 그 밖은 종전 기준식과 같다', () => {
+      const session = mkSession({});
+      const cases: SetArg[] = [
+        null,
+        {},
+        { cropMarkEnabled: true },
+        { cropMarkEnabled: true, bleedMm: null },
+        { cropMarkEnabled: true, bleedMm: -1 },
+        { cropMarkEnabled: true, bleedMm: 0 },
+        { cropMarkEnabled: true, bleedMm: 0, productProfile: sheetProfile },
+        { cropMarkEnabled: true, bleedMm: 3 },
+        { cropMarkEnabled: null, bleedMm: 1 },
+        { cropMarkEnabled: false, bleedMm: 1 },
+        { cropMarkEnabled: false, bleedMm: 1, productProfile: sheetProfile },
+        { cropMarkEnabled: false, bleedMm: 0, productProfile: sheetProfile },
+      ];
+      for (const set of cases) {
+        expect(resolveDefaultBleedMm(session, set, {})).toBe(legacyDefaultBleedMm(session, set));
+      }
+      expect(resolveDefaultBleedMm(session, { cropMarkEnabled: true, bleedMm: 1 }, {})).toBe(1);
+      expect(resolveDefaultBleedMm(session, { cropMarkEnabled: true, bleedMm: 2.5, productProfile: sheetProfile }, {})).toBe(2.5);
+      expect(resolveDefaultBleedMm(session, { cropMarkEnabled: true, bleedMm: 5 }, { [FLAG]: 'off' })).toBe(3);
     });
   });
 });

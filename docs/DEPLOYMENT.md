@@ -447,6 +447,7 @@ GHOSTSCRIPT_PATH=/usr/bin/gs
 | `EDITOR_SPREAD_VALIDATION_MAPPING` | api | `${EDITOR_SPREAD_VALIDATION_MAPPING:-on}` | 정확히 `off`(대소문자 구분, 앞뒤 공백 없음)일 때만 해제(검증 잡은 주문 옵션 `orderOptions` 만 사용). 코드는 `off` 가 아닌 값을 모두 연결로 본다 — `on` 은 읽기 쉽게 하려는 표기다 |
 | `EDITOR_CONTENT_PAGE_RULES` | api | `${EDITOR_CONTENT_PAGE_RULES:-on}` | 앞뒤 공백·대소문자를 무시하고 `off` 일 때만 해제(편집 완료 내지 검증 잡에 편집기 쪽 단위 `pageMultiple`·중철 쪽수 상한을 싣지 않고 주문 옵션의 종전 쪽수 규칙으로 검증). 그 밖의 값·미설정은 싣는다. 매핑은 2026-10-08 부터(아래 「`EDITOR_CONTENT_PAGE_RULES` 비상 차단」) |
 | `EDITOR_SHEET_VALIDATION_RULES` | api | `${EDITOR_SHEET_VALIDATION_RULES:-on}` | 앞뒤 공백·대소문자를 무시하고 `off` 일 때만 해제. 편집 완료 낱장 세트(single, spine/wing/spread 템플릿 없음) 검증 잡에 `productKind='sheet'`(+`pageStep`)을 싣지 않아 종전 cover 1·2·4 쪽수 규칙으로 되돌린다. T3c(2026-10-24, **미배포** — 적용 시점 = api 배포; 배포 전 이미지에서는 off 가 프로파일 세트도 끈다) 이후 상품 프로파일 세트(캘린더·사진인화)는 off 여도 규칙을 유지한다(off 는 프로파일 NULL 세트에만 적용). 매핑은 2026-10-17 부터. `[FLAGS] api` 줄 끝 키로 확인한다(운영 `FLAGS_EXPECTED_API` 프로필에 `EDITOR_SHEET_VALIDATION_RULES=true` 를 더해야 `(unlisted)` 불일치가 남지 않는다) |
+| `VALIDATION_BLEED_FROM_TEMPLATE_SET` | api | `${VALIDATION_BLEED_FROM_TEMPLATE_SET:-on}` | 정확히 `off`(대소문자 구분, 앞뒤 공백 없음)일 때만 해제. 기본 on — 편집 완료 검증 잡의 기본 도련(`orderOptions.bleed`, 세션 `metadata.bleed` 가 없을 때)에 재단선 세트(`cropMarkEnabled` true, `bleedMm` 0 초과)의 세트 `bleedMm` 을 쓴다. off 면 재단선 세트도 종전 기본 3mm. 매핑은 2026-10-25 부터(아래 「완료 검증 기본 도련 — 재단선 세트 도련값」). `[FLAGS] api` 줄 18번째(끝) 키로 확인한다 |
 
 - 확인 위치: `FILE_ORPHAN_ENABLED`·`FILE_ORPHAN_DRY_RUN`·`FILE_RETENTION_ENABLED`·`FILE_RETENTION_DRY_RUN`·`THUMBNAIL_CLEANUP_DRY_RUN`·`SPREAD_SNAPSHOT_HARD_FAIL`·`EDITOR_CONTENT_PAGE_RULES`·`EDITOR_SPREAD_VALIDATION_MAPPING` 은 `[FLAGS]` 줄(위 「배포 후 점검」)로 확인한다. `[FLAGS]` 줄은 해석이 끝난 유효값(`true`/`false`)이라 `EDITOR_SPREAD_VALIDATION_MAPPING` 은 연결이면 `true`, 해제(`off`)면 `false` 로 나온다. 유예·건수·영구 삭제 시간은 `[FLAGS]` 줄에 없으므로 `docker exec storige-api printenv <키>` 로 확인한다.
 - 유예·건수·영구 삭제 시간 4개는 값이 허용 범위 밖이면 기본값이나 경계값으로 바꿔 쓰고, api 기동 로그에 `[env]` warn 을 남긴다(키·허용 범위·적용값만). `FILE_RETENTION_BATCH` 는 보존정책과 고아 정리가 각각 읽으므로 2줄이 남는다. 평소에는 `docker logs storige-api 2>&1 | grep "\[env\]"` 결과가 없어야 한다.
@@ -1755,6 +1756,26 @@ STORIGE_API_URL=https://api.papascompany.co.kr/api node scripts/register-photo-p
 ### 세션 생성 metadata 정리 (2026-10-24 준비, api 전용 — 적용 시점 = api 배포)
 
 - `POST /edit-sessions`·`POST /edit-sessions/guest` 가 update 와 같은 규칙으로 서버 소유 `metadata` 키(`launch`·`revision`·`production`·`productProfile`)를 입력에서 버린 뒤 프로파일 스냅샷을 기록하고, 스냅샷 기록 때 템플릿셋이 없으면(NotFound) `productProfile` 키를 두지 않는다(그 밖의 조회 오류는 종전대로 기존 값 유지 — update·완료 경로도 같음). 파트너 v1 런처 경로·DTO·CONTRACT 무변경, 플래그·스키마·`.env` 변경 없음. 롤백 = api 직전 이미지.
+
+### 완료 검증 기본 도련 — 재단선 세트 도련값 (2026-10-25 준비, api 전용 — 적용 시점 = api 배포)
+
+- 동작: 편집 완료 검증 잡의 `orderOptions.bleed` 기본값(세션 `metadata.bleed` 가 없을 때)이 재단선 세트(`cropMarkEnabled` true, `bleedMm` 0 초과)에서는 종전 고정 3 대신 **세트 `bleedMm`** 이다. 호스트가 `metadata.bleed` 를 주면 종전대로 그 값이 우선한다. 재단선 없는 세트·프로파일 NULL 세트·`bleedMm` 3 세트는 검증 잡 옵션이 종전과 같다(프로파일 세트의 도련 없음 = 0 규칙도 그대로). 워커·DB·DTO 변경 없음. 계약 `docs/CONTRACT_FREEZE.md` v1.28.
+- 영향(2026-10-25 운영 집계, 읽기 전용): 재단선 세트 10개 중 `bleedMm`≠3 은 1개 — **영향 세트 1·세션 2**(파트너 상품 매핑 0). 이 세트만 검증 기대 도련이 3→1mm 로 바뀌고, 크기 판정은 종전대로 작업 크기 기준이다.
+- 킬스위치 `VALIDATION_BLEED_FROM_TEMPLATE_SET`: 기본 on(재단선 세트는 세트 도련값으로 검증). 정확히 `off` 로 전환하면 종전 3mm 기본값으로 돌아간다. `docker-compose.yml` api environment 에 `VALIDATION_BLEED_FROM_TEMPLATE_SET=${VALIDATION_BLEED_FROM_TEMPLATE_SET:-on}` 매핑이 추가됐다 — `.env` 에 키가 없으면 on 이다. `[FLAGS] api` 줄 키가 17 → **18** 개가 된다(18번째 = 이 키).
+
+```bash
+# 0) 직전 이미지 보존
+docker tag storige-api:latest storige-api:rollback-pre-validation-bleed-20261025
+# 1) 기대값 프로필 갱신 — 운영 .env 의 FLAGS_EXPECTED_API 를 17 → 18 토큰으로(.env 백업 chmod 600)
+#    FLAGS_EXPECTED_API='… SHEET_MAP_OUTPUT_ENABLED=true VALIDATION_BLEED_FROM_TEMPLATE_SET=true'
+# 2) api 반영·재기동 + nginx 재시작
+cd ~/storige && git pull --ff-only origin master
+docker compose build api && docker compose up -d api && docker compose restart nginx
+# 3) 확인 — [FLAGS] api 줄 끝에 VALIDATION_BLEED_FROM_TEMPLATE_SET=true, [FLAGS-CHECK] api ok n=18
+docker logs storige-api 2>&1 | grep -E "\[FLAGS\] api |\[FLAGS-CHECK\]" | tail -2
+```
+
+**롤백**: ⓐ 동작만 되돌리기 — `.env` 에 `VALIDATION_BLEED_FROM_TEMPLATE_SET=off` → `docker compose up -d api` → nginx 재시작(재단선 세트도 종전 3mm). 이때 `FLAGS_EXPECTED_API` 의 토큰을 `VALIDATION_BLEED_FROM_TEMPLATE_SET=false` 로 바꿔야 `[FLAGS-CHECK] api ok n=18` 이 유지된다. ⓑ 코드 롤백 — api 직전 이미지(`rollback-pre-validation-bleed-20261025`)로 되돌리고 `FLAGS_EXPECTED_API` 를 **17 토큰으로 복원**(이 키 제거) → `[FLAGS-CHECK] api ok n=17` 확인.
 
 ### 캘린더 날짜 데이터 갱신·릴리스 절차 (T4, 2026-10-24 준비 — 계획 B4·오너 결정 D4)
 

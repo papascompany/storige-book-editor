@@ -25,6 +25,8 @@
  *    isEditorSpreadValidationMappingOn 과 같은 소스(process.env)·같은 술어(정확히 'off' 만 OFF).
  *  - PARTNER_JOB_VIEW: worker-jobs.controller 와 같은 소스(ConfigService)·같은 술어(isPartnerJobViewOn).
  *    컨트롤러가 요청 시점마다 평가하므로 기동 스냅샷은 그 시점의 표본이다.
+ *  - VALIDATION_BLEED_FROM_TEMPLATE_SET: edit-sessions.service 의 resolveDefaultBleedMm 이 호출 시점에 쓰는
+ *    isValidationBleedFromTemplateSetOn 과 같은 소스(process.env)·같은 술어(정확히 'off' 만 OFF).
  *
  * 파싱 규칙은 플래그마다 다르다(통일하지 않음 — 동작 변경이므로 테스트로 현행을 고정).
  * 스냅샷 입력은 collectApiFeatureFlagInputs 한 곳에서 모은다(main.ts·compose 정합 spec 공용).
@@ -66,6 +68,8 @@ export const API_FEATURE_FLAG_KEYS = [
   'PARTNER_SESSION_LAUNCH_ENABLED',
   // 2026-10-18(P2-c sheet-map 출력) 킬스위치 — 줄 끝에 붙는다(운영 FLAGS_EXPECTED_API 프로필에도 추가).
   'SHEET_MAP_OUTPUT_ENABLED',
+  // 2026-10-25(완료 검증 기본 도련 = 재단선 세트 도련) 킬스위치 — 줄 끝에 붙는다(운영 FLAGS_EXPECTED_API 프로필에도 추가).
+  'VALIDATION_BLEED_FROM_TEMPLATE_SET',
 ] as const;
 
 export type ApiFeatureFlagKey = (typeof API_FEATURE_FLAG_KEYS)[number];
@@ -104,6 +108,8 @@ export interface ApiFeatureFlagInputs {
   partnerSessionLaunchEnabledRaw: unknown;
   /** process.env.SHEET_MAP_OUTPUT_ENABLED — edit-sessions.service 와 같은 소스·같은 술어(2026-10-18 P2-c) */
   sheetMapOutputEnabledRaw: unknown;
+  /** process.env.VALIDATION_BLEED_FROM_TEMPLATE_SET — edit-sessions.service 와 같은 소스·같은 술어(2026-10-25) */
+  validationBleedFromTemplateSetRaw: unknown;
 }
 
 export function buildApiFeatureFlagSnapshot(i: ApiFeatureFlagInputs): ApiFeatureFlagSnapshot {
@@ -137,6 +143,10 @@ export function buildApiFeatureFlagSnapshot(i: ApiFeatureFlagInputs): ApiFeature
     PARTNER_SESSION_LAUNCH_ENABLED: isPartnerSessionLaunchEnabledRaw(i.partnerSessionLaunchEnabledRaw),
     // edit-sessions.service: isSheetMapOutputEnabled() = isSheetMapOutputEnabledRaw(process.env.SHEET_MAP_OUTPUT_ENABLED)
     SHEET_MAP_OUTPUT_ENABLED: isSheetMapOutputEnabledRaw(i.sheetMapOutputEnabledRaw),
+    // edit-sessions.service: isValidationBleedFromTemplateSetOn() = isValidationBleedFromTemplateSetOnRaw(process.env.VALIDATION_BLEED_FROM_TEMPLATE_SET)
+    VALIDATION_BLEED_FROM_TEMPLATE_SET: isValidationBleedFromTemplateSetOnRaw(
+      i.validationBleedFromTemplateSetRaw,
+    ),
     // worker-jobs.controller partnerView: isPartnerJobViewOn(configService.get('PARTNER_JOB_VIEW'))
     PARTNER_JOB_VIEW: isPartnerJobViewOn(i.partnerJobViewRaw),
   };
@@ -177,6 +187,7 @@ export function collectApiFeatureFlagInputs(
     editorSheetValidationRulesRaw: env.EDITOR_SHEET_VALIDATION_RULES,
     partnerSessionLaunchEnabledRaw: env.PARTNER_SESSION_LAUNCH_ENABLED,
     sheetMapOutputEnabledRaw: env.SHEET_MAP_OUTPUT_ENABLED,
+    validationBleedFromTemplateSetRaw: env.VALIDATION_BLEED_FROM_TEMPLATE_SET,
   };
 }
 
@@ -292,6 +303,23 @@ export function isSheetMapOutputEnabledRaw(raw: unknown): boolean {
  */
 export function isSheetMapOutputEnabled(env: NodeJS.ProcessEnv = process.env): boolean {
   return isSheetMapOutputEnabledRaw(env.SHEET_MAP_OUTPUT_ENABLED);
+}
+
+/**
+ * VALIDATION_BLEED_FROM_TEMPLATE_SET 진리값 술어(2026-10-25 킬스위치) — 기본 ON.
+ * EDITOR_SPREAD_VALIDATION_MAPPING 과 같은 해석: 정확히 'off'(대소문자 구분, 앞뒤 공백 없음)일 때만 OFF.
+ */
+export function isValidationBleedFromTemplateSetOnRaw(raw: unknown): boolean {
+  return raw !== 'off';
+}
+
+/**
+ * 편집 완료 검증 잡 orderOptions.bleed 기본값(세션 metadata.bleed 가 없을 때)에 재단선 세트(cropMarkEnabled true,
+ * bleedMm > 0)의 세트 bleedMm 을 쓰는가. 기본 true. off 면 재단선 세트는 종전 기본 3. 호출 시점마다 env 를 읽는다.
+ * 롤백 = .env 에 VALIDATION_BLEED_FROM_TEMPLATE_SET=off → api 재생성 → nginx 재시작. [FLAGS] api 줄 끝 키로 확인한다.
+ */
+export function isValidationBleedFromTemplateSetOn(env: NodeJS.ProcessEnv = process.env): boolean {
+  return isValidationBleedFromTemplateSetOnRaw(env.VALIDATION_BLEED_FROM_TEMPLATE_SET);
 }
 
 /** 한 줄, `KEY=true|false` 토큰만. 값은 boolean 으로 강제(env 원문 출력 불가). */
