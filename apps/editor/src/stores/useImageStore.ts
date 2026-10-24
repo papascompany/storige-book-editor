@@ -283,6 +283,46 @@ function writeFillTakenAt(fore: Record<string, unknown>, takenAt: string | undef
   fore.extension = { ...ext, takenAt }
 }
 
+/**
+ * D12·B11-b: storage 업로드 URL 로 이미지 로드(crossOrigin anonymous — PDF 생성 toDataURL taint 방지, AppImage 자동편집과 동일).
+ * 로드 실패는 경고만 남기고 undefined — 호출부가 종전 data URL 경로로 폴백한다.
+ */
+async function loadImageFromStorageUrl(url: string, logTag: string, fileName: string): Promise<{ image: FabricObject } | undefined> {
+  try {
+    const image = await core.imageFromURL(url, { crossOrigin: 'anonymous' })
+    return { image: image as unknown as FabricObject }
+  } catch (e) {
+    console.warn(`[${logTag}] 업로드 URL 이미지 로드 실패 — data URL 폴백:`, fileName, e)
+    return undefined
+  }
+}
+
+/**
+ * B11-b (2026-10-25): 프로파일 세트(캘린더·사진인화 등)의 래스터 배경 업로드 원본 — storage 업로드(게스트 통로
+ * `/storage/upload-public`) 후 절대 URL 로 로드해 canvasData 에 base64 를 넣지 않는다.
+ * 배경은 자동편집 입력이 아니므로 registerUploadedPhoto(메타 등록·사진 수 한도 집계)를 거치지 않는다(종전과 같음).
+ * 업로드·URL 로드 실패는 종전 core.fileToImage(data URL)로 폴백해 편집을 막지 않는다.
+ */
+async function resolveProfileBackgroundImage(
+  canvas: FabricCanvas,
+  file: File,
+  imagePlugin: ImageProcessingPlugin
+): Promise<FabricObject | undefined> {
+  let url: string | null = null
+  try {
+    url = resolveAssetUrl((await storageApi.uploadFilePublic(file))?.url)
+  } catch (e) {
+    console.warn('[useImageStore.upload] 배경 업로드 실패 — data URL 폴백:', file.name, e)
+  }
+  if (url) {
+    const loaded = await loadImageFromStorageUrl(url, 'useImageStore.upload', file.name)
+    if (loaded?.image) return loaded.image
+  } else {
+    console.warn('[useImageStore.upload] 배경 업로드 URL 없음 — data URL 폴백:', file.name)
+  }
+  return core.fileToImage(canvas, file, imagePlugin)
+}
+
 // Fabric.js 타입 (실제 fabric 타입은 런타임에 로드됨)
 // canvas-core API를 통해 fabric 객체를 다루므로 타입만 정의
  
@@ -760,6 +800,10 @@ export const useImageStore = create<ImageState & ImageActions>()((set, get) => (
           showToast('SVG 파일 로드에 실패했습니다.', 'error', 4000)
           return undefined
         }
+      } else if (type === SelectionType.background && hasProductProfileSession()) {
+        // B11-b: 프로파일 세트의 래스터 배경은 storage 업로드 URL 로 로드(실패 시 data URL 폴백). 벡터·SVG·다른 타입과
+        // 프로파일 NULL 세트는 아래 종전 경로 그대로.
+        item = await resolveProfileBackgroundImage(canvas, file, imagePlugin)
       } else {
         item = await core.fileToImage(canvas, file, imagePlugin)
       }
@@ -974,12 +1018,8 @@ export const useImageStore = create<ImageState & ImageActions>()((set, get) => (
     }
     const meta = await get().registerUploadedPhoto(file)
     if (meta?.url) {
-      try {
-        const image = await core.imageFromURL(meta.url, { crossOrigin: 'anonymous' })
-        return { image: image as unknown as FabricObject, takenAt: meta.takenAt, uploaded: true }
-      } catch (e) {
-        console.warn('[useImageStore.resolveFrameFillImage] 업로드 URL 이미지 로드 실패 — data URL 폴백:', file.name, e)
-      }
+      const loaded = await loadImageFromStorageUrl(meta.url, 'useImageStore.resolveFrameFillImage', file.name)
+      if (loaded) return { image: loaded.image, takenAt: meta.takenAt, uploaded: true }
     } else {
       console.warn('[useImageStore.resolveFrameFillImage] 사진 업로드 실패 — data URL 폴백:', file.name)
     }
