@@ -123,9 +123,12 @@ export function readCalendarSessionMeta(
   // 임시공휴일·선거일 표시(2026-10-17): 저장분 boolean 이면 그 값, 없으면 fallback 값, 둘 다 없으면 키 생략(= false)
   if (typeof show.temporaryHolidays === 'boolean') restoredShow.temporaryHolidays = show.temporaryHolidays
   else if (typeof fallbackShow.temporaryHolidays === 'boolean') restoredShow.temporaryHolidays = fallbackShow.temporaryHolidays
-  // 연달력 연도 제목(T3b, 2026-10-24): 같은 규칙 — 저장분 boolean > fallback boolean > 키 생략(= 표시)
-  if (typeof show.yearTitle === 'boolean') restoredShow.yearTitle = show.yearTitle
-  else if (typeof fallbackShow.yearTitle === 'boolean') restoredShow.yearTitle = fallbackShow.yearTitle
+  // 연달력 연도 제목(T3b, 2026-10-24)·잡절(T4 v1.27 show.minorTerms): 같은 규칙 — 저장분 boolean > fallback boolean > 키 생략
+  // (yearTitle 생략 = 표시, minorTerms 생략 = 끔). 허용 목록 재구성이라 여기서 빠뜨린 키는 재오픈 때 사라진다.
+  for (const key of ['yearTitle', 'minorTerms'] as const) {
+    if (typeof show[key] === 'boolean') restoredShow[key] = show[key] as boolean
+    else if (typeof fallbackShow[key] === 'boolean') restoredShow[key] = fallbackShow[key]
+  }
   const meta: CalendarSessionMeta = {
     startYear: startYear as number,
     startMonth: startMonth as number,

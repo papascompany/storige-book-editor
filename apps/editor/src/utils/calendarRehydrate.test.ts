@@ -104,9 +104,24 @@ describe('rehydrateCalendarGrids', () => {
       canvasMonthOffset: 1,
       weekStart: 1,
       show: { holidays: true, lunar: true, solarTerms: false },
-      anniversaries: [{ date: '2027-05-05', lunar: true, isLeapMonth: undefined, text: '생일' }],
+      // 문구 스타일(D1(b), T3b): fill·fontWeight 만 렌더 입력으로 넘긴다
+      anniversaries: [{ date: '2027-05-05', lunar: true, isLeapMonth: undefined, text: '생일', style: { fill: '#f00' } }],
       data: fakeData,
     })
+  })
+
+  it('기념일 문구 스타일: fill·fontWeight 만 넘기고 다른 키(fontFamily 등)는 버리며, 스타일 없는 기념일엔 style 키 없음', async () => {
+    getCalendarDataMock.mockReturnValue(fakeData)
+    useSettingsStore.getState().setProductProfile(calendarProfile())
+    useCalendarStore.getState().setFromProfile(calendarProfile())
+    useCalendarStore.getState().addAnniversary({ id: 's1', date: '2027-02-01', lunar: false, text: '굵게', style: { fontWeight: 'bold', fontFamily: 'X', fontSize: 9 } })
+    useCalendarStore.getState().addAnniversary({ id: 's2', date: '2027-02-02', lunar: false, text: '폰트만', style: { fontFamily: 'X' } })
+    useCalendarStore.getState().addAnniversary({ id: 's3', date: '2027-02-03', lunar: false, text: '없음' })
+    await rehydrateCalendarGrids(makeEditor(true), fakeCanvas, 3)
+    const list = rehydrateMock.mock.calls[0][0].anniversaries
+    expect(list[0].style).toEqual({ fontWeight: 'bold' })
+    expect(list[1]).not.toHaveProperty('style')
+    expect(list[2]).not.toHaveProperty('style')
   })
 
   it('표지 캔버스(0)·에필로그(25)는 canvasMonthOffset null', async () => {

@@ -1,7 +1,13 @@
 import type Editor from '@storige/canvas-core'
-import { getCalendarData, type CalendarPlugin, type CalendarRenderContext } from '@storige/canvas-core'
+import { getCalendarData, type AnniversaryInput, type CalendarPlugin, type CalendarRenderContext } from '@storige/canvas-core'
 import type { fabric } from 'fabric'
-import { isCalendarYearDeltaAllowed, resolveCalendarCanvasSlot, type CalendarSessionMeta, type CalendarYearPolicy } from '@storige/types'
+import {
+  isCalendarYearDeltaAllowed,
+  resolveCalendarCanvasSlot,
+  type CalendarAnniversary,
+  type CalendarSessionMeta,
+  type CalendarYearPolicy,
+} from '@storige/types'
 import { useSettingsStore } from '@/stores/useSettingsStore'
 import { useCalendarStore } from '@/stores/useCalendarStore'
 import { isCalendarProfile, resolveCalendarStart, resolveCanvasMonthOffset } from '@/utils/productProfile'
@@ -49,12 +55,7 @@ export async function rehydrateCalendarGrids(
     canvasMonthOffset: resolveCanvasMonthOffset(profile, canvasIndex),
     weekStart: cal.weekStart,
     show: { ...(meta?.show ?? cal.show) },
-    anniversaries: (meta?.anniversaries ?? []).map((a) => ({
-      date: a.date,
-      lunar: a.lunar,
-      isLeapMonth: a.isLeapMonth,
-      text: a.text,
-    })),
+    anniversaries: toAnniversaryInputs(meta?.anniversaries ?? []),
     data,
     yearSpan: cal.yearPolicy?.span,
   }
@@ -66,6 +67,21 @@ export async function rehydrateCalendarGrids(
     console.warn(`[calendarRehydrate] 그리드 재합성 실패(page ${canvasIndex}):`, error instanceof Error ? error.message : error)
     return 0
   }
+}
+
+/**
+ * 세션 기념일 → 렌더 입력. 문구 스타일은 D1(b) 최소 2종(fill·fontWeight)만 넘기고(정제는 canvas-core 가 한 번 더),
+ * 둘 다 없으면 style 키를 두지 않는다 — 스타일 없는 기념일의 렌더 입력은 종전과 같다.
+ */
+export function toAnniversaryInputs(list: readonly CalendarAnniversary[]): AnniversaryInput[] {
+  return list.map((a) => {
+    const input: AnniversaryInput = { date: a.date, lunar: a.lunar, isLeapMonth: a.isLeapMonth, text: a.text }
+    const style: NonNullable<AnniversaryInput['style']> = {}
+    if (a.style?.fill !== undefined) style.fill = a.style.fill
+    if (a.style?.fontWeight !== undefined) style.fontWeight = a.style.fontWeight
+    if (Object.keys(style).length > 0) input.style = style
+    return input
+  })
 }
 
 /**

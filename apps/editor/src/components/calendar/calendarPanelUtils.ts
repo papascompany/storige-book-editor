@@ -96,6 +96,12 @@ export function calendarEndMonthKey(start: YearMonth): string {
   return formatMonthKey(addMonths(start, 11))
 }
 
+/** 시작연월 → 마지막 월 안내 표기('2028년 2월' — 시작 표기와 같이 월 0 패딩 없음) */
+export function formatCalendarEndMonthLabel(start: YearMonth): string {
+  const end = addMonths(start, 11)
+  return `${end.year}년 ${end.month}월`
+}
+
 /**
  * 같은 양력 날짜(환산 기준)의 기존 기념일 id. `excludeId` 는 수정 중인 항목.
  * 양력 환산이 불가한 쪽(데이터 없음·무효 날짜)은 원문 date+lunar 가 같을 때만 중복으로 본다.

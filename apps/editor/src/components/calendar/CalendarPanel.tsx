@@ -19,7 +19,7 @@ import { useCalendarStore, type CalendarYearRole } from '@/stores/useCalendarSto
 import { rehydrateAllCalendarGrids } from '@/utils/calendarRehydrateAll'
 import CalendarGridTools from './CalendarGridTools'
 import {
-  calendarEndMonthKey,
+  formatCalendarEndMonthLabel,
   daysInSolarMonth,
   findDuplicateAnniversary,
   formatAnniversaryDateLabel,
@@ -220,7 +220,7 @@ function StartMonthSection({ start }: { start: YearMonth }) {
     <section className="flex flex-col gap-2" aria-label="시작연월">
       <h3 className="text-xs font-semibold text-editor-text">시작연월</h3>
       <p className="text-xs text-editor-text-muted">
-        현재 {start.year}년 {start.month}월 ~ {calendarEndMonthKey(start).replace('-', '년 ')}월 · 허용 {rangeLabel}
+        현재 {start.year}년 {start.month}월 ~ {formatCalendarEndMonthLabel(start)} · 허용 {rangeLabel}
       </p>
       <div className="flex items-center gap-2">
         <Label htmlFor="calendar-start-year" className="sr-only">시작 연도</Label>

@@ -126,7 +126,9 @@ describe('CalendarPanel — 시작연월', () => {
     expect(window.confirm).toHaveBeenCalledWith(START_MONTH_CONFIRM_MESSAGE)
     expect(useCalendarStore.getState().meta).toMatchObject({ startYear: 2027, startMonth: 3 })
     expect(rehydrateAll).toHaveBeenCalledTimes(1)
-    expect(screen.getByText(/현재 2027년 3월 ~ 2028년 02월/)).toBeInTheDocument()
+    // 종료 월도 시작과 같은 형식(월 0 패딩 없음, e2e F2)
+    expect(screen.getByText(/현재 2027년 3월 ~ 2028년 2월 ·/)).toBeInTheDocument()
+    expect(screen.queryByText(/2028년 02월/)).toBeNull()
   })
 
   it('확인 취소 → 변경·재합성 없음', async () => {

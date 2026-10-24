@@ -328,3 +328,19 @@ describe('restoreCalendarSessionMeta — 연달력 보존·킬스위치 (T3b)', 
     expect(cal?.show.yearTitle).toBe(false)
   })
 })
+
+describe('readCalendarSessionMeta — 잡절 show.minorTerms 재오픈 보존 (T4 v1.27)', () => {
+  it('저장분 minorTerms boolean 은 재오픈 뒤 스토어·저장 payload 에 그대로, 형식 불량은 fallback, 둘 다 없으면 키 생략(= 끔)', () => {
+    const profile = calendarProfile()
+    useSettingsStore.getState().setProductProfile(profile)
+    useCalendarStore.getState().setFromProfile(profile)
+    const show = { holidays: true, lunar: false, solarTerms: false }
+    expect(restoreCalendarSessionMeta({ calendar: { ...savedMeta, show: { ...show, minorTerms: true } } })).toBe(true)
+    expect(useCalendarStore.getState().meta?.show.minorTerms).toBe(true)
+    expect(calendarSessionMetadataFields().metadata?.calendar.show).toEqual({ ...show, minorTerms: true })
+
+    const fallback = { ...savedMeta, show: { ...show, minorTerms: false } }
+    expect(readCalendarSessionMeta({ calendar: { ...savedMeta, show: { ...show, minorTerms: 'on' } } }, fallback)?.show.minorTerms).toBe(false)
+    expect(readCalendarSessionMeta({ calendar: { ...savedMeta, show } }, null)?.show).not.toHaveProperty('minorTerms')
+  })
+})

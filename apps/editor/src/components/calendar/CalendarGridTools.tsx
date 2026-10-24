@@ -17,7 +17,7 @@ import { useSettingsStore } from '@/stores/useSettingsStore'
 import { useCalendarStore } from '@/stores/useCalendarStore'
 import { DEFAULT_FONT_FAMILY, getFontListAsSource } from '@/utils/fontManager'
 import { isCalendarProfile, resolveCanvasMonthOffset } from '@/utils/productProfile'
-import { resolveCanvasYearDelta } from '@/utils/calendarRehydrate'
+import { resolveCanvasYearDelta, toAnniversaryInputs } from '@/utils/calendarRehydrate'
 import { EMPTY_GRID_STYLE_DRAFT, gridStyleFromDraft, type GridStyleDraft } from './calendarPanelUtils'
 
 /**
@@ -66,7 +66,7 @@ function buildToolsContext(canvasIndex: number, data: CalendarData): CalendarRen
         canvasMonthOffset: resolveCanvasMonthOffset(profile, canvasIndex),
         weekStart: profile?.calendar?.weekStart ?? 0,
         show: { ...meta.show },
-        anniversaries: meta.anniversaries.map((a) => ({ date: a.date, lunar: a.lunar, isLeapMonth: a.isLeapMonth, text: a.text })),
+        anniversaries: toAnniversaryInputs(meta.anniversaries),
         data,
         yearSpan: yearPolicy?.span,
       }
