@@ -1673,7 +1673,7 @@ curl -X POST https://api.papascompany.co.kr/api/v1/sessions/launch \
     "templateSetId": "<TEMPLATE_SET_UUID>",
     "orderSeqno": 12345,
     "mode": "both",
-    "callbackUrl": "https://partner.example/storige/callback",
+    "callbackUrl": "https://partner.example.com/storige/callback",
     "orderOptions": { "quantity": 2 },
     "calendar": { "startYm": "2027-01" }
   }'
