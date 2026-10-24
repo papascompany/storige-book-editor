@@ -177,6 +177,7 @@ export interface CalendarSessionMeta {
 - **판정 집합** `T[i]` = 기준 세트 템플릿 i 의 ids ∪ 현재 등록된 모든 스킨 세트 템플릿 i 의 ids. 복제로 만든 스킨은 id 를 공유하므로 집합이 크게 늘지 않는다. `from` 이 알 수 없어도 이 집합은 만들 수 있다.
 - **보조 판정**(T7a 정정 2026-10-25): id 가 `T[i]` 에 없으면 고객이 만들 수 없는 표지 — `deleteable:false`·템플릿 잠금(`lockInfo.isLocked` + `designer`/`admin`)·날짜 그리드(`calendar-grid`, editMode 전용 도구로만 추가) — 가 있을 때만 템플릿 유래로 본다.
   `extensionType`(frame·background·template-element)만으로는 고객 요소로 둔다(고객도 라이브러리 틀·배경을 추가함 — 오분류 시 요소가 하나 더 남는 쪽으로 실패, Q2 사진 손실 없음). 사진틀 순서 짝짓기는 템플릿 유래 틀끼리만 한다.
+  근거: `calendar-grid` 는 고객 추가 경로가 없다 — 그리드 추가는 editMode 전용 `CalendarGridTools` 뿐이다(`apps/editor/src/components/calendar/CalendarPanel.tsx:153`·`:183` 의 `{editMode && <CalendarGridTools …/>}`).
 - **차단**: dryRun 의 '고객 추가' 개수가 기준 템플릿 객체 수에 가까우면 판정이 어긋난 것으로 보고 적용을 막는다. 임계값은 T7a 가 실측으로 정한다.
 
 | 현재 객체 분류 | 판정 | 처리 |

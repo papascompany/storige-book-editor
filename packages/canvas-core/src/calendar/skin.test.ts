@@ -260,6 +260,25 @@ describe('mergeSkinCanvas — 템플릿 유래 판정(판정 집합 · 보조 �
     expect(report).toMatchObject({ templateRemoved: 5, auxiliaryTemplateCount: 4, customerKept: 3, suspect: false })
   })
 
+  it('고객이 직접 잠근 요소(user 잠금)·잠금 해제 뒤 남은 lockInfo 는 판정 집합 밖이면 고객 요소로 보존', () => {
+    // LockPlugin.lock(level 'user') 결과 모양 — lockInfo + 잠금 속성·비선택. 해제(unlock) 뒤에는 {isLocked:false, lockLevel:'user'} 만 남는다
+    const userLocked = sticker('st-user-locked', {
+      lockInfo: { isLocked: true, lockLevel: 'user', lockedBy: 'user', lockedAt: '2026-10-25T00:00:00.000Z' },
+      lockMovementX: true, lockMovementY: true, lockRotation: true, lockScalingX: true, lockScalingY: true,
+      selectable: false, evented: false, hasControls: false,
+    })
+    const userUnlocked = text('t-user-unlocked', '우리집', { lockInfo: { isLocked: false, lockLevel: 'user' }, selectable: true, evented: true })
+    // 대조: 템플릿 잠금(designer)은 판정 집합 밖이어도 템플릿 유래
+    const designerLocked = { type: 'path', id: 'deco-designer', lockInfo: { isLocked: true, lockLevel: 'designer', lockedBy: 'designer' } }
+    const cur = canvas([ws(), bg('bg-1'), userLocked, userUnlocked, designerLocked])
+    const { json, report } = mergeSkinCanvas(cur, FROM(), TO())
+    expect(byId(json, 'st-user-locked')).toEqual(userLocked)
+    expect(byId(json, 't-user-unlocked')).toEqual(userUnlocked)
+    expect(byId(json, 'deco-designer')).toBeUndefined()
+    expect(ids(json).slice(-2)).toEqual(['st-user-locked', 't-user-unlocked'])
+    expect(report).toMatchObject({ customerKept: 2, templateRemoved: 2, auxiliaryTemplateCount: 1 })
+  })
+
   it('판정 집합 밖 객체는 extensionType(frame·background·template-element)만으로는 고객 요소로 남는다', () => {
     const cur = canvas([
       ws(),
