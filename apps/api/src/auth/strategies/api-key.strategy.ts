@@ -5,7 +5,7 @@ import { SitesService } from '../../sites/sites.service';
 import { resolveApiKeyRole } from '../api-key-role';
 
 /**
- * X-API-Key 인증 전략 (Phase A 갱신).
+ * X-API-Key 인증 전략.
  *
  * 변경:
  *   - 기존: .env API_KEYS 단순 비교 → req.user = { apiKey, source: 'shop' }

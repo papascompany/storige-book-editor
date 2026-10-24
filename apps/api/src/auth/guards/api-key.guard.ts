@@ -8,9 +8,9 @@ import { SitesService } from '../../sites/sites.service';
 import { resolveApiKeyRole } from '../api-key-role';
 
 /**
- * X-API-Key Guard (Phase A 갱신).
+ * X-API-Key Guard.
  *
- * Phase A:
+ * 동작:
  *   - DB의 sites 테이블 조회 → req.user = { apiKey, source, siteId, siteName, role }
  *   - 인증코드 매칭 안 되거나 status=suspended면 401
  *   - 기존 .env API_KEYS 값은 부팅 시 SitesService.onModuleInit() 가 시드 → 호환
@@ -39,10 +39,10 @@ export class ApiKeyGuard implements CanActivate {
       throw new UnauthorizedException('Invalid API Key');
     }
 
-    // W1 (2026-09-25): role='worker'(테넌트 바이패스 신뢰 주체)는 내부 WORKER_API_KEY 에만 부여한다.
+    // role='worker'(테넌트 바이패스 신뢰 주체)는 내부 WORKER_API_KEY 에만 부여한다.
     // 종전에는 worker 코드로 매칭되기만 하면 'worker' 였다 → 파트너 worker 키가 테넌시를 전부 우회했다.
     // 내부 키는 Default Site 의 editor==worker 코드라 위에서 editor 로 매칭돼도 여기서 'worker' 가 된다
-    // (P2c: 워커 콜백 PATCH status·파일 처리 download/external 의 테넌트 잡/파일 무중단 — 종전과 동일).
+    // (워커 콜백 PATCH status·파일 처리 download/external 의 테넌트 잡/파일 무중단 — 종전과 동일).
     const role = resolveApiKeyRole(apiKey, process.env.WORKER_API_KEY);
 
     request.user = {

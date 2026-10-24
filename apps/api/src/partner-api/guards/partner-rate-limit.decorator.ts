@@ -9,7 +9,7 @@ import {
  *
  * 기본 'general'(300 req/min per Key). 업로드/최종화 계열 라우트에
  * `@PartnerRateLimitBucket('heavy')`(100 req/min per Key)를 부착한다 —
- * Stage 3 books 자산/finalization 라우트의 통합 포인트.
+ * books 자산/finalization·sessions 런처 라우트가 사용한다.
  */
 export const PartnerRateLimitBucket = (
   bucket: PartnerRateBucket,

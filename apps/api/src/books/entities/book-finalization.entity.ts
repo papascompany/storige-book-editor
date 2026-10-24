@@ -12,7 +12,7 @@ import {
 } from '../books.constants';
 
 /**
- * 최종화 이력/산출물 고정 엔티티 — Partner API v1 Stage 3.
+ * 최종화 이력/산출물 고정 엔티티 — Partner API v1.
  *
  * 정본: docs/PARTNER_PLATFORM_API_V1_DESIGN_2026-07-07.md §2.6·§6.3
  * 마이그레이션: apps/api/migrations/20260716_add_books_core.sql

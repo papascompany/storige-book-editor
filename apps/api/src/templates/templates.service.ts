@@ -88,7 +88,7 @@ export class TemplatesService {
 
     const template = this.templateRepository.create({
       ...createTemplateDto,
-      // P3b — 사이트 운영자는 자기 site 소유로 강제(시스템 공유 NULL 생성 불가).
+      // 사이트 운영자는 자기 site 소유로 강제(시스템 공유 NULL 생성 불가).
       siteId: scope
         ? resolveScopedSiteId(scope, createTemplateDto.siteId)
         : (createTemplateDto.siteId ?? null),
@@ -135,7 +135,7 @@ export class TemplatesService {
       throw new NotFoundException(`Template with ID ${id} not found`);
     }
 
-    // P3b — 상세 읽기 테넌트 격리(시스템 공유 NULL 은 열람 허용).
+    // 상세 읽기 테넌트 격리(시스템 공유 NULL 은 열람 허용).
     if (scope) assertSiteInScope(scope, template.siteId, { allowNull: true });
 
     return template;
@@ -161,7 +161,7 @@ export class TemplatesService {
   ): Promise<Template> {
     const template = await this.findOne(id);
     if (scope) {
-      // P3b — 행 소유권 + (siteId 재배정 시) 대상 site 권한. null 재배정은 전역 전용.
+      // 행 소유권 + (siteId 재배정 시) 대상 site 권한. null 재배정은 전역 전용.
       assertSiteInScope(scope, template.siteId);
       if (updateTemplateDto.siteId !== undefined) {
         assertSiteInScope(scope, updateTemplateDto.siteId);
@@ -364,7 +364,7 @@ export class TemplatesService {
     templateId: string,
     scope?: TenantScope,
   ): Promise<TemplateSet[]> {
-    // P3b — 대상 템플릿 열람 권한 확인(공유 NULL 허용).
+    // 대상 템플릿 열람 권한 확인(공유 NULL 허용).
     if (scope) {
       const target = await this.findOne(templateId, scope);
       void target;
@@ -393,7 +393,7 @@ export class TemplatesService {
     // 사용 중인 템플릿셋 확인
     const usedByTemplateSets = await this.getTemplateSetsUsingTemplate(id);
 
-    // P3b — force 삭제는 참조 중인 템플릿셋(타 소유 가능)도 수정하므로,
+    // force 삭제는 참조 중인 템플릿셋(타 소유 가능)도 수정하므로,
     // 사이트 운영자는 사용처 전부가 자기 site 일 때만 허용.
     if (force && scope && !scope.isGlobal) {
       for (const ts of usedByTemplateSets) {
@@ -428,7 +428,7 @@ export class TemplatesService {
 
   async copy(id: string, userId?: string, scope?: TenantScope): Promise<Template> {
     const original = await this.findOne(id);
-    // P3b — 공유 템플릿 복제 허용(공유 풀 → 자기 site 사본 큐레이션 플로우).
+    // 공유 템플릿 복제 허용(공유 풀 → 자기 site 사본 큐레이션 플로우).
     if (scope) assertSiteInScope(scope, original.siteId, { allowNull: true });
     const copySiteId =
       scope && !scope.isGlobal ? resolveScopedSiteId(scope) : original.siteId;

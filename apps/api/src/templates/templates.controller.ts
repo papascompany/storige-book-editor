@@ -20,7 +20,7 @@ import { UserRole } from '@storige/types';
 import { PayloadTooLargeResponseDto } from '../common/dto/error-response.dto';
 import { CurrentScope } from '../auth/decorators/tenant-scope.decorator';
 import { TenantScope } from '../common/helpers/tenant-scope.helper';
-// P3b — 쓰기 라우트: SITE_ADMIN 허용 + TenantGuard + 서비스 assertSiteInScope 3중 스택.
+// 쓰기 라우트: SITE_ADMIN 허용 + TenantGuard + 서비스 assertSiteInScope 3중 스택.
 import { TenantGuard } from '../auth/guards/tenant.guard';
 
 @ApiTags('Templates')

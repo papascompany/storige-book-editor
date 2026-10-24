@@ -26,7 +26,7 @@ import { DeliveryListQueryDto, PutWebhookConfigDto } from './dto/webhook-v1.dto'
 /**
  * Partner API v1 — Webhooks (설계서 §1.5 라우트 20~26).
  *
- * @PartnerV1Controller 조합 데코레이터가 Stage 1 표준 스택을 일괄 바인딩:
+ * @PartnerV1Controller 조합 데코레이터가 v1 표준 스택을 일괄 바인딩:
  * @Public+PartnerApiKeyGuard(Bearer/X-API-Key)+RateLimit+에러필터(§3.2)
  * +감사→멱등(POST+Idempotency-Key 자동)→봉투(§3.1). 핸들러는 순수 데이터만
  * 반환(이중 래핑 금지). 신규 v1 컨트롤러 — partner-v1-guarded.spec 의

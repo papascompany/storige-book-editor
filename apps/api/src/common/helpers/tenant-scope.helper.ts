@@ -90,7 +90,7 @@ export function applySiteScope<T extends ObjectLiteral>(
 }
 
 /**
- * P3b 멀티테넌시 (2026-08-04) — 단건 행에 대한 테넌트 소유권 단정 (mutation/상세 가드).
+ * 멀티테넌시 — 단건 행에 대한 테넌트 소유권 단정 (mutation/상세 가드).
  *
  * TenantGuard 는 요청에 **명시된** siteId(param/query/body)만 검증한다. `PUT /template-sets/:id`
  * 처럼 리소스 id 로 접근하는 라우트는 행을 로드한 뒤 이 함수로 소유권을 강제해야
@@ -124,7 +124,7 @@ export function assertSiteInScope(
 }
 
 /**
- * P3b 멀티테넌시 (2026-08-04) — 생성 시 저장할 siteId 확정.
+ * 멀티테넌시 — 생성 시 저장할 siteId 확정.
  *
  * - 전역: 요청값 그대로(미지정이면 null = 시스템 공유, 기존 admin 동작 무변경).
  * - 사이트 운영자: 요청값이 있으면 자기 site 인지 검증, 없으면 단일 배정 site 로 강제.

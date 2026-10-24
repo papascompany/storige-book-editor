@@ -26,11 +26,11 @@ export interface RotatedPartnerApiKey extends IssuedPartnerApiKey {
   rotatedFrom: MaskedPartnerApiKey;
 }
 
-/** 오버랩 회전 유예 시간 — 72h (로드맵 §6 Stage 2 작업 4) */
+/** 오버랩 회전 유예 시간 — 72h */
 export const PARTNER_KEY_GRACE_HOURS = 72;
 
 /**
- * v1 파트너 키 발급/회전/검증 (설계서 §2.1·§7.2, Stage 2 작업 2·4).
+ * v1 파트너 키 발급/회전/검증.
  *
  * 키 보안 3종 구현부:
  *  ① 해시 저장 — DB 에는 SHA-256(hex)만. 원문은 발급/회전 반환값에서 1회 노출 후 소멸.

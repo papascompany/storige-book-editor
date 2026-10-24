@@ -65,7 +65,7 @@ export class LibraryService {
   // ============================================================================
 
   async createFont(createFontDto: CreateFontDto, scope?: TenantScope): Promise<LibraryFont> {
-    // P3b — 사이트 운영자 생성 에셋은 자기 site 소유(전역 admin 은 기존대로 시스템 공유 NULL).
+    // 사이트 운영자 생성 에셋은 자기 site 소유(전역 admin 은 기존대로 시스템 공유 NULL).
     const font = this.fontRepository.create({
       ...createFontDto,
       siteId: scope && !scope.isGlobal ? resolveScopedSiteId(scope) : null,
@@ -219,7 +219,7 @@ export class LibraryService {
   // ============================================================================
 
   async createBackground(createBackgroundDto: CreateBackgroundDto, scope?: TenantScope): Promise<LibraryBackground> {
-    // P3b — 사이트 운영자 생성 에셋은 자기 site 소유(전역 admin 은 기존대로 시스템 공유 NULL).
+    // 사이트 운영자 생성 에셋은 자기 site 소유(전역 admin 은 기존대로 시스템 공유 NULL).
     const background = this.backgroundRepository.create({
       ...createBackgroundDto,
       siteId: scope && !scope.isGlobal ? resolveScopedSiteId(scope) : null,
@@ -280,7 +280,7 @@ export class LibraryService {
   // ============================================================================
 
   async createClipart(createClipartDto: CreateClipartDto, scope?: TenantScope): Promise<LibraryClipart> {
-    // P3b — 사이트 운영자 생성 에셋은 자기 site 소유(전역 admin 은 기존대로 시스템 공유 NULL).
+    // 사이트 운영자 생성 에셋은 자기 site 소유(전역 admin 은 기존대로 시스템 공유 NULL).
     const clipart = this.clipartRepository.create({
       ...createClipartDto,
       siteId: scope && !scope.isGlobal ? resolveScopedSiteId(scope) : null,
@@ -356,7 +356,7 @@ export class LibraryService {
   // ============================================================================
 
   async createShape(createShapeDto: CreateShapeDto, scope?: TenantScope): Promise<LibraryShape> {
-    // P3b — 사이트 운영자 생성 에셋은 자기 site 소유(전역 admin 은 기존대로 시스템 공유 NULL).
+    // 사이트 운영자 생성 에셋은 자기 site 소유(전역 admin 은 기존대로 시스템 공유 NULL).
     const shape = this.shapeRepository.create({
       ...createShapeDto,
       siteId: scope && !scope.isGlobal ? resolveScopedSiteId(scope) : null,
@@ -417,7 +417,7 @@ export class LibraryService {
   // ============================================================================
 
   async createFrame(createFrameDto: CreateFrameDto, scope?: TenantScope): Promise<LibraryFrame> {
-    // P3b — 사이트 운영자 생성 에셋은 자기 site 소유(전역 admin 은 기존대로 시스템 공유 NULL).
+    // 사이트 운영자 생성 에셋은 자기 site 소유(전역 admin 은 기존대로 시스템 공유 NULL).
     const frame = this.frameRepository.create({
       ...createFrameDto,
       siteId: scope && !scope.isGlobal ? resolveScopedSiteId(scope) : null,
@@ -478,7 +478,7 @@ export class LibraryService {
   // ============================================================================
 
   async createCategory(createCategoryDto: CreateCategoryDto, scope?: TenantScope): Promise<LibraryCategory> {
-    // P3b — 사이트 운영자 생성 에셋은 자기 site 소유(전역 admin 은 기존대로 시스템 공유 NULL).
+    // 사이트 운영자 생성 에셋은 자기 site 소유(전역 admin 은 기존대로 시스템 공유 NULL).
     const category = this.categoryRepository.create({
       ...createCategoryDto,
       siteId: scope && !scope.isGlobal ? resolveScopedSiteId(scope) : null,

@@ -15,7 +15,7 @@ import { WorkerJobsModule } from '../worker-jobs/worker-jobs.module';
 import { EditSessionsModule } from '../edit-sessions/edit-sessions.module';
 
 /**
- * Partner API v1 — Books(도서 aggregate) 모듈 (Stage 3, W1+W2).
+ * Partner API v1 — Books(도서 aggregate) 모듈.
  *
  * 정본: docs/PARTNER_PLATFORM_API_V1_DESIGN_2026-07-07.md §2.4~2.6·§6.1~6.2
  *

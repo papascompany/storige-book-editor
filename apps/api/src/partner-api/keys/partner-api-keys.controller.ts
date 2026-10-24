@@ -18,7 +18,7 @@ import { PartnerApiKeysService } from './partner-api-keys.service';
 import { IssuePartnerApiKeyDto } from './partner-api-keys.dto';
 
 /**
- * /api/sites/:siteId/partner-keys — v1 파트너 키 운영자 표면 (Stage 2 작업 2).
+ * /api/sites/:siteId/partner-keys — v1 파트너 키 운영자 표면.
  *
  * SitesController 와 동일한 전역 admin 가드(JwtAuthGuard+RolesGuard, ADMIN/MANAGER) —
  * 파트너 셀프서브 포털(SITE_ADMIN 표면)은 후속 배치. 외부/파트너 키로는 접근 불가.

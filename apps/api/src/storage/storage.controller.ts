@@ -39,7 +39,7 @@ const multerOptions = {
 
 /**
  * 게스트(비로그인) 업로드 허용 MIME 화이트리스트.
- * 인쇄 워크플로우 v1 Phase 1 (2026-05-19) — 고객이 편집기에서 직접 이미지/PDF 업로드.
+ * 인쇄 워크플로우 v1 — 고객이 편집기에서 직접 이미지/PDF 업로드.
  * 그 외 타입은 multer fileFilter 에서 415 Unsupported Media Type 으로 거부.
  */
 const PUBLIC_UPLOAD_ALLOWED_MIME = new Set<string>([
@@ -117,7 +117,7 @@ export class StorageController {
   }
 
   /**
-   * 게스트(비로그인) 업로드 endpoint — 인쇄 워크플로우 v1 Phase 1 (2026-05-19).
+   * 게스트(비로그인) 업로드 endpoint — 인쇄 워크플로우 v1.
    *
    * - 인증 없이 호출 가능 (@Public).
    * - 50MB 크기 제한 (multerOptionsPublic).
@@ -372,7 +372,7 @@ export class StorageController {
   }
 
   // ============================================================================
-  // BB-Phase 3 follow-up — 자동저장 시점 썸네일
+  // 자동저장 시점 썸네일
   //
   // editor의 autoSave 흐름과 동일한 인증 모델(@Public + X-User-Id 헤더 trust)을 사용한다.
   // editor가 fabric.toDataURL(0.25x JPEG)로 캡처한 ~10-50KB 이미지를 업로드하고

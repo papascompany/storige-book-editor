@@ -29,8 +29,8 @@ import { PartnerIdempotencyInterceptor } from './idempotency/partner-idempotency
  *  - Interceptors(바깥→안): 감사 → 멱등(§4, POST+Idempotency-Key 자동 적용)
  *    → 성공 봉투(§3.1) — 멱등 스냅샷이 최종 봉투 shape 을 캡처하는 순서 전제
  *
- * Stage 3+ 의 신규 v1 컨트롤러(books/templates/webhooks)는 이 데코레이터만
- * 붙이면 표준 스택을 승계한다 — 트랙 B·OpenAPI 트랙 통합 포인트.
+ * 신규 v1 컨트롤러(books/webhooks/sessions 등)는 이 데코레이터만
+ * 붙이면 표준 스택을 승계한다.
  */
 export function PartnerV1Controller(path = ''): ClassDecorator {
   return applyDecorators(

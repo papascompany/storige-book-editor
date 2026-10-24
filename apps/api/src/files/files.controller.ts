@@ -565,7 +565,7 @@ export class FilesController {
       dto.orderSeqno,
       dto.memberSeqno,
       dto.metadata,
-      site?.siteId, // P2c S-2: 외부 업로드 파일에 호출자 site 스탬프(테넌트 소유)
+      site?.siteId, // 외부 업로드 파일에 호출자 site 스탬프(테넌트 소유)
     );
 
     // per-product override 우선 → 없으면 site.retentionDays.
@@ -745,8 +745,8 @@ export class FilesController {
     @Res() res: Response,
     @CurrentSite() site?: CurrentSitePayload,
   ): Promise<void> {
-    // P2c S-2: 호출자 site 대조 — 타 테넌트 파일 다운로드 차단(NULL=레거시/공유 허용).
-    // 트랙 B-(c): 전체버퍼 → 스트리밍(합성결과 PDF 가 2GB 라도 API heap 상수).
+    // 호출자 site 대조 — 타 테넌트 파일 다운로드 차단(NULL=레거시/공유 허용).
+    // 스트리밍 전송(합성결과 PDF 가 2GB 라도 API heap 상수).
     const { stream, file, size } = await this.filesService.getFileStream(id, site);
     this.streamToResponse(res, stream, {
       contentType: file.mimeType,
@@ -856,7 +856,7 @@ export class FilesController {
     @Param('id', ParseUUIDPipe) id: string,
     @CurrentSite() site?: CurrentSitePayload,
   ): Promise<{ success: boolean }> {
-    // P2c S-2: 호출자 site 대조 — 타 테넌트 파일 하드삭제 차단(파괴적).
+    // 호출자 site 대조 — 타 테넌트 파일 하드삭제 차단(파괴적).
     await this.filesService.hardDelete(id, site);
     return { success: true };
   }
@@ -891,7 +891,7 @@ export class FilesController {
       }
       parsed = d;
     }
-    // P2c S-2: 호출자 site 대조 — 타 테넌트 파일 만료예약 차단.
+    // 호출자 site 대조 — 타 테넌트 파일 만료예약 차단.
     const file = await this.filesService.setExpiry(id, parsed, site);
     return this.filesService.toResponseDto(file);
   }

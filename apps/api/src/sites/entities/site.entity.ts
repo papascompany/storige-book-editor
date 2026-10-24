@@ -10,7 +10,7 @@ import {
 /**
  * Site (Tenant) — 외부 사이트(쇼핑몰/앱/서비스) 메타데이터.
  *
- * 플랫폼화 Phase A의 핵심 엔티티. admin > 기본설정 페이지에서 관리.
+ * 멀티 사이트(테넌트) 구조의 핵심 엔티티. admin > 기본설정 페이지에서 관리.
  *
  * - editor_auth_code: PHP/외부 사이트가 X-API-Key로 사용 (호환성: 기존 .env API_KEYS 값 시드)
  * - worker_auth_code: 워커 호출용 (편집기와 분리, 향후 권한 차등 가능)
@@ -46,7 +46,7 @@ export class Site {
   @Column({ name: 'editor_auth_code', type: 'varchar', length: 200 })
   editorAuthCode: string;
 
-  /** 워커 인증코드 (별도 키. Phase A에선 editor_auth_code와 동일 값으로 시드 가능) */
+  /** 워커 인증코드 (별도 키. editor_auth_code와 동일 값으로 시드 가능) */
   @Index('idx_sites_worker_auth_code', { unique: true })
   @Column({ name: 'worker_auth_code', type: 'varchar', length: 200 })
   workerAuthCode: string;
@@ -78,7 +78,7 @@ export class Site {
   editRetentionDays?: number | null;
 
   // ─────────────────────────────────────────────────────
-  // Phase B — 사이트별 워커 옵션 (default 정책)
+  // 사이트별 워커 옵션 (default 정책)
   // 워커 잡 생성 시 호출자가 명시 안 하면 site default 머지.
   // ─────────────────────────────────────────────────────
 
@@ -107,7 +107,7 @@ export class Site {
   checkSafezone: boolean;
 
   // ─────────────────────────────────────────────────────
-  // Phase 1-1 (2026-05-16) — 외부 도메인 보안 정책
+  // 외부 도메인 보안 정책
   // CORS / iframe / postMessage / webhook 검증의 단일 출처.
   // 자세한 사양: docs/PHASE_0_CONTRACT_DECISIONS_2026-05-16.md §2 D-10
   // ─────────────────────────────────────────────────────
@@ -129,7 +129,7 @@ export class Site {
   frameAncestors: string[] | null;
 
   /**
-   * 편집기 실행 모드. Phase 0 결정(D-1): inline embed 단일.
+   * 편집기 실행 모드. inline embed 단일.
    * enum 은 향후 확장 여지를 위한 컬럼 유지. 현재 값은 'inline' 만 사용.
    */
   @Column({ name: 'editor_launch_mode', type: 'varchar', length: 20, default: 'inline' })

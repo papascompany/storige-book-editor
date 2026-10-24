@@ -1,5 +1,5 @@
 /**
- * book_specs 판형 마스터 후보 수집 스크립트 (Partner API v1 Stage 1-B).
+ * book_specs 판형 마스터 후보 수집 스크립트 (Partner API v1).
  *
  * ⚠️⚠️ DRY-RUN 전용 — DB 에 어떤 쓰기도 하지 않는다. ⚠️⚠️
  * 기존 데이터(template_sets 자유입력 width/height + productSpecs,

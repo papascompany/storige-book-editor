@@ -32,7 +32,7 @@ import {
  * (@PartnerV1Controller 조합 데코레이터가 모듈 레벨로 바인딩).
  *
  * - 적용: POST + `Idempotency-Key` 헤더 존재 시. GET/PUT/DELETE 는 자연 멱등으로 미캐시.
- * - scope = siteId + env(인증 컨텍스트 — Stage 2, sites 키는 live) + method + path(실값) + key
+ * - scope = siteId + env(인증 컨텍스트 — sites 키는 live) + method + path(실값) + key
  * - 동일 키+동일 body → 최초 응답 스냅샷 재전달(+Idempotency-Replayed 헤더 — 필터 처리)
  * - 동일 키+다른 body → 422 ERR_IDEMPOTENCY_KEY_MISMATCH
  * - 처리 중 동일 키 → 409 ERR_IDEMPOTENCY_IN_PROGRESS

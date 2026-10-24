@@ -171,7 +171,7 @@ export class AuthService {
    */
   async createShopSession(
     dto: CreateShopSessionDto,
-    siteContext?: { siteId: string; siteName: string }, // Phase C-2 — 호출 컨트롤러에서 주입
+    siteContext?: { siteId: string; siteName: string }, // 호출 컨트롤러에서 주입
   ): Promise<{ accessToken: string; refreshToken: string }> {
     this.observeOrderScope(dto, siteContext?.siteId);
 
@@ -201,7 +201,7 @@ export class AuthService {
     if (allowedOrderSeqnos.length > 0) {
       payload.allowedOrderSeqnos = allowedOrderSeqnos;
     }
-    // Phase C-2 — 사이트 컨텍스트를 JWT 페이로드에 포함 (있을 때만)
+    // 사이트 컨텍스트를 JWT 페이로드에 포함 (있을 때만)
     if (siteContext?.siteId) {
       payload.siteId = siteContext.siteId;
       payload.siteName = siteContext.siteName;

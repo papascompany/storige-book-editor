@@ -130,7 +130,7 @@ export class FilesService {
       orderSeqno,
       memberSeqno,
       metadata,
-      // 호출자 site 스탬프(테넌트 소유): upload/external 은 API Key 사이트(P2c S-2), /files/upload 는
+      // 호출자 site 스탬프(테넌트 소유): upload/external 은 API Key 사이트, /files/upload 는
       // shop-session·운영자 토큰의 사이트(2026-09-30). 그 밖(admin JWT·내부 호출, siteId 미지정)=NULL=공유.
       siteId: siteId ?? null,
     });
@@ -156,7 +156,7 @@ export class FilesService {
       orderSeqno?: number | null;
       memberSeqno?: number | null;
       metadata?: Record<string, any>;
-      siteId?: string | null; // P2c S-3: 워커 출력 파일에 원본 잡의 site 승계(테넌트 소유)
+      siteId?: string | null; // 워커 출력 파일에 원본 잡의 site 승계(테넌트 소유)
       /** 등록 파일의 실제 MIME — 미지정 시 기존 호출자(워커 PDF 출력) 호환 기본값 */
       mimeType?: string;
       /** 업로더가 보낸 원본 파일명 보존 — 미지정 시 디스크 파일명 */
@@ -213,7 +213,7 @@ export class FilesService {
       orderSeqno: opts.orderSeqno ?? undefined,
       memberSeqno: opts.memberSeqno ?? undefined,
       metadata: opts.metadata,
-      siteId: opts.siteId ?? null, // P2c S-3: 워커 출력 site 스탬프(외부 라우트 격리 적용 대상)
+      siteId: opts.siteId ?? null, // 워커 출력 site 스탬프(외부 라우트 격리 적용 대상)
     });
 
     const saved = await this.fileRepository.save(fileEntity);
@@ -255,7 +255,7 @@ export class FilesService {
   }
 
   /**
-   * 여러 파일을 In() 1회 배치 조회해 id→entity Map 반환 (DB-003 N+1 제거용).
+   * 여러 파일을 In() 1회 배치 조회해 id→entity Map 반환 (N+1 제거용).
    * 미존재 id 는 Map 에 없음 — 호출측이 findById 와 동일한 NotFoundException 을 던져 동작 보존.
    */
   async findManyByIds(ids: string[]): Promise<Map<string, FileEntity>> {
@@ -343,7 +343,7 @@ export class FilesService {
    * s3 파일은 R2 에서, local 파일은 디스크에서 읽는다(혼재 보장).
    */
   /**
-   * P2c S-2 테넌트 격리 — 외부(API Key) 라우트에서 호출자 site 와 파일 소유 site 대조.
+   * 테넌트 격리 — 외부(API Key) 라우트에서 호출자 site 와 파일 소유 site 대조.
    * file.siteId 가 NULL(레거시/시스템공유)이거나 callerSiteId 와 일치할 때만 허용.
    * 불일치 시 존재 노출 방지로 404(타 테넌트 파일 다운로드/하드삭제/만료 차단).
    * callerSiteId 미지정(내부 호출·retention cron)이면 검사 생략.
@@ -352,7 +352,7 @@ export class FilesService {
     file: FileEntity,
     caller?: { siteId?: string; role?: string },
   ): void {
-    // P2c: worker 역할(내부 워커, WORKER_API_KEY)·caller 미지정(내부 호출)은 바이패스.
+    // worker 역할(내부 워커, WORKER_API_KEY)·caller 미지정(내부 호출)은 바이패스.
     if (!caller || caller.role === 'worker') return;
     if (file.siteId && file.siteId !== caller.siteId) {
       throw new NotFoundException({
@@ -726,9 +726,9 @@ export class FilesService {
     // ── 파일 1건이 잡 옵션에 실릴 수 있는 URL 표기 전부 ──
     // ⚠️ 이 목록이 좁으면 '참조 있음'을 놓쳐 파일이 고아로 오판·삭제된다(데이터손실).
     //   실제 발행자:
-    //    - 자동조립(compose-mixed assembleFromSession, worker-jobs.service.ts:190-192 toWorkerInputUrl)
+    //    - 자동조립(compose-mixed assembleFromSession, WorkerJobsService.toWorkerInputUrl())
     //      → s3 백엔드는 `api://<fileId>`, local 은 `f.file_path`
-    //    - synthesis(createSynthesisJob:1072·1077) 의 coverUrl/contentUrl — 동일 toWorkerInputUrl
+    //    - synthesis(createSynthesisJob) 의 coverUrl/contentUrl — 동일 toWorkerInputUrl
     //    - 외부 파트너 직접 호출 → 공개 URL(`f.file_url`) 또는 절대 URL(…/<storage_key>)
     //   입력 URL 절(w.input_file_url/…)이 이미 쓰는 규약과 동일하게 맞춘다(+ file_url).
     //   storage_key 는 nullable → NULL substring 매칭 사고 방지용 IS NOT NULL 가드 필수.
@@ -791,7 +791,7 @@ export class FilesService {
       //    spread-merge(createSpreadSynthesisJob): options.spreadPdfFileId(id) · options.contentPdfFileIds[](id 배열)
       //    compose-mixed(createComposeMixedJob): options.coverUrl · options.contentPdfUrl · options.front/backEndpaperUrls[](url)
       //    synthesis(createSynthesisJob): options.coverFileId·contentFileId(id) · options.coverUrl·contentUrl(url)
-      //      ⚠️ 이 잡은 **표지만** 컬럼에 남는다(worker-jobs.service.ts:1086-1087
+      //      ⚠️ 이 잡은 **표지만** 컬럼에 남는다(createSynthesisJob 의 잡 생성부
       //         fileId=coverFileId · inputFileUrl=coverUrl). 내지(contentFileId·contentUrl)는
       //         options 에만 존재 → 컬럼만 보면 게스트 내지가 고아로 오판·삭제된다.
       //    컬럼만 보면 이들이 고아로 오판된다 → JSON 경로까지 역참조(JSON_CONTAINS/->>) 추가.

@@ -138,7 +138,7 @@ export class AutoSaveDto {
   currentPageIndex?: number;
 
   @ApiPropertyOptional({
-    description: 'BB-Phase 3 follow-up — 시점 스냅샷 썸네일 URL (editor에서 fabric.toDataURL 캡처 후 /storage/upload/thumbnails로 업로드한 URL). 모바일에선 미사용 (TOUCH_ENV 가드).',
+    description: '시점 스냅샷 썸네일 URL (editor에서 fabric.toDataURL 캡처 후 /storage/upload/thumbnails로 업로드한 URL). 모바일에선 미사용 (TOUCH_ENV 가드).',
     example: '/storage/files/thumbnails/abc.jpg',
   })
   @IsOptional()

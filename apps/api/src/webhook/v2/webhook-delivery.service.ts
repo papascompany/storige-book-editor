@@ -34,7 +34,7 @@ import {
 import { decryptWebhookSecret, signWebhookV2 } from './webhook-secret.crypto';
 
 /**
- * 웹훅 v2 발신/재시도/이력 (Stage 2 작업 5 — 설계서 §1.5·§2.8).
+ * 웹훅 v2 발신/재시도/이력.
  *
  * opt-in 경계: 진입점은 tryDispatchForSite — active config 가 없으면 null 을
  * 반환하고 호출측(WebhookService.sendCallback)이 기존 v1(base64) 경로로

@@ -14,7 +14,7 @@ import { WorkerJob } from './entities/worker-job.entity';
  * 대상: options.isTest=true 합성(SYNTHESIZE) 잡의 outputs/{jobId}/ 디렉토리
  * (TEST 워터마크 더미 PDF + .synthesis-complete.json 멱등 마커).
  *
- * **구현 방식 선택 근거** (로드맵 §6 Stage 2 작업 1 "retention 24h 강제"):
+ * **구현 방식 선택 근거** (test 잡 산출물 retention 24h 강제):
  *  - 잡 산출물은 워커가 outputs/{jobId}/ 에 **직접 write** — 파일(File) 엔티티를
  *    경유하지 않아 file-retention.service 의 expires_at/softDelete 머신을 재사용할
  *    수 없다(실물 확인: FileRetentionService 는 files 테이블 전용).
@@ -33,8 +33,8 @@ import { WorkerJob } from './entities/worker-job.entity';
  *    terminal(>24h) 잡의 options 는 다른 기록자가 없어 병렬 갱신 경합 실질 0.
  *  - 재진입 가드 + 배치 상한(기존 sweeper 패턴 준용).
  *
- * ⚠️ 발화 경로 부재(Stage 3 게이트): 현 Stage 2 에서 isTest 잡을 만들 수 있는
- * 인증 경로가 없어 이 cron 의 대상 집합은 항상 공집합(무해) — 실발화는 Stage 3.
+ * ⚠️ 대상 잡 발생 경로: isTest 합성 잡은 v1 books 최종화(test 키, book.env='test')에서만
+ * 생성된다. 잡 생성 external 라우트는 sites 키(항상 live) 전용이라 대상이 되지 않는다.
  */
 @Injectable()
 export class TestJobOutputsRetentionService {
@@ -61,7 +61,7 @@ export class TestJobOutputsRetentionService {
     private readonly workerJobRepository: Repository<WorkerJob>,
     private readonly config: ConfigService,
   ) {
-    // files.service.ts:157 선례 — STORAGE_PATH 기본 /app/storage (compose 매핑 동일)
+    // FilesService.registerExternalFile() 선례 — STORAGE_PATH 기본 /app/storage (compose 매핑 동일)
     this.storageBase = this.config.get<string>('STORAGE_PATH', '/app/storage');
   }
 

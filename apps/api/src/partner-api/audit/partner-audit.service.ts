@@ -8,7 +8,7 @@ export interface PartnerAuditRecord {
   requestId: string;
   siteId: string | null;
   env: 'test' | 'live' | null;
-  /** partner_api_keys.id (Stage 2) — sites 키/인증 실패는 null */
+  /** partner_api_keys.id — sites 키/인증 실패는 null */
   apiKeyId?: string | null;
   method: string;
   path: string;
@@ -40,7 +40,7 @@ export class PartnerAuditService {
         requestId: entry.requestId,
         siteId: entry.siteId,
         env: entry.env,
-        apiKeyId: entry.apiKeyId ?? null, // partner_api_keys 경유 시 키 id (Stage 2)
+        apiKeyId: entry.apiKeyId ?? null, // partner_api_keys 경유 시 키 id
         method: entry.method.slice(0, 8),
         path: entry.path.slice(0, 300),
         statusCode: entry.statusCode,

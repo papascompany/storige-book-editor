@@ -1,7 +1,7 @@
 /**
  * Partner API v1 상수 (설계서 §4/§5/§7).
  *
- * env 스코프: Stage 2 부터 인증 컨텍스트(req.user.env — partner_api_keys.env)가
+ * env 스코프: 인증 컨텍스트(req.user.env — partner_api_keys.env)가
  * 정본. PARTNER_ENV_LIVE 는 sites 레거시 키(단일 env 체계) 경로의 기본값으로만
  * 남는다 — 가드·멱등·감사 3곳의 실사용은 `user.env ?? PARTNER_ENV_LIVE`.
  */
@@ -15,9 +15,9 @@ export const PARTNER_ENV_TEST = 'test' as const;
 export type PartnerEnv = 'test' | 'live';
 
 /**
- * live 전용 라우트 메타데이터 키 (@PartnerLiveOnly — Stage 2 작업 3).
+ * live 전용 라우트 메타데이터 키 (@PartnerLiveOnly).
  * test 키가 마킹된 라우트 호출 시 403 ERR_ENV_MISMATCH.
- * 현 Stage 1 표면(GET 조회)은 전부 양 env 허용 — 발화 지점은 Stage 3+(finalization 등).
+ * 현재 이 메타데이터를 붙인 v1 라우트는 없다 — 전 v1 라우트가 양 env 허용.
  */
 export const PARTNER_LIVE_ONLY_KEY = 'partnerLiveOnly';
 

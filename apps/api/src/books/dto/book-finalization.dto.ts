@@ -1,7 +1,7 @@
 import type { BookFinalizationStatus } from '../books.constants';
 
 /**
- * 최종화 노출 shape — Partner API v1 Stage 3 W3.
+ * 최종화 노출 shape — Partner API v1.
  *
  * 정본: docs/PARTNER_PLATFORM_API_V1_DESIGN_2026-07-07.md §2.6·§6.3
  *

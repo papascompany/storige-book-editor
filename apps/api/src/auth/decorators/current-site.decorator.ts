@@ -13,7 +13,7 @@ export interface CurrentSitePayload {
    * [S2-5] 인증 컨텍스트 env — resolvePartnerEnv(req.user) 해석값.
    * 공용 ApiKeyGuard(sites 키)는 req.user.env 를 스탬프하지 않으므로 항상 'live'.
    * 'test' 는 partner_api_keys test 키 인증 경로(PartnerApiKeyGuard)에서만 가능 —
-   * 현 잡 생성 표면(external 라우트)은 공용 가드 전용이라 도달 불가(Stage 3 발화).
+   * 잡 생성 external 라우트는 공용 가드 전용이라 'test' 에 도달하지 않는다.
    * optional(additive) — 미설정은 live 취급(소비측 `=== 'test'` 판정).
    */
   env?: PartnerEnv;

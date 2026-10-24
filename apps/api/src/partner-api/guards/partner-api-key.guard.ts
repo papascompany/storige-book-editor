@@ -24,7 +24,7 @@ import { PartnerApiKeysService } from '../keys/partner-api-keys.service';
  * - 1차: 기존 공용 ApiKeyGuard(sites editor/worker 키 로직)에 **위임 재사용** —
  *   공용 가드 파일은 무수정(§2.1: v1 키가 기존 표면으로 새는 것을 구조적으로 차단).
  *   성공 시 env='live'·apiKeyId=null 을 additive 스탬프(sites 키=단일 env 체계).
- * - 2차(Stage 2 폴백): sites 키 실패 시 partner_api_keys 조회 —
+ * - 2차(폴백): sites 키 실패 시 partner_api_keys 조회 —
  *   SHA-256 해시 대조 + revoked/grace 만료 검사 + site active 검사 후
  *   req.user 에 site 컨텍스트+env+apiKeyId 세팅. **이 폴백은 본 가드에만 실장** —
  *   v1 발급 키(test 포함)는 기존 external 표면에서 무효(§7.3 논리 분리).
@@ -73,7 +73,7 @@ export class PartnerApiKeyGuard implements CanActivate {
     }
 
     if (sitesKeyAuthenticated && req.user) {
-      // 기존 sites 키 경로 완전 불변 + Stage 2 additive 스탬프만
+      // 기존 sites 키 경로 완전 불변 + env/apiKeyId additive 스탬프만
       req.user.env = PARTNER_ENV_LIVE;
       req.user.apiKeyId = null;
     } else {
@@ -84,7 +84,7 @@ export class PartnerApiKeyGuard implements CanActivate {
     return true;
   }
 
-  /** Stage 2 폴백 — partner_api_keys 해시 검증 (v1 가드 전용, 공용 가드 무접촉) */
+  /** 폴백 — partner_api_keys 해시 검증 (v1 가드 전용, 공용 가드 무접촉) */
   private async authenticateWithPartnerKey(
     req: PartnerRequest,
     apiKey: string,

@@ -138,7 +138,7 @@ export class EditorController {
   }
 
   // ============================================================================
-  // BB-Phase 3 ─ 자동저장 시점 versions (HistoryPanel 시점 list + 복원)
+  // 자동저장 시점 versions (HistoryPanel 시점 list + 복원)
   // ============================================================================
 
   @Get('sessions/:id/versions')

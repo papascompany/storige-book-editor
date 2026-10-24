@@ -13,7 +13,7 @@ import {
 } from '../books.constants';
 
 /**
- * 도서 자산 엔티티 (표지/내지/사진/바인딩) — Partner API v1 Stage 3.
+ * 도서 자산 엔티티 (표지/내지/사진/바인딩) — Partner API v1.
  *
  * 정본: docs/PARTNER_PLATFORM_API_V1_DESIGN_2026-07-07.md §2.5
  * 마이그레이션: apps/api/migrations/20260716_add_books_core.sql
@@ -49,7 +49,7 @@ export class BookAsset {
   @Column({ name: 'template_set_id', type: 'varchar', length: 36, nullable: true })
   templateSetId: string | null;
 
-  /** 템플릿 파라미터(Stage 5 schema 정합) */
+  /** 템플릿 파라미터 */
   @Column({ name: 'binding_params', type: 'json', nullable: true })
   bindingParams: Record<string, unknown> | null;
 

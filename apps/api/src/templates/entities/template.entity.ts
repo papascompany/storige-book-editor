@@ -17,7 +17,7 @@ import type { CanvasData, TemplateType, SpreadConfig } from '@storige/types';
 /**
  * 템플릿 타입 enum (DB용).
  *
- * 인쇄 워크플로우 v1 Phase 2 (2026-05-19): ENDPAPER 추가.
+ * 인쇄 워크플로우 v1: ENDPAPER 추가.
  * 마이그레이션: apps/api/migrations/20260519_v1_phase2_workflow_schema.sql
  */
 export enum TemplateTypeEnum {

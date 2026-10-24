@@ -44,7 +44,7 @@ import { PartnerOperatorAuditInterceptor } from './partner-operator/partner-oper
       Site,
     ]),
     PassportModule,
-    SitesModule, // ApiKeyStrategy가 SitesService 사용 (Phase A)
+    SitesModule, // ApiKeyStrategy가 SitesService 사용
     JwtModule.registerAsync({
       imports: [ConfigModule],
       inject: [ConfigService],

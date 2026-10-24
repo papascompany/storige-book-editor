@@ -39,7 +39,7 @@ const ASSET_UPLOAD = FileInterceptor('file', {
 });
 
 /**
- * Partner API v1 — Books(도서 aggregate) 컨트롤러 (Stage 3).
+ * Partner API v1 — Books(도서 aggregate) 컨트롤러.
  *
  * 정본: docs/PARTNER_PLATFORM_API_V1_DESIGN_2026-07-07.md §1·§2.4·§6
  * 글로벌 prefix 'api' → 최종 경로 /api/v1/books (설계서 모듈 배치 규약).

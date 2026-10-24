@@ -24,7 +24,7 @@ export class PublicApiAuditLog {
   @Column({ type: 'enum', enum: ['test', 'live'], nullable: true })
   env: 'test' | 'live' | null;
 
-  /** partner_api_keys.id — Stage 2 이후 채움 */
+  /** partner_api_keys.id — partner_api_keys 경유 인증 시 채움(sites 키는 null) */
   @Column({ name: 'api_key_id', type: 'varchar', length: 36, nullable: true })
   apiKeyId: string | null;
 

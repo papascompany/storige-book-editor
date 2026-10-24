@@ -20,7 +20,7 @@ import { staffAuditUnavailable } from '../staff-edit-data/staff-actor';
  * 부팅 시 .env의 API_KEYS 값을 DB에 시드 (하위 호환). 이후 admin에서
  * 사이트 추가/관리. ApiKeyStrategy는 본 서비스의 findByEditorAuthCode() 사용.
  *
- * Phase 1-2 (2026-05-16) — 도메인 보안 정책 캐시:
+ * 도메인 보안 정책 캐시:
  * CORS callback / CSP frame-ancestors / webhook host 검증이 매 요청마다
  * DB 조회하면 비용이 크므로 60초 캐시한다. Admin 에서 사이트 수정 시
  * `invalidatePolicyCache()` 로 즉시 무효화 가능.
@@ -29,13 +29,13 @@ import { staffAuditUnavailable } from '../staff-edit-data/staff-actor';
 export class SitesService implements OnModuleInit {
   private readonly logger = new Logger(SitesService.name);
 
-  // ── Phase 1-2 도메인 보안 정책 캐시 (60초 TTL) ────────────────
+  // ── 도메인 보안 정책 캐시 (60초 TTL) ────────────────
   private readonly POLICY_CACHE_TTL_MS = 60 * 1000;
   private policyCache: {
     expiresAt: number;
     allowedOrigins: Set<string>;
     frameAncestorsByOrigin: Map<string, string[]>; // origin → 해당 site 의 frameAncestors
-    allFrameAncestors: Set<string>; // 활성 사이트 전체 frameAncestors 합집합 (P-Stage2-3)
+    allFrameAncestors: Set<string>; // 활성 사이트 전체 frameAncestors 합집합
     webhookAllowedHosts: Set<string>;
   } | null = null;
 
@@ -96,7 +96,7 @@ export class SitesService implements OnModuleInit {
     });
   }
 
-  /** 워커 호출용 (Phase A에선 editor와 동일 값이지만 별도 lookup 길 마련) */
+  /** 워커 호출용 (editor 코드와 동일 값으로 시드될 수 있지만 별도 lookup 을 둔다) */
   async findByWorkerAuthCode(code: string): Promise<Site | null> {
     return this.siteRepository.findOne({
       where: { workerAuthCode: code, status: 'active' },
@@ -186,7 +186,7 @@ export class SitesService implements OnModuleInit {
   }
 
   // ─────────────────────────────────────────────────────
-  // Phase 1-2 (2026-05-16) — 도메인 보안 정책 동적 조회
+  // 도메인 보안 정책 동적 조회
   // CORS / CSP frame-ancestors / webhook host 검증의 단일 출처.
   // 60초 캐시. 사이트 수정/삭제 시 자동 무효화.
   // ─────────────────────────────────────────────────────
@@ -222,7 +222,7 @@ export class SitesService implements OnModuleInit {
       const origins = (site.allowedOrigins || []).filter(Boolean);
       const ancestors = (site.frameAncestors || []).filter(Boolean);
 
-      // P-Stage2-3: frame_ancestors 는 allowed_origins 등록 여부와 무관하게 전량 수집.
+      // frame_ancestors 는 allowed_origins 등록 여부와 무관하게 전량 수집.
       // (기존 frameAncestorsByOrigin 은 origin 이 등록된 site 의 값만 담아서,
       //  allowed_origins 가 빈 site 의 frame_ancestors 가 조용히 누락되는 함정이 있었음)
       for (const ancestor of ancestors) allFrameAncestors.add(ancestor);
@@ -265,7 +265,7 @@ export class SitesService implements OnModuleInit {
 
   /**
    * Editor 응답 CSP frame-ancestors 헤더에 들어갈 호스트 목록 (중복 제거).
-   * P-Stage2-3: FrameAncestorsController(GET /api/frame-ancestors) 가 소비 —
+   * FrameAncestorsController(GET /api/frame-ancestors) 가 소비 —
    * 활성 사이트 전체의 frame_ancestors 합집합(allowed_origins 등록 여부 무관).
    */
   async getAllFrameAncestors(): Promise<string[]> {

@@ -32,7 +32,7 @@ import { PartnerApiKeysSweeper } from './keys/partner-api-keys.sweeper';
  * - exports: 타 도메인 모듈(BookSpecsModule 등)이 @PartnerV1Controller 를
  *   선언할 때, 컨트롤러 호스트 모듈에서 v1 스택(가드/필터/인터셉터)과 그
  *   의존(감사·멱등 서비스, 설정 토큰)이 DI 로 해석되도록 공개한다 —
- *   Stage 3+ 신규 v1 컨트롤러 모듈의 표준 통합 포인트.
+ *   신규 v1 컨트롤러 모듈의 표준 통합 포인트.
  */
 @Module({
   imports: [

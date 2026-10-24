@@ -12,7 +12,7 @@ import { IsSafeFileRef } from './is-safe-file-ref.validator';
 import { PartnerEnv } from '../../partner-api/partner-api.constants';
 
 /**
- * Compose-mixed 잡 생성 DTO — 인쇄 워크플로우 v1 Phase 5 (2026-05-19).
+ * Compose-mixed 잡 생성 DTO — 인쇄 워크플로우 v1.
  *
  * 표지 + 앞면지 N + 내지(편집 또는 첨부 PDF) + 뒷면지 K 를 합본 PDF 로 생성.
  * 출력 순서: [표지, 앞면지 1..N, 내지, 뒷면지 1..K] (고정).
@@ -120,7 +120,7 @@ export class CreateComposeMixedJobDto {
   assembleFromSession?: boolean;
 
   /**
-   * Phase C — 다른 라우트에서는 컨트롤러가 `@CurrentSite()` 로 자동 주입한다.
+   * 다른 라우트에서는 컨트롤러가 `@CurrentSite()` 로 자동 주입한다.
    *
    * ⚠️ [2026-08-13] compose-mixed 라우트는 `@Public` 이라 이 필드가 **무인증 호출자 입력**이다.
    *    잡 스탬프로 그대로 채택되지 않는다 — 검증된 shop-session 의 siteId 와 일치할 때만
@@ -133,10 +133,10 @@ export class CreateComposeMixedJobDto {
 }
 
 /**
- * [Stage 3 W5] createComposeMixedJob 서비스 입력 계약 — dto:any 제거용(TS strict).
+ * createComposeMixedJob 서비스 입력 계약 — dto:any 제거용(TS strict).
  *
  * CreateComposeMixedJobDto(외부 라우트 경유, class-validator 검증본)와 finalization
- * 오케스트레이터(W3)의 내부 호출을 모두 수용하는 구조 타입. 전 필드 optional 이라
+ * 오케스트레이터(BookFinalizationsService)의 내부 호출을 모두 수용하는 구조 타입. 전 필드 optional 이라
  * DTO(부분집합)·내부 plain 객체 양쪽이 구조적으로 대입 가능하다.
  *
  * - outputMode 는 string 폭(런타임은 @IsString 만 검증 — 'merged' 폴백 실값 통과)이라
@@ -166,6 +166,6 @@ export interface ComposeMixedJobInput {
   assembleFromSession?: boolean;
   /** [S2-5] 인증 컨텍스트 env — 미전달=live(기존 불변). 'test'=isTest 더미 산출. */
   partnerEnv?: PartnerEnv;
-  /** [Stage 3 W3] books finalization 역참조 마커(#4) — 부재=기존 옵션 불변 */
+  /** books finalization 역참조 마커 — 부재=기존 옵션 불변 */
   finalizationId?: string;
 }

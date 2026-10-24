@@ -142,8 +142,8 @@ export class CreateValidationJobDto {
    * [S2-5] 인증 컨텍스트 env — 호출 컨트롤러가 @CurrentSite().env 로 주입.
    * ⚠️ 의도적으로 validation 데코레이터 없음(비화이트리스트): body 로 보내면
    * forbidNonWhitelisted 400 — 호출자가 test env 를 자가선언할 수 없다.
-   * 'test' 면 서비스가 options.isTest=true 자동 스탬프(현 경로 전부 live=no-op 훅,
-   * 실발화는 Stage 3 v1 잡 생성 표면).
+   * 'test' 면 서비스가 options.isTest=true 자동 스탬프(external 라우트는 live=no-op,
+   * test 는 v1 books 최종화 오케스트레이터가 book.env 로 전달).
    * ⚠️ `declare` 필수 — ES2022 useDefineForClassFields 로 일반 필드는 인스턴스
    * own-property(undefined)로 실체화되어 whitelist 검증이 전 요청을 400 처리한다
    * (vite.config shadow 급 함정 — 본 브랜치에서 실적발, dto.spec 4건 red 로 검출).
@@ -151,7 +151,7 @@ export class CreateValidationJobDto {
   declare partnerEnv?: PartnerEnv;
 
   /**
-   * [Stage 3 W3] books finalization 역참조 마커(#4) — 서비스가 options.finalizationId
+   * books finalization 역참조 마커 — 서비스가 options.finalizationId
    * 로 심어, 잡 완료 콜백(updateJobStatus)이 book_finalizations 상태머신을 전진시킨다.
    * partnerEnv 와 동일하게 비화이트리스트 `declare`(파트너 body 자가주입 차단) — 오직
    * 내부 오케스트레이터(BookFinalizationsService)만 전달. 부재=기존 잡(options 불변).
@@ -188,7 +188,7 @@ export class CreateConversionJobDto {
   @IsNotEmpty()
   convertOptions: any;
 
-  /** Phase C — 호출 컨트롤러에서 자동 주입 */
+  /** 호출 컨트롤러에서 자동 주입 */
   @IsOptional()
   @IsUUID()
   siteId?: string;
@@ -215,7 +215,7 @@ export class CreatePageCountFixJobDto {
   @IsUrl({ protocols: ['http', 'https'], require_tld: false, require_protocol: true })
   callbackUrl?: string;
 
-  /** Phase C — 호출 컨트롤러에서 자동 주입 */
+  /** 호출 컨트롤러에서 자동 주입 */
   @IsOptional()
   @IsUUID()
   siteId?: string;
@@ -319,7 +319,7 @@ export class CreateSynthesisJobDto {
   @IsIn(['perfect', 'saddle', 'hardcover'])
   bindingType?: 'perfect' | 'saddle' | 'hardcover';
 
-  /** Phase C — 호출 컨트롤러에서 자동 주입 (X-API-Key 사용 시 req.user.siteId) */
+  /** 호출 컨트롤러에서 자동 주입 (X-API-Key 사용 시 req.user.siteId) */
   @IsOptional()
   @IsUUID()
   siteId?: string;
@@ -327,7 +327,7 @@ export class CreateSynthesisJobDto {
   /** [S2-5] 인증 컨텍스트 env — CreateValidationJobDto.partnerEnv 주석 참조(비화이트리스트·declare 필수) */
   declare partnerEnv?: PartnerEnv;
 
-  /** [Stage 3 W3] books finalization 역참조 마커(#4) — CreateValidationJobDto.finalizationId 주석 참조 */
+  /** books finalization 역참조 마커 — CreateValidationJobDto.finalizationId 주석 참조 */
   declare finalizationId?: string;
 
   /**

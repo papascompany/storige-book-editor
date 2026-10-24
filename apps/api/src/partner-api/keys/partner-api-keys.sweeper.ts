@@ -3,7 +3,7 @@ import { Cron, CronExpression } from '@nestjs/schedule';
 import { PartnerApiKeysService } from './partner-api-keys.service';
 
 /**
- * grace 만료 배치 (로드맵 §6 Stage 2 작업 4 — Stage 1 멱등 sweeper 패턴 준용).
+ * grace 만료 배치 (멱등 sweeper 패턴 준용).
  *
  * 회전 유예(72h)가 지난 grace 키를 revoked 로 승격한다.
  * 보안 판정 자체는 검증 시점(findValidByPlaintextKey)이 grace_until 을 직접

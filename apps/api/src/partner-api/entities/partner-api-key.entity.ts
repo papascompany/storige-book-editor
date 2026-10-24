@@ -12,7 +12,7 @@ import { PartnerEnv } from '../partner-api.constants';
 export type PartnerApiKeyStatus = 'active' | 'grace' | 'revoked';
 
 /**
- * partner_api_keys — v1 파트너 키 (설계서 §2.1, Stage 2 작업 1·4).
+ * partner_api_keys — v1 파트너 키.
  *
  * 현행 sites.editor_auth_code/worker_auth_code(평문·단일 env)는 **무접촉 유지** —
  * v1 키는 이 테이블에서만 발급한다. 조회 폴백은 v1 전용 PartnerApiKeyGuard 에만

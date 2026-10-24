@@ -8,7 +8,7 @@ import * as path from 'path';
 import { EditSessionVersion } from './entities/edit-session-version.entity';
 
 /**
- * BB-Phase 3 follow-up — 시점 썸네일 orphan cleanup cron.
+ * 시점 썸네일 orphan cleanup cron.
  *
  * 두 갈래로 동작:
  * 1. **Deletion-time** (`unlinkThumbnailIfReferenced`): editor.service.trimVersions가

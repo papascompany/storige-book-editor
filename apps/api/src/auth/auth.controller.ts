@@ -269,7 +269,7 @@ export class AuthController {
   async createShopSession(
     @Body() dto: CreateShopSessionDto,
     @Res({ passthrough: true }) res: Response,
-    @CurrentSite() site?: CurrentSitePayload, // Phase C-2 — JWT 페이로드에 siteId 주입
+    @CurrentSite() site?: CurrentSitePayload, // JWT 페이로드에 siteId 주입
   ): Promise<ShopSessionResponseDto> {
     const siteContext = site
       ? { siteId: site.siteId, siteName: site.siteName }

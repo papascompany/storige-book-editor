@@ -39,7 +39,7 @@ export interface AssetFileInput {
 }
 
 /**
- * Partner API v1 — Books(도서 aggregate) 서비스 (Stage 3 W1).
+ * Partner API v1 — Books(도서 aggregate) 서비스.
  *
  * 정본: docs/PARTNER_PLATFORM_API_V1_DESIGN_2026-07-07.md §2.4·§6.1~6.2
  *
@@ -79,8 +79,8 @@ export class BooksService {
    *   투입 → finalization(W3) 오케스트레이션으로 실현.
    * - EDITOR_SESSION: 완료 세션을 책으로 승격(핵심) — 소유/NULL-site/완료 검증 후
    *   세션 산출 PDF 를 book_assets 로 자동 연결(createFromSession).
-   * - TEMPLATE: 내부 세션 생성이 게스트 폴백 함정(#6, 24h 고아화)이라 이번 스코프
-   *   최소화 — 빈 DRAFT 저장까지(자산/finalization 은 Stage 5 스키마 대기). finalization
+   * - TEMPLATE: 내부 세션 생성은 게스트 폴백 함정(24h 고아화)이 있어 하지 않는다 —
+   *   빈 DRAFT 저장까지만 한다(템플릿 자산 미연결). finalization
    *   은 표지 템플릿 렌더 미도입으로 422(ERR_ASSETS_INCOMPLETE) 반환.
    */
   async create(site: CurrentSitePayload, dto: CreateBookDto): Promise<BookView> {
@@ -90,8 +90,8 @@ export class BooksService {
       return this.createFromSession(site, dto, bookSpecId);
     }
 
-    // PDF_UPLOAD / MIX_COVER_TEMPLATE / TEMPLATE — 빈 DRAFT(자산은 W2 라우트로 투입).
-    // templateSetId 는 본 배치에서 미저장(TEMPLATE 스코프 최소화 — Stage 5 바인딩 자산에서 처리).
+    // PDF_UPLOAD / MIX_COVER_TEMPLATE / TEMPLATE — 빈 DRAFT(자산은 자산 업로드 라우트로 투입).
+    // templateSetId 는 저장하지 않는다(TEMPLATE 은 빈 DRAFT 까지만 지원).
     const book = this.bookRepo.create({
       uid: `${BOOK_UID_PREFIX}${randomUUID().replace(/-/g, '')}`,
       siteId: site.siteId,

@@ -13,7 +13,7 @@ import { PARTNER_ENV_LIVE, PartnerEnv } from '../partner-api.constants';
 /**
  * ApiKeyGuard 가 req.user 에 세팅하는 shape (공용 가드 무수정 — 읽기 전용 미러 타입).
  *
- * env/apiKeyId 는 Stage 2 additive 확장 — PartnerApiKeyGuard 가 스탬프한다:
+ * env/apiKeyId 는 additive 확장 — PartnerApiKeyGuard 가 스탬프한다:
  *  - sites 레거시 키 경로: env='live', apiKeyId=null
  *  - partner_api_keys 폴백 경로: env=키의 env, apiKeyId=키 id
  */
@@ -24,9 +24,9 @@ export interface PartnerAuthUser {
   siteName: string;
   role: 'editor' | 'worker';
   retentionDays?: number | null;
-  /** 환경 스코프 (Stage 2) — 미스탬프 구간은 live 취급(resolvePartnerEnv) */
+  /** 환경 스코프 — 미스탬프 구간은 live 취급(resolvePartnerEnv) */
   env?: PartnerEnv;
-  /** partner_api_keys.id (Stage 2) — sites 키 경로는 null */
+  /** partner_api_keys.id — sites 키 경로는 null */
   apiKeyId?: string | null;
 }
 

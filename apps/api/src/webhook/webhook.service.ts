@@ -33,7 +33,7 @@ export interface WebhookSendReceipt {
 }
 
 // WebhookPayload: 모든 웹훅 페이로드 유형의 합집합
-// (Stage 3 W3 — BookFinalizationWebhookPayload additive: 기존 발신 3종 shape 무접촉)
+// (BookFinalizationWebhookPayload 는 additive: 기존 발신 3종 shape 무접촉)
 export type WebhookPayload =
   | SessionWebhookPayload
   | SynthesisWebhookPayload
@@ -51,7 +51,7 @@ export class WebhookService {
    * SSRF 방어 — 임의 URL로 webhook 전송 금지.
    * 빈 문자열로 명시적 비활성화 가능 (`WEBHOOK_ALLOWED_HOSTS=*` — 호환 모드).
    *
-   * Phase 1-2 (2026-05-16): env 매칭에 실패해도 `SitesService.isWebhookHostAllowed()`
+   * env 매칭에 실패해도 `SitesService.isWebhookHostAllowed()`
    * 로 한 번 더 확인 → 새 외부 사이트는 Admin 에서 등록만 하면 자동 허용.
    */
   private readonly allowedHosts: string[] = (() => {
@@ -70,9 +70,9 @@ export class WebhookService {
     ];
   })();
 
-  // Phase 1-2 — SitesService 는 webhook 모듈이 cyclic 의존을 피할 수 있도록 @Optional.
+  // SitesService 는 webhook 모듈이 cyclic 의존을 피할 수 있도록 @Optional.
   // 주입 안 되어도 (예: 부팅 초기) 기존 allowedHosts 만으로 동작.
-  // Stage 2 — WebhookDeliveryService(v2 opt-in)도 @Optional: 미주입 시(기존
+  // WebhookDeliveryService(v2 opt-in)도 @Optional: 미주입 시(기존
   // 단위 테스트의 `new WebhookService()` 포함) v2 분기 자체가 없어 현행과 동일.
   constructor(
     @Optional() private readonly sitesService?: SitesService,
@@ -80,7 +80,7 @@ export class WebhookService {
   ) {}
 
   /**
-   * [Stage 2] 사이트에 v2 active config 가 있는지 (webhook_configs opt-in).
+   * 사이트에 v2 active config 가 있는지 (webhook_configs opt-in).
    * WEBHOOK_CONFIG_ENC_KEY 미설정(v2 비활성)이면 DB 조회 없이 false —
    * 기존 파트너/기존 배포의 타이밍에 영향 0. 호출측(worker-jobs)이
    * callbackUrl 부재 시 발신 스킵 판정을 보강하는 용도.
@@ -125,7 +125,7 @@ export class WebhookService {
     );
     if (staticMatch) return true;
 
-    // Phase 1-2: env 매칭 실패 시 DB sites 기반 동적 매칭
+    // env 매칭 실패 시 DB sites 기반 동적 매칭
     if (this.sitesService) {
       try {
         return await this.sitesService.isWebhookHostAllowed(callbackUrl);
@@ -140,7 +140,7 @@ export class WebhookService {
   /**
    * 웹훅 콜백 전송
    *
-   * [Stage 2] context.siteId 가 주어지고 해당 사이트에 v2 active config
+   * context.siteId 가 주어지고 해당 사이트에 v2 active config
    * (webhook_configs 행)가 있으면 v2 경로(사이트별 HMAC secret + delivery store +
    * 1/5/30분 재시도)로 발송하고 여기서 반환한다 — **config 가 없는 사이트
    * (기존 파트너 전원)는 아래 기존 경로를 바이트/헤더/타이밍 그대로 탄다.**
@@ -176,7 +176,6 @@ export class WebhookService {
       return false;
     }
 
-    // Patch E (2026-05-03) + Phase 1-2 (2026-05-16):
     // SSRF 방어 1선 — env allowlist 우선, 실패 시 DB sites 동적 매칭(호스트 문자열).
     if (!(await this.isAllowedCallbackUrl(callbackUrl))) {
       this.logger.error(

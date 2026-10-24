@@ -50,7 +50,7 @@ export class EditorService {
     private thumbnailCleanupService: ThumbnailCleanupService,
   ) {}
 
-  // BB-Phase 3 ─ 자동저장 시점 push 정책
+  // 자동저장 시점 push 정책
   private static readonly VERSION_DEBOUNCE_MS = 60_000  // 1분
   private static readonly VERSION_LRU_LIMIT = 20         // 세션당 최근 20개
   /** sessionId → 마지막 push 시각 (Date.now()) — 메모리 캐시, 인스턴스 재시작 시 초기화 */
@@ -70,7 +70,7 @@ export class EditorService {
     }
 
     // 템플릿 정보 조회 및 초기 페이지 생성
-    // DB-002: 루프 내 findOne(N+1)을 In() 배치 1회로 치환. ref 순서·sortOrder:i·미존재 skip 동작
+    // 템플릿을 In() 배치 1회로 조회(N+1 방지). ref 순서·sortOrder:i·미존재 skip 동작
     // 동일 보존(Map.get). 중복 templateId 도 Map 으로 안전.
     const _tplIds = [...new Set(templateSet.templates.map((r) => r.templateId))];
     const _tplList = _tplIds.length
@@ -198,7 +198,7 @@ export class EditorService {
 
     const saved = await this.editSessionRepository.save(session);
 
-    // BB-Phase 3 ─ 자동저장 시점 스냅샷 push (debounce 1분 + LRU trim)
+    // 자동저장 시점 스냅샷 push (debounce 1분 + LRU trim)
     if (dto.pages) {
       try {
         await this.maybePushVersion(saved.id, dto.pages, userId, dto.thumbnailUrl)
@@ -212,7 +212,7 @@ export class EditorService {
   }
 
   /**
-   * BB-Phase 3 ─ 자동저장 시점 스냅샷 push (debounce + LRU)
+   * 자동저장 시점 스냅샷 push (debounce + LRU)
    * - 같은 세션의 마지막 push 후 VERSION_DEBOUNCE_MS 미만이면 skip
    * - push 후 LRU 한도(VERSION_LRU_LIMIT) 초과 시 가장 오래된 것부터 삭제
    * - thumbnailUrl: editor가 캡처/업로드한 썸네일 URL (없으면 null)
@@ -241,7 +241,7 @@ export class EditorService {
 
   /**
    * LRU 한도 초과분을 가장 오래된 것부터 삭제.
-   * BB-Phase 3 follow-up: DB row 삭제와 함께 thumbnail 파일도 즉시 unlink (deletion-time cleanup).
+   * DB row 삭제와 함께 thumbnail 파일도 즉시 unlink (deletion-time cleanup).
    * 매일 02:30 KST의 cron(`ThumbnailCleanupService.runOrphanCleanup`)은 이를 보완하는 안전망.
    */
   private async trimVersions(sessionId: string): Promise<void> {
@@ -700,7 +700,7 @@ export class EditorService {
     }
 
     // 새 템플릿셋으로 페이지 재생성
-    // DB-002: 루프 내 findOne(N+1)을 In() 배치 1회로 치환(동작 동일 보존).
+    // 템플릿을 In() 배치 1회로 조회(N+1 방지).
     const _newTplIds = [...new Set(newTemplateSet.templates.map((r) => r.templateId))];
     const _newTplList = _newTplIds.length
       ? await this.templateRepository.findBy({ id: In(_newTplIds) })

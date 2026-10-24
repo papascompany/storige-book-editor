@@ -16,7 +16,7 @@ import { TemplatesModule } from '../templates/templates.module';
 // R-44(2026-07-21) — 표지 검증 잡 생성 시 서버 spine 재계산 주입(SpineService).
 import { ProductsModule } from '../products/products.module';
 import { EditSessionEntity } from '../edit-sessions/entities/edit-session.entity';
-// [Stage 3 W3, #4] 최종화 콜백 역참조(BookFinalizationsService) — 순환 모듈 forwardRef.
+// 최종화 콜백 역참조(BookFinalizationsService) — 순환 모듈 forwardRef.
 import { BooksModule } from '../books/books.module';
 // 컷아웃(배경제거) @Public 라우트의 테넌트 복원 — edit-sessions 게스트 라우트 선례.
 import { OptionalShopJwtGuard } from '../auth/guards/optional-shop-jwt.guard';
@@ -47,7 +47,7 @@ import { OptionalShopJwtGuard } from '../auth/guards/optional-shop-jwt.guard';
     TemplatesModule,
     // R-44 — SpineService(표지 잡 spine 서버 재계산). 순환 없음(products 는 독립 모듈).
     ProductsModule,
-    // [Stage 3 W3, #4] 최종화 콜백 역참조 — BookFinalizationsService 주입(순환 모듈 forwardRef).
+    // 최종화 콜백 역참조 — BookFinalizationsService 주입(순환 모듈 forwardRef).
     forwardRef(() => BooksModule),
     // 컷아웃 @Public 라우트의 siteId 스탬프 — OptionalShopJwtGuard 가 shop-session JWT
     // **서명을 검증**하는 데 사용. AuthModule 이 JwtModule 을 export 하지 않으므로 동일

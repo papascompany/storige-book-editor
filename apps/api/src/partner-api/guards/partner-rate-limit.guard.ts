@@ -14,7 +14,7 @@ import { PartnerRequest, resolvePartnerEnv } from '../http/request-context';
  * per-API-Key 레이트리밋 (설계서 §5.2) — ThrottlerGuard 커스텀.
  *
  * - 트래커 = `siteId:env:keyFingerprint`(키 원문 미사용 — SHA-256 앞 16자).
- *   env 는 인증 컨텍스트(Stage 2 — test/live 카운터 분리, sites 키는 live).
+ *   env 는 인증 컨텍스트(test/live 카운터 분리, sites 키는 live).
  * - 버킷: general 300/min · heavy(업로드/최종화) 100/min — env 로 조정
  *   (PARTNER_API_RATE_LIMIT_*_PER_MIN, partner-api.config.ts 중앙 파싱).
  * - 기존 전역 per-IP ThrottlerGuard(APP_GUARD)는 무수정 병존 — 이 가드는

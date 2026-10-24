@@ -25,7 +25,7 @@ export interface BookSpecSpineFormula {
 }
 
 /**
- * 판형 마스터 엔티티 (Partner API v1 Stage 1 — 2026-07-15)
+ * 판형 마스터 엔티티 (Partner API v1)
  *
  * 정본: docs/PARTNER_PLATFORM_API_V1_DESIGN_2026-07-07.md §2.3
  * 마이그레이션: apps/api/migrations/20260715_add_book_specs.sql

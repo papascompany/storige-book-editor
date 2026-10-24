@@ -78,7 +78,7 @@ function isDuplicateKeyError(err: unknown): boolean {
 }
 
 /**
- * Partner API v1 — Books 최종화 오케스트레이터 (Stage 3 W3).
+ * Partner API v1 — Books 최종화 오케스트레이터.
  *
  * 정본: docs/PARTNER_PLATFORM_API_V1_DESIGN_2026-07-07.md §6.3
  *
@@ -97,13 +97,12 @@ function isDuplicateKeyError(err: unknown): boolean {
  * BookSpecsService.assertPageRules(public 추출)·webhook v2 발신. 신규는
  * book_finalizations 상태머신 + 콜백 역참조(#4)뿐.
  *
- * creationType 지원 범위(본 배치):
+ * creationType 지원 범위:
  *  - PDF_UPLOAD: 표지/내지 PDF → synthesize. 완전 구현.
  *  - EDITOR_SESSION: 세션 병합본(승격 시 연결) → validate 후 passthrough. 완전 구현.
- *  - MIX_COVER_TEMPLATE / TEMPLATE: 표지 템플릿 렌더링(Stage 5 스키마 + 게스트 폴백
- *    함정 #6) 미도입 → 렌더된 표지 자산 미비로 422 ERR_ASSETS_INCOMPLETE
- *    (TEMPLATE_COVER_NOT_RENDERED). compose-mixed partnerEnv/test env 배선(#2)은
- *    worker-jobs 계층에서 선반영(장래 Stage 5 표지 렌더 연결 시 즉시 실현).
+ *  - MIX_COVER_TEMPLATE / TEMPLATE: 표지 템플릿 렌더링 미도입 → 렌더된 표지
+ *    자산 미비로 422 ERR_ASSETS_INCOMPLETE (TEMPLATE_COVER_NOT_RENDERED).
+ *    compose-mixed 잡의 partnerEnv/test env 배선은 worker-jobs 계층에 이미 있다.
  */
 @Injectable()
 export class BookFinalizationsService {
@@ -632,7 +631,7 @@ export class BookFinalizationsService {
 
   /**
    * creationType 별 자산 해석. 필수 자산 미비 = 422 ERR_ASSETS_INCOMPLETE.
-   * MIX_COVER_TEMPLATE/TEMPLATE 은 표지 템플릿 렌더(Stage 5) 미도입 → 렌더된 표지
+   * MIX_COVER_TEMPLATE/TEMPLATE 은 표지 템플릿 렌더 미도입 → 렌더된 표지
    * 자산 부재로 422(TEMPLATE_COVER_NOT_RENDERED).
    */
   private async resolvePlan(book: Book): Promise<FinalizationPlan> {
@@ -695,7 +694,7 @@ export class BookFinalizationsService {
       };
     }
 
-    // MIX_COVER_TEMPLATE / TEMPLATE — 표지 템플릿 렌더링 미도입(Stage 5 + 게스트 폴백 함정 #6).
+    // MIX_COVER_TEMPLATE / TEMPLATE — 표지 템플릿 렌더링 미도입.
     throw this.assetsIncomplete(
       '템플릿 기반 최종화는 아직 지원되지 않습니다(표지 렌더링 Stage 5)',
       [

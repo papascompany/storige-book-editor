@@ -19,7 +19,7 @@ import {
 } from './v2/webhook-v2.constants';
 
 /**
- * 웹훅 모듈 — 기존 v1 발신(WebhookService) + v2 opt-in(Stage 2 작업 5).
+ * 웹훅 모듈 — 기존 v1 발신(WebhookService) + v2 opt-in.
  *
  * v2 는 전용 Bull 큐(webhook-delivery)를 신설한다 — 기존 3큐
  * (pdf-validation/conversion/synthesis) 무접촉. 커스텀 backoff 전략으로

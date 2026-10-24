@@ -71,7 +71,7 @@ export class CreateSiteDto {
   @Max(3650)
   editRetentionDays?: number | null;
 
-  // ── Phase B 워커 옵션 default ───────────────────────────────
+  // ── 워커 옵션 default ───────────────────────────────
 
   @ApiPropertyOptional({ default: true, description: 'PDF 자동 변환(addPages/applyBleed) 사용' })
   @IsOptional()
@@ -103,7 +103,7 @@ export class CreateSiteDto {
   @IsBoolean()
   checkSafezone?: boolean;
 
-  // ── Phase 1-1 (2026-05-16) — 외부 도메인 보안 정책 ────────────
+  // ── 외부 도메인 보안 정책 ────────────
 
   @ApiPropertyOptional({
     type: [String],
@@ -130,7 +130,7 @@ export class CreateSiteDto {
   @ApiPropertyOptional({
     enum: ['inline'],
     default: 'inline',
-    description: '편집기 실행 모드 — Phase 0 결정: inline embed 단일',
+    description: '편집기 실행 모드 — inline embed 단일',
   })
   @IsOptional()
   @IsIn(['inline'])

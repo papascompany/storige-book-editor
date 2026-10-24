@@ -14,7 +14,7 @@ import {
 } from '../books.constants';
 
 /**
- * 도서 aggregate 엔티티 (Partner API v1 Stage 3).
+ * 도서 aggregate 엔티티 (Partner API v1).
  *
  * 정본: docs/PARTNER_PLATFORM_API_V1_DESIGN_2026-07-07.md §2.4
  * 마이그레이션: apps/api/migrations/20260716_add_books_core.sql
@@ -45,7 +45,7 @@ export class Book {
   @Column({ name: 'site_id', type: 'varchar', length: 36 })
   siteId: string;
 
-  /** 인증 컨텍스트 env — test|live (Stage 2 환경 모델). sites 키 인증은 항상 live. */
+  /** 인증 컨텍스트 env — test|live. sites 키 인증은 항상 live. */
   @Column({ type: 'enum', enum: ['test', 'live'], default: 'live' })
   env: 'test' | 'live';
 

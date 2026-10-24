@@ -12,9 +12,9 @@ import {
 import { PartnerEnv } from '../partner-api/partner-api.constants';
 
 /**
- * 파트너 포털 v0 DTO (S2-4 — D-7a 보수 스코프).
+ * 파트너 포털 v0 DTO.
  *
- * PATCH 셀프 설정은 로드맵 §6 Stage 2 작업 2의 3항목(allowedOrigins /
+ * PATCH 셀프 설정은 3항목(allowedOrigins /
  * uploadCallbackUrl / webhookUrl)만 허용한다. 현행 스키마에서 site 단일
  * webhookUrl == uploadCallbackUrl(webhook-config.entity 주석 참조 — v2 config 는
  * v1 Partner API 가 정본)이므로 필드는 2개다. 그 밖의 site 필드(키 재발급·

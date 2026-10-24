@@ -18,7 +18,7 @@ export type StorageBackend = 'local' | 's3';
  *
  * 설계 경계 (2026-06-13):
  *   - **앱-프록시 경로만** 사용: FilesService.uploadFile / getFileBuffer / hardDelete.
- *   - nginx 직접서빙 `/storage/*`(라이브러리/썸네일/워커 outputs)는 불변(Phase 2).
+ *   - nginx 직접서빙 `/storage/*`(라이브러리/썸네일/워커 outputs)는 불변.
  *   - 워커는 로컬 파일 필수(GS/pdf-lib) → 워커 산출물 경로 불변.
  *
  * 설정(드라이버 local|s3 + R2 키)은 **StorageConfigService 가 DB(admin) → env 순으로 제공**.

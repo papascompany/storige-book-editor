@@ -4,7 +4,7 @@ import { SitesService } from './sites.service';
 import { Public } from '../auth/decorators/public.decorator';
 
 /**
- * GET /api/frame-ancestors — 편집기 Edge Middleware 소비용 공개 조회 (P-Stage2-3).
+ * GET /api/frame-ancestors — 편집기 Edge Middleware 소비용 공개 조회.
  *
  * SitesService.getAllFrameAncestors() 의 재활성 소비자(기존 死코드).
  * 활성(active) 사이트들의 frame_ancestors origin 합집합을 반환하며,

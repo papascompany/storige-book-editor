@@ -240,7 +240,7 @@ export class BookSpecsService {
    * 구문 위반(비정수/0/음수/누락)은 DTO 검증 400 ERR_VALIDATION_FAILED,
    * 구문은 유효하나 판형 도메인 규칙(pageMin/Max/Increment) 위반은 422 로 분리.
    *
-   * [Stage 3 W3] public 추출 — books finalization 오케스트레이터가 book_spec
+   * public 메서드 — books finalization 오케스트레이터가 book_spec
    * 연결 시 사전 페이지 규칙 검증에 재사용(중복 구현 금지 — calculated-size 와 단일 출처).
    */
   assertPageRules(spec: BookSpec, pageCount: number): void {

@@ -14,7 +14,7 @@ import type { EditPage } from '@storige/types';
 import { EditSession } from './edit-session.entity';
 
 /**
- * 편집 세션의 자동저장 시점 스냅샷 (BB-Phase 3 백엔드 인프라).
+ * 편집 세션의 자동저장 시점 스냅샷.
  *
  * 사용 시나리오
  * - editor.service.autoSave가 debounce(1분) 윈도우마다 신규 version 1개 push

@@ -122,7 +122,7 @@ if (process.env.BOOKMOA_DB_PASSWORD) {
       }),
     }),
 
-    // Cron schedules (BB-Phase 3 follow-up: 시점 썸네일 orphan cleanup 등)
+    // Cron schedules (시점 썸네일 orphan cleanup 등)
     ScheduleModule.forRoot(),
 
     // SEC-4 글로벌 rate limiting (per-IP · per-endpoint, 60초 윈도우 300회).
@@ -165,10 +165,10 @@ if (process.env.BOOKMOA_DB_PASSWORD) {
     // Partner API v1 파사드 (/api/v1/* — AD-1: 기존 표면 무접촉)
     PartnerApiModule,
 
-    // Partner API v1 — BookSpecs 판형 마스터 (Stage 1-B, 읽기 전용)
+    // Partner API v1 — BookSpecs 판형 마스터 (읽기 전용)
     BookSpecsModule,
 
-    // Partner API v1 — Books 도서 aggregate (Stage 3 — /api/v1/books)
+    // Partner API v1 — Books 도서 aggregate (/api/v1/books)
     BooksModule,
 
     // Partner API v1 — 1-call 런처 (P2-b 2026-10-18 — /api/v1/sessions/*)

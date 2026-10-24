@@ -1,5 +1,5 @@
 /**
- * Partner API v1 전용 OpenAPI 스펙 export (Stage 1 작업 5).
+ * Partner API v1 전용 OpenAPI 스펙 export.
  *
  * 실행: pnpm --filter @storige/api openapi:partner  (ts-node, DB/외부 의존 0)
  * 산출: apps/api/openapi-partner.json (OPENAPI_PARTNER_OUT env 로 변경 가능)
@@ -17,7 +17,7 @@
  * ⚠️ 컨트롤러 목록·스텁 provider·REQUIRED_PATHS 는 partner-openapi-surface.ts 가 정본이다.
  *    **신규 v1 컨트롤러 추가 시 그 파일의 PARTNER_V1_EXPORT_CONTROLLERS 와 REQUIRED_PATHS 를
  *    함께 갱신하라** — 갱신 누락은 partner-openapi-surface.spec.ts 가 FS 전수 스캔 대조로
- *    red 처리한다(Stage 3 books 11라우트 침묵 증발 회귀의 재발 방지 게이트).
+ *    red 처리한다(컨트롤러가 스펙에서 조용히 빠지는 회귀를 막는 게이트).
  *
  * ⚠️ /api/docs 접근 정책(공개 서빙)은 이 스크립트와 무관하게 무변경 —
  *    변경은 설계서 §9-3 오너 결정 사안.

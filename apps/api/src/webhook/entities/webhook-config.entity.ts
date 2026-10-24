@@ -17,8 +17,8 @@ import { WebhookConfigStatus } from '../v2/webhook-v2.constants';
  * - secret_enc: HMAC 서명용 secret 의 **at-rest 암호화**(AES-256-GCM,
  *   키 = env WEBHOOK_CONFIG_ENC_KEY). 서명 계산에 원문이 필요해 해시 보관 불가.
  *   평문 컬럼 금지 원칙 — 응답 노출은 발급/회전 1회뿐(webhook-secret.crypto.ts).
- * - env: Stage 1 은 전 요청 'live' 고정(PARTNER_ENV_LIVE) — S2-1 env 모델 도입 시
- *   인증 컨텍스트의 env 로 대체(additive).
+ * - env: 인증 컨텍스트의 env(resolvePartnerEnv — partner_api_keys.env, sites 키는
+ *   'live')로 결정된다.
  * - prod 는 synchronize=false — migrations/20260715_d_add_webhook_v2_tables.sql 수동 실행.
  */
 @Entity('webhook_configs')

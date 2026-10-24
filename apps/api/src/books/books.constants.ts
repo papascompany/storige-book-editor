@@ -1,5 +1,5 @@
 /**
- * Partner API v1 — Books 도메인 상수/타입 (Stage 3).
+ * Partner API v1 — Books 도메인 상수/타입.
  *
  * 정본: docs/PARTNER_PLATFORM_API_V1_DESIGN_2026-07-07.md §2.4~2.6·§6.1
  */

@@ -6,7 +6,7 @@
  *   ② PARTNER_V1_EXPORT_PROVIDERS   — 생성자 의존 스텁 (누락 시 모듈 compile 실패)
  *   ③ REQUIRED_PATHS                — 신규 경로 등재
  * 갱신 누락은 scripts/partner-openapi-surface.spec.ts 가 FS 전수 스캔 대조로 red 처리한다
- * (Stage 3 에서 BooksController 11라우트가 ①·③ 누락으로 침묵 증발한 회귀의 재발 방지 게이트).
+ * (컨트롤러가 ①·③ 누락으로 스펙에서 조용히 빠지는 회귀를 막는 게이트).
  *
  * 정본: docs/PARTNER_PLATFORM_API_V1_DESIGN_2026-07-07.md
  */
@@ -37,7 +37,7 @@ export const PARTNER_V1_TAG = 'partner-v1';
 
 /**
  * 스펙에 실릴 v1 컨트롤러 — v1 표면 전량. FS 전수 스캔 집합과 정확히 일치해야 한다.
- * (Stage 1 ping·book-specs / Stage 2 webhooks / Stage 3 books / P2-b sessions 런처)
+ * (ping·book-specs / webhooks / books / sessions 런처)
  */
 export const PARTNER_V1_EXPORT_CONTROLLERS: Type<unknown>[] = [
   PartnerPingController,
@@ -63,18 +63,18 @@ export const PARTNER_V1_EXPORT_PROVIDERS: Provider[] = [
 
 /** v1 계약상 반드시 문서에 존재해야 하는 경로 (글로벌 prefix 'api' 포함) */
 export const REQUIRED_PATHS: string[] = [
-  // Stage 1 — ping·book-specs
+  // ping·book-specs
   '/api/v1/ping',
   '/api/v1/book-specs',
   '/api/v1/book-specs/{uid}',
   '/api/v1/book-specs/{uid}/calculated-size',
-  // Stage 2 작업 5 — Webhooks (설계서 §1.5 라우트 20~26)
+  // Webhooks
   '/api/v1/webhooks/config',
   '/api/v1/webhooks/test',
   '/api/v1/webhooks/deliveries',
   '/api/v1/webhooks/deliveries/{uid}',
   '/api/v1/webhooks/deliveries/{uid}/retry',
-  // Stage 3 — Books aggregate (W1 코어 / W2 자산 / W3 최종화·PDF)
+  // Books aggregate (코어 / 자산 / 최종화·PDF)
   '/api/v1/books',
   '/api/v1/books/{uid}',
   '/api/v1/books/{uid}/pdf-cover',
