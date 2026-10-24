@@ -1,9 +1,9 @@
 // @vitest-environment happy-dom
 //
 // AppTemplateSwap — 페이지 템플릿 교체 시 TemplatePlugin.replaceTemplate 에 넘기는 인자.
-//  (1) 현재 페이지 템플릿(연결 템플릿 목록)의 top-level id 를 currentTemplateIds 로 넘긴다(workspace 제외)
+//  (1) 연결 템플릿 전체 ∪ 현재 페이지 템플릿의 top-level id 를 currentTemplateIds 로 넘긴다(workspace 제외)
 //  (2) refitFill 은 틀 채우기 경로(useImageStore.fillImageIntoFrame)로 옮긴 채움 사진을 새 틀에 맞춘다
-//  (3) 현재 템플릿이 목록에 없으면 상세를 조회하고, 조회 실패면 currentTemplateIds 없이(종전 판정) 교체한다
+//  (3) canvasData 없는 연결 템플릿·목록 밖 현재 템플릿은 상세를 조회하고, 일부 실패면 얻은 것만으로 합집합
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, fireEvent, act, cleanup } from '@testing-library/react'
 
@@ -104,14 +104,14 @@ afterEach(() => {
 })
 
 describe('AppTemplateSwap — replaceTemplate 인자(현재 템플릿 id 목록·채움 사진 맞춤)', () => {
-  it('현재 페이지 템플릿의 top-level id(workspace 제외)를 넘기고, refitFill 은 fillImageIntoFrame 으로 위임한다', async () => {
+  it('연결 템플릿 전체 ∪ 현재 템플릿의 top-level id(workspace 제외)를 넘기고, refitFill 은 fillImageIntoFrame 으로 위임한다', async () => {
     wire('tpl-a', [TPL_A, TPL_B])
     await swapTo('템플릿 B')
 
     expect(spies.replaceTemplate).toHaveBeenCalledTimes(1)
     const [objects, options] = spies.replaceTemplate.mock.calls[0] as [Array<{ id: string }>, { currentTemplateIds?: string[]; refitFill?: (f: unknown, fr: unknown) => unknown }]
     expect(objects.map((o) => o.id)).toEqual(['b-bg'])
-    expect(options.currentTemplateIds).toEqual(['a-bg', 'a-frame'])
+    expect(options.currentTemplateIds).toEqual(['a-bg', 'a-frame', 'b-bg'])
     expect(spies.getTemplate).not.toHaveBeenCalled()
 
     const fill = { id: 'photo' }
@@ -122,25 +122,32 @@ describe('AppTemplateSwap — replaceTemplate 인자(현재 템플릿 id 목록�
     expect(useEditorStore.getState().pages[0].templateId).toBe('tpl-b')
   })
 
-  it('현재 템플릿이 연결 목록에 없으면 상세를 조회해 id 목록을 만든다', async () => {
+  it('현재 템플릿이 연결 목록에 없으면 상세를 조회해 합집합에 넣는다', async () => {
     spies.getTemplate.mockResolvedValue({ id: 'tpl-x', canvasData: { objects: [{ id: 'workspace' }, { id: 'x-frame' }] } })
     wire('tpl-x', [TPL_B])
     await swapTo('템플릿 B')
 
     expect(spies.getTemplate).toHaveBeenCalledWith('tpl-x')
     const options = spies.replaceTemplate.mock.calls[0][1] as { currentTemplateIds?: string[] }
-    expect(options.currentTemplateIds).toEqual(['x-frame'])
+    expect(options.currentTemplateIds).toEqual(['b-bg', 'x-frame'])
   })
 
-  it('상세 조회가 실패하면 currentTemplateIds 없이(종전 판정) 교체한다', async () => {
-    spies.getTemplate.mockRejectedValue(new Error('network'))
+  it('일부 조회가 실패하면 얻은 템플릿 id 만으로 합집합을 만든다', async () => {
+    spies.getTemplate.mockImplementation(async (id: string) => {
+      if (id === 'tpl-c') return { id, canvasData: { objects: [{ id: 'workspace' }, { id: 'c-frame' }] } }
+      throw new Error('network')
+    })
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
-    wire('tpl-x', [TPL_B])
+    const TPL_C_NO_DATA: LinkedPrintTemplate = { id: 'tpl-c', name: '템플릿 C', type: 'page', width: 100, height: 100, canvasData: null }
+    wire('tpl-x', [TPL_B, TPL_C_NO_DATA])
     await swapTo('템플릿 B')
 
+    expect(spies.getTemplate).toHaveBeenCalledWith('tpl-c')
+    expect(spies.getTemplate).toHaveBeenCalledWith('tpl-x')
     expect(spies.replaceTemplate).toHaveBeenCalledTimes(1)
     const options = spies.replaceTemplate.mock.calls[0][1] as { currentTemplateIds?: string[] }
-    expect(options.currentTemplateIds).toBeUndefined()
+    expect(options.currentTemplateIds).toEqual(['b-bg', 'c-frame'])
+    expect(warn).toHaveBeenCalled()
     warn.mockRestore()
   })
 })

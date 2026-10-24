@@ -57,7 +57,7 @@ export const TemplateReplaceModal = memo(function TemplateReplaceModal({
             <div className="text-sm text-yellow-800">
               <p className="font-medium">사용자 요소는 보존됩니다</p>
               <p className="mt-1 text-yellow-700">
-                직접 추가한 텍스트, 이미지, 도형 등은 새 {itemType}으로 옮겨집니다.
+                직접 추가한 텍스트·사진은 옮겨지고, 템플릿 문구 칸에 쓴 글은 새 {itemType} 값으로 바뀝니다.
               </p>
             </div>
           </div>

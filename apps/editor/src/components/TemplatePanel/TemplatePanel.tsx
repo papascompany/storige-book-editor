@@ -16,24 +16,36 @@ import type { TemplateType, TemplateSetType, SpreadSpec } from '@storige/types'
 type TabType = 'templateSet' | 'template'
 
 /**
- * 현재 페이지에 적용된 템플릿의 top-level 객체 id — replaceTemplate 가 저장본(isUserAdded 미보존)에서도
- * 옛 템플릿 요소를 가려내는 근거. 불러온 목록에 없으면 상세를 조회하고, 못 구하면 undefined(종전 판정).
+ * 교체 때 템플릿 유래로 볼 top-level 객체 id — 불러온 후보 템플릿 전체 ∪ 현재 페이지 템플릿.
+ * 저장본은 isUserAdded 를 남기지 않고, 다시 열면 pages[].templateId 가 세트 원본으로 돌아올 수 있어
+ * 현재 템플릿 하나만으로는 옛 요소를 가려낼 수 없다. 목록 밖 현재 템플릿은 상세를 조회하고,
+ * 하나도 못 구하면 undefined(종전 판정).
  */
-async function currentTemplateObjectIds(
+async function swapTemplateObjectIds(
   templateId: string | undefined,
   loaded: Template[],
 ): Promise<string[] | undefined> {
-  if (!templateId) return undefined
-  const known = loaded.find((t) => t.id === templateId)?.canvasData?.objects
-  if (Array.isArray(known)) return TemplatePlugin.templateObjectIds(known)
-  try {
-    const detail = await templatesApi.getTemplate(templateId)
-    const objects = detail?.canvasData?.objects
-    return Array.isArray(objects) ? TemplatePlugin.templateObjectIds(objects) : undefined
-  } catch (e) {
-    console.warn('[TemplatePanel] 현재 템플릿 조회 실패 — 종전 판정으로 교체:', e)
-    return undefined
+  const ids = new Set<string>()
+  let resolved = 0
+  for (const t of loaded) {
+    const objects = t.canvasData?.objects
+    if (Array.isArray(objects)) {
+      TemplatePlugin.templateObjectIds(objects).forEach((id) => ids.add(id))
+      resolved += 1
+    }
   }
+  if (templateId && !loaded.some((t) => t.id === templateId && Array.isArray(t.canvasData?.objects))) {
+    try {
+      const objects = (await templatesApi.getTemplate(templateId))?.canvasData?.objects
+      if (Array.isArray(objects)) {
+        TemplatePlugin.templateObjectIds(objects).forEach((id) => ids.add(id))
+        resolved += 1
+      }
+    } catch (e) {
+      console.warn('[TemplatePanel] 현재 템플릿 조회 실패 — 이 템플릿 id 없이 교체:', e)
+    }
+  }
+  return resolved > 0 ? Array.from(ids) : undefined
 }
 
 interface TemplatePanelProps {
@@ -168,10 +180,10 @@ export const TemplatePanel = memo(function TemplatePanel({
 
     setIsReplacing(true)
     try {
-      // 교체 전(세션 갱신 전) 현재 페이지 템플릿 기준으로 옛 템플릿 요소 id 를 구한다
+      // 교체 전(세션 갱신 전) 후보 템플릿 전체 ∪ 현재 페이지 템플릿 기준으로 옛 템플릿 요소 id 를 구한다
       const currentTemplateIds =
         replaceModal.mode === 'template'
-          ? await currentTemplateObjectIds(currentPage?.templateId, templates)
+          ? await swapTemplateObjectIds(currentPage?.templateId, templates)
           : undefined
       let updatedSession
       if (replaceModal.mode === 'template') {

@@ -1,9 +1,9 @@
 // @vitest-environment happy-dom
 //
 // TemplatePanel — 낱장 템플릿 교체 시 TemplatePlugin.replaceTemplate 에 넘기는 인자.
-//  (1) 서버 교체·세션 갱신 전의 현재 페이지 템플릿(불러온 목록)에서 top-level id(workspace 제외)를 currentTemplateIds 로 넘긴다
+//  (1) 서버 교체·세션 갱신 전, 불러온 후보 템플릿 전체 ∪ 현재 페이지 템플릿의 top-level id(workspace 제외)를 currentTemplateIds 로 넘긴다
 //  (2) refitFill 은 틀 채우기 경로(useImageStore.fillImageIntoFrame)로 위임한다
-//  (3) 현재 템플릿이 목록에 없고 상세 조회도 실패하면 currentTemplateIds 없이(종전 판정) 교체한다
+//  (3) 현재 템플릿이 목록에 없고 상세 조회가 실패하면 목록에서 얻은 id 만으로 교체한다
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, fireEvent, act, cleanup } from '@testing-library/react'
 
@@ -102,7 +102,7 @@ afterEach(() => {
 })
 
 describe('TemplatePanel — replaceTemplate 인자(현재 템플릿 id 목록·채움 사진 맞춤)', () => {
-  it('교체 전 현재 템플릿의 top-level id(workspace 제외)를 넘기고, refitFill 은 fillImageIntoFrame 으로 위임한다', async () => {
+  it('교체 전 후보 템플릿 전체 ∪ 현재 템플릿의 top-level id(workspace 제외)를 넘기고, refitFill 은 fillImageIntoFrame 으로 위임한다', async () => {
     spies.getTemplates.mockResolvedValue([TPL_A, TPL_B])
     wire('tpl-a')
     await swapTo('템플릿 B')
@@ -110,7 +110,7 @@ describe('TemplatePanel — replaceTemplate 인자(현재 템플릿 id 목록·�
     expect(spies.sessionReplace).toHaveBeenCalledTimes(1)
     expect(spies.replaceTemplate).toHaveBeenCalledTimes(1)
     const options = spies.replaceTemplate.mock.calls[0][1] as { currentTemplateIds?: string[]; refitFill?: (f: unknown, fr: unknown) => unknown }
-    expect(options.currentTemplateIds).toEqual(['a-bg', 'a-frame', 'a-title'])
+    expect(options.currentTemplateIds).toEqual(['a-bg', 'a-frame', 'a-title', 'b-bg'])
     expect(spies.getTemplate).not.toHaveBeenCalled()
 
     const fill = { id: 'photo' }
@@ -119,7 +119,7 @@ describe('TemplatePanel — replaceTemplate 인자(현재 템플릿 id 목록·�
     expect(spies.fillImageIntoFrame).toHaveBeenCalledWith(canvas, fill, frame, imagePlugin)
   })
 
-  it('현재 템플릿이 목록에 없고 상세 조회도 실패하면 currentTemplateIds 없이 교체한다', async () => {
+  it('현재 템플릿이 목록에 없고 상세 조회가 실패하면 목록에서 얻은 id 만으로 교체한다', async () => {
     spies.getTemplates.mockResolvedValue([TPL_B])
     spies.getTemplate.mockRejectedValue(new Error('network'))
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
@@ -129,7 +129,7 @@ describe('TemplatePanel — replaceTemplate 인자(현재 템플릿 id 목록·�
     expect(spies.getTemplate).toHaveBeenCalledWith('tpl-x')
     expect(spies.replaceTemplate).toHaveBeenCalledTimes(1)
     const options = spies.replaceTemplate.mock.calls[0][1] as { currentTemplateIds?: string[] }
-    expect(options.currentTemplateIds).toBeUndefined()
+    expect(options.currentTemplateIds).toEqual(['b-bg'])
     warn.mockRestore()
   })
 })
