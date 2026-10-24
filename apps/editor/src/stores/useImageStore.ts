@@ -70,6 +70,14 @@ function isPhotoPrintSession(): boolean {
   return isPhotoPrintProfile(useSettingsStore.getState().productProfile)
 }
 
+/**
+ * B11 (2026-10-25): 상품 프로파일이 있는 세트인지(캘린더·사진인화 등 — `resolveProductProfile` 판정 결과가 non-null).
+ * 틀 클릭 채움을 storage 업로드 URL 로 넣는 게이트 — 세트 종류가 아니라 프로파일 존재(데이터 속성)로만 판정한다.
+ */
+function hasProductProfileSession(): boolean {
+  return !!useSettingsStore.getState().productProfile
+}
+
 /** 업로드 한도 판정용 현재 사진 수 — 내 업로드(객체·메타 중 큰 값) + 외부 주입 사진 */
 function currentPhotoCountForLimit(uploaded: unknown[], uploadedPhotoMeta: UploadedPhotoMeta[]): number {
   return Math.max(uploaded.length, uploadedPhotoMeta.length) + useExternalPhotosStore.getState().photos.length
@@ -341,7 +349,8 @@ interface ImageActions {
     imagePlugin: ImageProcessingPlugin
   ) => Promise<FabricObject>
 
-  // P2-d D12 (2026-10-21): 틀 채움 원본 이미지 — 사진인화 세트는 storage 업로드(URL src), 프로파일 NULL 세트는 종전 core.fileToImage(data URL)
+  // P2-d D12 (2026-10-21)·B11 (2026-10-25): 틀 채움 원본 이미지 — 프로파일 세트(캘린더·사진인화 등)는 storage 업로드(URL src),
+  // 프로파일 NULL 세트는 종전 core.fileToImage(data URL)
   resolveFrameFillImage: (
     canvas: FabricCanvas,
     file: File,
@@ -860,7 +869,7 @@ export const useImageStore = create<ImageState & ImageActions>()((set, get) => (
             const selectedFile = selectedFiles[0]
             // P2-d 사진인화: 프로파일 업로드 한도(maxPhotos/maxMb) — 프로파일 NULL 세트는 no-op
             if (!checkPhotoPrintUploadLimit(selectedFiles, currentPhotoCountForLimit(get().uploaded, get().uploadedPhotoMeta))) return
-            // D12: 사진인화 세트는 storage 업로드 URL, NULL 세트는 종전 data URL
+            // D12·B11: 프로파일 세트(캘린더·사진인화 등)는 storage 업로드 URL, NULL 세트는 종전 data URL
             const fabricImage = (await get().resolveFrameFillImage(canvas, selectedFile, imagePlugin))?.image
             if (!fabricImage) {
               console.log('no image selected')
@@ -951,13 +960,15 @@ export const useImageStore = create<ImageState & ImageActions>()((set, get) => (
   // max_allowed_packet(기본 16MB)에 걸려 500 이 났다(2026-10-20 2차 e2e). '내 업로드'·자동편집과 같은 통로
   // (registerUploadedPhoto → storage 업로드 URL, EXIF 는 원본 File 에서)로 올리고 URL 로 로드한다(crossOrigin anonymous —
   // PDF 생성 toDataURL taint 방지, AppImage 자동편집과 동일). 업로드·URL 로드 실패는 종전 data URL 경로로 폴백해 편집을 막지 않는다.
+  // B11 (2026-10-25): 게이트를 사진인화 전용에서 상품 프로파일이 있는 세트 전체로 넓혔다(캘린더 세트도 사진 9장 이상이면
+  // 같은 패킷 한도 위험). 촬영일 기록·옵션 재적용은 호출부에서 계속 사진인화 세트만.
   // 프로파일 NULL 세트는 종전 core.fileToImage 그대로(바이트 동일).
   resolveFrameFillImage: async (
     canvas: FabricCanvas,
     file: File,
     imagePlugin: ImageProcessingPlugin
   ): Promise<FrameFillSource | undefined> => {
-    if (!isPhotoPrintSession()) {
+    if (!hasProductProfileSession()) {
       const image = await core.fileToImage(canvas, file, imagePlugin)
       return image ? { image: image as unknown as FabricObject, uploaded: false } : undefined
     }
@@ -1211,7 +1222,7 @@ export const useImageStore = create<ImageState & ImageActions>()((set, get) => (
       }
       if (!checkMobileFileSize(selectedFile)) return
 
-      // D12: 사진인화 세트는 storage 업로드 URL 로 로드(canvasData 에 base64 미포함), NULL 세트는 종전 data URL
+      // D12·B11: 프로파일 세트(캘린더·사진인화 등)는 storage 업로드 URL 로 로드(canvasData 에 base64 미포함), NULL 세트는 종전 data URL
       const source = await get().resolveFrameFillImage(canvas, selectedFile, imagePlugin)
       const fabricImage = source?.image
       if (!fabricImage) {

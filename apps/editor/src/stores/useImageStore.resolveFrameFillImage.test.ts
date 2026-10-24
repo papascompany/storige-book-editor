@@ -7,6 +7,7 @@ import type { ProductProfile } from '@storige/types'
  *    takenAt 은 등록 메타에서, uploadedPhotoIdByUrl 에 파일 id(sourcePhotoId 원천) 기록.
  *  - 업로드 실패·URL 로드 실패: 종전 core.fileToImage(data URL) 폴백 + EXIF 는 원본 File 에서 — 편집을 막지 않는다.
  *  - 프로파일 NULL 세트: core.fileToImage 만(업로드·EXIF 호출 없음, 바이트 동일).
+ * B11 (2026-10-25): 게이트는 사진인화 전용이 아니라 상품 프로파일이 있는 세트 전체 — 캘린더 세트도 업로드 URL 경로.
  */
 const uploadFilePublic = vi.fn()
 const uploadFile = vi.fn()
@@ -49,6 +50,26 @@ const photoProfile: ProductProfile = {
     upload: { maxPhotos: 10, maxMb: 25 },
   },
   output: { mode: 'sheet-map', sheetFiles: 'per-sheet' },
+}
+
+const calendarProfile: ProductProfile = {
+  version: 1,
+  kind: 'calendar',
+  editorType: 'calendar_desk_large',
+  pages: { kind: 'fixed', count: 26, labelRule: 'month' },
+  sheet: { faces: 2, canvasLayout: 'canvas-pair', binding: 'top-ring', pairing: 'same-sheet', backRotation: 0, duplexFlip: 'short-edge' },
+  calendar: {
+    layout: 'desk',
+    monthCount: 12,
+    coverCanvases: 1,
+    canvasesPerMonth: 2,
+    epilogueCanvases: 1,
+    allowedRange: { from: '2027-01', to: '2027-12' },
+    weekStart: 0,
+    show: { holidays: true, lunar: false, solarTerms: false },
+    dataVersion: 'kr-2025-2035-v1',
+  },
+  output: { mode: 'single-pdf' },
 }
 
 const canvas = {} as never
@@ -121,6 +142,37 @@ describe('resolveFrameFillImage (D12)', () => {
     warn.mockRestore()
     expect(r).toMatchObject({ image: img, uploaded: false })
     expect(fileToImage).toHaveBeenCalledTimes(1)
+  })
+
+  it('B11 캘린더 프로파일 세트: storage 업로드 → 절대 URL 로 imageFromURL(crossOrigin anonymous), fileToImage 미호출', async () => {
+    useSettingsStore.getState().setProductProfile(calendarProfile)
+    uploadFilePublic.mockResolvedValue({ success: true, url: '/storage/uploads/c01.jpg', id: 'file-c1' })
+    const img = { id: 'cal-from-url' }
+    imageFromURL.mockResolvedValue(img)
+
+    const r = await useImageStore.getState().resolveFrameFillImage(canvas, file, plugin)
+    expect(r).toEqual({ image: img, takenAt: '2026-04-02T05:01:00.000Z', uploaded: true })
+    expect(uploadFilePublic).toHaveBeenCalledWith(file)
+    expect(fileToImage).not.toHaveBeenCalled()
+    expect(imageFromURL).toHaveBeenCalledTimes(1)
+    const [url, opts] = imageFromURL.mock.calls[0] as [string, { crossOrigin?: string }]
+    expect(url).toMatch(/^https?:\/\/.+\/storage\/uploads\/c01\.jpg$/)
+    expect(opts).toEqual({ crossOrigin: 'anonymous' })
+    expect(useImageStore.getState().uploadedPhotoIdByUrl).toEqual({ [url]: 'file-c1' })
+  })
+
+  it('B11 캘린더 프로파일 세트 업로드 실패: data URL 폴백 — 편집을 막지 않는다', async () => {
+    useSettingsStore.getState().setProductProfile(calendarProfile)
+    uploadFilePublic.mockResolvedValue({ success: false })
+    const img = { id: 'cal-fallback' }
+    fileToImage.mockResolvedValue(img)
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const r = await useImageStore.getState().resolveFrameFillImage(canvas, file, plugin)
+    warn.mockRestore()
+    expect(r).toMatchObject({ image: img, uploaded: false })
+    expect(uploadFilePublic).toHaveBeenCalledWith(file)
+    expect(imageFromURL).not.toHaveBeenCalled()
+    expect(fileToImage).toHaveBeenCalledWith(canvas, file, plugin)
   })
 
   it('fileToImage 가 undefined 면 undefined(기존 "no image selected" 분기)', async () => {
