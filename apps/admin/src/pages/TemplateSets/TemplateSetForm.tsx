@@ -1144,7 +1144,7 @@ export const TemplateSetForm = () => {
                       {specPreview ? (
                         <div style={{ display: 'flex', gap: 24, flexWrap: 'wrap', alignItems: 'flex-start' }}>
                           <PrintGeometrySvg preview={specPreview} />
-                          <div data-testid="spec-preview-values" style={{ minWidth: 260 }}>
+                          <div data-testid="spec-preview-values" style={{ flex: '1 1 220px', minWidth: 0, overflowWrap: 'anywhere' }}>
                             <div>
                               <Text type="secondary">재단 </Text>
                               <Text data-testid="spec-trim">{formatMmSize(specPreview.geometry.trimMm)}</Text>
