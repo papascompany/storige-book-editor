@@ -250,6 +250,8 @@ export function isEditorSheetValidationRulesOnRaw(raw: unknown): boolean {
 /**
  * 편집 완료 낱장(single 세트, spine/wing/spread 없음) 세션의 검증 잡에 productKind='sheet'(+pageStep)을
  * 싣는가(2026-10-17(낱장 분류 검증)). 기본 true. 호출 시점마다 env 를 읽는다.
+ * 2026-10-24 T3c(C1): off 는 상품 프로파일 NULL 세트에만 적용된다 — 프로파일 세트(캘린더·사진인화)는 off 여도
+ * 규칙을 유지한다(edit-sessions.service createValidationJobs 의 profileRulesOn 게이트).
  * 롤백 = .env 에 EDITOR_SHEET_VALIDATION_RULES=off → api 재생성 → nginx 재시작. [FLAGS] api 줄 끝 키로 확인한다
  * (API_FEATURE_FLAG_KEYS 등록 + docker-compose api environment 매핑, 2026-10-17).
  */

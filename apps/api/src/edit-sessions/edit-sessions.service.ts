@@ -2328,9 +2328,20 @@ export class EditSessionsService {
 
       // 2026-10-17(낱장 분류 검증): 낱장 판정(spine/wing/spread 템플릿 유무)용 템플릿 타입 1회 조회.
       // 킬스위치 off·템플릿셋 미연결·조회 실패는 null → 레거시(sheet 키 미주입). 완료는 계속.
+      // 2026-10-24 T3c(C1): 킬스위치는 프로파일 NULL 세트의 낱장 규칙만 끈다. 상품 프로파일 세트(templateSet.productProfile,
+      // 없으면 세션 스냅샷 — deriveSheetValidationRules 와 같은 resolveSessionProductProfile 판정)는
+      // off 여도 규칙을 유지한다 — 끄면 캘린더 26 이 종전 cover 1·2·4 규칙으로 PAGE_COUNT_INVALID.
+      // 판정 경고는 deriveSheetValidationRules 가 내므로 여기서는 warn 을 넘기지 않는다(중복 방지).
       const sheetRulesOn = isEditorSheetValidationRulesOn();
+      const hasProductProfile = resolveSessionProductProfile({ session, templateSet }) !== null;
+      const profileRulesOn = sheetRulesOn || hasProductProfile;
+      if (!sheetRulesOn && hasProductProfile) {
+        this.logger.log(
+          `[validation-jobs] session ${session.id} 낱장 킬스위치 off 이지만 상품 프로파일 세트라 규칙 유지`,
+        );
+      }
       let templateTypes: string[] | null = null;
-      if (sheetRulesOn && session.templateSetId) {
+      if (profileRulesOn && session.templateSetId) {
         try {
           const { templateDetails } = await this.templateSetsService.findOneWithTemplates(
             session.templateSetId,
@@ -2537,10 +2548,11 @@ export class EditSessionsService {
       // 판정 근거는 sheet-validation-rules.ts 머리말. 워커는 sheet 분기에서 actualPages === pages 정확 비교
       // 뒤 바로 return 하므로, 위 N-API-3b 가 content 잡에 pageMultiple 을 실어도 공존해 무해하다(무접촉).
       // null = 레거시(키 미주입 = 현행 byte-identical). 비상 차단: EDITOR_SHEET_VALIDATION_RULES=off.
-      // 2026-10-17 P1-e: 상품 프로파일(세션 스냅샷 > templateSet.productProfile)이 고정 캔버스 수를 주면
+      // 2026-10-17 P1-e: 상품 프로파일(templateSet.productProfile > 세션 스냅샷)이 고정 캔버스 수를 주면
       // 두 잡의 `pages` 를 그 값으로 바꾼다(캘린더 26). expectedPages 는 orderOptions 키로 보내지 않는다.
       // 프로파일 세트는 coverSpine='none' 도 함께 실린다(sheetOptions 스프레드) — 워커 cover 슬롯 spine 게이트 우회.
-      if (sheetRulesOn) {
+      // 2026-10-24 T3c(C1): 게이트 = 플래그 on 또는 상품 프로파일 세트(위 profileRulesOn).
+      if (profileRulesOn) {
         const sheetRules = deriveSheetValidationRules({
           session,
           templateSet,

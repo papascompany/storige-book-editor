@@ -446,7 +446,7 @@ GHOSTSCRIPT_PATH=/usr/bin/gs
 | `SPREAD_SNAPSHOT_HARD_FAIL` | api·worker | `${SPREAD_SNAPSHOT_HARD_FAIL:-false}` | 정확히 `true`(대소문자 구분)일 때만 HARD, 그 밖의 값은 SOFT(경고만). HARD 이면 api 는 스냅샷 누락·불일치 시 편집 완료를 거부하고, worker 는 compose-mixed 표지 크기 불일치 시 합성 잡을 `FAILED` 로 끝낸다 |
 | `EDITOR_SPREAD_VALIDATION_MAPPING` | api | `${EDITOR_SPREAD_VALIDATION_MAPPING:-on}` | 정확히 `off`(대소문자 구분, 앞뒤 공백 없음)일 때만 해제(검증 잡은 주문 옵션 `orderOptions` 만 사용). 코드는 `off` 가 아닌 값을 모두 연결로 본다 — `on` 은 읽기 쉽게 하려는 표기다 |
 | `EDITOR_CONTENT_PAGE_RULES` | api | `${EDITOR_CONTENT_PAGE_RULES:-on}` | 앞뒤 공백·대소문자를 무시하고 `off` 일 때만 해제(편집 완료 내지 검증 잡에 편집기 쪽 단위 `pageMultiple`·중철 쪽수 상한을 싣지 않고 주문 옵션의 종전 쪽수 규칙으로 검증). 그 밖의 값·미설정은 싣는다. 매핑은 2026-10-08 부터(아래 「`EDITOR_CONTENT_PAGE_RULES` 비상 차단」) |
-| `EDITOR_SHEET_VALIDATION_RULES` | api | `${EDITOR_SHEET_VALIDATION_RULES:-on}` | 앞뒤 공백·대소문자를 무시하고 `off` 일 때만 해제. 편집 완료 낱장 세트(single, spine/wing/spread 템플릿 없음) 검증 잡에 `productKind='sheet'`(+`pageStep`)을 싣지 않아 종전 cover 1·2·4 쪽수 규칙으로 되돌린다. 매핑은 2026-10-17 부터. `[FLAGS] api` 줄 끝 키로 확인한다(운영 `FLAGS_EXPECTED_API` 프로필에 `EDITOR_SHEET_VALIDATION_RULES=true` 를 더해야 `(unlisted)` 불일치가 남지 않는다) |
+| `EDITOR_SHEET_VALIDATION_RULES` | api | `${EDITOR_SHEET_VALIDATION_RULES:-on}` | 앞뒤 공백·대소문자를 무시하고 `off` 일 때만 해제. 편집 완료 낱장 세트(single, spine/wing/spread 템플릿 없음) 검증 잡에 `productKind='sheet'`(+`pageStep`)을 싣지 않아 종전 cover 1·2·4 쪽수 규칙으로 되돌린다. T3c(2026-10-24, 적용 시점 = api 배포) 이후 상품 프로파일 세트(캘린더·사진인화)는 off 여도 규칙을 유지한다(off 는 프로파일 NULL 세트에만 적용). 매핑은 2026-10-17 부터. `[FLAGS] api` 줄 끝 키로 확인한다(운영 `FLAGS_EXPECTED_API` 프로필에 `EDITOR_SHEET_VALIDATION_RULES=true` 를 더해야 `(unlisted)` 불일치가 남지 않는다) |
 
 - 확인 위치: `FILE_ORPHAN_ENABLED`·`FILE_ORPHAN_DRY_RUN`·`FILE_RETENTION_ENABLED`·`FILE_RETENTION_DRY_RUN`·`THUMBNAIL_CLEANUP_DRY_RUN`·`SPREAD_SNAPSHOT_HARD_FAIL`·`EDITOR_CONTENT_PAGE_RULES`·`EDITOR_SPREAD_VALIDATION_MAPPING` 은 `[FLAGS]` 줄(위 「배포 후 점검」)로 확인한다. `[FLAGS]` 줄은 해석이 끝난 유효값(`true`/`false`)이라 `EDITOR_SPREAD_VALIDATION_MAPPING` 은 연결이면 `true`, 해제(`off`)면 `false` 로 나온다. 유예·건수·영구 삭제 시간은 `[FLAGS]` 줄에 없으므로 `docker exec storige-api printenv <키>` 로 확인한다.
 - 유예·건수·영구 삭제 시간 4개는 값이 허용 범위 밖이면 기본값이나 경계값으로 바꿔 쓰고, api 기동 로그에 `[env]` warn 을 남긴다(키·허용 범위·적용값만). `FILE_RETENTION_BATCH` 는 보존정책과 고아 정리가 각각 읽으므로 2줄이 남는다. 평소에는 `docker logs storige-api 2>&1 | grep "\[env\]"` 결과가 없어야 한다.
@@ -1506,7 +1506,7 @@ docker logs storige-api 2>&1 | grep "낱장 분류 규칙"
 **롤백**
 
 1. 규칙만 끄기: `.env` 에 `EDITOR_SHEET_VALIDATION_RULES=off` → `docker compose up -d api` → `docker compose restart nginx`(`FLAGS_EXPECTED_API` 토큰도 `false` 로 맞추면 `[FLAGS-CHECK]` ok 유지).
-   > ⚠ **2026-10-22 로컬 리허설(캘린더 계획 §8.1 C1)**: 이 플래그를 끄면 **프로파일 세트(캘린더·사진인화)의 완료 검증도 깨진다** — 검증 잡 orderOptions 에 `productKind`/`pageStep`/`coverSpine` 이 실리지 않아 워커가 cover 규칙으로 26쪽 캘린더 PDF 를 `PAGE_COUNT_INVALID`(+`SPINE_PARAMS_UNRESOLVED`) 로 실패시킨다. 운영에 프로파일 세트가 등록된 뒤에는 낱장 세트 문제라도 이 항목 대신 2(코드 롤백)를 쓰고, 캘린더·사진인화 문제의 롤백 수단으로는 절대 쓰지 않는다(P1·P2-d 절의 수단 사용). 코드 분리 여부는 오너 결정 D10.
+   > ⚠ **2026-10-22 로컬 리허설(캘린더 계획 §8.1 C1) → T3c 로 분리(오너 결정 D10, 2026-10-24 승인·T3c)**: T3c 이후 이 플래그의 off 는 **프로파일 NULL 낱장 세트에만** 적용되고 프로파일 세트(캘린더·사진인화)에는 영향이 없다 — 프로파일 세트 검증 잡은 off 여도 `productKind`/`pageStep`/`coverSpine`/`pages`(고정 캔버스 수)를 그대로 받고 api 로그에 `낱장 킬스위치 off 이지만 상품 프로파일 세트라 규칙 유지` 1줄이 남는다. 적용 시점 = api 배포(T3c 미배포). **T3c 배포 전 운영 이미지에서는 여전히** off 가 프로파일 세트의 완료 검증을 깨뜨린다 — orderOptions 에 위 키가 실리지 않아 워커가 cover 규칙으로 26쪽 캘린더 PDF 를 `PAGE_COUNT_INVALID`(+`SPINE_PARAMS_UNRESOLVED`) 로 실패시킨다. 그 이미지에서는 운영에 프로파일 세트가 등록된 뒤 낱장 세트 문제라도 이 항목 대신 2(코드 롤백)를 쓰고, 캘린더·사진인화 문제의 롤백 수단으로는 절대 쓰지 않는다(P1·P2-d 절의 수단 사용).
 2. 코드까지: `docker tag storige-api:rollback-pre-sheet-20261017 storige-api:latest`(worker 동일) → `docker compose up -d api worker` → nginx 재시작. editor 는 Vercel 직전 Production(`miptnimpy`, release `78b5c5a`) promote. 이 경우 Wave 11 도 함께 되돌아간다.
 
 ### P1 캘린더 운영 반영 절차 (2026-10-17 준비 → 2026-10-18 00:46~00:48 KST 반영 완료)
@@ -1562,7 +1562,7 @@ STORIGE_API_URL=https://<api 호스트>/api node scripts/register-calendar-sampl
 
 1. 코드: `docker tag storige-api:rollback-pre-calendar-20261017 storige-api:latest`(worker 동일) → `docker compose up -d api worker` → nginx 재시작. editor·admin 은 Vercel 직전 Production promote.
 2. 컬럼은 NULL additive 라 남겨도 종전 코드에 영향이 없다(DROP 불필요). 등록한 샘플 세트는 admin 에서 비활성/삭제한다.
-3. **쓰면 안 되는 수단**: (가) 절의 `EDITOR_SHEET_VALIDATION_RULES=off` 는 캘린더 세트의 완료 검증을 `PAGE_COUNT_INVALID` 로 깨뜨린다(2026-10-22 로컬 리허설, 캘린더 계획 §8.1 C1). 편집기 쪽만 끄려면 Vercel editor 환경변수 `VITE_ENABLE_CALENDAR=false` 재배포(정확히 `'false'` 만 off; 2026-10-22 로컬 리허설 — 플러그인이 꺼져도 기존 세션의 그리드 36·사진·`metadata.calendar` 는 저장본에 보존되고 자동저장도 손상 없음, 캘린더 계획 §8.1 킬스위치 ①).
+3. **킬스위치 범위**: (가) 절의 `EDITOR_SHEET_VALIDATION_RULES=off` 는 T3c(2026-10-24, 미배포 — 적용 시점 = api 배포) 이후 상품 프로파일 세트(캘린더·사진인화, `productProfile` 이 있는 세트 또는 세션 스냅샷)에 영향이 없다 — 프로파일 세트는 off 여도 `productKind`·`coverSpine`·`pageStep`·`pages`(고정 캔버스 수) 규칙을 그대로 받고 api 로그에 `낱장 킬스위치 off 이지만 상품 프로파일 세트라 규칙 유지` 1줄이 남는다. off 가 끄는 것은 프로파일 NULL 낱장 세트의 규칙뿐이다. **T3c 가 배포되기 전 운영 이미지에서는** off 가 캘린더 세트의 완료 검증을 `PAGE_COUNT_INVALID` 로 깨뜨리므로 쓰면 안 된다(2026-10-22 로컬 리허설, 캘린더 계획 §8.1 C1). 편집기 쪽만 끄려면 Vercel editor 환경변수 `VITE_ENABLE_CALENDAR=false` 재배포(정확히 `'false'` 만 off; 2026-10-22 로컬 리허설 — 플러그인이 꺼져도 기존 세션의 그리드 36·사진·`metadata.calendar` 는 저장본에 보존되고 자동저장도 손상 없음, 캘린더 계획 §8.1 킬스위치 ①).
 
 **통지**: CONTRACT_FREEZE v1.22 ADDITIVE 3건(소비처 0건) — 가이드 반영으로 갈음, 적용 시점 = 2026-10-18 00:48 KST(이 배포 확인 시각).
 

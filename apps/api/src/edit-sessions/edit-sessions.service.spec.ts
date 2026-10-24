@@ -1694,12 +1694,19 @@ describe('EditSessionsService', () => {
         'log',
       );
       // 세션 기록 쪽수(metadata.pages 2, canvasData 없음)와 달라도 프로파일 고정 수 26 이 기대 쪽수다.
-      const { off, on } = await callOffThenOn(mkSession({ pages: 2 }, { canvasData: null }));
+      // T3c(2026-10-24): 프로파일 세트는 킬스위치 off 여도 규칙 유지 → 기준선(off)은 같은 세트의 프로파일 NULL 판.
+      const on = await call(mkSession({ pages: 2 }, { canvasData: null }));
+      mockTemplateSetsService.findOne = jest.fn().mockResolvedValue({
+        width: 150, height: 100, cropMarkEnabled: false, editorMode: 'single', pageStep: null, productProfile: null,
+      });
+      process.env.EDITOR_SHEET_VALIDATION_RULES = 'off';
+      const off = await call(mkSession({ pages: 2 }, { canvasData: null }));
+      delete process.env.EDITOR_SHEET_VALIDATION_RULES;
       expect(off.cover).toMatchObject({ pages: 2 });
       expect(off.cover).not.toHaveProperty('productKind');
       // P1-e 후속: 프로파일 세트는 cover 슬롯 책등 없음 → coverSpine none(워커 spine 게이트 우회). 두 잡 공통 키.
-      expect(on.cover).toEqual({ ...off.cover, productKind: 'sheet', pageStep: 2, pages: 26, coverSpine: 'none' });
-      expect(on.content).toEqual({ ...off.content, productKind: 'sheet', pageStep: 2, pages: 26, coverSpine: 'none' });
+      expect(on.cover).toEqual({ ...off.cover, productKind: 'sheet', pageStep: 2, pages: 26, coverSpine: 'none', bleed: 0 });
+      expect(on.content).toEqual({ ...off.content, productKind: 'sheet', pageStep: 2, pages: 26, coverSpine: 'none', bleed: 0 });
       expect(off.cover).not.toHaveProperty('coverSpine');
       expect(on.cover).not.toHaveProperty('expectedPages');
       expect(on.content).not.toHaveProperty('expectedPages');
@@ -1707,6 +1714,132 @@ describe('EditSessionsService', () => {
       expect(sheetLogs).toEqual([
         '[validation-jobs] session session-sheet 낱장 분류 규칙: productKind=sheet pageStep=2 pages=26 (pages 출처: productProfile pages.count)',
       ]);
+      logSpy.mockRestore();
+    });
+
+    // ── 2026-10-24 T3c(C1): 킬스위치 off 는 프로파일 NULL 세트의 낱장 규칙만 끈다(프로파일 세트는 규칙 유지) ──
+    const t3cCalendarProfile = (): Record<string, unknown> => ({
+      version: 1,
+      kind: 'calendar',
+      editorType: 'calendar_desk',
+      pages: { kind: 'fixed', count: 26, labelRule: 'month' },
+      sheet: {
+        faces: 2, canvasLayout: 'canvas-pair', binding: 'top-ring', pairing: 'same-sheet',
+        backRotation: 0, duplexFlip: 'short-edge',
+      },
+      calendar: {
+        layout: 'desk', monthCount: 12, coverCanvases: 1, canvasesPerMonth: 2, epilogueCanvases: 1,
+        allowedRange: { from: '2026-01', to: '2030-12' }, weekStart: 0,
+        show: { holidays: true, lunar: true, solarTerms: true }, dataVersion: 'kr-2025-2035-v1',
+      },
+      output: { mode: 'single-pdf' },
+    });
+    const t3cWithProfileSet = (productProfile: Record<string, unknown> | null, pageCount: number): void => {
+      mockTemplateSetsService.findOne = jest.fn().mockResolvedValue({
+        width: 150, height: 100, cropMarkEnabled: false, editorMode: 'single', pageStep: null, productProfile,
+      });
+      mockTemplateSetsService.findOneWithTemplates = jest.fn().mockResolvedValue({
+        templateDetails: Array.from({ length: pageCount }, () => ({ type: 'page', spreadConfig: null })),
+      });
+    };
+    const t3cKeepLog = '[validation-jobs] session session-sheet 낱장 킬스위치 off 이지만 상품 프로파일 세트라 규칙 유지';
+
+    it('⑨ T3c: 킬스위치 off + 캘린더 프로파일 세트 → productKind sheet·coverSpine none·pageStep 2·pages 26 유지 + 유지 로그 1줄', async () => {
+      t3cWithProfileSet(t3cCalendarProfile(), 26);
+      const logSpy = jest.spyOn(
+        (service as unknown as { logger: { log(message: string): void } }).logger,
+        'log',
+      );
+      process.env.EDITOR_SHEET_VALIDATION_RULES = 'off';
+      const { cover, content } = await call(mkSession({ pages: 2 }, { canvasData: null }));
+      expect(cover).toMatchObject({ productKind: 'sheet', coverSpine: 'none', pageStep: 2, pages: 26 });
+      expect(content).toMatchObject({ productKind: 'sheet', coverSpine: 'none', pageStep: 2, pages: 26 });
+      expect(cover).not.toHaveProperty('expectedPages');
+      // 프로파일 세트는 off 여도 낱장 판정용 템플릿 타입을 조회한다(내지 펼침면 해석 1 + 타입 조회 1).
+      expect(mockTemplateSetsService.findOneWithTemplates).toHaveBeenCalledTimes(2);
+      const logs = logSpy.mock.calls.map((c) => String(c[0]));
+      expect(logs.filter((m) => m.includes('낱장 킬스위치 off'))).toEqual([t3cKeepLog]);
+      expect(logs.filter((m) => m.includes('낱장 분류 규칙'))).toEqual([
+        '[validation-jobs] session session-sheet 낱장 분류 규칙: productKind=sheet pageStep=2 pages=26 (pages 출처: productProfile pages.count)',
+      ]);
+      logSpy.mockRestore();
+    });
+
+    it('⑩ T3c: 킬스위치 off + 템플릿셋 프로파일 없음·세션 스냅샷 캘린더 프로파일 → 스냅샷 폴백으로 규칙 유지', async () => {
+      t3cWithProfileSet(null, 26);
+      process.env.EDITOR_SHEET_VALIDATION_RULES = 'off';
+      const { cover, content } = await call(
+        mkSession({ pages: 2, productProfile: t3cCalendarProfile() }, { canvasData: null }),
+      );
+      expect(cover).toMatchObject({ productKind: 'sheet', coverSpine: 'none', pageStep: 2, pages: 26 });
+      expect(content).toMatchObject({ productKind: 'sheet', coverSpine: 'none', pageStep: 2, pages: 26 });
+    });
+
+    it('⑪ T3c: 킬스위치 off + 사진인화(photo-print chemical) 프로파일 세트 → productKind sheet·coverSpine none 유지, pages 는 세션 기록', async () => {
+      const photoChem = {
+        version: 1,
+        kind: 'photo-print',
+        editorType: 'photo_chem',
+        pages: { kind: 'range', min: 1, max: 200, step: 1, labelRule: 'photo' },
+        sheet: { faces: 1, canvasLayout: 'canvas-per-sheet', binding: 'none', backRotation: 0, duplexFlip: 'short-edge' },
+        photoPrint: {
+          process: 'chemical',
+          composition: 'per-photo-free-back',
+          sizes: [{ code: '4x6', widthMm: 102, heightMm: 152, minDpi: 200 }],
+          options: {
+            border: ['none', 'white'], fit: ['paper-full', 'image-full'], finish: ['matte', 'glossy'],
+            brightnessFix: true, dateOverlay: true, grayscale: true,
+          },
+          copies: { min: 1, max: 99 },
+          upload: { maxPhotos: 200, maxMb: 25 },
+        },
+        output: { mode: 'single-pdf' },
+      };
+      t3cWithProfileSet(photoChem, 1);
+      process.env.EDITOR_SHEET_VALIDATION_RULES = 'off';
+      const off = await call(mkSession({ pages: 3 }, { canvasData: null }));
+      delete process.env.EDITOR_SHEET_VALIDATION_RULES;
+      const on = await call(mkSession({ pages: 3 }, { canvasData: null }));
+      expect(off.cover).toMatchObject({ productKind: 'sheet', coverSpine: 'none', pages: 3 });
+      expect(off.cover).not.toHaveProperty('pageStep');
+      expect(off.content).toMatchObject({ productKind: 'sheet', coverSpine: 'none', pages: 3 });
+      expect(off.cover).toEqual(on.cover);
+      expect(off.content).toEqual(on.content);
+    });
+
+    it('⑫ T3c: 킬스위치 off + 프로파일 NULL 낱장 세트 → 종전대로 sheet 키 미주입·유지 로그 없음', async () => {
+      t3cWithProfileSet(null, 2);
+      const logSpy = jest.spyOn(
+        (service as unknown as { logger: { log(message: string): void } }).logger,
+        'log',
+      );
+      process.env.EDITOR_SHEET_VALIDATION_RULES = 'off';
+      const { cover, content } = await call(mkSession({ pages: 2 }));
+      for (const opts of [cover, content]) {
+        expect(opts).not.toHaveProperty('productKind');
+        expect(opts).not.toHaveProperty('coverSpine');
+        expect(opts).not.toHaveProperty('pageStep');
+      }
+      expect(cover).toMatchObject({ pages: 2 });
+      expect(mockTemplateSetsService.findOneWithTemplates).toHaveBeenCalledTimes(1);
+      expect(logSpy.mock.calls.map((c) => String(c[0])).filter((m) => m.includes('낱장 킬스위치 off'))).toEqual([]);
+      logSpy.mockRestore();
+    });
+
+    it('⑬ T3c: 킬스위치 on + 캘린더 프로파일 세트 → 종전 on 과 같은 옵션(off 와 deep-equal)·유지 로그 없음', async () => {
+      t3cWithProfileSet(t3cCalendarProfile(), 26);
+      const logSpy = jest.spyOn(
+        (service as unknown as { logger: { log(message: string): void } }).logger,
+        'log',
+      );
+      const on = await call(mkSession({ pages: 2 }, { canvasData: null }));
+      expect(on.cover).toMatchObject({ productKind: 'sheet', coverSpine: 'none', pageStep: 2, pages: 26 });
+      expect(on.content).toMatchObject({ productKind: 'sheet', coverSpine: 'none', pageStep: 2, pages: 26 });
+      expect(logSpy.mock.calls.map((c) => String(c[0])).filter((m) => m.includes('낱장 킬스위치 off'))).toEqual([]);
+      process.env.EDITOR_SHEET_VALIDATION_RULES = 'off';
+      const off = await call(mkSession({ pages: 2 }, { canvasData: null }));
+      expect(off.cover).toEqual(on.cover);
+      expect(off.content).toEqual(on.content);
       logSpy.mockRestore();
     });
   });
