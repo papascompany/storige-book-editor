@@ -15,6 +15,13 @@
  * 템플릿 좌표 단위: 캔버스 px (1mm = 150/25.4 px, canvas-core UNIT_CONVERSIONS.DEFAULT_DPI=150). workspace 는 (0,0) 중심.
  * 날짜 그리드는 `extensionType:'calendar-grid'` 그룹 자리표시자(경계 사각형만) — 편집기가 로드 뒤 CalendarPlugin.rehydrate 로 그린다.
  * 링 오버레이는 `extensionType:'overlay'` + `printExclude:true`(화면 전용, PDF 제외, 저장은 됨).
+ *
+ * 연달력(T3b, 2026-10-24): 표지 템플릿마다 연달력 그리드(variant 'year', yearDelta 0) 1개, 탁상형 4종 프로파일에
+ * `calendar.yearPolicy {select {0,1}}`(admin 프리셋과 같은 값). 그리드 `extension.show.yearTitle` 은 쓰지 않는다 —
+ * 템플릿 값이 고객의 연도 제목 on/off 를 덮기 때문(제목 자리는 style.showTitle).
+ * ⚠️ 연달력이 든 샘플의 운영 등록은 연달력을 그리는 편집기 배포 뒤에만 한다(구 번들은 'year' 를 건너뛰어 빈 자리표시자로 남는다).
+ *
+ * import 해도 실행되지 않는다(직접 실행할 때만 main) — 템플릿·프로파일 생성 함수를 오프라인 점검에 쓸 수 있게.
  */
 import fs from 'node:fs';
 import os from 'node:os';
@@ -58,7 +65,18 @@ const PRESETS = [
   { key: 'calendar_wall2_a4', label: '벽걸이 2단 베이직 A4', width: 294, height: 210, layout: 'wall-2' },
   { key: 'calendar_wall2_a3', label: '벽걸이 2단 라지 A3', width: 415, height: 297, layout: 'wall-2' },
 ];
-const profileFor = (p) => ({ ...BASE_PROFILE, editorType: p.key, calendar: { ...BASE_PROFILE.calendar, layout: p.layout } });
+/** 탁상형 연달력 정책(apps/admin calendarProfilePresets.ts DESK_CALENDAR_YEAR_POLICY 와 같은 값) — calendar 블록 끝에 붙인다 */
+const DESK_YEAR_POLICY = { select: { minDelta: 0, maxDelta: 1 } };
+export const profileFor = (p) => ({
+  ...BASE_PROFILE,
+  editorType: p.key,
+  calendar: {
+    ...BASE_PROFILE.calendar,
+    layout: p.layout,
+    ...(p.layout === 'desk' ? { yearPolicy: { select: { ...DESK_YEAR_POLICY.select } } } : {}),
+  },
+});
+export { PRESETS };
 
 // ─── 로컬 환경 읽기 ────────────────────────────────────────────────────────
 function readDevEnv() {
@@ -139,17 +157,23 @@ function canvasData(W, H, objects) {
 }
 
 /** 상품별 4개 템플릿의 canvasData. 좌표는 px. */
-function buildTemplates(p) {
+export function buildTemplates(p) {
   const W = px(p.width), H = px(p.height);
   const m = px(6);                    // 여백 6mm
   const band = p.layout === 'wall-2' ? 0 : 8; // 상단 링 영역 mm (2단은 중앙 링이라 캔버스 밖)
   const topY = px(band) + m;
   const title = (s, y, size) => text(s, { id: uid('text'), left: m, top: y, width: W - 2 * m, fontSize: size, textAlign: 'center' });
 
+  // 표지: 제목 + 사진틀(위) + 연달력(아래). 연달력 열 배열은 박스 비율로 플러그인이 정한다(가로로 길면 6×2, 4:3 안팎이면 4×3).
+  const coverBodyTop = topY + H * 0.1;
+  const coverBodyH = H - coverBodyTop - m;
+  const coverPhotoH = (coverBodyH - m) * 0.55;
+  const yearGridStyle = { fontFamily: FONT, headerLang: 'en', showTitle: true, showLines: false };
   const cover = canvasData(W, H, [
     ...(band ? [ringOverlay(W, band)] : []),
     title('2027 CALENDAR', topY, Math.round(H * 0.06)),
-    frame({ left: m, top: topY + H * 0.1, width: W - 2 * m, height: H - topY - H * 0.1 - m }),
+    frame({ left: m, top: coverBodyTop, width: W - 2 * m, height: coverPhotoH }),
+    { ...calendarGrid({ left: m, top: coverBodyTop + coverPhotoH + m, width: W - 2 * m, height: coverBodyH - coverPhotoH - m }, { variant: 'year', yearDelta: 0, style: yearGridStyle }), name: '연달력' },
   ]);
   const gridStyle = { fontFamily: FONT, headerLang: 'en', showTitle: true, showLines: true };
   let monthA, monthB;
@@ -284,4 +308,8 @@ async function main() {
   console.log(`\n결과 파일: ${outFile}`);
 }
 
-main().catch((err) => { console.error('실패:', err.message); process.exit(1); });
+const isDirectRun = (() => {
+  if (!process.argv[1]) return false;
+  try { return fs.realpathSync(process.argv[1]) === fs.realpathSync(fileURLToPath(import.meta.url)); } catch { return false; }
+})();
+if (isDirectRun) main().catch((err) => { console.error('실패:', err.message); process.exit(1); });

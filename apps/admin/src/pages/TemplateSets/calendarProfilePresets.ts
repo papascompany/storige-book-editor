@@ -4,12 +4,18 @@
  * 모든 프리셋은 캔버스 26장(표지 1 + 12개월 × 2면 + 에필로그 1 = 13장 양면), 단일 PDF 26쪽.
  * 프리셋은 폼 필드 값을 채우는 출발점이며, 운영자는 적용 후 JSON 을 손으로 고칠 수 있다.
  * 동작 분기는 editorType 이 아니라 프로파일 필드(pages·sheet·calendar)로만 한다.
+ *
+ * 연달력(T3b, 2026-10-24): 탁상형 4종만 `calendar.yearPolicy` 예시를 갖는다 — 고객이 표지·에필로그 연달력 연도를
+ * 기준 연도~다음 해에서 고를 수 있음(`select {0, 1}`). `span` 은 생략 = 기본 규칙(1월 시작이면 기준 연도 1~12월,
+ * 아니면 시작연월부터 12개월). 벽걸이 3종은 yearPolicy 없음(종전 JSON 그대로 — 구조 변경 트랙과 겹치지 않게).
+ * 프리셋은 연달력 그리드의 템플릿 값(`extension.show.yearTitle`)을 정하지 않는다 — 연도 제목 on/off 는 고객 몫.
  */
 import {
   EditorMode,
   resolveCalendarCanvasCount,
   type CalendarLayout,
   type CalendarProfile,
+  type CalendarYearPolicy,
   type ProductProfile,
   type TemplateRef,
 } from '@storige/types';
@@ -22,7 +28,10 @@ export interface CalendarProfilePreset {
   profile: ProductProfile;
 }
 
-function calendarProfile(editorType: string, layout: CalendarLayout): ProductProfile {
+/** 탁상형 프리셋의 연달력 정책 예시 — 고객 연도 선택 기준 연도(0)~다음 해(+1) */
+export const DESK_CALENDAR_YEAR_POLICY: Readonly<CalendarYearPolicy> = { select: { minDelta: 0, maxDelta: 1 } };
+
+function calendarProfile(editorType: string, layout: CalendarLayout, yearPolicy?: CalendarYearPolicy): ProductProfile {
   return {
     version: 1,
     kind: 'calendar',
@@ -46,16 +55,18 @@ function calendarProfile(editorType: string, layout: CalendarLayout): ProductPro
       weekStart: 0,
       show: { holidays: true, lunar: true, solarTerms: true },
       dataVersion: 'kr-2025-2035-v1',
+      // calendar 블록 끝에만 붙인다 — 없는 프리셋의 JSON(키 순서 포함)은 종전과 같다
+      ...(yearPolicy ? { yearPolicy: { ...yearPolicy, ...(yearPolicy.select ? { select: { ...yearPolicy.select } } : {}) } } : {}),
     },
     output: { mode: 'single-pdf' },
   };
 }
 
 export const CALENDAR_PROFILE_PRESETS: readonly CalendarProfilePreset[] = [
-  { key: 'calendar_desk_large', label: '탁상형 라지달력 (265×190)', width: 265, height: 190, profile: calendarProfile('calendar_desk_large', 'desk') },
-  { key: 'calendar_desk_basic', label: '탁상형 베이직달력 (210×150)', width: 210, height: 150, profile: calendarProfile('calendar_desk_basic', 'desk') },
-  { key: 'calendar_desk_tiny', label: '탁상형 티니달력 (100×125)', width: 100, height: 125, profile: calendarProfile('calendar_desk_tiny', 'desk') },
-  { key: 'calendar_desk_mini', label: '탁상형 미니달력 (140×140)', width: 140, height: 140, profile: calendarProfile('calendar_desk_mini', 'desk') },
+  { key: 'calendar_desk_large', label: '탁상형 라지달력 (265×190)', width: 265, height: 190, profile: calendarProfile('calendar_desk_large', 'desk', DESK_CALENDAR_YEAR_POLICY) },
+  { key: 'calendar_desk_basic', label: '탁상형 베이직달력 (210×150)', width: 210, height: 150, profile: calendarProfile('calendar_desk_basic', 'desk', DESK_CALENDAR_YEAR_POLICY) },
+  { key: 'calendar_desk_tiny', label: '탁상형 티니달력 (100×125)', width: 100, height: 125, profile: calendarProfile('calendar_desk_tiny', 'desk', DESK_CALENDAR_YEAR_POLICY) },
+  { key: 'calendar_desk_mini', label: '탁상형 미니달력 (140×140)', width: 140, height: 140, profile: calendarProfile('calendar_desk_mini', 'desk', DESK_CALENDAR_YEAR_POLICY) },
   { key: 'calendar_wall1_a3', label: '벽걸이형 원피스 A3 (297×415)', width: 297, height: 415, profile: calendarProfile('calendar_wall1_a3', 'wall-1') },
   { key: 'calendar_wall2_a4', label: '벽걸이 2단 베이직 A4 (294×210)', width: 294, height: 210, profile: calendarProfile('calendar_wall2_a4', 'wall-2') },
   { key: 'calendar_wall2_a3', label: '벽걸이 2단 라지 A3 (415×297)', width: 415, height: 297, profile: calendarProfile('calendar_wall2_a3', 'wall-2') },
