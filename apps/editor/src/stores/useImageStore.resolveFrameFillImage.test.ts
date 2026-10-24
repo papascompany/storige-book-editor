@@ -102,7 +102,7 @@ describe('resolveFrameFillImage (D12)', () => {
   it('사진인화 세트: storage 업로드 → 절대 URL 로 imageFromURL(crossOrigin anonymous), takenAt·파일 id 기록, fileToImage 미호출', async () => {
     useSettingsStore.getState().setProductProfile(photoProfile)
     uploadFilePublic.mockResolvedValue({ success: true, url: '/storage/uploads/p01.jpg', id: 'file-1' })
-    const img = { id: 'from-url' }
+    const img = { id: 'from-url', width: 200, height: 100, getElement: () => ({ naturalWidth: 400, naturalHeight: 200 }) }
     imageFromURL.mockResolvedValue(img)
 
     const r = await useImageStore.getState().resolveFrameFillImage(canvas, file, plugin)
@@ -147,7 +147,7 @@ describe('resolveFrameFillImage (D12)', () => {
   it('B11 캘린더 프로파일 세트: storage 업로드 → 절대 URL 로 imageFromURL(crossOrigin anonymous), fileToImage 미호출', async () => {
     useSettingsStore.getState().setProductProfile(calendarProfile)
     uploadFilePublic.mockResolvedValue({ success: true, url: '/storage/uploads/c01.jpg', id: 'file-c1' })
-    const img = { id: 'cal-from-url' }
+    const img = { id: 'cal-from-url', width: 200, height: 100 }
     imageFromURL.mockResolvedValue(img)
 
     const r = await useImageStore.getState().resolveFrameFillImage(canvas, file, plugin)
@@ -172,6 +172,24 @@ describe('resolveFrameFillImage (D12)', () => {
     expect(r).toMatchObject({ image: img, uploaded: false })
     expect(uploadFilePublic).toHaveBeenCalledWith(file)
     expect(imageFromURL).not.toHaveBeenCalled()
+    expect(fileToImage).toHaveBeenCalledWith(canvas, file, plugin)
+  })
+
+  it.each([
+    ['0×0(fabric Image.fromURL 로드 실패 콜백과 같은 형태)', { id: 'empty', width: 0, height: 0, getElement: () => undefined }],
+    ['요소 naturalWidth 0', { id: 'broken', width: 200, height: 100, getElement: () => ({ naturalWidth: 0, naturalHeight: 0 }) }],
+  ])('R 메모 1 URL 로드가 %s 이미지로 resolve: 실패로 보고 data URL 폴백', async (_label, emptyImage) => {
+    useSettingsStore.getState().setProductProfile(calendarProfile)
+    uploadFilePublic.mockResolvedValue({ success: true, url: '/storage/uploads/c02.jpg', id: 'file-c2' })
+    imageFromURL.mockResolvedValue(emptyImage)
+    const img = { id: 'fallback-empty' }
+    fileToImage.mockResolvedValue(img)
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const r = await useImageStore.getState().resolveFrameFillImage(canvas, file, plugin)
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining('업로드 URL 이미지 로드 실패(0×0) — data URL 폴백'), file.name)
+    warn.mockRestore()
+    expect(r).toMatchObject({ image: img, uploaded: false })
+    expect(imageFromURL).toHaveBeenCalledTimes(1)
     expect(fileToImage).toHaveBeenCalledWith(canvas, file, plugin)
   })
 

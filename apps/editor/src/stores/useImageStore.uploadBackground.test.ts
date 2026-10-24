@@ -217,6 +217,26 @@ describe('upload — 배경(B11-b)', () => {
     expect(fileToImage).toHaveBeenCalledTimes(1)
   })
 
+  it('R 메모 1 URL 로드가 0×0 이미지로 resolve(fabric Image.fromURL 로드 실패 콜백과 같은 형태): data URL 폴백', async () => {
+    useSettingsStore.getState().setProductProfile(calendarProfile)
+    uploadFilePublic.mockResolvedValue({ success: true, url: '/storage/uploads/bg3.jpg', id: 'file-bg3' })
+    imageFromURL.mockResolvedValue({ id: 'empty', width: 0, height: 0, getElement: () => undefined })
+    const img = fakeImage('fallback-bg4')
+    fileToImage.mockResolvedValue(img)
+    const canvas = fakeCanvas()
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+
+    const item = await uploadBackground(canvas)
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining('업로드 URL 이미지 로드 실패(0×0) — data URL 폴백'), file.name)
+    warn.mockRestore()
+    expect(item).toBe(img)
+    expect(imageFromURL).toHaveBeenCalledTimes(1)
+    expect(fileToImage).toHaveBeenCalledTimes(1)
+    expect(fileToImage.mock.calls[0]).toEqual([canvas, file, plugin])
+    expect(img.extensionType).toBe('background')
+    expect(Number.isFinite(img.scaleX)).toBe(true)
+  })
+
   it('범위: 프로파일 세트라도 배경이 아닌 타입(image)은 종전 core.fileToImage', async () => {
     useSettingsStore.getState().setProductProfile(calendarProfile)
     uploadFilePublic.mockResolvedValue({ success: true, url: '/storage/uploads/bg.jpg', id: 'file-bg' })

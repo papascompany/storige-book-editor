@@ -284,12 +284,35 @@ function writeFillTakenAt(fore: Record<string, unknown>, takenAt: string | undef
 }
 
 /**
+ * 로드된 이미지의 크기가 0 보다 큰지 — fabric 5 `Image.fromURL` 은 로드 실패에도 `new fabric.Image(null)`(0×0)로 콜백하고
+ * canvas-core imageFromURL 은 그 오류 표시를 넘기지 않아 resolve 된다. 0×0 을 그대로 쓰면 배경·틀 채움 배율이 Infinity 가 된다.
+ * width/height 를 보고, 원본 요소가 img 면 naturalWidth/naturalHeight 도 본다.
+ */
+function hasLoadedImageSize(image: unknown): boolean {
+  const img = image as { width?: unknown; height?: unknown; getElement?: () => unknown } | null | undefined
+  if (!img) return false
+  const width = Number(img.width)
+  const height = Number(img.height)
+  if (!(width > 0) || !(height > 0)) return false
+  const el = typeof img.getElement === 'function' ? img.getElement() : undefined
+  if (el && typeof (el as { naturalWidth?: unknown }).naturalWidth === 'number') {
+    const natural = el as { naturalWidth: number; naturalHeight?: unknown }
+    return natural.naturalWidth > 0 && Number(natural.naturalHeight) > 0
+  }
+  return true
+}
+
+/**
  * D12·B11-b: storage 업로드 URL 로 이미지 로드(crossOrigin anonymous — PDF 생성 toDataURL taint 방지, AppImage 자동편집과 동일).
- * 로드 실패는 경고만 남기고 undefined — 호출부가 종전 data URL 경로로 폴백한다.
+ * 로드 실패(예외 또는 0×0 결과)는 경고만 남기고 undefined — 호출부가 종전 data URL 경로로 폴백한다.
  */
 async function loadImageFromStorageUrl(url: string, logTag: string, fileName: string): Promise<{ image: FabricObject } | undefined> {
   try {
     const image = await core.imageFromURL(url, { crossOrigin: 'anonymous' })
+    if (!hasLoadedImageSize(image)) {
+      console.warn(`[${logTag}] 업로드 URL 이미지 로드 실패(0×0) — data URL 폴백:`, fileName)
+      return undefined
+    }
     return { image: image as unknown as FabricObject }
   } catch (e) {
     console.warn(`[${logTag}] 업로드 URL 이미지 로드 실패 — data URL 폴백:`, fileName, e)
