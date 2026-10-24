@@ -383,6 +383,39 @@ describe('applyContentPdfGuides — 멱등 배치', () => {
   })
 })
 
+describe('applyContentPdfGuides — 가이드 이미지 로드 실패', () => {
+  it('한 장의 imageFromURL 이 reject 되면 그 장만 빠지고 나머지 장은 배치되며 예외를 밖으로 던지지 않는다', async () => {
+    setInnerOnlyCanvases(1)
+    settingsState.hasCoverSlot = false
+    settingsState.spreadConfig = {
+      regionScope: 'inner',
+      innerSpec: { pageWidthMm: 210, pageHeightMm: 297 },
+    }
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    imageFromURL.mockImplementation(async (url: string, opts: Record<string, unknown>) => {
+      if (url.endsWith('/l.png')) throw new Error('이미지 로드 실패: https://api.example.com/l.png')
+      return {
+        width: 100,
+        height: 80,
+        ...opts,
+        set(this: Record<string, unknown>, patch: Record<string, unknown>) {
+          Object.assign(this, patch)
+        },
+      }
+    })
+
+    await applyContentPdfGuides(guideSession(2, ['/l.png', '/r.png']))
+
+    expect(imageFromURL).toHaveBeenCalledTimes(2)
+    const guides = appState.allCanvas[0].objects.filter(
+      (o) => (o as { meta?: { system?: string } }).meta?.system === 'innerPdfGuide',
+    )
+    expect(guides).toHaveLength(1)
+    expect(warn).toHaveBeenCalledWith('[contentPdfGuide] place failed page', 0, expect.anything(), expect.any(Error))
+    warn.mockRestore()
+  })
+})
+
 describe('seatContentPdf — 확장 + 배치 합성', () => {
   it('첨부 직후 페이지를 늘리고 가이드를 깐 뒤 첫 내지로 이동한다', async () => {
     setCanvases(1)

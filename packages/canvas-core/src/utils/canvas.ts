@@ -4,6 +4,7 @@ import { fabric } from 'fabric'
 import { getImgSrc, getImgStr } from './utils'
 import { v4 as uuid } from 'uuid'
 import ImageProcessingPlugin from '../plugins/ImageProcessingPlugin'
+import { imageLoadFailure } from './imageLoad'
 
 // ============================================================
 // 고수준 API 옵션 인터페이스
@@ -876,9 +877,11 @@ export namespace core {
 
       fabric.Image.fromURL(
         url,
-        (img: fabric.Image) => {
-          if (!img) {
-            reject(new Error('이미지 로드 실패'))
+        (img: fabric.Image, isError?: boolean) => {
+          // fabric 은 로드 실패에도 빈 fabric.Image(0×0)와 isError=true 로 콜백한다.
+          const failure = imageLoadFailure(img, isError, url)
+          if (failure) {
+            reject(failure)
             return
           }
 

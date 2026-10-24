@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, vi } from 'vitest'
 import {
   measureFrame,
   imageAspect,
@@ -530,5 +530,45 @@ describe('autofillPhotosIntoFrames — 저해상도 경고는 캔버스 dpi 를 
     // mm 캔버스 쪽만 통과 → 경고는 legacy 캔버스 1건뿐
     expect(result.lowResWarnings).toHaveLength(1)
     expect(result.lowResWarnings[0].effectiveDpi).toBe(122)
+  })
+})
+
+// ────────────────────────────────────────────────────────────────────────────
+// 로드 실패 사진 건너뛰기 — core.imageFromURL 이 로드 실패(isError·0×0)를 reject 하므로
+// 자동편집은 그 사진만 건너뛰고 프레임은 다음 사진에 쓴다(빈 이미지로 틀을 채우지 않는다).
+// ────────────────────────────────────────────────────────────────────────────
+
+describe('autofillPhotosIntoFrames — 로드 실패 사진은 건너뛴다', () => {
+  it('첫 사진 로드가 reject 되면 그 사진만 건너뛰고 같은 프레임을 다음 사진으로 채운다', async () => {
+    const canvases = [liveCanvas([
+      { id: 'f1', extensionType: 'frame', width: 100, height: 100 },
+    ], { unit: 'mm', dpi: 150 })]
+    const photos = mergeAutofillPhotoInputs(
+      [
+        { url: 'https://s/broken.jpg', name: 'a.jpg' },
+        { url: 'https://s/ok.jpg', name: 'b.jpg' },
+      ],
+      [],
+    )
+    const fillFrame = vi.fn(fakeFillFrame)
+    const loadImage = vi.fn(async (url: string) => {
+      if (url.includes('broken')) throw new Error('이미지 로드 실패: https://s/broken.jpg')
+      return fakeLoadImage(url)
+    })
+
+    const result = await autofillPhotosIntoFrames(canvases, photos, {
+      mode: 'filename',
+      fillFrame,
+      loadImage,
+      imagePlugin: {},
+      aspectMatch: false,
+    })
+
+    expect(loadImage).toHaveBeenCalledTimes(2)
+    expect(fillFrame).toHaveBeenCalledTimes(1)
+    expect(result.filledCount).toBe(1)
+    expect(result.remainingFrames).toBe(0)
+    const fill = canvases[0].getObjects().find((o: any) => o.parentLayerId === 'f1')
+    expect(fill?.src).toBe('https://s/ok.jpg')
   })
 })

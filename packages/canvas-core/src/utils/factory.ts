@@ -7,6 +7,7 @@
 
 import { fabric } from 'fabric'
 import { v4 as uuid } from 'uuid'
+import { imageLoadFailure } from './imageLoad'
 
 // fabric 모듈 캐싱 (동적 import용)
 let fabricModule: typeof fabric | null = null
@@ -465,9 +466,11 @@ export async function imageFromURL(
   return new Promise((resolve, reject) => {
     fb.Image.fromURL(
       url,
-      (img) => {
-        if (!img) {
-          reject(new Error('이미지 로드 실패'))
+      (img: fabric.Image, isError?: boolean) => {
+        // fabric 은 로드 실패에도 빈 fabric.Image(0×0)와 isError=true 로 콜백한다.
+        const failure = imageLoadFailure(img, isError, url)
+        if (failure) {
+          reject(failure)
           return
         }
 
