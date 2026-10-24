@@ -16,6 +16,7 @@ import {
   lunarToSolar,
   parseDateKey,
   resolveAnniversarySolarDate,
+  sanitizeAnniversaryTextStyle,
   solarToLunar,
   weekdayOf,
 } from './core';
@@ -236,6 +237,38 @@ describe('calendar/core — buildMonthMatrix', () => {
     expect(byDate('2025-10-15').anniversaries).toEqual(['양력기념']);
     expect(byDate('2025-10-02')).toMatchObject({ isHoliday: false, holidayNames: [], solarTerm: null, anniversaries: [] });
     expect(cells.filter((c) => c.anniversaries.includes('환산불가'))).toHaveLength(0);
+  });
+
+  it('기념일 문구 스타일(T3b): 유효 스타일이 있는 칸만 anniversaryStyles(문구와 같은 순서·길이, 없음은 null), 나머지 칸은 키 없음', () => {
+    const m = buildMonthMatrix(2025, 10, {
+      weekStart: 0,
+      data,
+      anniversaries: [
+        { date: '2025-10-15', lunar: false, text: '무스타일' },
+        { date: '2025-10-15', lunar: false, text: '빨강굵게', style: { fill: '#d93025', fontWeight: 'bold' } },
+        { date: '2025-08-15', lunar: true, text: '음력파랑', style: { fill: '#1a56db' } },
+        { date: '2025-10-20', lunar: false, text: '무효색', style: { fill: 'url(#x)', fontWeight: 'heavy' as never } },
+        { date: '2025-10-21', lunar: false, text: '스타일없음' },
+      ],
+    });
+    const byDate = (d: string) => m.rows.flat().find((c) => c.date === d)!;
+    expect(byDate('2025-10-15').anniversaries).toEqual(['무스타일', '빨강굵게']);
+    expect(byDate('2025-10-15').anniversaryStyles).toEqual([null, { fill: '#d93025', fontWeight: 'bold' }]);
+    // 음력 기념일도 양력 환산 칸(추석 2025-10-06)에 같은 순서로 붙는다
+    expect(byDate('2025-10-06').anniversaryStyles).toEqual([{ fill: '#1a56db' }]);
+    // 정제 뒤 남는 키가 없으면 스타일 없는 칸과 같은 형태
+    expect(byDate('2025-10-20')).not.toHaveProperty('anniversaryStyles');
+    expect(byDate('2025-10-21')).not.toHaveProperty('anniversaryStyles');
+    expect(byDate('2025-10-02')).not.toHaveProperty('anniversaryStyles');
+  });
+
+  it('sanitizeAnniversaryTextStyle: hex 색(#rgb/#rrggbb)·normal|bold 만, 그 밖 키·값은 버리고 비면 null', () => {
+    expect(sanitizeAnniversaryTextStyle({ fill: '#ABC', fontWeight: 'normal', fontFamily: 'X' })).toEqual({ fill: '#ABC', fontWeight: 'normal' });
+    expect(sanitizeAnniversaryTextStyle({ fill: 'red' })).toBeNull();
+    expect(sanitizeAnniversaryTextStyle({ fill: '#12345' })).toBeNull();
+    expect(sanitizeAnniversaryTextStyle({ fontWeight: 700 })).toBeNull();
+    expect(sanitizeAnniversaryTextStyle(undefined)).toBeNull();
+    expect(sanitizeAnniversaryTextStyle('bold')).toBeNull();
   });
 
   it('전월·익월 채움 칸도 공휴일·음력을 채우고, 데이터 밖 칸은 lunar/solarTerm null', () => {

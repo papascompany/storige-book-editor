@@ -80,12 +80,23 @@ export interface LunarDate {
   isLeapMonth: boolean;
 }
 
+/**
+ * 기념일 문구 스타일(D1(b) 최소, T3b 2026-10-24) — 월 그리드 칸 문구 텍스트에만 적용.
+ * `fill` 은 '#rgb'/'#rrggbb' 만 유효(그 밖은 무시 = 기본 문구색), `fontWeight` 는 'normal'|'bold'.
+ */
+export interface AnniversaryTextStyle {
+  fill?: string;
+  fontWeight?: 'normal' | 'bold';
+}
+
 export interface AnniversaryInput {
   /** 'YYYY-MM-DD' — lunar=true 면 음력 */
   date: string;
   lunar: boolean;
   isLeapMonth?: boolean;
   text: string;
+  /** 선택. 없으면 칸 문구 기본 스타일(종전 렌더 그대로) */
+  style?: AnniversaryTextStyle;
 }
 
 export interface MonthCell {
@@ -103,6 +114,11 @@ export interface MonthCell {
   solarTerm: string | null;
   /** 이 날짜에 해당하는 기념일 문구(양력 환산 후) */
   anniversaries: string[];
+  /**
+   * `anniversaries` 와 같은 순서·길이의 문구 스타일(유효 키가 없으면 null). 이 칸의 기념일 중 하나라도 유효한
+   * 스타일이 있을 때만 키가 생긴다 — 스타일 없는 기념일만 있는 칸·기념일 없는 칸은 종전 형태 그대로.
+   */
+  anniversaryStyles?: Array<AnniversaryTextStyle | null>;
 }
 
 export interface MonthMatrix {

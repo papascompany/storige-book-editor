@@ -25,9 +25,20 @@ const { buildCalls, yearCalls, minorCalls } = vi.hoisted(() => ({
   yearCalls: [] as Array<{ year: number; month: number; weekStart: 0 | 1; monthCount?: number; includeTemporaryHolidays?: boolean; anniversaries?: unknown[] }>,
 }))
 vi.mock('../calendar/core', () => ({
-  buildMonthMatrix: (year: number, month: number, opts: { weekStart: 0 | 1; includeTemporaryHolidays?: boolean }) => {
+  buildMonthMatrix: (
+    year: number,
+    month: number,
+    opts: { weekStart: 0 | 1; includeTemporaryHolidays?: boolean; anniversaries?: Array<{ date: string; lunar: boolean; text: string; style?: { fill?: string; fontWeight?: 'normal' | 'bold' } }> },
+  ) => {
     buildCalls.push({ year, month, includeTemporaryHolidays: opts.includeTemporaryHolidays })
-    return synthMatrix(year, month, opts.weekStart)
+    const m = synthMatrix(year, month, opts.weekStart)
+    // 기념일(양력만): 실제 core 와 같은 칸 형태 — 문구 순서대로, 스타일이 있는 칸만 anniversaryStyles(정제는 core.test.ts 담당)
+    for (const cell of m.rows.flat()) {
+      const list = (opts.anniversaries ?? []).filter((a) => !a.lunar && a.date === cell.date)
+      cell.anniversaries = list.map((a) => a.text)
+      if (list.some((a) => a.style)) cell.anniversaryStyles = list.map((a) => a.style ?? null)
+    }
+    return m
   },
   // 연달력: 실제 buildYearMatrix 와 같은 형태(연속 월의 synthMatrix) — 데이터 정확성은 core.test.ts 가 담당
   buildYearMatrix: (year: number, month: number, opts: { weekStart: 0 | 1; includeTemporaryHolidays?: boolean; anniversaries?: unknown[] }, monthCount = 12) => {
@@ -444,6 +455,47 @@ describe("CalendarPlugin — 'month'/'mini' 렌더 구조 고정(플랫폼 독�
       miniNoTitle: await digest({ variant: 'mini', monthDelta: 1, style: { showTitle: false, showLines: true } }, { canvasMonthOffset: null }),
     }
     expect(got).toEqual(BASELINE_SHA256)
+  })
+})
+
+describe('CalendarPlugin — 기념일 문구 스타일(색·굵게, D1(b) T3b)', () => {
+  const noteObjects = (g: fabric.Group) =>
+    g.getObjects().filter((o) => ((o as fabric.Object & { id?: string }).id ?? '').includes('-n-')) as fabric.Text[]
+
+  it("스타일 있는 기념일 문구는 fill·fontWeight 적용, 스타일 없는 문구·공휴일 문구는 기본(colors.text·normal) 그대로", async () => {
+    const plugin = makePlugin(makeCanvas())
+    const g = await plugin.createGrid({ variant: 'month' }, ctx({
+      anniversaries: [
+        { date: '2027-01-01', lunar: false, text: '새해', style: { fill: '#1a56db', fontWeight: 'bold' } },
+        { date: '2027-01-12', lunar: false, text: '생일', style: { fontWeight: 'bold' } },
+        { date: '2027-01-20', lunar: false, text: '보통' },
+      ],
+    }), { left: 0, top: 0, width: 700, height: 520 })
+    const notes = noteObjects(g).map((t) => [t.text, t.fill, t.fontWeight])
+    // 1일: 공휴일 → 기념일 순서(문구 순서 규칙 불변), 공휴일 문구는 기본 색
+    expect(notes).toEqual([
+      ['테스트휴일', '#d93025', 'normal'],
+      ['새해', '#1a56db', 'bold'],
+      ['생일', '#222222', 'bold'],
+      ['보통', '#222222', 'normal'],
+    ])
+  })
+
+  it('칸 문구 3개 제한 불변 — 스타일 기념일도 넘치면 잘린다', async () => {
+    const plugin = makePlugin(makeCanvas())
+    const g = await plugin.createGrid({ variant: 'month' }, ctx({
+      anniversaries: ['a', 'b', 'c', 'd'].map((text) => ({ date: '2027-01-14', lunar: false, text, style: { fill: '#ff0000' } })),
+    }), { left: 0, top: 0, width: 1400, height: 2000 })
+    const cellNotes = noteObjects(g).filter((t) => ((t as fabric.Text & { id?: string }).id ?? '').includes('-n-2027-01-14-'))
+    expect(cellNotes.map((t) => [t.text, t.fill])).toEqual([['a', '#ff0000'], ['b', '#ff0000'], ['c', '#ff0000']])
+  })
+
+  it("'mini' 는 기념일 문구를 그리지 않는다(스타일이 있어도)", async () => {
+    const plugin = makePlugin(makeCanvas())
+    const g = await plugin.createGrid({ variant: 'mini' }, ctx({
+      anniversaries: [{ date: '2027-01-14', lunar: false, text: 'x', style: { fill: '#ff0000' } }],
+    }), { left: 0, top: 0, width: 300, height: 300 })
+    expect(noteObjects(g)).toEqual([])
   })
 })
 

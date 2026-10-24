@@ -9,6 +9,7 @@
  */
 import type {
   AnniversaryInput,
+  AnniversaryTextStyle,
   CalendarData,
   CalendarHoliday,
   CalendarMinorTerm,
@@ -211,6 +212,21 @@ function parseDateKeyLoose(key: string): { year: number; month: number; day: num
   return { year, month, day };
 }
 
+const HEX_COLOR_RE = /^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/;
+
+/**
+ * 기념일 문구 스타일 정제(D1(b) 최소: 색·굵게). 세션 metadata 는 자유형이라 렌더(화면·PDF)에 넘기기 전에
+ * 색은 hex('#rgb'/'#rrggbb')만, 굵기는 'normal'|'bold' 만 남긴다. 남는 키가 없으면 null.
+ */
+export function sanitizeAnniversaryTextStyle(style: unknown): AnniversaryTextStyle | null {
+  if (typeof style !== 'object' || style === null) return null;
+  const s = style as Record<string, unknown>;
+  const out: AnniversaryTextStyle = {};
+  if (typeof s.fill === 'string' && HEX_COLOR_RE.test(s.fill)) out.fill = s.fill;
+  if (s.fontWeight === 'normal' || s.fontWeight === 'bold') out.fontWeight = s.fontWeight;
+  return Object.keys(out).length > 0 ? out : null;
+}
+
 export interface BuildMonthMatrixOptions {
   weekStart: 0 | 1;
   data: CalendarData;
@@ -257,12 +273,20 @@ export function buildMonthMatrix(year: number, month: number, opts: BuildMonthMa
     }
   }
   const anniversaryMap = new Map<DateKey, string[]>();
+  // 문구 스타일(T3b): anniversaryMap 과 같은 순서로 쌓고, 유효 스타일이 하나라도 있는 날짜만 칸에 싣는다
+  const anniversaryStyleMap = new Map<DateKey, Array<AnniversaryTextStyle | null>>();
+  const styledDates = new Set<DateKey>();
   for (const a of opts.anniversaries ?? []) {
     const solar = resolveAnniversarySolarDate(a, data);
     if (!solar) continue;
     const list = anniversaryMap.get(solar);
     if (list) list.push(a.text);
     else anniversaryMap.set(solar, [a.text]);
+    const style = sanitizeAnniversaryTextStyle(a.style);
+    const styles = anniversaryStyleMap.get(solar);
+    if (styles) styles.push(style);
+    else anniversaryStyleMap.set(solar, [style]);
+    if (style) styledDates.add(solar);
   }
 
   const rows: MonthCell[][] = [];
@@ -288,6 +312,7 @@ export function buildMonthMatrix(year: number, month: number, opts: BuildMonthMa
         lunar: solarToLunar(date, data),
         solarTerm: termMap.get(date) ?? null,
         anniversaries: [...(anniversaryMap.get(date) ?? [])],
+        ...(styledDates.has(date) ? { anniversaryStyles: [...(anniversaryStyleMap.get(date) ?? [])] } : {}),
       });
     }
     rows.push(row);

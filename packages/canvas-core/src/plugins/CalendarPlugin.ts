@@ -10,7 +10,7 @@ import {
   resolveCalendarYearStart,
   type CalendarYearSpan,
 } from '@storige/types';
-import type { CalendarData, AnniversaryInput, DateKey, MonthCell, MonthMatrix } from '../calendar/types';
+import type { CalendarData, AnniversaryInput, AnniversaryTextStyle, DateKey, MonthCell, MonthMatrix } from '../calendar/types';
 import { buildMonthMatrix, buildYearMatrix, getMinorTermsForMonth } from '../calendar/core';
 
 /**
@@ -25,6 +25,8 @@ import { buildMonthMatrix, buildYearMatrix, getMinorTermsForMonth } from '../cal
  * - 직렬화: 그룹·자식 모두 `extendFabricOption` 등재 속성(id/extensionType/extension/lockInfo/deleteable/movable/contentEditable …)만으로 왕복.
  * - variant 'year'(연달력, 설계 C8, v1.26): 시작연월·`yearSpan`·`yearDelta` 로 정한 첫 달부터 12개월을 날짜 숫자 + 요일/공휴일 색으로만 그린다.
  *   캔버스 위치(monthOffset·monthDelta·canvasMonthOffset)는 쓰지 않고, 날짜 hitTest 대상이 아니다(기념일 폼 미진입). 그 밖 variant 는 rehydrate 가 건너뛴다.
+ * - 기념일 문구 스타일(D1(b), T3b): `ctx.anniversaries[].style {fill, fontWeight}` 을 core 가 정제해 칸에 싣고('#rgb'/'#rrggbb'·'normal'|'bold'),
+ *   'month' 칸 문구에서 그 기념일 텍스트의 fill·fontWeight 로 쓴다. 문구 3개 제한·순서(공휴일 → 기념일 → 절기 → 잡절 → 음력)는 같다.
  */
 
 export type CalendarGridVariant = 'month' | 'mini' | 'year';
@@ -478,10 +480,14 @@ class CalendarPlugin extends PluginBase {
         let ny = y0 + pad + numberSize * 1.15;
         for (const note of notes.slice(0, 3)) {
           if (ny + smallSize > y0 + cellH) break;
+          // 기념일 문구 스타일(D1(b), T3b): 색은 fill, 굵게는 fontWeight — 스타일이 없으면 키를 더하지 않아 종전 렌더와 같다
+          const noteStyle = note.style;
           children.push(new fabric.Text(note.text, {
             ...textBase, id: `${id}-n-${cell.date}-${note.kind}`,
             left: x0 + pad, top: ny, originX: 'left', originY: 'top',
-            fontSize: smallSize, fill: note.kind === 'holiday' ? colors.holiday : note.kind === 'anniversary' ? colors.text : colors.muted,
+            fontSize: smallSize,
+            fill: noteStyle?.fill ?? (note.kind === 'holiday' ? colors.holiday : note.kind === 'anniversary' ? colors.text : colors.muted),
+            ...(noteStyle?.fontWeight ? { fontWeight: noteStyle.fontWeight } : {}),
           } as TextOpts));
           ny += smallSize * 1.2;
         }
@@ -652,10 +658,13 @@ class CalendarPlugin extends PluginBase {
     cell: MonthCell,
     show: { holidays: boolean; lunar: boolean; solarTerms: boolean },
     minorTermByDate: ReadonlyMap<DateKey, string>,
-  ): Array<{ kind: 'holiday' | 'anniversary' | 'term' | 'minor' | 'lunar'; text: string }> {
-    const notes: Array<{ kind: 'holiday' | 'anniversary' | 'term' | 'minor' | 'lunar'; text: string }> = [];
+  ): Array<{ kind: 'holiday' | 'anniversary' | 'term' | 'minor' | 'lunar'; text: string; style?: AnniversaryTextStyle }> {
+    const notes: Array<{ kind: 'holiday' | 'anniversary' | 'term' | 'minor' | 'lunar'; text: string; style?: AnniversaryTextStyle }> = [];
     if (show.holidays) for (const n of cell.holidayNames) notes.push({ kind: 'holiday', text: n });
-    for (const a of cell.anniversaries) notes.push({ kind: 'anniversary', text: a });
+    cell.anniversaries.forEach((a, i) => {
+      const style = cell.anniversaryStyles?.[i];
+      notes.push(style ? { kind: 'anniversary', text: a, style } : { kind: 'anniversary', text: a });
+    });
     if (show.solarTerms && cell.solarTerm) notes.push({ kind: 'term', text: cell.solarTerm });
     const minor = minorTermByDate.get(cell.date);
     if (minor) notes.push({ kind: 'minor', text: minor });
