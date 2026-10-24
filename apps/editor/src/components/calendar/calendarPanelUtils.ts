@@ -206,23 +206,22 @@ export function gridStyleFromDraft(draft: GridStyleDraft): Pick<CalendarGridStyl
   return Object.keys(style).length > 0 ? style : undefined
 }
 
-// ─── 기념일 문구 스타일(D1(b) 최소: 색·굵게) ─────────────────────────────────
+// ─── 기념일 문구 스타일(D1(b) 최소: 글자색) ─────────────────────────────────
 
 const HEX_COLOR_RE = /^#[0-9a-fA-F]{6}$/
 
 /**
- * 기념일 스타일 갱신 — 색(`fill`)·굵게(`fontWeight`)만 바꾸고 저장분의 다른 키(fontFamily 등)는 유지한다.
- * fill 은 '#rrggbb' 일 때만, null 이면 키 제거. bold false 면 fontWeight 키 제거. 결과가 비면 undefined.
+ * 기념일 스타일 갱신 — 색(`fill`)만 바꾸고 저장분의 다른 키(fontWeight·fontFamily 등)는 그대로 둔다.
+ * fill 은 '#rrggbb' 일 때만, null 이면 키 제거. 결과가 비면 undefined.
+ * 고객 폼은 굵게를 받지 않는다(T3b-1a, 오너 결정 2026-10-25 — 완료 PDF 벡터화가 fontWeight 를 적용하지 않아 화면·인쇄가 달라짐).
+ * 이미 저장된 `fontWeight` 는 지우지 않고 보존한다.
  */
 export function mergeAnniversaryStyle(
   base: CalendarAnniversaryStyle | undefined,
   fill: string | null,
-  bold: boolean,
 ): CalendarAnniversaryStyle | undefined {
   const next: CalendarAnniversaryStyle = { ...(base ?? {}) }
   delete next.fill
-  delete next.fontWeight
   if (fill !== null && HEX_COLOR_RE.test(fill)) next.fill = fill.toLowerCase()
-  if (bold) next.fontWeight = 'bold'
   return Object.keys(next).length > 0 ? next : undefined
 }

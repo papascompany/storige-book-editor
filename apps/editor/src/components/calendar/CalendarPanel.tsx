@@ -47,7 +47,8 @@ import {
  *  - 연도 제목 표시 on/off → `metadata.calendar.show.yearTitle`(템플릿 `style.showTitle=false` 면 제목 자리 자체가 없다).
  *  - 표지·에필로그 연도 선택 → `metadata.calendar.yearDeltas`. 프로파일 `calendar.yearPolicy.select` 가 있고 그 역할 캔버스에
  *    연달력이 있을 때만 노출, 후보는 허용 폭(minDelta~maxDelta)만. 값은 시작연도 기준 상대값이라 시작연월을 바꿔도 유지된다(Q4).
- * 기념일 폼은 문구 스타일 최소 2종(글자색·굵게, D1(b))을 받아 `anniversaries[].style` 에 저장한다.
+ * 기념일 폼은 문구 스타일 최소(글자색, D1(b))를 받아 `anniversaries[].style` 에 저장한다. 굵게 입력은 두지 않는다
+ * (T3b-1a, 오너 결정 2026-10-25 — 완료 PDF 벡터화가 fontWeight 를 적용하지 않아 화면·인쇄가 달라짐). 저장분의 fontWeight 등 다른 키는 보존한다.
  * ToolBar 가 productProfile.kind==='calendar' 세트 또는 editMode 에서만 메뉴를 노출한다.
  */
 
@@ -73,15 +74,14 @@ interface AnniversaryFormState {
   lunar: boolean
   isLeapMonth: boolean
   text: string
-  /** 저장분 스타일(색·굵게 외 키 보존용) */
+  /** 저장분 스타일(색 외 키 — fontWeight·fontFamily 등 — 보존용) */
   baseStyle?: CalendarAnniversaryStyle
   /** null = 기본 색 */
   fill: string | null
-  bold: boolean
 }
 
-function styleFormFields(style: CalendarAnniversaryStyle | undefined): Pick<AnniversaryFormState, 'baseStyle' | 'fill' | 'bold'> {
-  return { baseStyle: style, fill: style?.fill ?? null, bold: style?.fontWeight === 'bold' }
+function styleFormFields(style: CalendarAnniversaryStyle | undefined): Pick<AnniversaryFormState, 'baseStyle' | 'fill'> {
+  return { baseStyle: style, fill: style?.fill ?? null }
 }
 
 export default function CalendarPanel() {
@@ -416,7 +416,7 @@ function AnniversarySection({ anniversaries, start, data, form, setForm, formErr
       isLeapMonth: form.lunar && lunarAvailable ? form.isLeapMonth : undefined,
       text,
     }
-    const style = mergeAnniversaryStyle(form.baseStyle, form.fill, form.bold)
+    const style = mergeAnniversaryStyle(form.baseStyle, form.fill)
     if (candidate.lunar && resolveAnniversarySolar(candidate, data) === null) {
       setFormError('해당 음력 날짜가 데이터에 없습니다(윤달·30일 확인)')
       return
@@ -428,7 +428,7 @@ function AnniversarySection({ anniversaries, start, data, form, setForm, formErr
     }
     const store = useCalendarStore.getState()
     if (form.mode === 'edit' && form.id) {
-      // style: undefined 는 저장분 스타일 제거(색·굵게 해제 + 다른 키 없음)
+      // style: undefined 는 저장분 스타일 제거(색 해제 + 다른 키 없음)
       store.updateAnniversary(form.id, { ...candidate, style })
     } else {
       store.addAnniversary(style ? { ...candidate, style } : candidate)
@@ -572,16 +572,6 @@ function AnniversarySection({ anniversaries, start, data, form, setForm, formErr
               value={form.fill ?? DEFAULT_ANNIVERSARY_FILL}
               onChange={(e) => setForm({ ...form, fill: e.target.value })}
             />
-            <label className="flex items-center gap-1.5 text-sm text-editor-text">
-              <input
-                type="checkbox"
-                className="h-4 w-4 accent-editor-accent"
-                aria-label="굵게"
-                checked={form.bold}
-                onChange={(e) => setForm({ ...form, bold: e.target.checked })}
-              />
-              굵게
-            </label>
           </div>
           {formError && <p role="alert" className="text-xs text-red-500">{formError}</p>}
           <div className="flex justify-end gap-1">

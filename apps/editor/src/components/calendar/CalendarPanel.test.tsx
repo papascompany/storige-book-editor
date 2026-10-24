@@ -400,21 +400,20 @@ describe('CalendarPanel — 연달력 섹션 (T3b)', () => {
   })
 })
 
-describe('CalendarPanel — 기념일 문구 스타일 최소(색·굵게, D1(b))', () => {
-  it('추가: 글자색 지정 + 굵게 → anniversaries[].style {fill, fontWeight}', async () => {
+describe('CalendarPanel — 기념일 문구 스타일 최소(글자색, D1(b) · T3b-1a 굵게 입력 없음)', () => {
+  it('추가: 글자색 지정 → anniversaries[].style {fill} 만(굵게 컨트롤 없음 → fontWeight 키 없음)', async () => {
     wireCalendar()
     fireEvent.click(screen.getByRole('button', { name: '추가' }))
     const form = screen.getByRole('form', { name: '기념일 추가' })
+    expect(within(form).queryByLabelText('굵게')).toBeNull()
+    expect(within(form).queryByText('굵게')).toBeNull()
     expect(within(form).getByLabelText('기념일 글자색')).toBeDisabled()
     fireEvent.click(within(form).getByLabelText('글자색 지정'))
     fireEvent.change(within(form).getByLabelText('기념일 글자색'), { target: { value: '#1a56db' } })
-    fireEvent.click(within(form).getByLabelText('굵게'))
     await submitAnniversary({ month: 4, day: 3, text: '결혼기념일' })
-    expect(useCalendarStore.getState().meta?.anniversaries[0]).toMatchObject({
-      date: '2027-04-03',
-      text: '결혼기념일',
-      style: { fill: '#1a56db', fontWeight: 'bold' },
-    })
+    const saved = useCalendarStore.getState().meta?.anniversaries[0]
+    expect(saved).toMatchObject({ date: '2027-04-03', text: '결혼기념일' })
+    expect(saved?.style).toEqual({ fill: '#1a56db' })
   })
 
   it('스타일 없이 추가하면 style 키를 만들지 않는다(종전 저장 형태)', async () => {
@@ -424,7 +423,7 @@ describe('CalendarPanel — 기념일 문구 스타일 최소(색·굵게, D1(b)
     expect(useCalendarStore.getState().meta?.anniversaries[0]).not.toHaveProperty('style')
   })
 
-  it('수정: 저장분 색·굵게가 폼에 채워지고, 색 해제 시 fill 만 빠지고 다른 스타일 키(fontFamily)는 유지', async () => {
+  it('수정: 저장분 색이 폼에 채워지고 굵게 컨트롤은 없으며, 색을 바꿔 저장해도 저장분 fontWeight·fontFamily 는 유지', async () => {
     wireCalendar()
     act(() => {
       useCalendarStore.getState().addAnniversary({
@@ -439,12 +438,26 @@ describe('CalendarPanel — 기념일 문구 스타일 최소(색·굵게, D1(b)
     const form = screen.getByRole('form', { name: '기념일 수정' })
     expect(within(form).getByLabelText('글자색 지정')).toBeChecked()
     expect((within(form).getByLabelText('기념일 글자색') as HTMLInputElement).value).toBe('#ff0000')
-    expect(within(form).getByLabelText('굵게')).toBeChecked()
+    expect(within(form).queryByLabelText('굵게')).toBeNull()
+    fireEvent.change(within(form).getByLabelText('기념일 글자색'), { target: { value: '#00AA00' } })
+    await act(async () => {
+      fireEvent.submit(form)
+    })
+    expect(useCalendarStore.getState().meta?.anniversaries[0].style).toEqual({ fill: '#00aa00', fontWeight: 'bold', fontFamily: 'X' })
+  })
+
+  it('수정: 색 해제 시 fill 만 빠지고 저장분 fontWeight 는 지우지 않는다(색 외 키가 fontWeight 뿐이어도 style 유지)', async () => {
+    wireCalendar()
+    act(() => {
+      useCalendarStore.getState().addAnniversary({ id: 'fw', date: '2027-06-02', lunar: false, text: '굵은날', style: { fill: '#ff0000', fontWeight: 'bold' } })
+    })
+    fireEvent.click(await screen.findByRole('button', { name: '기념일 수정 굵은날' }))
+    const form = screen.getByRole('form', { name: '기념일 수정' })
     fireEvent.click(within(form).getByLabelText('글자색 지정'))
     await act(async () => {
       fireEvent.submit(form)
     })
-    expect(useCalendarStore.getState().meta?.anniversaries[0].style).toEqual({ fontWeight: 'bold', fontFamily: 'X' })
+    expect(useCalendarStore.getState().meta?.anniversaries[0].style).toEqual({ fontWeight: 'bold' })
   })
 })
 
