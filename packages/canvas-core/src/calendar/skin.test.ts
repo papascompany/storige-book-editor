@@ -286,9 +286,10 @@ describe('mergeSkinCanvas — 템플릿 유래 판정(판정 집합 · 보조 �
       { type: 'group', id: 'x-el', extensionType: 'template-element' },
       frame('x-frame', 0, 0),
     ])
-    const { json, report } = mergeSkinCanvas(cur, null, canvas([ws(), bg('bg-s')]))
-    expect(ids(json)).toEqual(['workspace', 'bg-s', 'x-bg', 'x-el', 'x-frame'])
-    expect(report).toMatchObject({ templateRemoved: 0, auxiliaryTemplateCount: 0, customerKept: 3 })
+    // 고객 배경은 배치 모드가 따로 있다(B2) — 여기서는 '내 배경 유지'로 고객 요소 판정만 본다
+    const { json, report } = mergeSkinCanvas(cur, null, canvas([ws(), bg('bg-s')]), { keepCustomerBackground: true })
+    expect(ids(json)).toEqual(['workspace', 'x-bg', 'x-el', 'x-frame'])
+    expect(report).toMatchObject({ templateRemoved: 0, auxiliaryTemplateCount: 0, customerKept: 2, customerBackgroundsKept: 1 })
   })
 
   it("'고객 추가' 개수가 임계 이상이면 차단 보고(suspect) — 합계 blocked, 임계 미만은 통과", () => {
@@ -411,6 +412,111 @@ describe('mergeSkinCanvas — 고객 요소 그룹 자식·clipPath id 충돌', 
     }
     objs(json).forEach(walk)
     expect(new Set(all).size).toBe(all.length)
+  })
+})
+
+describe('mergeSkinCanvas — 고객 배경 keepCustomerBackground (오너 결정 B2 (b))', () => {
+  // 편집기 addBackground 모양: 템플릿 배경을 지우고 uuid id·extensionType 'background' 고객 배경을 둔다(잠금·deleteable 없음)
+  const custBg = (src: string, id = 'cb-1'): Obj =>
+    ({ type: 'image', id, extensionType: 'background', src, left: 0, top: 0, originX: 'center', originY: 'center', scaleX: 1.2, scaleY: 1.2, name: '배경' })
+  const STORAGE = '/storage/files/backgrounds/my-bg.jpg'
+  const DATA = 'data:image/png;base64,iVBORw0KGgo='
+  const curWith = (bgObj: Obj | null) =>
+    canvas([ws(830, 630), ...(bgObj ? [bgObj] : []), frame('f1', 0, 0), grid('g1'), text('t1', '2027 CALENDAR'), sticker('st-1')])
+
+  it('true(내 배경 유지): [0]workspace → [1]고객 배경 → 스킨 요소(스킨 배경은 대체) → 고객 요소', () => {
+    const bgObj = custBg(STORAGE)
+    const { json, report } = mergeSkinCanvas(curWith(bgObj), FROM(), TO(), { keepCustomerBackground: true })
+    const out = objs(json)
+    expect(out[0].id).toBe('workspace')
+    expect(out[1]).toEqual(bgObj)
+    expect(out.slice(2, 5).map((o) => o.id)).toEqual(['f1', 'g-s', 't1'])
+    expect(out[5].id).toBe('st-1')
+    expect(out).toHaveLength(6)
+    expect(byId(json, 'bg-s')).toBeUndefined()
+    expect(report).toMatchObject({ customerBackgroundsKept: 1, skinBackgroundsReplaced: 1, removedCustomerBackgrounds: [], customerKept: 1 })
+    expect('forcedKeepReason' in report).toBe(false)
+  })
+
+  it('false(스킨 배경 사용, 기본): 고객 배경 제거 → [0]workspace → [1]스킨 배경 → 스킨 요소 → 고객 요소, storage URL 제거 보고', () => {
+    for (const opts of [{ keepCustomerBackground: false }, {}]) {
+      const { json, report } = mergeSkinCanvas(curWith(custBg(STORAGE)), FROM(), TO(), opts)
+      const out = objs(json)
+      expect(out.map((o) => o.id)).toEqual(['workspace', 'bg-s', 'f1', 'g-s', 't1', 'st-1'])
+      expect(out[1]).toEqual(bg('bg-s', '#fde'))
+      expect(byId(json, 'cb-1')).toBeUndefined()
+      expect(report.removedCustomerBackgrounds).toEqual([{ id: 'cb-1', srcKind: 'storage-url', src: STORAGE }])
+      expect(report).toMatchObject({ customerBackgroundsKept: 0, skinBackgroundsReplaced: 0, customerKept: 1 })
+      expect('forcedKeepReason' in report).toBe(false)
+    }
+  })
+
+  it('src 종류: 절대 URL 의 /storage/ 경로는 storage-url, 그 밖의 URL 은 other(src 미기재)', () => {
+    const abs = 'https://api.example.test/api/storage/files/bg.png?v=2'
+    const r1 = mergeSkinCanvas(curWith(custBg(abs)), FROM(), TO())
+    expect(r1.report.removedCustomerBackgrounds).toEqual([{ id: 'cb-1', srcKind: 'storage-url', src: abs }])
+    const r2 = mergeSkinCanvas(curWith(custBg('https://cdn.example.test/bg.png')), FROM(), TO())
+    expect(r2.report.removedCustomerBackgrounds).toEqual([{ id: 'cb-1', srcKind: 'other' }])
+  })
+
+  it("data URL 고객 배경은 false 여도 유지(forcedKeepReason 'data-url') — 순서는 내 배경 유지와 같다", () => {
+    const bgObj = custBg(DATA)
+    for (const opts of [{ keepCustomerBackground: false }, {}]) {
+      const { json, report } = mergeSkinCanvas(curWith(bgObj), FROM(), TO(), opts)
+      const out = objs(json)
+      expect(out[0].id).toBe('workspace')
+      expect(out[1]).toEqual(bgObj)
+      expect(out.slice(2).map((o) => o.id)).toEqual(['f1', 'g-s', 't1', 'st-1'])
+      expect(report).toMatchObject({ forcedKeepReason: 'data-url', customerBackgroundsKept: 1, skinBackgroundsReplaced: 1, removedCustomerBackgrounds: [] })
+    }
+    // true 로 넘기면 강제가 아니므로 이유를 남기지 않는다
+    const kept = mergeSkinCanvas(curWith(bgObj), FROM(), TO(), { keepCustomerBackground: true })
+    expect('forcedKeepReason' in kept.report).toBe(false)
+  })
+
+  it('고객 배경 없음: 두 모드 결과가 같고 스킨 배경을 쓴다(보고 0)', () => {
+    const a = mergeSkinCanvas(curWith(null), FROM(), TO(), { keepCustomerBackground: true })
+    const b = mergeSkinCanvas(curWith(null), FROM(), TO(), { keepCustomerBackground: false })
+    expect(a.json).toEqual(b.json)
+    expect(ids(a.json)).toEqual(['workspace', 'bg-s', 'f1', 'g-s', 't1', 'st-1'])
+    expect(a.report).toMatchObject({ customerBackgroundsKept: 0, skinBackgroundsReplaced: 0, removedCustomerBackgrounds: [] })
+  })
+
+  it('스킨에 배경이 없으면 고객 배경만 [1] 에 둔다(대체 0) · 스킨 배경이 여럿이면 모두 대체', () => {
+    const toNoBg = canvas([ws(), frame('f1', 0, 0), grid('g-s')])
+    const r1 = mergeSkinCanvas(curWith(custBg(STORAGE)), FROM(), toNoBg, { keepCustomerBackground: true })
+    expect(ids(r1.json)).toEqual(['workspace', 'cb-1', 'f1', 'g-s', 'st-1'])
+    expect(r1.report.skinBackgroundsReplaced).toBe(0)
+    const toTwoBg = canvas([ws(), bg('bg-s1'), bg('bg-s2'), frame('f1', 0, 0)])
+    const r2 = mergeSkinCanvas(curWith(custBg(STORAGE)), FROM(), toTwoBg, { keepCustomerBackground: true })
+    expect(ids(r2.json)).toEqual(['workspace', 'cb-1', 'f1', 'st-1'])
+    expect(r2.report.skinBackgroundsReplaced).toBe(2)
+  })
+
+  it('템플릿 배경(판정 집합 안)은 고객 배경이 아니다 — 모드와 무관하게 스킨 배경으로 바뀐다', () => {
+    const cur = canvas([ws(), bg('bg-1'), frame('f1', 0, 0)])
+    const r = mergeSkinCanvas(cur, FROM(), TO(), { keepCustomerBackground: true })
+    expect(ids(r.json)).toEqual(['workspace', 'bg-s', 'f1', 'g-s', 't1'])
+    expect(r.report).toMatchObject({ customerBackgroundsKept: 0, skinBackgroundsReplaced: 0, templateRemoved: 2 })
+  })
+
+  it('dryRun 보고 = 실제 보고, 합계에 canvasIndex·forcedKeepIndices 반영', () => {
+    const cases = [
+      { cur: curWith(custBg(STORAGE)), opts: {} },
+      { cur: curWith(custBg(DATA)), opts: {} },
+      { cur: curWith(custBg(STORAGE, 'cb-2')), opts: { keepCustomerBackground: true } },
+    ]
+    const reports = cases.map(({ cur, opts }) => {
+      const dry = mergeSkinCanvas(cur, FROM(), TO(), { ...opts, dryRun: true })
+      const real = mergeSkinCanvas(cur, FROM(), TO(), opts)
+      expect(dry.json).toBeNull()
+      expect(dry.report).toEqual(real.report)
+      return real.report
+    })
+    const sum = summarizeSkinMergeReports(reports)
+    expect(sum.removedCustomerBackgrounds).toEqual([{ id: 'cb-1', srcKind: 'storage-url', src: STORAGE, canvasIndex: 0 }])
+    expect(sum.forcedKeepIndices).toEqual([1])
+    expect(sum).toMatchObject({ customerBackgroundsKept: 2, skinBackgroundsReplaced: 2, customerKept: 3, blocked: false })
   })
 })
 

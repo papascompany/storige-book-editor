@@ -193,6 +193,9 @@ export interface CalendarSessionMeta {
 
 - 순서: `to` 의 객체 순서를 따른다. 그대로 유지한 채움 사진은 원래 대상 틀과의 앞뒤 관계를 따라 끼워 넣고, 고객 추가 요소는 맨 위에 둔다.
 - 템플릿 유래 요소를 고객이 옮기거나 크기를 바꾼 것(잠금이 허용한 경우)은 보존하지 않는다. 확인 대화상자에 그렇게 안내한다.
+- **고객 배경**(오너 결정 B2 (b), 2026-10-25): 템플릿 유래가 아닌 `extensionType 'background'` 객체. `mergeSkinCanvas` 옵션 `keepCustomerBackground`(기본 false)로 정한다.
+  - true('내 배경 유지'): 순서 workspace → 고객 배경 → 스킨 요소 → 고객 요소. 스킨 배경은 뺀다 — 편집기 `addBackground` 가 기존 배경을 지우고 바꾸는 것과 같이 배경은 하나이고, 남기면 고객 배경을 덮는다(`skinBackgroundsReplaced`).
+  - false('스킨 배경 사용'): 고객 배경을 빼고 `removedCustomerBackgrounds [{id, srcKind 'storage-url'|'data-url'|'other', src?}]` 로 보고한다(storage URL 은 호출자가 '내 업로드'에 남김). src 가 data URL 이면 되살릴 수 없어 false 여도 유지하고 `forcedKeepReason: 'data-url'` 을 남긴다.
 
 ### 3.4 성능·메모리
 

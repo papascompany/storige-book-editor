@@ -18,6 +18,10 @@
  *   변환은 유지하고 clipPath 를 새 틀 이미지로 다시 만든다. 그 밖에는 `refills` 로 보낸다(편집기가 다시 채움, 자르기 초기화).
  *   대상 틀이 없으면 캔버스에서 빼고 보고한다(사진은 '내 업로드'에 남음).
  * - 고객 추가 요소: 원래 순서대로 맨 위에 둔다. 출력에 같은 id 가 있으면 새 id 로 바꾸고 참조도 고친다.
+ * - 고객 배경(템플릿 유래가 아닌 extensionType 'background'): `keepCustomerBackground` 로 정한다(오너 결정 B2 (b)).
+ *   true = 고객 배경을 workspace 바로 위에 두고 스킨 배경은 뺀다(편집기 addBackground 와 같이 배경은 하나 — 스킨 배경을 남기면
+ *   고객 배경을 덮는다). false = 고객 배경을 빼고 보고(`removedCustomerBackgrounds`). 단 src 가 data URL 이면 '내 업로드'로
+ *   되살릴 수 없어 false 여도 유지한다(`forcedKeepReason: 'data-url'`).
  */
 import { v4 as uuidv4 } from 'uuid'
 
@@ -49,6 +53,7 @@ export const SKIN_MERGE_SUSPECT_RATIO = 0.5
 
 const GRID_EXTENSION_TYPE = 'calendar-grid'
 const FRAME_EXTENSION_TYPE = 'frame'
+const BACKGROUND_EXTENSION_TYPE = 'background'
 const WORKSPACE_ID = 'workspace'
 /** 캔버스 최상위 키 중 디자인(템플릿) 소유 — `to` 값을 쓰고 `to` 에 없으면 지운다 */
 const DESIGN_TOP_LEVEL_KEYS = ['background', 'backgroundImage', 'overlay', 'overlayImage'] as const
@@ -67,6 +72,23 @@ export interface SkinMergeOptions {
   referenceObjectCount?: number
   /** 새 id 생성기(테스트 주입용). 기본 uuid v4 */
   createId?: () => string
+  /**
+   * 고객 배경 처리(오너 결정 B2 (b)). true = '내 배경 유지'(workspace 바로 위, 스킨 배경 대체) ·
+   * false(기본) = '스킨 배경 사용'(고객 배경 제거 + 보고). data URL 고객 배경은 false 여도 유지한다.
+   */
+  keepCustomerBackground?: boolean
+}
+
+/** 고객 배경 src 종류 — 'storage-url' 이면 호출자가 '내 업로드'에 남길 수 있다 */
+export type SkinBackgroundSrcKind = 'storage-url' | 'data-url' | 'other'
+
+/** '스킨 배경 사용'으로 뺀 고객 배경 */
+export interface SkinRemovedBackground {
+  /** 현재 캔버스의 객체 id */
+  id: string
+  srcKind: SkinBackgroundSrcKind
+  /** srcKind 'storage-url' 일 때만 — '내 업로드' 등록용 */
+  src?: string
 }
 
 /** 'geometry' = 대상 틀 기하가 다름 · 'frame-shape' = 기하는 같으나 틀 모양이 달라 clipPath 를 다시 만들 수 없음 */
@@ -124,6 +146,14 @@ export interface SkinMergeReport {
   suspect: boolean
   /** 뺀 사진·문구 목록(안내용) */
   dropped: SkinMergeDropped[]
+  /** 결과에 남긴 고객 배경 수(workspace 바로 위). customerKept 에는 세지 않는다 */
+  customerBackgroundsKept: number
+  /** 고객 배경을 남겨서 뺀 스킨 배경 수 */
+  skinBackgroundsReplaced: number
+  /** '스킨 배경 사용'으로 뺀 고객 배경 */
+  removedCustomerBackgrounds: SkinRemovedBackground[]
+  /** keepCustomerBackground=false 인데 data URL 고객 배경이라 유지했으면 'data-url'(없으면 키 없음) */
+  forcedKeepReason?: 'data-url'
 }
 
 export interface SkinMergeResult {
@@ -134,11 +164,16 @@ export interface SkinMergeResult {
 }
 
 /** 여러 캔버스 보고 합계(확인 대화상자·차단 판정용) */
-export interface SkinMergeSummary extends Omit<SkinMergeReport, 'dropped' | 'suspect' | 'referenceObjectCount'> {
+export interface SkinMergeSummary
+  extends Omit<SkinMergeReport, 'dropped' | 'suspect' | 'referenceObjectCount' | 'removedCustomerBackgrounds' | 'forcedKeepReason'> {
   /** 판정 오류 의심 캔버스 인덱스(입력 배열 순서) — 1개라도 있으면 적용하지 않는다 */
   suspectIndices: number[]
   blocked: boolean
   dropped: SkinMergeDropped[]
+  /** 캔버스별 뺀 고객 배경(canvasIndex = 입력 배열 순서) */
+  removedCustomerBackgrounds: Array<SkinRemovedBackground & { canvasIndex: number }>
+  /** data URL 이라 강제로 유지한 캔버스 인덱스 */
+  forcedKeepIndices: number[]
 }
 
 // ─── 공개 헬퍼 ──────────────────────────────────────────────────────────────
@@ -157,6 +192,7 @@ export function collectSkinTemplateIds(canvasDatas: Iterable<unknown>): Set<stri
 /**
  * 판정 오류 의심 — '고객 추가' 개수가 하한(`SKIN_MERGE_SUSPECT_MIN_CUSTOMER`) 이상이고
  * 기준 템플릿 객체 수 × `SKIN_MERGE_SUSPECT_RATIO` 이상(기준 객체 수 0 이면 false).
+ * `customerKept` 는 고객 배경을 세지 않은 값이다(배경은 판정 오류 신호가 아님 — `customerBackgroundsKept` 로 따로 보고).
  */
 export function isSkinMergeSuspect(customerKept: number, referenceObjectCount: number): boolean {
   if (referenceObjectCount <= 0) return false
@@ -183,6 +219,10 @@ export function summarizeSkinMergeReports(reports: readonly SkinMergeReport[]): 
     suspectIndices: [],
     blocked: false,
     dropped: [],
+    customerBackgroundsKept: 0,
+    skinBackgroundsReplaced: 0,
+    removedCustomerBackgrounds: [],
+    forcedKeepIndices: [],
   }
   reports.forEach((r, i) => {
     sum.templateRemoved += r.templateRemoved
@@ -200,6 +240,11 @@ export function summarizeSkinMergeReports(reports: readonly SkinMergeReport[]): 
     sum.customerReissued += r.customerReissued
     if (r.suspect) sum.suspectIndices.push(i)
     sum.dropped.push(...r.dropped)
+    // 새 필드가 없는 구 보고(직렬화 왕복 등)도 받는다
+    sum.customerBackgroundsKept += r.customerBackgroundsKept ?? 0
+    sum.skinBackgroundsReplaced += r.skinBackgroundsReplaced ?? 0
+    for (const b of r.removedCustomerBackgrounds ?? []) sum.removedCustomerBackgrounds.push({ ...b, canvasIndex: i })
+    if (r.forcedKeepReason) sum.forcedKeepIndices.push(i)
   })
   sum.blocked = sum.suspectIndices.length > 0
   return sum
@@ -262,12 +307,17 @@ export function mergeSkinCanvas(
     customerReissued: 0,
     suspect: false,
     dropped: [],
+    customerBackgroundsKept: 0,
+    skinBackgroundsReplaced: 0,
+    removedCustomerBackgrounds: [],
   }
 
   // 1) 현재 객체 분류
   let curWorkspace: SkinObject | null = null
   const fills: FillPlan[] = []
   const customers: SkinObject[] = []
+  /** 결과에 남길 고객 배경(workspace 바로 위) */
+  const keptBackgrounds: SkinObject[] = []
   /** to 문구 id → 옮길 문자열(+requiredEditTouched) */
   const textMoves = new Map<string, { text: unknown; touched: unknown }>()
 
@@ -287,7 +337,8 @@ export function mergeSkinCanvas(
       }
     }
     if (!isTemplateOrigin(o)) {
-      customers.push(o)
+      if (o.extensionType === BACKGROUND_EXTENSION_TYPE) classifyCustomerBackground(o)
+      else customers.push(o)
       continue
     }
     report.templateRemoved += 1
@@ -297,6 +348,22 @@ export function mergeSkinCanvas(
       continue
     }
     if (isText(o) && typeof o.id === 'string') classifyText(o, o.id)
+  }
+
+  function classifyCustomerBackground(o: SkinObject): void {
+    const srcKind = backgroundSrcKind(o.src)
+    if (opts.keepCustomerBackground === true) {
+      keptBackgrounds.push(o)
+      return
+    }
+    if (srcKind === 'data-url') {
+      keptBackgrounds.push(o)
+      report.forcedKeepReason = 'data-url'
+      return
+    }
+    const removed: SkinRemovedBackground = { id: typeof o.id === 'string' ? o.id : '', srcKind }
+    if (srcKind === 'storage-url' && typeof o.src === 'string') removed.src = o.src
+    report.removedCustomerBackgrounds.push(removed)
   }
 
   function classifyText(o: SkinObject, id: string): void {
@@ -384,7 +451,16 @@ export function mergeSkinCanvas(
   }
 
   // 3) 출력 순서 — to 순서 + 유지 사진 끼움, 그 위에 고객 추가 요소
-  const toKept = toObjs.filter((t) => !(isImageLike(t) && occupied.has(linkOf(t) ?? '')))
+  const replaceSkinBackground = keptBackgrounds.length > 0
+  const toKept = toObjs.filter((t) => {
+    if (isImageLike(t) && occupied.has(linkOf(t) ?? '')) return false
+    if (replaceSkinBackground && t.extensionType === BACKGROUND_EXTENSION_TYPE) {
+      report.skinBackgroundsReplaced += 1
+      return false
+    }
+    return true
+  })
+  report.customerBackgroundsKept = keptBackgrounds.length
   const used = new Set<string>()
   if (curWorkspace || toById.has(WORKSPACE_ID)) used.add(WORKSPACE_ID)
   for (const t of toKept) collectIds(t, used)
@@ -392,7 +468,7 @@ export function mergeSkinCanvas(
 
   // 고객 요소 id 충돌 — 출력 쪽 collectIds 와 같은 기준(자신·그룹 자식·clipPath)으로 검사·재부여
   const idMap = new Map<string, string>()
-  for (const c of customers) {
+  for (const c of [...keptBackgrounds, ...customers]) {
     const own: string[] = []
     collectIdList(c, own)
     let reissued = false
@@ -428,6 +504,9 @@ export function mergeSkinCanvas(
     for (const p of photos) if (!p.below) out.push(p.obj)
   }
   if (!workspacePlaced && curWorkspace) out.unshift(curWorkspace)
+  // 고객 배경은 workspace 바로 위(workspace 가 없으면 맨 아래)
+  const wsAt = out.findIndex((o) => o.id === WORKSPACE_ID)
+  out.splice(wsAt + 1, 0, ...keptBackgrounds.map((b) => remapCustomer(b, idMap)))
   for (const c of customers) out.push(remapCustomer(c, idMap))
 
   function adjustTemplateObject(t: SkinObject, id: string | null): SkinObject {
@@ -492,6 +571,14 @@ function hasTemplateLock(lockInfo: unknown): boolean {
 
 function isText(o: SkinObject): boolean {
   return typeof o.type === 'string' && SKIN_TEXT_TYPES.includes(o.type)
+}
+
+/** 배경 src 종류 — data: 는 'data-url', 경로(절대 URL 의 경로 포함)에 `/storage/` 가 있으면 'storage-url' */
+function backgroundSrcKind(src: unknown): SkinBackgroundSrcKind {
+  if (typeof src !== 'string' || src.length === 0) return 'other'
+  if (/^data:/i.test(src)) return 'data-url'
+  const path = src.replace(/^(https?:)?\/\/[^/]+/i, '').split(/[?#]/)[0]
+  return /(^|\/)storage\//.test(path) ? 'storage-url' : 'other'
 }
 
 function isFrame(o: SkinObject): boolean {
