@@ -1756,6 +1756,53 @@ STORIGE_API_URL=https://api.papascompany.co.kr/api node scripts/register-photo-p
 
 - `POST /edit-sessions`·`POST /edit-sessions/guest` 가 update 와 같은 규칙으로 서버 소유 `metadata` 키(`launch`·`revision`·`production`·`productProfile`)를 입력에서 버린 뒤 프로파일 스냅샷을 기록하고, 스냅샷 기록 때 템플릿셋이 없으면(NotFound) `productProfile` 키를 두지 않는다(그 밖의 조회 오류는 종전대로 기존 값 유지 — update·완료 경로도 같음). 파트너 v1 런처 경로·DTO·CONTRACT 무변경, 플래그·스키마·`.env` 변경 없음. 롤백 = api 직전 이미지.
 
+### 캘린더 날짜 데이터 갱신·릴리스 절차 (T4, 2026-10-24 준비 — 계획 B4·오너 결정 D4)
+
+> 대상: canvas-core 정적 날짜 데이터 `packages/canvas-core/src/calendar/data/kr-2025-2035-v1.ts`(**생성물 — 직접 편집 금지**). 입력은 생성기 `packages/canvas-core/scripts/gen-calendar-data.mjs`(천문 계산·공휴일 규정·잡절 규칙)와 `packages/canvas-core/scripts/calendar-overrides.json`(규정 밖 지정일 — 임시공휴일·선거일, `temporary`)뿐이다. 데이터는 canvas-core 를 통해 **editor 번들에만** 들어가므로 반영 = editor 배포(master push → Vercel)이고 api·worker 재배포는 필요 없다(api 는 `@storige/types` `CALENDAR_DATA_VERSIONS` 의 버전 키·범위로 프로파일만 검증). 근거: [`CALENDAR_EDITOR_FEATURE_PLAN_2026-10-21.md`](./CALENDAR_EDITOR_FEATURE_PLAN_2026-10-21.md) §2 B4·§5 D4.
+
+**오너 결정 D4(2026-10-24)**: `dataVersion` 릴리스(데이터 변경을 운영에 반영하는 것)는 **오너 승인 뒤**에만 한다. 갱신 **담당자: 미지정 — 오너 지정 대기**. 잡절(삼복)은 표기 옵션 `show.minorTerms`(기본 off)로 v1 in-place 추가, 2028-04-12 국회의원선거일은 temporary(기본 미표시)로 추가, 프로파일 `allowedRange` 는 KASI 대조 전까지 2027-12 유지(프리셋·샘플 값은 이 절차로 바꾸지 않는다). T4 시점 상태: 위 데이터 변경은 산출·커밋만 했고 **릴리스 전**이다.
+
+**1. 재생성·결정성 확인(`--check`)**
+
+```bash
+export PATH=/opt/homebrew/opt/node@24/bin:$PATH   # Node ≥ 20
+cd packages/canvas-core
+node scripts/gen-calendar-data.mjs --check   # 쓰지 않고 비교 — generatedAt 줄 제외 차이 0 이면 exit 0, 다르면 첫 차이 줄 출력 후 exit 1
+node scripts/gen-calendar-data.mjs           # overrides·생성기 수정 뒤 재생성. 차이가 generatedAt 뿐이면 파일을 다시 쓰지 않는다
+node scripts/gen-calendar-data.mjs --out /tmp/kr-preview.ts   # 다른 경로로 산출(검토용 — 저장소 파일 불변)
+npx vitest run src/calendar src/plugins/CalendarPlugin.test.ts   # 데이터·core·플러그인 테스트
+```
+
+- 실행 로그의 `참고값 대조 차이: 0건` 을 확인한다(설날·추석·부처님오신날·윤달·절기·대체공휴일·잡절). 3건 이상이면 exit 2 — 원인 분석 전 커밋 금지.
+- `KST 자정 ±30분 이벤트` 목록의 날짜(합삭·절기)는 계산 오차로 하루가 바뀔 수 있는 후보다 — KASI 대조 때 우선 확인한다.
+- 커밋 전 `--check` 가 exit 0 이어야 한다(커밋된 데이터 = 생성기 산출). 데이터 파일만 손으로 고친 커밋은 이 검사에서 걸린다.
+
+**2. KASI 대조 체크리스트**
+
+연 1회(우주항공청 월력요항 공고 직후 — 다음 해분이 매년 6월 하순 공고(2025분 2024-06-20, 2026분 2025-06-30, 2027분 2026-06-29), KASI 천문우주정보 「달력자료(월력요항)」 → 전자관보 원문):
+- [ ] 새 연도 월력요항의 공휴일·대체공휴일 날짜 집합 ↔ `holidays[연도]`(temporary 포함) — `kr-2025-2035-v1.test.ts` `KASI_HOLIDAY_DATES` 에 그 연도를 추가.
+- [ ] 24절기 24건 ↔ `solarTerms[연도]` — 테스트 `TERMS_<연도>` 추가.
+- [ ] 설날·추석·부처님오신날·윤달 ↔ `lunarYears` — 생성기 `REF` 와 테스트 표 확인.
+- [ ] 「잡절(삼복)」 초복·중복·말복 ↔ `minorTerms[연도]` — 생성기 `REF.minorTerms`·테스트 `MINOR_TERMS_PUBLISHED` 에 그 연도를 추가(2028 은 2026-10-24 기준 미공고).
+- [ ] 차이가 있으면 생성기·overrides 로 고치고(데이터 파일 직접 편집 금지) 1 을 다시 실행. 원인을 모르는 차이는 강제로 맞추지 말고 보고.
+- [ ] 대조 완료 연도가 늘면 `allowedRange` 확장 여부를 오너가 결정(프리셋·샘플 변경은 별도 트랙).
+
+수시(임시공휴일·선거일 지정 — 국무회의 의결·관보 공고 확인 시):
+- [ ] `calendar-overrides.json` 에 `{ "date", "name", "temporary": true }` 추가(공표 근거를 `_comment` 에) → 1 재실행 → 테스트의 temporary 목록(데이터 테스트 `overrides(temporary)`·core 테스트) 갱신.
+- [ ] temporary 는 대체공휴일 계산에 참여하지 않고 표기 기본 off(`show.temporaryHolidays`) — 법정 공휴일로 바뀐 날은 overrides 가 아니라 생성기 규정 목록을 고친다.
+
+**3. `dataVersion` 릴리스 승인 흐름**
+
+1. 담당자(미지정 — 오너 지정 대기)가 1·2 결과(대조 표·`--check` exit 0·테스트 통과 로그·데이터 diff 요약)를 첨부해 오너에게 승인 요청.
+2. 버전 결정: 이미 발급된 세션의 렌더가 기본 옵션에서 달라지지 않는 **추가만**(기본 off 표기 항목·기본 미표시 temporary)이면 같은 버전 in-place 갱신(D4 의 잡절·2028 선거일). 기존 날짜가 바뀌거나 기본 표시가 달라지면 **새 버전 키**(예: `kr-2025-2035-v2`) — 새 데이터 모듈을 `data/index.ts` 에 등록하고 `@storige/types` `CALENDAR_DATA_VERSIONS` 에 추가하되 기존 키는 남긴다(세션은 `dataVersion` 을 고정 저장 — 재현성). 새 키를 기본값으로 바꾸는 것도 오너 승인 대상.
+3. 오너 승인 → 브랜치 병합 → master push(Vercel editor 재빌드) → 반영 기록(이 절 아래에 일시·커밋·배포 id). api·worker 는 버전 키를 새로 추가한 경우에만 types 를 포함해 api 를 재배포(프로파일 검증이 새 키를 알아야 함 — VPS `deploy@<VPS_HOST>` 기존 절차).
+4. 확인: 편집기에서 캘린더 세트를 열어 대조한 날짜 몇 개(공휴일·절기·옵션을 켠 잡절)를 육안 확인. 이미 만든 PDF 는 바뀌지 않는다.
+
+**4. 롤백**
+
+- 편집기만 되돌리면 된다: Vercel `storige-editor` 직전 Ready Production 배포 promote, 또는 데이터 커밋 `git revert` → master push. 세션에는 데이터 내용이 아니라 `dataVersion` 키만 저장되므로 되돌린 뒤 세션을 다시 열면 그리드가 되돌린 데이터로 다시 그려진다(rehydrate). 이미 합성된 PDF 는 영향 없음.
+- 새 버전 키를 추가했던 경우: 그 키를 쓰는 프로파일을 먼저 관리자 저장으로 기존 키로 되돌린 뒤 코드 revert(키가 남은 채 types 를 되돌리면 그 세트의 관리자 저장이 `calendar.dataVersion` 검증 400).
+
 ## 문제 해결
 
 ### 1. 컨테이너가 시작되지 않음
