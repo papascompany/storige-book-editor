@@ -180,8 +180,11 @@ export function sheetMapRevisionRequestId(revision: number): string {
  *  - `production` : 운영자 제작 메모(P2-e, 서버/운영 콘솔만) + `production.sheetMap`(완료 시 sheet-map 발행 실패 기록, 아래)
  *  - `productProfile` : 템플릿셋 상품 프로파일 스냅샷 — 보안 리뷰 security-2(2026-10-19): 클라이언트가 쓰면 NULL 세트에서
  *    copies 상한·sheet-map 모드를 스스로 정의할 수 있어 서버가 소유한다. 세션 생성·metadata PATCH·완료 때 서버가 템플릿셋
- *    현재 프로파일로 (재)기록하고, 세트 프로파일이 NULL 이면 키를 제거한다(stampProductProfileSnapshot). 템플릿셋 조회
- *    실패 시에만 기존(서버 기록) 값을 유지한다 — resolveSessionProductProfile 의 스냅샷 폴백은 그 값만 본다.
+ *    현재 프로파일로 (재)기록하고, 세트 프로파일이 NULL 이거나 템플릿셋이 없으면(NotFound) 키를 제거한다
+ *    (stampProductProfileSnapshot). 그 밖의 일시적 조회 실패 때만 기존(서버 기록) 값을 유지한다 — resolveSessionProductProfile
+ *    의 스냅샷 폴백은 그 값만 본다.
+ * 세션 생성(회원·게스트, 컨트롤러)과 metadata PATCH 모두 입력에서 이 키들을 제거한다(mergeSessionMetadata). 파트너 v1 런처는
+ * 서버가 만든 값을 서비스 create 로 직접 넘긴다.
  * 편집기·호스트의 PATCH 가 이 키를 보내도 무시하고 기존 값을 유지한다(test 세션의 live 위장·revision 위조 방지).
  */
 export const SESSION_METADATA_SERVER_OWNED_KEYS = ['launch', 'revision', 'production', 'productProfile'] as const;
