@@ -18,6 +18,7 @@ import {
   IsNumber,
   IsOptional,
   IsString,
+  Max,
   MaxLength,
   Min,
   ValidateNested,
@@ -28,6 +29,7 @@ import {
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
 import {
+  CALENDAR_YEAR_DELTA_LIMIT,
   CALENDAR_LAYOUTS,
   CALENDAR_YEAR_SPANS,
   PHOTO_BORDERS,
@@ -236,10 +238,14 @@ export class CalendarDisplayOptionsDto implements CalendarDisplayOptions {
 export class CalendarYearSelectRangeDto implements CalendarYearSelectRange {
   @ApiProperty({ example: 0, description: '시작연도 기준 최소 연도 이동(-2~2)' })
   @IsInt()
+  @Min(-CALENDAR_YEAR_DELTA_LIMIT)
+  @Max(CALENDAR_YEAR_DELTA_LIMIT)
   minDelta: number;
 
   @ApiProperty({ example: 1, description: '시작연도 기준 최대 연도 이동(-2~2)' })
   @IsInt()
+  @Min(-CALENDAR_YEAR_DELTA_LIMIT)
+  @Max(CALENDAR_YEAR_DELTA_LIMIT)
   maxDelta: number;
 }
 
