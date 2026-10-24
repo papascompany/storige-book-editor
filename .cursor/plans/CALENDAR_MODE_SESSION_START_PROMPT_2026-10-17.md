@@ -1,5 +1,7 @@
 # 새 세션 시작 프롬프트 — 캘린더 편집 모드 P1 (2026-10-17 작성)
 
+> **2026-10-24: 역사 기록.** P1 은 10-18 운영 반영으로 끝났고, 이후 단계(W1 잔여 T3a·W2·W3, 서브에이전트 오케스트레이션)는 `CALENDAR_EDITOR_ORCHESTRATION_SESSION_START_PROMPT_2026-10-24.md` 를 쓴다.
+
 > 아래 블록을 새 Claude Code 세션(작업 폴더 `/Users/yohan/Developer/Bookmoa Storige editor/storige`)의 첫 메시지로 그대로 붙여 넣는다. 이 파일을 작성한 세션에서 P1 개발을 시작했다는 뜻은 아니다.
 
 ---

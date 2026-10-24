@@ -211,14 +211,15 @@ footer { color: var(--ink-3); font-size: .8rem; border-top: 1px solid var(--line
 <body>
 <header class="masthead">
   <div class="masthead-inner">
-    <div class="eyebrow">Storige · 캘린더 트랙 · 원문 <span class="mono">docs/CALENDAR_EDITOR_FEATURE_PLAN_2026-10-21.md</span> v2 (2026-10-22)</div>
+    <div class="eyebrow">Storige · 캘린더 트랙 · 원문 <span class="mono">docs/CALENDAR_EDITOR_FEATURE_PLAN_2026-10-21.md</span> v3 (2026-10-24)</div>
     <h1>캘린더 편집기 기능 확장 계획</h1>
-    <p class="lede">설계 C1~C12 대비 코드 현황, 오너가 답해야 할 결정 D1~D11, 서브에이전트 병렬 트랙 T1a~T7·R 과 wave W0~W3, 2026-10-22 실측 수치와 위험을 한 장으로 정리했다. 원문 § 번호를 각 절에 붙였고, 원문에 없는 사실은 「문서 이후 변동」에만 따로 두었다.</p>
+    <p class="lede">설계 C1~C12 대비 코드 현황, 오너가 답해야 할 결정 D1~D11, 서브에이전트 병렬 트랙 T1a~T7·R 과 wave W0~W3, 2026-10-22 실측 수치와 위험을 한 장으로 정리했다. 원문 § 번호를 각 절에 붙였다. 10-23 변동(D12 방어선 운영 적용·HTML 커밋)은 원문 v3 §0 에 반영됐고 「10-23 변동」 절에도 요약해 두었다.</p>
     <div class="meta-row">
       <span class="pill">상태 · W1 진행 중</span>
       <span class="pill">T1a 완료 (§8.1)</span>
       <span class="pill">T2 운영 반영 10-22 23:48 KST</span>
       <span class="pill">T3a 는 D2 대기</span>
+      <span class="pill">10-23 D12 방어선(max_allowed_packet 256M) 운영 적용</span>
       <span class="pill">운영 api/worker <code>11383962</code> (VPS 체크아웃 <code>e9725838</code>) · editor <code>c040b68e</code></span>
       <span class="pill">운영 프로파일 세트 0건 (10-22 읽기 전용 확인)</span>
     </div>
@@ -238,7 +239,7 @@ footer { color: var(--ink-3); font-size: .8rem; border-top: 1px solid var(--line
     <li><a href="#inventory"><span class="toc-sec">§1</span>기능 인벤토리 26항목</a></li>
     <li><a href="#backlog"><span class="toc-sec">§2</span>백로그 B1~B11</a></li>
     <li><a href="#baseline"><span class="toc-sec">§7</span>검증 기준선</a></li>
-    <li><a href="#after">문서 이후 변동</a></li>
+    <li><a href="#after">10-23 변동</a></li>
   </ol>
 </nav>
 
@@ -273,7 +274,7 @@ footer { color: var(--ink-3); font-size: .8rem; border-top: 1px solid var(--line
       <h3>오너가 아직 안 한 것 (원문 §0 기준)</h3>
       <ul class="tight">
         <li>캘린더 샘플 세트 7종·사진인화 샘플 세트 4종 운영 등록(<code>--dry-run</code> → <code>--allow-remote</code>)</li>
-        <li>mariadb <code>--max-allowed-packet</code> 상향(권장 방어선) — <a href="#after">문서 이후 변동</a> 참조</li>
+        <li><s>mariadb <code>--max-allowed-packet</code> 상향(권장 방어선)</s> — <span class="chip ok">10-23 적용 완료</span> <code>dbc2333f</code>, <a href="#after">10-23 변동</a></li>
         <li>운영 폰트 라이브러리에 템플릿 폰트 '본고딕(Noto Sans) Regular' 존재 확인</li>
       </ul>
       <p class="blocks" style="margin-top:.6rem;font-size:.82rem;color:var(--ink-3)">트랙 외 후속: P2-e 운영자 콘솔, §8.3 외부 연동 어댑터(jumbocard → insta_print → Frameshop → 100p), P2-d 오너 결정 값(판형·chemical 도련·유테·업로드 한도·촬영일 형식), O2(프로파일 NULL 세트 2페이지 이후 <code>applyCustomerLocks</code> 공백 — 기존 동작). 단 T1b·T5 의 실측은 캘린더와 공유하는 sheet-map 재합성·deliverables 경로까지 덮는다.</p>
@@ -325,8 +326,8 @@ footer { color: var(--ink-3); font-size: .8rem; border-top: 1px solid var(--line
     </div>
     <div class="card decision">
       <span class="d-id">D7 · 운영 샘플·폰트·패킷</span>
-      <p class="q">운영 샘플 7종 등록 시점, 샘플 디자인 교체 담당, 운영 폰트 확인, <code>max_allowed_packet</code> 상향 시점</p>
-      <p class="rec"><b>권고</b> 디자인 교체(재단선 밖 채움) → T1a 재실측 → 등록(흰 여백 3mm 샘플 노출 금지). 등록 전 운영 폰트 존재 확인. packet 상향은 다음 배포 창에 동반.</p>
+      <p class="q">운영 샘플 7종 등록 시점, 샘플 디자인 교체 담당, 운영 폰트 확인 (<s><code>max_allowed_packet</code> 상향 시점</s> — 10-23 적용 완료)</p>
+      <p class="rec"><b>권고</b> 디자인 교체(재단선 밖 채움) → T1a 재실측 → 등록(흰 여백 3mm 샘플 노출 금지). 등록 전 운영 폰트 존재 확인. packet 상향은 10-23 에 적용 완료(<code>dbc2333f</code>).</p>
       <p class="blocks">막히는 단계: W3 운영 등록</p>
     </div>
     <div class="card decision">
@@ -760,7 +761,7 @@ footer { color: var(--ink-3); font-size: .8rem; border-top: 1px solid var(--line
         <tr><td>운영 산출 형태 불일치 — 프리셋은 duplex-merged(단일 PDF)인데 노트·설계 문서는 duplex-split/sheet-map 전제로 서술</td><td>D8 로 인쇄소 요구 확정; T1a·T1b 3경로 실측; 설계 문서의 산출 서술 정정(§13-1 등)</td></tr>
         <tr><td>dirty worktree(사용자 Shopify 문서·미추적 산출물)에서 쓰기 에이전트가 무관 파일을 stage</td><td>소유 파일만 <code>git add &lt;path&gt;</code>; 사용자 수정 문서(EDITOR.md·INDEX.md·SHOPIFY_*·<code>PLATFORM_INTEGRATION_GUIDE.backup-*</code>)는 메인만 접촉</td></tr>
         <tr><td>사용한도 도달로 서브에이전트·메인 세션 중단</td><td>트랙당 1~2 커밋, 공유 노트 폴더에 진행·결정 기록, 재개 시 <code>git status</code>·노트·워크플로 캐시(앞부분만 유효 — 완료 결과는 파일/args 로 전달)로 이어받기</td></tr>
-        <tr><td>운영 후속 미실행(<code>max_allowed_packet</code> 상향·운영 폰트 본고딕 확인) — 캘린더 완료 시 래스터 폴백·폰트 미임베드 경고 가능</td><td>D7 등록 전 체크리스트(DEPLOYMENT 「권장 방어선」·샘플 등록 절). T1a 로컬 실측에서는 3세트 모두 워커 검증 fonts 0(텍스트 벡터화)·warnings [] — 운영 폰트 경로는 운영 샘플 등록 후 재확인</td></tr>
+        <tr><td>운영 후속 미실행(<s><code>max_allowed_packet</code> 상향</s> <span class="chip ok">10-23 완료</span> · 운영 폰트 본고딕 확인) — 캘린더 완료 시 래스터 폴백·폰트 미임베드 경고 가능</td><td>D7 등록 전 체크리스트(DEPLOYMENT 「권장 방어선」·샘플 등록 절). T1a 로컬 실측에서는 3세트 모두 워커 검증 fonts 0(텍스트 벡터화)·warnings [] — 운영 폰트 경로는 운영 샘플 등록 후 재확인</td></tr>
       </tbody>
     </table>
   </div>
@@ -785,6 +786,8 @@ footer { color: var(--ink-3); font-size: .8rem; border-top: 1px solid var(--line
     <div class="tl-item docs"><span class="when">10-22 · <code>f422afed</code></span><span class="what">이 계획 v2(코드 확정·반박 검증) + 설계 문서 드리프트 정정 메모</span></div>
     <div class="tl-item deploy"><span class="when">10-22 · <code>2f3c0c25</code>·<code>49e1d71d</code>·<code>8d2f74fa</code> (브랜치 <code>worktree-t2-grid-anniversary-2026-10-22</code> → <code>p1-calendar-2026-10-17</code> cherry-pick <code>a087316c</code>·<code>680c8322</code>·<code>c040b68e</code>)</span><span class="what"><b>W1 T2</b> 그리드·기념일 안전성 — calendar-grid '그룹 해제' 핫키 컨텍스트 은폐 + ControlBar 버튼 게이트 + GroupPlugin 회귀 테스트 8; store add/update 같은 날짜(양력 환산) 거부, 세션 복원 비파괴(중복 유지 + warn 1회); 테스트 +21, 변경 9파일</span><span class="ops"><b>R GO</b>(상위 세션 독립 재검증: canvas-core 19·editor 표적 58 passed, tsc·eslint 0; 소유권·CONTRACT 이상 없음; <code>as any</code> 1건은 <code>8d2f74fa</code> 로 교체 확인) → 오너 승인 → <b>10-22 23:48 KST 운영 반영</b>(master ff <code>c040b68e</code>, Vercel editor <code>dpl_HB9xHCKnVSJ5Aq18j5XRdymQjAa4</code> Ready, 운영 스모크 통과 — DEPLOYMENT 「W1 T2」 절). api/worker 무변경</span></div>
     <div class="tl-item docs"><span class="when">10-22 · <code>0defad51</code>·<code>7faf4db6</code></span><span class="what"><b>W1 T1a 완료</b> — 캘린더 프리셋 3종 + 사진 13장 완료 PDF 실측·킬스위치 리허설 2종(§8.1), 발견 C1(낱장 검증 킬스위치가 프로파일 세트 검증을 깨뜨림)·C2(완료 중 이탈 시 draft 잔존), 결정 D10·D11 신설, DEPLOYMENT (가)·P1 롤백 절 경고</span></div>
+    <div class="tl-item deploy"><span class="when">10-23 · <code>dbc2333f</code></span><span class="what"><b>D12 방어선</b> — MariaDB <code>max_allowed_packet</code> 256M(compose 영구값 + 운영 <code>SET GLOBAL</code> 즉시 적용 + <code>docker compose restart api</code> 풀 갱신 + backup.sh dump 옵션), 오너 승인</span><span class="ops"><b>10-23 10:13~10:16 KST 무중단 적용</b> · 헬스 200 · compose 값은 다음 mariadb 재생성부터 영구</span></div>
+    <div class="tl-item docs"><span class="when">10-23 · <code>2d45fd54</code> (브랜치 <code>p1-calendar-2026-10-17</code>, origin push)</span><span class="what">이 HTML 시각화 — 결정 D1~D11 카드·근거 그림 4종·T1a 실측·트랙 소유권·위험; 원문 대조 리뷰 314항목·디자인 QA 반영</span><span class="ops">docs 전용 · master 미병합</span></div>
   </div>
   <div class="card soft">
     <h3>운영 현재 (2026-10-22 읽기 전용 확인)</h3>
@@ -850,7 +853,7 @@ footer { color: var(--ink-3); font-size: .8rem; border-top: 1px solid var(--line
         <tr><td class="num">6</td><td class="key">B6</td><td><b>달력폼/디자인 일괄변경·내지 스킨셋(C10) 설계 계약</b> — 어휘(TemplatePlugin)·데이터(스킨 정의 주체·저장 위치)·UI(<code>AppTemplateSwap</code> 재사용 여부)·고객 편집 보존·롤백·CONTRACT 영향</td><td>고객 UX 차별화 항목이나 설계가 한 줄뿐이고 템플릿 무결성·세션 데이터 영향이 커 구현 전 계약 필요</td><td>문서만(o5-architect). 승인 후 구현 T7 분리 → T6</td><td>D5</td></tr>
         <tr><td class="num">7</td><td class="key">B7</td><td><b>관리자(editMode) 그리드 스타일 입력</b> — <code>CalendarGridTools</code> 에 <code>CalendarGridStyle</code> 최소 4종(fontFamily·headerLang·showTitle·showLines); 고객용 스타일 UI 는 미제공 유지; 기념일 문구 스타일(C5)은 D1 범위만</td><td>스타일 설정처가 샘플 스크립트뿐이라 관리자가 편집기에서 템플릿을 만들 때 스타일을 정할 수 없다(B9 디자인 교체의 선행 조건)</td><td>T3b 에 포함(같은 editor calendar 컴포넌트 소유). canvas-core 변경 없음</td><td>D1</td></tr>
         <tr><td class="num">8</td><td class="key">B8 <span class="chip dim">보류</span></td><td>가변 달 수·고정날짜 달력(C9)</td><td>상품 요구 미확정 — <code>monthCount</code> 리터럴·pages fixed 26·faces 2 짝수 규칙 전제를 바꾸는 큰 변경</td><td>보류(설계 메모만)</td><td>D6</td></tr>
-        <tr><td class="num">9</td><td class="key">B9 <span class="chip dim">트랙 외</span></td><td>샘플 템플릿 실제 디자인 교체(재단선 밖 채움)·운영 샘플 7종 등록·운영 폰트 확인·<code>max_allowed_packet</code> 상향</td><td>고객 노출 전 필수지만 코드가 아니라 콘텐츠·운영 작업. 현재 샘플은 재단 안쪽만 채워 도련 3mm 가 흰 여백</td><td>에이전트 트랙 외(오너·디자인)</td><td>D7</td></tr>
+        <tr><td class="num">9</td><td class="key">B9 <span class="chip dim">트랙 외</span></td><td>샘플 템플릿 실제 디자인 교체(재단선 밖 채움)·운영 샘플 7종 등록·운영 폰트 확인 (<s><code>max_allowed_packet</code> 상향</s> 10-23 완료)</td><td>고객 노출 전 필수지만 코드가 아니라 콘텐츠·운영 작업. 현재 샘플은 재단 안쪽만 채워 도련 3mm 가 흰 여백</td><td>에이전트 트랙 외(오너·디자인)</td><td>D7</td></tr>
         <tr><td class="num">10</td><td class="key">B10</td><td>완료 PDF 생성 진행 표시 UX(단계·캔버스 수) + 완료 중 이탈 경고(beforeunload) — <b>T1a 실측 30.7s(사진 13장)·25.9s(desk_mini)로 임계 도달</b></td><td>벡터화 13~31s 체감 대기가 길고, 생성 중 탭 이탈 시 세션이 draft 로 남는다(§8.1 C2). 생성 로직·watchdog 식은 무변경</td><td><code>embed.tsx</code> 완료 흐름 진행 표시·이탈 경고만</td><td>D9</td></tr>
         <tr><td class="num">11</td><td class="key">B11</td><td>캘린더 세트 사진틀 클릭 채움을 storage 업로드 URL 로(결함 D12(P2-d) <code>resolveFrameFillImage</code> 의 사진인화 전용 게이트를 프로파일 세트 전체로 확장)</td><td>캘린더 세트에서 틀 클릭 채움은 아직 base64 data URL — 사진 9장 이상이면 canvasData 가 MariaDB 16MB 패킷을 넘길 수 있다(결함 D12 와 같은 결함 표면). 자동편집 경로는 이미 URL</td><td><code>apps/editor/src/stores/useImageStore.ts</code> <code>resolveFrameFillImage</code> 게이트 1곳 + 테스트(NULL 세트 무변경)</td><td>D11(게이트 범위)</td></tr>
       </tbody>
@@ -861,7 +864,8 @@ footer { color: var(--ink-3); font-size: .8rem; border-top: 1px solid var(--line
   <div class="sec-head">
     <span class="src">원문 §7 검증 기준선 (2026-10-21, master <code>11383962</code>)</span>
     <h2>검증 기준선</h2>
-    <p>각 트랙의 완료 조건은 이 기준선 대비 <b>신규 실패 0</b>이다. W0 에서 기준선을 1회 재실행해 실패 목록을 고정한다. 저장소 전체로 tsc 7패키지 통과 · eslint 0 error(P2 계획 §4·§7.1).</p>
+    <p>각 트랙의 완료 조건은 이 기준선 대비 <b>신규 실패 0</b>이다. W0 에서 기준선을 1회 재실행해 실패 목록을 고정한다. 저장소 전체로 tsc 7패키지 통과 · eslint 0 error(P2 계획 §4·§7.1). 위 수치는 W1 T2 병합 전 값이며, T2 뒤 전체 실행은 editor 135/1831·canvas-core 64/762 — 다음 세션 첫 턴에 현재 master 에서 재실행한다.</p>
+  <p class="note warn"><b>CI 회귀(기준선 아님, 10-24 확인)</b> — GitHub Actions <code>ci</code> 의 <code>test</code> 잡이 10-21 P2-a~d master 병합(<code>11383962</code>)부터 10-23 <code>dbc2333f</code>까지 완료 7회 전부 실패. 실패 스텝은 「문서 포털 공개 모드 빌드」(apps/docs), 원인은 <code>apps/docs/src/render-openapi.mjs:144</code> 의 <code>OPENAPI.groups 에 대응 prefix 가 없는 경로: /api/v1/sessions/{id}/deliverables</code> — P2-b 런처 라우트가 <code>apps/docs/site.config.mjs</code> <code>groups</code>(ping·book-specs·books·webhooks)에 미등재. 테스트 스텝(sdk·api·worker·canvas-core·editor·admin)은 전부 통과. 수정은 apps/docs 소유권·포털 노출 정책을 오너가 정한 뒤 단일 커밋.</p>
   </div>
   <div class="stat-row wide">
     <div class="stat"><span class="k">editor vitest</span><span class="v">1818</span><span class="d">134 파일 · 동시 실행 시 2파일·3건 실패(<code>useCanvasContainerSizeSync.test</code>×2·<code>hostPageLimits.test</code>×1, 5초 타임아웃·부하) → 단독 재실행 통과 = 알려진 기준선 실패</span></div>
@@ -874,16 +878,16 @@ footer { color: var(--ink-3); font-size: .8rem; border-top: 1px solid var(--line
 </section>
 <section id="after">
   <div class="sec-head">
-    <span class="src">원문 밖 — 이 페이지를 만든 2026-10-23 기준 git·DEPLOYMENT 확인분</span>
-    <h2>문서 이후 변동</h2>
+    <span class="src">원문 v3 §0 10-23 행에 반영됨 — git·DEPLOYMENT 확인분</span>
+    <h2>10-23 변동</h2>
   </div>
   <div class="note">
-    <p><b>2026-10-23 · <code>dbc2333f</code> (브랜치·master push, VPS pull)</b> — MariaDB <code>max_allowed_packet</code> 256M 방어선을 오너 승인 뒤 무중단으로 운영 적용(10:13~10:16 KST: <code>SET GLOBAL max_allowed_packet=268435456</code> 즉시 적용 → <code>docker compose restart api</code> 로 풀 갱신 → 헬스 200, backup.sh dump 옵션 보강; compose 영구값은 다음 mariadb 재생성부터). 원문 §0 「오너가 아직 안 한 것」·D7·§6 마지막 행의 <b>packet 상향 항목은 해소</b>되었고, 샘플 세트 등록·운영 폰트 확인은 그대로 남아 있다. 원문 계획 문서 자체는 이 커밋에서 바뀌지 않았다.</p>
+    <p><b>2026-10-23 · <code>dbc2333f</code> (브랜치·master push, VPS pull)</b> — MariaDB <code>max_allowed_packet</code> 256M 방어선을 오너 승인 뒤 무중단으로 운영 적용(10:13~10:16 KST: <code>SET GLOBAL max_allowed_packet=268435456</code> 즉시 적용 → <code>docker compose restart api</code> 로 풀 갱신 → 헬스 200, backup.sh dump 옵션 보강; compose 영구값은 다음 mariadb 재생성부터). 원문 §0 「오너가 아직 안 한 것」·D7·§6 마지막 행의 <b>packet 상향 항목은 해소</b>되었고(v3 에 반영), 샘플 세트 등록·운영 폰트 확인은 그대로 남아 있다. 같은 날 이 HTML 이 <code>2d45fd54</code> 로 p1-calendar 에 커밋·push 됐다(master 미병합).</p>
   </div>
 </section>
 
 <footer>
-  <p>원문: <span class="mono">docs/CALENDAR_EDITOR_FEATURE_PLAN_2026-10-21.md</span> (v2, 2026-10-22) · 설계 정본 <span class="mono">PRODUCT_MODE_ARCHITECTURE_DESIGN_2026-10-16.md</span>(§11·§13) · 캘린더 세부 <span class="mono">CALENDAR_EDIT_MODE_DESIGN_2026-10-16.md</span>(C1~C12) · P1 결과 <span class="mono">CALENDAR_MODE_DEVELOPMENT_PLAN_2026-10-17.md</span> · P2 결과 <span class="mono">P2_PRODUCT_MODE_PLAN_2026-10-18.md</span> · 운영 반영 기록 <span class="mono">DEPLOYMENT.md</span> · 라이브 상태 SSOT <span class="mono">.cursor/plans/RESUME_PROMPT_2026-10-04.md</span> §2·§5.2.8. 코드가 문서보다 권위다. 이 HTML 은 2026-10-23 생성.</p>
+  <p>원문: <span class="mono">docs/CALENDAR_EDITOR_FEATURE_PLAN_2026-10-21.md</span> (v3, 2026-10-24) · 설계 정본 <span class="mono">PRODUCT_MODE_ARCHITECTURE_DESIGN_2026-10-16.md</span>(§11·§13) · 캘린더 세부 <span class="mono">CALENDAR_EDIT_MODE_DESIGN_2026-10-16.md</span>(C1~C12) · P1 결과 <span class="mono">CALENDAR_MODE_DEVELOPMENT_PLAN_2026-10-17.md</span> · P2 결과 <span class="mono">P2_PRODUCT_MODE_PLAN_2026-10-18.md</span> · 운영 반영 기록 <span class="mono">DEPLOYMENT.md</span> · 라이브 상태 SSOT <span class="mono">.cursor/plans/RESUME_PROMPT_2026-10-04.md</span> §2·§5.2.8. 코드가 문서보다 권위다. 이 HTML 은 2026-10-23 생성, 2026-10-24 v3 동기.</p>
 </footer>
 
 </main>

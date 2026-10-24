@@ -1,6 +1,6 @@
 # 캘린더 편집기 기능 확장 계획 (2026-10-21, CTO — 서브에이전트 병렬 트랙)
 
-> **상태(2026-10-22 v2 · W1 진행 중 — T1a 완료 §8.1, T2 운영 반영 완료 10-22 23:48 KST, T3a 는 D2 대기)**: P1 캘린더(master `af900212`, 2026-10-18)와 P2-a~d·D11~D13(master `11383962`, 2026-10-21 15:55~16:00 KST)이 운영에 반영된 뒤, **캘린더 편집기 기능**을 중심으로 이어갈 개발 계획이다. 설계 정본은 [`PRODUCT_MODE_ARCHITECTURE_DESIGN_2026-10-16.md`](./PRODUCT_MODE_ARCHITECTURE_DESIGN_2026-10-16.md)(§11 로드맵·§13 결정), 캘린더 세부는 [`CALENDAR_EDIT_MODE_DESIGN_2026-10-16.md`](./CALENDAR_EDIT_MODE_DESIGN_2026-10-16.md)(C1~C12), P1 결과는 [`CALENDAR_MODE_DEVELOPMENT_PLAN_2026-10-17.md`](./CALENDAR_MODE_DEVELOPMENT_PLAN_2026-10-17.md), P2 결과는 [`P2_PRODUCT_MODE_PLAN_2026-10-18.md`](./P2_PRODUCT_MODE_PLAN_2026-10-18.md). 운영 반영 기록은 [`DEPLOYMENT.md`](./DEPLOYMENT.md) 「P1 캘린더 운영 반영 절차」·「P2-d」 절 끝 「반영 기록」. 라이브 상태 SSOT 는 `.cursor/plans/RESUME_PROMPT_2026-10-04.md` §2·§5.2.8.
+> **상태(2026-10-24 v3 · W1 진행 중 — T1a 완료 §8.1, T2 운영 반영 완료 10-22 23:48 KST, T3a 는 D2 대기; 10-23 D12 방어선 `max_allowed_packet` 256M 운영 적용·HTML 시각화 추가, 오너 결정 D1~D11 은 여전히 미답)**: P1 캘린더(master `af900212`, 2026-10-18)와 P2-a~d·D11~D13(master `11383962`, 2026-10-21 15:55~16:00 KST)이 운영에 반영된 뒤, **캘린더 편집기 기능**을 중심으로 이어갈 개발 계획이다. 설계 정본은 [`PRODUCT_MODE_ARCHITECTURE_DESIGN_2026-10-16.md`](./PRODUCT_MODE_ARCHITECTURE_DESIGN_2026-10-16.md)(§11 로드맵·§13 결정), 캘린더 세부는 [`CALENDAR_EDIT_MODE_DESIGN_2026-10-16.md`](./CALENDAR_EDIT_MODE_DESIGN_2026-10-16.md)(C1~C12), P1 결과는 [`CALENDAR_MODE_DEVELOPMENT_PLAN_2026-10-17.md`](./CALENDAR_MODE_DEVELOPMENT_PLAN_2026-10-17.md), P2 결과는 [`P2_PRODUCT_MODE_PLAN_2026-10-18.md`](./P2_PRODUCT_MODE_PLAN_2026-10-18.md). 운영 반영 기록은 [`DEPLOYMENT.md`](./DEPLOYMENT.md) 「P1 캘린더 운영 반영 절차」·「P2-d」 절 끝 「반영 기록」. 라이브 상태 SSOT 는 `.cursor/plans/RESUME_PROMPT_2026-10-04.md` §2·§5.2.8. 이 계획의 한 장 시각화는 [`CALENDAR_EDITOR_FEATURE_PLAN_2026-10-21.html`](./CALENDAR_EDITOR_FEATURE_PLAN_2026-10-21.html)(결정·근거 그림 4종·실측·트랙/wave·위험, 10-23), 다음 세션(서브에이전트 오케스트레이션) 시작 프롬프트는 `.cursor/plans/CALENDAR_EDITOR_ORCHESTRATION_SESSION_START_PROMPT_2026-10-24.md`.
 > 작성 근거: 상위 세션 노트(`side-session-notes/…/p1-calendar-decisions-2026-10-17.md`·`p2d-e2e-findings.md`·`p2d-e2e-round2-2026-10-20.md`)·설계/계획/배포 문서를 독립 리더 에이전트가 읽은 인벤토리 → 코드 확인 에이전트가 미확인 10항목을 `file:line` 으로 확정 → 기획 2안·심사·합성 → 회의론자 검증(반박 2건 반영: W1 실행 환경 분리, W3 `TemplatePlugin.ts` 단일 소유). 코드가 문서보다 권위다.
 
 ---
@@ -20,9 +20,11 @@
 | 10-22 | `e756d726` | 문서 상태 정정(EDITOR·INDEX·RESUME·DEV_PLAN) + 이 계획 v1 | docs 전용 |
 | 10-22 | `f422afed` | 이 계획 v2(코드 확정·반박 검증) + 설계 문서 드리프트 정정 메모 | docs 전용 |
 | 10-22 | `2f3c0c25`·`49e1d71d`·`8d2f74fa`(브랜치 `worktree-t2-grid-anniversary-2026-10-22` → `p1-calendar-2026-10-17` cherry-pick `a087316c`·`680c8322`·`c040b68e`) | **W1 T2** 그리드·기념일 안전성 — calendar-grid '그룹 해제' 핫키 컨텍스트 은폐 + ControlBar 버튼 게이트 + GroupPlugin 회귀 테스트 8; store add/update 같은 날짜(양력 환산) 거부, 세션 복원 비파괴(중복 유지 + warn 1회); 테스트 +21, 변경 9파일 | **R GO**(상위 세션 독립 재검증: canvas-core 19·editor 표적 58 passed, tsc·eslint 0; 소유권·CONTRACT 이상 없음; `as any` 1건은 `8d2f74fa` 로 교체 확인 — ControlBar 테스트 4·tsc·eslint 0) → 오너 승인 → **10-22 23:48 KST 운영 반영**(master ff `c040b68e`, Vercel editor `dpl_HB9xHCKnVSJ5Aq18j5XRdymQjAa4` Ready, 운영 스모크 통과 — DEPLOYMENT 「W1 T2」 절). api/worker 무변경 |
-| 10-22 | `0defad51`·`7faf4db6` | **W1 T1a 완료** — 캘린더 프리셋 3종 + 사진 13장 완료 PDF 실측·킬스위치 리허설 2종(§8.1), 발견 C1(낱장 검증 킬스위치가 프로파일 세트 검증을 깨뜨림)·C2(완료 중 이탈 시 draft 잔존), 결정 D10·D11 신설, DEPLOYMENT (가)·P1 롤백 절 경고 | docs 전용. T2 는 worktree 세션 진행 중 |
+| 10-22 | `0defad51`·`7faf4db6` | **W1 T1a 완료** — 캘린더 프리셋 3종 + 사진 13장 완료 PDF 실측·킬스위치 리허설 2종(§8.1), 발견 C1(낱장 검증 킬스위치가 프로파일 세트 검증을 깨뜨림)·C2(완료 중 이탈 시 draft 잔존), 결정 D10·D11 신설, DEPLOYMENT (가)·P1 롤백 절 경고 | docs 전용. T2 는 worktree 세션 진행 중(작성 시점 표기 — 이후 10-22 23:48 운영 반영) |
+| 10-23 | `dbc2333f` | **D12 방어선** — MariaDB `max_allowed_packet` 256M(compose 영구값 + 운영 `SET GLOBAL` 즉시 적용 + `docker compose restart api` 풀 갱신 + backup.sh dump 옵션), 오너 승인 | **10-23 10:13~10:16 KST 무중단 적용**(헬스 200; compose 값은 다음 mariadb 재생성부터 영구) |
+| 10-23 | `2d45fd54`(브랜치 `p1-calendar-2026-10-17`, origin push) | 이 계획의 HTML 시각화 `CALENDAR_EDITOR_FEATURE_PLAN_2026-10-21.html` — 결정 D1~D11 카드·근거 그림 4종(산출 경로·벽걸이 2단 짝/타공·C1 킬스위치·wave)·T1a 실측·트랙 소유권·위험; 원문 대조 리뷰 314항목·디자인 QA 반영 | docs 전용(master 미병합) |
 
-**운영 현재(2026-10-22 읽기 전용 확인)**: `template_sets.product_profile IS NOT NULL` 0건(캘린더·사진인화 세트 없음), 프로파일 스냅샷을 가진 세션 0건 → 운영 고객 영향은 아직 없다. 운영 worker 는 `WORKER_LIGHTWEIGHT_SYNTHESIS=true`(qpdf 경로). **오너가 아직 안 한 것**: 캘린더 샘플 세트 7종·사진인화 샘플 세트 4종 등록(운영 관리자 자격증명 — `--dry-run` → `--allow-remote`), mariadb `--max-allowed-packet` 상향(권장 방어선), 운영 폰트 라이브러리에 템플릿 폰트('본고딕(Noto Sans) Regular') 존재 확인.
+**운영 현재(2026-10-22 읽기 전용 확인)**: `template_sets.product_profile IS NOT NULL` 0건(캘린더·사진인화 세트 없음), 프로파일 스냅샷을 가진 세션 0건 → 운영 고객 영향은 아직 없다. 운영 worker 는 `WORKER_LIGHTWEIGHT_SYNTHESIS=true`(qpdf 경로). **오너가 아직 안 한 것**: 캘린더 샘플 세트 7종·사진인화 샘플 세트 4종 등록(운영 관리자 자격증명 — `--dry-run` → `--allow-remote`), ~~mariadb `--max-allowed-packet` 상향~~(**10-23 적용 완료**, `dbc2333f`), 운영 폰트 라이브러리에 템플릿 폰트('본고딕(Noto Sans) Regular') 존재 확인.
 
 **트랙 외 후속(이 계획에서 제외)**: P2-e 운영자 콘솔(설계 §9), §8.3 외부 연동 어댑터(jumbocard → insta_print → Frameshop → 100p), P2-d 오너 결정 값(판형·chemical 도련·유테·업로드 한도·촬영일 형식), O2(프로파일 NULL 세트 2페이지 이후 `applyCustomerLocks` 공백 — 기존 동작). 단 T1b·T5 의 실측은 캘린더와 공유하는 sheet-map 재합성·deliverables 경로까지 덮는다.
 
@@ -71,7 +73,7 @@
 | 6 | B6 | **달력폼/디자인 일괄변경·내지 스킨셋(C10) 설계 계약** — 어휘(TemplatePlugin)·데이터(스킨 정의 주체·저장 위치)·UI(`AppTemplateSwap` 재사용 여부)·고객 편집 보존·롤백·CONTRACT 영향 | 고객 UX 차별화 항목이나 설계가 한 줄뿐이고 템플릿 무결성·세션 데이터 영향이 커 구현 전 계약 필요 | 문서만(o5-architect). 승인 후 구현 T7 분리 | D5 |
 | 7 | B7 | **관리자(editMode) 그리드 스타일 입력** — `CalendarGridTools` 에 `CalendarGridStyle` 최소 4종(fontFamily·headerLang·showTitle·showLines); 고객용 스타일 UI 는 미제공 유지; 기념일 문구 스타일(C5)은 D1 범위만 | 스타일 설정처가 샘플 스크립트뿐이라 관리자가 편집기에서 템플릿을 만들 때 스타일을 정할 수 없다(B9 디자인 교체의 선행 조건) | T3b 에 포함(같은 editor calendar 컴포넌트 소유). canvas-core 변경 없음 | D1 |
 | 8 | B8 | 가변 달 수·고정날짜 달력(C9) | 상품 요구 미확정 — `monthCount` 리터럴·pages fixed 26·faces 2 짝수 규칙 전제를 바꾸는 큰 변경 | 보류(설계 메모만) | D6 |
-| 9 | B9 | 샘플 템플릿 실제 디자인 교체(재단선 밖 채움)·운영 샘플 7종 등록·운영 폰트 확인·`max_allowed_packet` 상향 | 고객 노출 전 필수지만 코드가 아니라 콘텐츠·운영 작업. 현재 샘플은 재단 안쪽만 채워 도련 3mm 가 흰 여백 | 에이전트 트랙 외(오너·디자인) | D7 |
+| 9 | B9 | 샘플 템플릿 실제 디자인 교체(재단선 밖 채움)·운영 샘플 7종 등록·운영 폰트 확인(~~`max_allowed_packet` 상향~~ 10-23 완료) | 고객 노출 전 필수지만 코드가 아니라 콘텐츠·운영 작업. 현재 샘플은 재단 안쪽만 채워 도련 3mm 가 흰 여백 | 에이전트 트랙 외(오너·디자인) | D7 |
 | 10 | B10 | 완료 PDF 생성 진행 표시 UX(단계·캔버스 수) + 완료 중 이탈 경고(beforeunload) — **T1a 실측 30.7s(사진 13장)·25.9s(desk_mini)로 임계 도달** | 벡터화 13~31s 체감 대기가 길고, 생성 중 탭 이탈 시 세션이 draft 로 남는다(§8.1 C2). 생성 로직·watchdog 식은 무변경 | `embed.tsx` 완료 흐름 진행 표시·이탈 경고만 | D9 |
 | 11 | B11 | 캘린더 세트 사진틀 클릭 채움을 storage 업로드 URL 로(D12 `resolveFrameFillImage` 의 사진인화 전용 게이트를 프로파일 세트 전체로 확장) | 캘린더 세트에서 틀 클릭 채움은 아직 base64 data URL — 사진 9장 이상이면 canvasData 가 MariaDB 16MB 패킷을 넘길 수 있다(D12 와 같은 결함 표면). 자동편집 경로는 이미 URL | `apps/editor/src/stores/useImageStore.ts` `resolveFrameFillImage` 게이트 1곳 + 테스트(NULL 세트 무변경) | D11(게이트 범위: 프로파일 세트 전체 vs 캘린더만) |
 
@@ -114,7 +116,7 @@
 | D4 | 날짜 데이터 운영 — 갱신 담당·릴리스 승인 흐름(연 1회 + 임시공휴일 수시), 잡절 표시 옵션 제공 여부(기본 off), 2028-04-12 선거일 추가 여부, KASI 대조 전 `allowedRange` 2027-12 유지 | 담당 지정 + 오너 승인 뒤 `dataVersion` 릴리스; 잡절은 옵션(기본 off)으로 v1 in-place 추가; 선거일은 temporary 로 추가하되 기본 미표시; `allowedRange` 는 대조 전 2027-12 유지 | T4·T4r |
 | D5 | C10 범위 — 관리자 정의 스킨셋 N종 + 고객 선택 vs 고객 자유 일괄변경 | 관리자 정의 스킨 N종 + 고객 선택(템플릿 무결성, `AppTemplateSwap.tsx:109-113` 재합성 경로 재사용) | T6·T7 |
 | D6 | 가변 달 수·고정날짜 달력(C9) 상품 존재 여부 | 상품 확정 전 보류 | B8 |
-| D7 | 운영 샘플 7종 등록 시점·샘플 디자인 교체 담당·운영 폰트 확인·`max_allowed_packet` 상향 시점 | 디자인 교체(재단선 밖 채움) → T1a 재실측 → 등록(흰 여백 3mm 샘플 노출 금지); 등록 전 운영 폰트 존재 확인; packet 상향은 다음 배포 창에 동반 | W3 운영 등록 |
+| D7 | 운영 샘플 7종 등록 시점·샘플 디자인 교체 담당·운영 폰트 확인(~~`max_allowed_packet` 상향 시점~~ — 10-23 적용 완료) | 디자인 교체(재단선 밖 채움) → T1a 재실측 → 등록(흰 여백 3mm 샘플 노출 금지); 등록 전 운영 폰트 존재 확인 | W3 운영 등록 |
 | D8 | 운영 캘린더 세트 최종 산출 형태 — 현 프리셋(single-pdf + duplex-merged = 편집기 26쪽 단일 PDF, 추가 잡 없음) 유지 vs duplex-split 13세트 vs sheet-map(per-sheet/merged-duplex) — 인쇄소 요구 사양 | 인쇄소 확인 전 프리셋 유지; T1a·T1b 가 3경로 실측해 근거 제공. 변경은 프리셋·세트 값만(코드 무변경) | T1b 범위·T5 |
 | D9 | 완료 PDF 허용 대기 시간 — T1a 실측: 사진 없음 13.4~25.9s(미니 달력 포함 세트가 느림), 사진 13장 30.7s, watchdog 390s — 진행 표시·이탈 경고 트랙(B10)을 둘지 | **권고: 둔다**(30s 임계 도달; 생성 로직·watchdog 식 무변경, 진행 표시 + beforeunload 경고만) | B10 |
 | D10 | 낱장 검증 킬스위치 `EDITOR_SHEET_VALIDATION_RULES=off` 가 캘린더·사진인화 세트 완료 검증을 깨뜨리는 결합(§8.1 C1) — 운영 문서 경고만 둘지, 프로파일 세트 규칙을 플래그와 분리(코드)할지 | 프로파일 세트가 운영에 생기기 전까지는 문서 경고(이번 커밋)로 충분; 샘플 등록 전에 분리 코드(api `sheet-validation-rules.ts` 프로파일 분기, 테스트)를 T3a 와 같은 wave 에 추가 권고 | T5·B9(등록 전제) |
@@ -141,12 +143,13 @@
 | 운영 산출 형태 불일치 — 프리셋은 duplex-merged(단일 PDF)인데 노트·설계 문서는 duplex-split/sheet-map 전제로 서술 | D8 로 인쇄소 요구 확정; T1a·T1b 3경로 실측; 설계 문서의 산출 서술 정정(§13-1 등) |
 | dirty worktree(사용자 Shopify 문서·미추적 산출물)에서 쓰기 에이전트가 무관 파일을 stage | 소유 파일만 `git add <path>`; 사용자 수정 문서(EDITOR.md·INDEX.md·SHOPIFY_*·`PLATFORM_INTEGRATION_GUIDE.backup-*`)는 메인만 접촉 |
 | 사용한도 도달로 서브에이전트·메인 세션 중단 | 트랙당 1~2 커밋, 공유 노트 폴더에 진행·결정 기록, 재개 시 `git status`·노트·워크플로 캐시(앞부분만 유효 — 완료 결과는 파일/args 로 전달)로 이어받기 |
-| 운영 후속 미실행(`max_allowed_packet` 상향·운영 폰트 본고딕 확인) — 캘린더 완료 시 래스터 폴백·폰트 미임베드 경고 가능 | D7 등록 전 체크리스트(DEPLOYMENT 「권장 방어선」·샘플 등록 절). T1a 로컬 실측에서는 3세트 모두 워커 검증 fonts 0(텍스트 벡터화)·warnings [] — 운영 폰트 경로는 운영 샘플 등록 후 재확인 |
+| 운영 후속 미실행(~~`max_allowed_packet` 상향~~ 10-23 완료 · 운영 폰트 본고딕 확인) — 캘린더 완료 시 래스터 폴백·폰트 미임베드 경고 가능 | D7 등록 전 체크리스트(DEPLOYMENT 「권장 방어선」·샘플 등록 절). T1a 로컬 실측에서는 3세트 모두 워커 검증 fonts 0(텍스트 벡터화)·warnings [] — 운영 폰트 경로는 운영 샘플 등록 후 재확인 |
 
 ## 7. 검증 기준선 (2026-10-21, master `11383962`)
 
 - editor vitest 134 파일/1818 — 전체 동시 실행 시 2파일·3건 실패(`useCanvasContainerSizeSync.test` ×2·`hostPageLimits.test` ×1, 5초 타임아웃·부하)는 단독 재실행 통과 → **알려진 기준선 실패(부하)**. worker jest 37 스위트/1358 — `lightweight-parity`·`synthesis.processor.sheet-map` 11건 타임아웃은 단독 재실행 216/216 통과 → 단독 재실행 규칙. api jest 154/3470 · canvas-core 63/754 · admin 24/302 · sdk 13/416 · tsc 7패키지 · eslint 0 error(P2 계획 §4·§7.1).
-- 각 트랙의 완료 조건은 **이 기준선 대비 신규 실패 0**. W0 에서 기준선을 1회 재실행해 실패 목록을 고정한다.
+- 각 트랙의 완료 조건은 **이 기준선 대비 신규 실패 0**. W0 에서 기준선을 1회 재실행해 실패 목록을 고정한다. 위 수치는 W1 T2 병합 전 값이며, T2 뒤 worktree 전체 실행은 editor 135/1831·canvas-core 64/762(DEPLOYMENT 「W1 T2」 절) — 다음 세션 첫 턴에 현재 master 에서 재실행해 행을 추가한다.
+- **CI 회귀(기준선 아님, 2026-10-24 확인)**: GitHub Actions `ci` 의 `test` 잡이 10-21 P2-a~d master 병합(`11383962`, run 39558511191)부터 10-23 `dbc2333f`(run 39882963062)까지 완료 7회 전부 실패. 실패 스텝 「문서 포털 공개 모드 빌드」(apps/docs), 원인 `apps/docs/src/render-openapi.mjs:144` `OPENAPI.groups 에 대응 prefix 가 없는 경로: /api/v1/sessions/{id}/deliverables` — P2-b 런처 라우트(`f43cb99e`)가 `apps/docs/site.config.mjs` `groups`(ping·book-specs·books·webhooks)에 미등재. sdk·api·worker·canvas-core·editor·admin 테스트 스텝은 전부 통과. 수정(`groups` 에 `/api/v1/sessions` 추가 또는 partner-v1 라우트의 포털 노출 정책)은 apps/docs 가 §3 소유권 표 밖이므로 오너 결정 뒤 단일 커밋.
 
 ## 8. 실측표
 

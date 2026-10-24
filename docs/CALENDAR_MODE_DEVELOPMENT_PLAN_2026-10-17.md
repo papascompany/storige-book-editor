@@ -4,6 +4,8 @@
 
 > **상태(2026-10-21)**: P2-a~d(시트 맵 기반·런처·sheet-map 출력·사진인화)와 P2-d 2차 e2e 결함 D11~D13 이 master `11383962` 로 운영 반영됨(`docs/P2_PRODUCT_MODE_PLAN_2026-10-18.md` §0, `docs/DEPLOYMENT.md` 「P2-d」 절 끝 「반영 기록」). 캘린더 편집기 기능 확장은 후속 계획 [`CALENDAR_EDITOR_FEATURE_PLAN_2026-10-21.md`](./CALENDAR_EDITOR_FEATURE_PLAN_2026-10-21.md)(병렬 트랙·서브에이전트 분담)으로 이어진다.
 
+> **상태(2026-10-24)**: 후속 계획의 정본은 `docs/CALENDAR_EDITOR_FEATURE_PLAN_2026-10-21.md`(v3, 트랙 T1a~T7·오너 결정 D1~D11·W1 T1a·T2 완료)와 그 시각화 `CALENDAR_EDITOR_FEATURE_PLAN_2026-10-21.html`; 새 세션 시작 프롬프트는 `.cursor/plans/CALENDAR_EDITOR_ORCHESTRATION_SESSION_START_PROMPT_2026-10-24.md`. 이 문서(P1 계획)는 역사 기록으로 유지한다.
+
 > 정본 설계: [`PRODUCT_MODE_ARCHITECTURE_DESIGN_2026-10-16.md`](./PRODUCT_MODE_ARCHITECTURE_DESIGN_2026-10-16.md)(이하 "설계안"). 캘린더 세부·참조 편집기 관찰: [`CALENDAR_EDIT_MODE_DESIGN_2026-10-16.md`](./CALENDAR_EDIT_MODE_DESIGN_2026-10-16.md). 새 세션 시작 프롬프트: `.cursor/plans/CALENDAR_MODE_SESSION_START_PROMPT_2026-10-17.md`.
 > 이 문서는 "무엇을, 어떤 순서로, 어디까지"를 정한다. 코드 인용은 설계안의 `file:line`을 따른다.
 
