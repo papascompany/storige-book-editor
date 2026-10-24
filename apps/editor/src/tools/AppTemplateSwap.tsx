@@ -1,6 +1,6 @@
 import { useCallback, useMemo, useState } from 'react'
 import { fabric } from 'fabric'
-import { TemplatePlugin, SpreadPlugin, core } from '@storige/canvas-core'
+import { TemplatePlugin, SpreadPlugin, type ImageProcessingPlugin, core } from '@storige/canvas-core'
 import {
   classifyPrintTemplate,
   filterSwapCandidates,
@@ -11,10 +11,33 @@ import { useAppStore } from '@/stores/useAppStore'
 import { useEditorStore, useCurrentPage } from '@/stores/useEditorStore'
 import { useSettingsStore, type LinkedPrintTemplate } from '@/stores/useSettingsStore'
 import { sessionsApi } from '@/api/sessions'
+import { templatesApi } from '@/api/templates'
+import { useImageStore } from '@/stores/useImageStore'
 import { applyCoverMaterialLock } from '@/utils/objectPermissions'
 import { rehydrateCalendarGrids } from '@/utils/calendarRehydrate'
 import { resolveAssetUrl } from '@/utils/resolveAssetUrl'
 import { TemplateReplaceModal } from '@/components/TemplatePanel/TemplateReplaceModal'
+
+/**
+ * 현재 페이지에 적용된 템플릿의 top-level 객체 id — replaceTemplate 가 저장본(isUserAdded 미보존)에서도
+ * 옛 템플릿 요소를 가려내는 근거. 연결 템플릿 목록에 없으면 상세를 조회하고, 못 구하면 undefined(종전 판정).
+ */
+async function currentTemplateObjectIds(
+  templateId: string | undefined,
+  linked: LinkedPrintTemplate[],
+): Promise<string[] | undefined> {
+  if (!templateId) return undefined
+  const known = linked.find((t) => t.id === templateId)?.canvasData?.objects
+  if (Array.isArray(known)) return TemplatePlugin.templateObjectIds(known)
+  try {
+    const detail = await templatesApi.getTemplate(templateId)
+    const objects = detail?.canvasData?.objects
+    return Array.isArray(objects) ? TemplatePlugin.templateObjectIds(objects) : undefined
+  } catch (e) {
+    console.warn('[AppTemplateSwap] 현재 템플릿 조회 실패 — 종전 판정으로 교체:', e)
+    return undefined
+  }
+}
 
 function swapProbe(
   currentLinked: LinkedPrintTemplate | null,
@@ -83,16 +106,23 @@ export default function AppTemplateSwap() {
   }, [linked, currentLinked, currentPage, probe])
 
   const applyLive = useCallback(
-    async (tpl: LinkedPrintTemplate) => {
+    async (tpl: LinkedPrintTemplate, currentTemplateIds?: string[]) => {
       const objects = tpl.canvasData?.objects
       const plugin = getPlugin<TemplatePlugin>('TemplatePlugin')
       if (!plugin || !Array.isArray(objects) || objects.length === 0) return
+      // 옛 틀에서 옮긴 채움 사진을 새 틀 기하(마스크·배율·위치)에 다시 맞춘다 — 틀 채우기와 같은 경로
+      const imagePlugin = getPlugin<ImageProcessingPlugin>('ImageProcessingPlugin')
+      const refitFill =
+        canvas && imagePlugin
+          ? (fill: fabric.Object, frame: fabric.Object) =>
+              useImageStore.getState().fillImageIntoFrame(canvas, fill, frame, imagePlugin)
+          : undefined
       await new Promise<void>((resolve) => {
         fabric.util.enlivenObjects(
           core.ensureImageCrossOrigin(objects) as unknown as fabric.Object[],
           async (enlivened: fabric.Object[]) => {
             try {
-              await plugin.replaceTemplate(enlivened)
+              await plugin.replaceTemplate(enlivened, { currentTemplateIds, refitFill })
               const kind = classifyPrintTemplate(tpl)
               const spreadPlugin = getPlugin<SpreadPlugin>('SpreadPlugin')
               if (spreadPlugin && kind === 'cover-split') {
@@ -127,6 +157,8 @@ export default function AppTemplateSwap() {
     if (!pending) return
     setReplacing(true)
     try {
+      // 교체 전(세션·store 갱신 전) 현재 페이지 템플릿 기준으로 옛 템플릿 요소 id 를 구한다
+      const currentTemplateIds = await currentTemplateObjectIds(currentPage?.templateId, linked)
       if (sessionId && currentPage?.id) {
         try {
           await sessionsApi.replaceTemplate(
@@ -138,7 +170,7 @@ export default function AppTemplateSwap() {
           console.warn('[AppTemplateSwap] 세션 교체 생략(라이브만 적용):', e)
         }
       }
-      await applyLive(pending)
+      await applyLive(pending, currentTemplateIds)
       if (pages[currentPageIndex]) {
         const next = pages.slice()
         next[currentPageIndex] = { ...next[currentPageIndex], templateId: pending.id }
@@ -148,7 +180,7 @@ export default function AppTemplateSwap() {
     } finally {
       setReplacing(false)
     }
-  }, [pending, sessionId, currentPage, userId, applyLive, pages, currentPageIndex, setPages])
+  }, [pending, sessionId, currentPage, userId, applyLive, pages, currentPageIndex, setPages, linked])
 
   return (
     <div className="w-full h-full flex flex-col">

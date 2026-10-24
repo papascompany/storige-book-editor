@@ -1777,6 +1777,13 @@ docker logs storige-api 2>&1 | grep -E "\[FLAGS\] api |\[FLAGS-CHECK\]" | tail -
 
 **롤백**: ⓐ 동작만 되돌리기 — `.env` 에 `VALIDATION_BLEED_FROM_TEMPLATE_SET=off` → `docker compose up -d api` → nginx 재시작(재단선 세트도 종전 3mm). 이때 `FLAGS_EXPECTED_API` 의 토큰을 `VALIDATION_BLEED_FROM_TEMPLATE_SET=false` 로 바꿔야 `[FLAGS-CHECK] api ok n=18` 이 유지된다. ⓑ 코드 롤백 — `cd ~/storige && docker tag storige-api:rollback-pre-validation-bleed-20261025 storige-api:latest` → `.env` 의 `FLAGS_EXPECTED_API` 를 **17 토큰으로 복원**(이 키 제거) → `docker compose up -d --no-build api` → `docker compose restart nginx` → `[FLAGS-CHECK] api ok n=17` 확인(배포 0단계에서 `docker tag storige-api:latest storige-api:rollback-pre-validation-bleed-20261025` 로 보존해 둔 이미지).
 
+### 페이지 템플릿 교체 정리 (2026-10-25 준비, editor·canvas-core 전용 — 적용 시점 = editor 배포)
+
+- 동작: 편집기의 낱장 템플릿 교체(템플릿 패널·연결 템플릿 교체)가 예외 없이 끝나고, 새 템플릿 객체를 JSON 그대로(id·type·커스텀 속성) 넣는다. 고객 추가 요소는 1벌만 남는다. 현재 페이지 템플릿의 top-level id 목록으로 옛 템플릿 요소를 가려내므로 다시 연 세션에서도 옛 틀·문구가 남지 않는다(목록을 못 구하면 종전 판정). 채운 사진은 보존해 새 템플릿의 같은 id 틀 → 순서 짝 틀로 옮기고, 짝이 없으면 제자리에 둔다. 같은 id 템플릿 문구는 새 템플릿 값이 된다(서버 세션 교체 결과와 같음).
+- 범위: **editor·canvas-core 만 변경** — editor 단독 배포(Vercel) 가능. api·worker·DB·`.env`·FLAGS·저장 형식 무변경(VPS 재배포 없음).
+
+**롤백**: 편집기만 — Vercel `storige-editor` 직전 Ready Production 배포 promote. api/worker 무관.
+
 ### 캘린더 날짜 데이터 갱신·릴리스 절차 (T4, 2026-10-24 준비 — 계획 B4·오너 결정 D4)
 
 > 대상: canvas-core 정적 날짜 데이터 `packages/canvas-core/src/calendar/data/kr-2025-2035-v1.ts`(**생성물 — 직접 편집 금지**). 입력은 생성기 `packages/canvas-core/scripts/gen-calendar-data.mjs`(천문 계산·공휴일 규정·잡절 규칙)와 `packages/canvas-core/scripts/calendar-overrides.json`(규정 밖 지정일 — 임시공휴일·선거일, `temporary`)뿐이다. 데이터는 canvas-core 를 통해 **editor 번들에만** 들어가므로 반영 = editor 배포(master push → Vercel)이고 api·worker 재배포는 필요 없다(api 는 `@storige/types` `CALENDAR_DATA_VERSIONS` 의 버전 키·범위로 프로파일만 검증). 근거: [`CALENDAR_EDITOR_FEATURE_PLAN_2026-10-21.md`](./CALENDAR_EDITOR_FEATURE_PLAN_2026-10-21.md) §2 B4·§5 D4.

@@ -8,11 +8,33 @@ import { useEditorStore, useCurrentPage } from '@/stores/useEditorStore'
 import { useAppStore } from '@/stores/useAppStore'
 import { templatesApi, type Template, type TemplateSet } from '@/api/templates'
 import { sessionsApi } from '@/api/sessions'
+import { useImageStore } from '@/stores/useImageStore'
 import { cn } from '@/lib/utils'
-import { core, type TemplatePlugin, type SpreadPlugin } from '@storige/canvas-core'
+import { core, TemplatePlugin, type SpreadPlugin, type ImageProcessingPlugin } from '@storige/canvas-core'
 import type { TemplateType, TemplateSetType, SpreadSpec } from '@storige/types'
 
 type TabType = 'templateSet' | 'template'
+
+/**
+ * 현재 페이지에 적용된 템플릿의 top-level 객체 id — replaceTemplate 가 저장본(isUserAdded 미보존)에서도
+ * 옛 템플릿 요소를 가려내는 근거. 불러온 목록에 없으면 상세를 조회하고, 못 구하면 undefined(종전 판정).
+ */
+async function currentTemplateObjectIds(
+  templateId: string | undefined,
+  loaded: Template[],
+): Promise<string[] | undefined> {
+  if (!templateId) return undefined
+  const known = loaded.find((t) => t.id === templateId)?.canvasData?.objects
+  if (Array.isArray(known)) return TemplatePlugin.templateObjectIds(known)
+  try {
+    const detail = await templatesApi.getTemplate(templateId)
+    const objects = detail?.canvasData?.objects
+    return Array.isArray(objects) ? TemplatePlugin.templateObjectIds(objects) : undefined
+  } catch (e) {
+    console.warn('[TemplatePanel] 현재 템플릿 조회 실패 — 종전 판정으로 교체:', e)
+    return undefined
+  }
+}
 
 interface TemplatePanelProps {
   className?: string
@@ -146,6 +168,11 @@ export const TemplatePanel = memo(function TemplatePanel({
 
     setIsReplacing(true)
     try {
+      // 교체 전(세션 갱신 전) 현재 페이지 템플릿 기준으로 옛 템플릿 요소 id 를 구한다
+      const currentTemplateIds =
+        replaceModal.mode === 'template'
+          ? await currentTemplateObjectIds(currentPage?.templateId, templates)
+          : undefined
       let updatedSession
       if (replaceModal.mode === 'template') {
         const template = replaceModal.selectedItem as Template
@@ -178,6 +205,14 @@ export const TemplatePanel = memo(function TemplatePanel({
         const tpl = replaceModal.selectedItem as Template
         const objects = tpl.canvasData?.objects
         const plugin = useAppStore.getState().getPlugin<TemplatePlugin>('TemplatePlugin')
+        // 옛 틀에서 옮긴 채움 사진을 새 틀 기하(마스크·배율·위치)에 다시 맞춘다 — 틀 채우기와 같은 경로
+        const liveCanvas = useAppStore.getState().canvas
+        const imagePlugin = useAppStore.getState().getPlugin<ImageProcessingPlugin>('ImageProcessingPlugin')
+        const refitFill =
+          liveCanvas && imagePlugin
+            ? (fill: fabric.Object, frame: fabric.Object) =>
+                useImageStore.getState().fillImageIntoFrame(liveCanvas, fill, frame, imagePlugin)
+            : undefined
         if (plugin && Array.isArray(objects) && objects.length > 0) {
           await new Promise<void>((resolve) => {
             fabric.util.enlivenObjects(
@@ -186,7 +221,7 @@ export const TemplatePanel = memo(function TemplatePanel({
               core.ensureImageCrossOrigin(objects) as unknown as fabric.Object[],
               async (enlivened: fabric.Object[]) => {
                 try {
-                  await plugin.replaceTemplate(enlivened)
+                  await plugin.replaceTemplate(enlivened, { currentTemplateIds, refitFill })
                   // ③ 커버(펼침면) 교체: 새 표지 spec 으로 영역/가이드 레이아웃 재계산.
                   //    SpreadPlugin.init 은 기존 가이드/라벨을 clear 후 재렌더하므로 재호출 안전.
                   //    책등(spine)은 런타임 파생값이라 페이지수 변동 시 자동 재계산된다.
@@ -223,7 +258,7 @@ export const TemplatePanel = memo(function TemplatePanel({
     } finally {
       setIsReplacing(false)
     }
-  }, [sessionId, replaceModal, currentPage, userId, setSession])
+  }, [sessionId, replaceModal, currentPage, userId, setSession, templates])
 
   // 모달 취소 핸들러
   const handleReplaceCancel = useCallback(() => {
