@@ -40,6 +40,7 @@ export const HOST_ALLOWLIST = [
   'localhost',
   '127.0.0.1',
   'openapi.vercel.sh',
+  'github.com',
 ];
 
 /** guard R2 — 문서상 안전한 루프백/미지정 리터럴만 예외. 그 외 IPv4 는 전부 위반. */
