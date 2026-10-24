@@ -339,7 +339,7 @@ export class TemplateSetsService {
   /**
    * 캘린더 스킨(v1.29, 설계 C10) 참조 세트 사이트 검사 — 프로파일 `calendar.skins[].templateSetId` 가 가리키는 세트가
    * 있고(소프트 삭제 제외) 그 siteId 가 기준 세트와 같거나 null(공유)이어야 한다. 아니면 400.
-   * 없는 세트와 다른 사이트 세트는 같은 문구로 거부한다(세트 존재 여부를 드러내지 않음).
+   * 없는 세트와 다른 사이트 세트, 두 경우를 같은 문구로 거부한다.
    * skins 가 없으면 조회하지 않는다. 구조 호환(레이아웃·판형·사진틀 수 등)은 admin·편집기의
    * `checkCalendarSkinCompatibility` 가 맡는다.
    */
