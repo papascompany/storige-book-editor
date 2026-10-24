@@ -7,6 +7,14 @@ import { UNIT_CONVERSIONS } from '../ruler/constants'
 import FontPlugin from './FontPlugin'
 import { RenderOptimizer } from '../utils/render'
 import { mmToPx } from '../utils'
+import { core } from '../utils/canvas'
+
+/**
+ * 템플릿 요소 복제 시 보존할 속성 — 직렬화 화이트리스트(core.extendFabricOption) + 런타임 판정 플래그.
+ * fabric 5 의 clone() 은 toObject(propertiesToInclude) 기반이라, 목록 없이 부르면 id·extensionType·
+ * extension·lockInfo·frameRef·parentLayerId 등 커스텀 속성이 모두 빠진다.
+ */
+const CLONE_PROPS: string[] = [...core.extendFabricOption, 'isUserAdded']
 
 /**
  * SVG 템플릿 관리 플러그인
@@ -138,21 +146,26 @@ class TemplatePlugin extends PluginBase {
     const preservedElements: fabric.Object[] = []
 
     for (const obj of userElements) {
-      // 객체 복제
-      const cloned = await new Promise<fabric.Object>((resolve) => {
+      // 객체 복제 — 커스텀 속성 보존(CLONE_PROPS). 콜백 안 예외는 reject 로 전달해 promise 가 반드시 정착하게 한다.
+      const cloned = await new Promise<fabric.Object>((resolve, reject) => {
         obj.clone((clonedObj: fabric.Object) => {
-          // 사용자 요소 마킹 유지
-          (clonedObj as any).isUserAdded = true
-          // 원본 위치 정보 저장
-          (clonedObj as any).originalPosition = {
-            left: obj.left,
-            top: obj.top,
-            scaleX: obj.scaleX,
-            scaleY: obj.scaleY,
-            angle: obj.angle
+          try {
+            const target = clonedObj as any
+            // 사용자 요소 마킹 유지
+            target.isUserAdded = true
+            // 원본 위치 정보 저장
+            target.originalPosition = {
+              left: obj.left,
+              top: obj.top,
+              scaleX: obj.scaleX,
+              scaleY: obj.scaleY,
+              angle: obj.angle
+            }
+            resolve(clonedObj)
+          } catch (error) {
+            reject(error)
           }
-          resolve(clonedObj)
-        })
+        }, CLONE_PROPS)
       })
       preservedElements.push(cloned)
     }
@@ -188,39 +201,118 @@ class TemplatePlugin extends PluginBase {
 
   /**
    * 템플릿 교체 (사용자 요소 보존 포함)
+   *
+   * - 배열 입력 = 편집기 canvasData 의 objects(enliven 결과). 서버 세션 교체와 같은 결과가 되도록
+   *   새 템플릿 객체를 그대로(id·type·커스텀 속성 유지) 추가한다. 새 템플릿의 workspace 는 건너뛰고
+   *   현재 workspace 를 유지한다. SVG 평탄화(addTemplateToCanvas)는 거치지 않는다.
+   * - 단일 그룹/객체 입력 = 기존 SVG 평탄화 경로(addTemplateToCanvas) 유지.
+   * - 사용자 요소는 복제하지 않고 원본을 캔버스에 남긴 뒤 새 템플릿 위로 다시 쌓는다(1벌만 유지).
    * @param newTemplate 새 템플릿 데이터
    */
   async replaceTemplate(newTemplate: fabric.Group | fabric.Object | fabric.Object[]): Promise<void> {
     this._canvas.offHistory()
 
     try {
-      // 1. 사용자 요소 보존
-      const preservedElements = await this.preserveUserElements()
-      console.log(`📦 보존된 사용자 요소: ${preservedElements.length}개`)
+      const isObjectList = Array.isArray(newTemplate)
+      const templateObjects = isObjectList ? this.validateTemplateObjects(newTemplate) : []
+      const incomingIds = new Set(
+        templateObjects.map((obj) => obj.id).filter((id) => typeof id === 'string' && id !== 'workspace')
+      )
 
-      // 2. 기존 템플릿 요소 제거 (사용자 요소 제외)
+      // 1. 사용자 요소 식별 — 새 템플릿이 같은 id 로 다시 공급하는 객체는 템플릿 슬롯이므로 제외(중복 id 방지)
       const allObjects = this._canvas.getObjects()
-      const templateElements = allObjects.filter(obj => !this.isUserAddedElement(obj))
+      const userElements = allObjects.filter(
+        (obj) => this.isUserAddedElement(obj) && !(obj.id && incomingIds.has(obj.id))
+      )
+      console.log(`📦 보존된 사용자 요소: ${userElements.length}개`)
 
-      templateElements.forEach(obj => {
-        if (obj.id !== 'workspace') {
+      // 2. 기존 템플릿 요소 제거 (사용자 요소·workspace 제외)
+      allObjects.forEach((obj) => {
+        if (obj.id !== 'workspace' && !userElements.includes(obj)) {
           this._canvas.remove(obj)
         }
       })
 
       // 3. 새 템플릿 로드
-      await this.addTemplateToCanvas(newTemplate)
-
-      // 4. 사용자 요소 복원
-      await this.restoreUserElements(preservedElements)
-      console.log(`✅ 사용자 요소 복원 완료: ${preservedElements.length}개`)
+      if (isObjectList) {
+        await this.addTemplateObjects(templateObjects, userElements)
+      } else {
+        await this.addTemplateToCanvas(newTemplate)
+        // 4. 사용자 요소를 원래 순서대로 새 템플릿 위로
+        userElements.forEach((obj) => obj.bringToFront())
+      }
+      this._canvas.requestRenderAll()
+      console.log(`✅ 사용자 요소 복원 완료: ${userElements.length}개`)
 
       // 5. 이벤트 발생
-      this._editor.emit('templateReplaced', { preservedCount: preservedElements.length })
+      this._editor.emit('templateReplaced', { preservedCount: userElements.length })
 
     } finally {
       this._canvas.onHistory()
     }
+  }
+
+  /** replaceTemplate 배열 입력 검증 — 캔버스를 건드리기 전에 실패시킨다 */
+  private validateTemplateObjects(objects: fabric.Object[]): fabric.Object[] {
+    if (objects.length === 0) {
+      throw new Error('추가할 객체가 없습니다.')
+    }
+    const validObjects = objects.filter((obj) => obj && typeof obj.set === 'function')
+    if (validObjects.length === 0) {
+      throw new Error('유효한 fabric 객체가 없습니다.')
+    }
+    return validObjects
+  }
+
+  /**
+   * canvasData 객체를 변환 없이 캔버스에 추가(템플릿 교체용).
+   * 새 템플릿이 공급한 객체는 모두 템플릿 요소(isUserAdded=false)로 표시한다 —
+   * 템플릿 JSON 에 남은 isUserAdded 값과 무관하게, 다음 교체 때 사용자 요소로 오판되지 않게 한다.
+   */
+  private async addTemplateObjects(objects: fabric.Object[], userElements: fabric.Object[]): Promise<void> {
+    const additions = objects.filter((obj) => obj.id !== 'workspace')
+    additions.forEach((obj) => {
+      (obj as any).isUserAdded = false
+    })
+
+    await this.preloadTemplateFonts(additions)
+
+    RenderOptimizer.batchAdd(this._canvas, additions)
+    // 사용자 요소를 원래 순서대로 새 템플릿 위로
+    userElements.forEach((obj) => obj.bringToFront())
+
+    await new Promise<void>((resolve) => {
+      this._editor.hooks.get('afterLoad').callAsync('', () => resolve())
+    })
+  }
+
+  /** 새 템플릿 텍스트(그룹 내부 포함) 폰트 사전 로드 — 폰트별 5초 상한, 실패해도 진행 */
+  private async preloadTemplateFonts(objects: fabric.Object[]): Promise<void> {
+    const fontPlugin = this._editor.getPlugin<FontPlugin>('FontPlugin')
+    if (!fontPlugin) return
+
+    const fonts = new Set<string>()
+    const collect = (obj: fabric.Object) => {
+      if ((obj.type === 'text' || obj.type === 'i-text' || obj.type === 'textbox') && typeof (obj as any).fontFamily === 'string') {
+        fonts.add((obj as any).fontFamily)
+      }
+      if (obj.type === 'group' && (obj as fabric.Group)._objects) {
+        (obj as fabric.Group)._objects.forEach(collect)
+      }
+    }
+    objects.forEach(collect)
+    if (fonts.size === 0) return
+
+    await Promise.allSettled(
+      Array.from(fonts).map((fontName) =>
+        Promise.race([
+          fontPlugin.ensureFontLoaded(fontName),
+          new Promise((resolve) => setTimeout(resolve, 5000))
+        ]).catch((err) => {
+          console.warn(`⚠️ 템플릿 폰트 사전 로드 실패 (계속 진행): ${fontName}`, err)
+        })
+      )
+    )
   }
 
   async readSVGFromFile(file: File): Promise<string> {
@@ -917,7 +1009,7 @@ class TemplatePlugin extends PluginBase {
 
               resolve(validObjects)
             }
-          })
+          }, CLONE_PROPS) // 커스텀 속성(id·extensionType 등) 보존 — 원본 id 가 있으면 uuid 를 새로 붙이지 않는다
         })
 
         // 경우에 따라 groupObjects가 비어있을 수 있으므로, 이 경우 바로 resolve
