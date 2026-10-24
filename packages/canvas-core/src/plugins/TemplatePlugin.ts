@@ -16,6 +16,19 @@ import { core } from '../utils/canvas'
  */
 const CLONE_PROPS: string[] = [...core.extendFabricOption, 'isUserAdded']
 
+/** replaceTemplate 선택 인자 */
+export interface ReplaceTemplateOptions {
+  /** 현재 페이지에 적용된 템플릿의 top-level 객체 id(TemplatePlugin.templateObjectIds). 이 id 의 객체는 템플릿 유래로 제거 */
+  currentTemplateIds?: string[]
+  /** 옮긴 채움 사진을 새 틀 기하(마스크·배율·위치)에 다시 맞추는 콜백 — 편집기의 틀 채우기 경로를 주입 */
+  refitFill?: (fill: fabric.Object, frame: fabric.Object) => unknown
+}
+
+interface FillFramePair {
+  fill: fabric.Object
+  frame: fabric.Object
+}
+
 /**
  * SVG 템플릿 관리 플러그인
  * SVG 파일을 로드하고 그룹 분리하여 FabricJS 객체 배열로 변환
@@ -200,6 +213,20 @@ class TemplatePlugin extends PluginBase {
   }
 
   /**
+   * canvasData objects 의 top-level id 목록(workspace 제외) — replaceTemplate 의 currentTemplateIds 입력용.
+   * 편집기는 현재 페이지에 적용된 템플릿의 canvasData.objects 로 만들어 넘긴다.
+   */
+  static templateObjectIds(objects: unknown): string[] {
+    if (!Array.isArray(objects)) return []
+    const ids: string[] = []
+    for (const obj of objects) {
+      const id = obj && typeof obj === 'object' ? (obj as { id?: unknown }).id : undefined
+      if (typeof id === 'string' && id && id !== 'workspace' && !ids.includes(id)) ids.push(id)
+    }
+    return ids
+  }
+
+  /**
    * 템플릿 교체 (사용자 요소 보존 포함)
    *
    * - 배열 입력 = 편집기 canvasData 의 objects(enliven 결과). 서버 세션 교체와 같은 결과가 되도록
@@ -207,35 +234,46 @@ class TemplatePlugin extends PluginBase {
    *   현재 workspace 를 유지한다. SVG 평탄화(addTemplateToCanvas)는 거치지 않는다.
    * - 단일 그룹/객체 입력 = 기존 SVG 평탄화 경로(addTemplateToCanvas) 유지.
    * - 사용자 요소는 복제하지 않고 원본을 캔버스에 남긴 뒤 새 템플릿 위로 다시 쌓는다(1벌만 유지).
+   * - 템플릿 유래 판정: isUserAdded 표시(저장본에는 남지 않음) 외에, 새 템플릿이 같은 id 로 다시 공급하는 객체와
+   *   options.currentTemplateIds(현재 페이지 템플릿의 top-level id)에 든 객체를 템플릿 요소로 보고 제거한다.
+   * - 채움 사진(extensionType 'fillImage')은 항상 사용자 콘텐츠로 보존한다. 걸려 있던 틀이 제거되면
+   *   새 템플릿의 같은 id 틀 → 없으면 순서 짝(같은 id 짝이 없는 옛 틀 k번째 ↔ 같은 id 짝이 없는 새 틀 k번째)으로
+   *   옮기고(frameRef·parentLayerId 갱신, 사진 id 유지, 틀 바로 아래로), options.refitFill 로 새 틀 기하에 다시 맞춘다.
+   *   짝이 없으면 제자리에 남긴다. 옮긴 틀에 새 템플릿이 채워 둔 견본 사진은 추가하지 않는다(한 틀에 사진 1장).
    * @param newTemplate 새 템플릿 데이터
+   * @param options currentTemplateIds·refitFill (모두 선택 — 없으면 종전 판정)
    */
-  async replaceTemplate(newTemplate: fabric.Group | fabric.Object | fabric.Object[]): Promise<void> {
+  async replaceTemplate(
+    newTemplate: fabric.Group | fabric.Object | fabric.Object[],
+    options: ReplaceTemplateOptions = {}
+  ): Promise<void> {
     this._canvas.offHistory()
 
     try {
       const isObjectList = Array.isArray(newTemplate)
       const templateObjects = isObjectList ? this.validateTemplateObjects(newTemplate) : []
-      const incomingIds = new Set(
-        templateObjects.map((obj) => obj.id).filter((id) => typeof id === 'string' && id !== 'workspace')
+      const incomingIds = new Set(TemplatePlugin.templateObjectIds(templateObjects))
+      const currentIds = new Set(
+        Array.isArray(options.currentTemplateIds)
+          ? options.currentTemplateIds.filter((id) => typeof id === 'string' && id && id !== 'workspace')
+          : []
       )
 
-      // 1. 사용자 요소 식별 — 새 템플릿이 같은 id 로 다시 공급하는 객체는 템플릿 슬롯이므로 제외(중복 id 방지)
+      // 1. 사용자 요소 식별
       const allObjects = this._canvas.getObjects()
-      const userElements = allObjects.filter(
-        (obj) => this.isUserAddedElement(obj) && !(obj.id && incomingIds.has(obj.id))
-      )
+      const userElements = allObjects.filter((obj) => this.isPreservedOnReplace(obj, incomingIds, currentIds))
       console.log(`📦 보존된 사용자 요소: ${userElements.length}개`)
 
       // 2. 기존 템플릿 요소 제거 (사용자 요소·workspace 제외)
-      allObjects.forEach((obj) => {
-        if (obj.id !== 'workspace' && !userElements.includes(obj)) {
-          this._canvas.remove(obj)
-        }
-      })
+      const removed = allObjects.filter((obj) => obj.id !== 'workspace' && !userElements.includes(obj))
+      removed.forEach((obj) => this._canvas.remove(obj))
 
       // 3. 새 템플릿 로드
       if (isObjectList) {
-        await this.addTemplateObjects(templateObjects, userElements)
+        const additions = templateObjects.filter((obj) => obj.id !== 'workspace')
+        const pairs = this.pairFillsWithNewFrames(userElements, removed, additions)
+        const finalAdditions = this.relinkFills(pairs, userElements, additions)
+        await this.addTemplateObjects(finalAdditions, userElements, pairs, options.refitFill)
       } else {
         await this.addTemplateToCanvas(newTemplate)
         // 4. 사용자 요소를 원래 순서대로 새 템플릿 위로
@@ -250,6 +288,70 @@ class TemplatePlugin extends PluginBase {
     } finally {
       this._canvas.onHistory()
     }
+  }
+
+  /** 교체 시 남길 객체인지 — 채움 사진은 항상 보존, 템플릿 id 목록(새·현재)에 든 객체는 템플릿 유래 */
+  private isPreservedOnReplace(obj: fabric.Object, incomingIds: Set<string>, currentIds: Set<string>): boolean {
+    if (obj.id === 'workspace') return false
+    if (obj.extensionType === 'fillImage') return true
+    if (obj.id && (incomingIds.has(obj.id) || currentIds.has(obj.id))) return false
+    return this.isUserAddedElement(obj)
+  }
+
+  /** 제거된 틀에 걸려 있던 채움 사진 ↔ 새 템플릿 틀 짝 — 같은 id 우선, 다음은 같은 id 짝이 없는 틀끼리 순서대로 */
+  private pairFillsWithNewFrames(
+    preserved: fabric.Object[],
+    removed: fabric.Object[],
+    additions: fabric.Object[]
+  ): FillFramePair[] {
+    const parentOf = (o: fabric.Object) => (o as any).parentLayerId ?? (o as any).frameRef
+    const removedFrames = removed.filter((o) => o.extensionType === 'frame' && o.id)
+    const newFrames = additions.filter((o) => o.extensionType === 'frame' && o.id)
+    if (removedFrames.length === 0 || newFrames.length === 0) return []
+
+    const removedFrameIds = new Set(removedFrames.map((f) => f.id))
+    const newFrameIds = new Set(newFrames.map((f) => f.id))
+    const oldUnmatched = removedFrames.filter((f) => !newFrameIds.has(f.id))
+    const newUnmatched = newFrames.filter((f) => !removedFrameIds.has(f.id))
+
+    const claimed = new Set<fabric.Object>()
+    const pairs: FillFramePair[] = []
+    for (const fill of preserved) {
+      if (fill.extensionType !== 'fillImage') continue
+      const parentId = parentOf(fill)
+      if (!removedFrameIds.has(parentId)) continue
+      let target = newFrames.find((f) => f.id === parentId)
+      if (!target) {
+        const k = oldUnmatched.findIndex((f) => f.id === parentId)
+        target = k >= 0 ? newUnmatched[k] : undefined
+      }
+      if (target && !claimed.has(target)) {
+        claimed.add(target)
+        pairs.push({ fill, frame: target })
+      }
+    }
+    return pairs
+  }
+
+  /**
+   * 짝지은 채움 사진을 새 틀에 연결(frameRef·parentLayerId·틀의 fillImage — 사진 id 는 유지)하고,
+   * 새 템플릿 객체 중 이미 차지된 틀의 견본 사진·보존 객체와 id 가 겹치는 객체를 뺀 추가 목록을 돌려준다.
+   */
+  private relinkFills(pairs: FillFramePair[], preserved: fabric.Object[], additions: fabric.Object[]): fabric.Object[] {
+    const claimedFrameIds = new Set(pairs.map((p) => p.frame.id))
+    const preservedIds = new Set(preserved.map((o) => o.id).filter(Boolean))
+    for (const { fill, frame } of pairs) {
+      fill.set({ frameRef: frame.id, parentLayerId: frame.id })
+      ;(frame as any).fillImage = fill.id
+    }
+    return additions.filter((obj) => {
+      if (obj.id && preservedIds.has(obj.id)) return false
+      if (obj.extensionType === 'fillImage') {
+        const parentId = (obj as any).parentLayerId ?? (obj as any).frameRef
+        if (parentId && claimedFrameIds.has(parentId)) return false
+      }
+      return true
+    })
   }
 
   /** replaceTemplate 배열 입력 검증 — 캔버스를 건드리기 전에 실패시킨다 */
@@ -268,9 +370,14 @@ class TemplatePlugin extends PluginBase {
    * canvasData 객체를 변환 없이 캔버스에 추가(템플릿 교체용).
    * 새 템플릿이 공급한 객체는 모두 템플릿 요소(isUserAdded=false)로 표시한다 —
    * 템플릿 JSON 에 남은 isUserAdded 값과 무관하게, 다음 교체 때 사용자 요소로 오판되지 않게 한다.
+   * 옮긴 채움 사진은 새 틀 바로 아래로 두고 refitFill 로 새 틀 기하에 맞춘다(실패는 경고 후 진행).
    */
-  private async addTemplateObjects(objects: fabric.Object[], userElements: fabric.Object[]): Promise<void> {
-    const additions = objects.filter((obj) => obj.id !== 'workspace')
+  private async addTemplateObjects(
+    additions: fabric.Object[],
+    userElements: fabric.Object[],
+    pairs: FillFramePair[],
+    refitFill?: ReplaceTemplateOptions['refitFill']
+  ): Promise<void> {
     additions.forEach((obj) => {
       (obj as any).isUserAdded = false
     })
@@ -280,6 +387,19 @@ class TemplatePlugin extends PluginBase {
     RenderOptimizer.batchAdd(this._canvas, additions)
     // 사용자 요소를 원래 순서대로 새 템플릿 위로
     userElements.forEach((obj) => obj.bringToFront())
+
+    for (const { fill, frame } of pairs) {
+      const frameIndex = this._canvas.getObjects().indexOf(frame)
+      if (frameIndex >= 0) fill.moveTo(frameIndex)
+      if (refitFill) {
+        try {
+          await refitFill(fill, frame)
+        } catch (error) {
+          console.warn('⚠️ 채움 사진 새 틀 맞춤 실패 (연결만 유지):', frame.id, error)
+        }
+      }
+      fill.setCoords()
+    }
 
     await new Promise<void>((resolve) => {
       this._editor.hooks.get('afterLoad').callAsync('', () => resolve())
