@@ -7,6 +7,9 @@
  * 규칙 요약(오너 결정 Q1 (a) 템플릿 전체 · Q2 (a) 면별 사진틀 수 같음 · Q3 (a) 문구는 문자열만):
  * - workspace: 현재 캔버스 것을 유지(도련 반영 크기 그대로 — 리사이즈는 편집기 후처리).
  * - 템플릿 유래 요소(top-level id ∈ 판정 집합, 또는 보조 판정)는 버리고 `to` 의 요소를 쓴다.
+ *   보조 판정(판정 집합 밖)은 고객이 만들 수 없는 표지만 쓴다 — `deleteable:false`·템플릿 잠금(designer/admin)·날짜 그리드.
+ *   extensionType(frame·background 등)만으로는 고객 요소로 둔다(고객도 라이브러리 틀·배경을 추가한다 — 오분류 시
+ *   요소가 하나 더 남는 쪽으로 실패, 오너 Q2 '사진 손실 없음').
  *   · 날짜 그리드는 버린다(`to` 의 그리드를 쓰고 내용은 세션 메타로 다시 그림).
  *   · 고객이 고친 템플릿 문구(`from` 의 같은 id 문구와 다름)는 문자열만 `to` 의 같은 id 문구로 옮긴다.
  *   · 사진틀은 `to` 의 틀로 바뀌고, 채운 사진은 아래 규칙으로 옮긴다.
@@ -26,8 +29,12 @@ export interface SkinCanvasJson {
 
 type SkinObject = Record<string, unknown>
 
-/** 보조 판정 — id 가 판정 집합에 없어도 템플릿 유래로 보는 extensionType */
-export const SKIN_TEMPLATE_EXTENSION_TYPES: readonly string[] = ['background', 'frame', 'calendar-grid', 'template-element']
+/**
+ * 보조 판정 — id 가 판정 집합에 없어도 extensionType 만으로 템플릿 유래로 보는 값.
+ * 날짜 그리드만 둔다: 그리드는 관리자 템플릿 제작(editMode) 도구로만 추가된다(고객 경로 없음).
+ * 'frame'·'background'·'template-element' 는 고객 라이브러리 추가와 겹쳐 넣지 않는다.
+ */
+export const SKIN_TEMPLATE_EXTENSION_TYPES: readonly string[] = ['calendar-grid']
 /** 템플릿 문구로 보는 fabric type */
 export const SKIN_TEXT_TYPES: readonly string[] = ['text', 'i-text', 'textbox']
 /** 사진틀 기하 비교 허용 오차(px·도) */
@@ -91,6 +98,8 @@ export interface SkinMergeReport {
   templateRemoved: number
   /** 그중 날짜 그리드 수 */
   gridsRemoved: number
+  /** 그중 판정 집합 밖인데 보조 판정(deleteable:false·템플릿 잠금·그리드)만으로 분류된 수 — 안내·차단 참고값 */
+  auxiliaryTemplateCount: number
   /** 사진 JSON 을 그대로 유지(링크만 수정) */
   photosKept: number
   /** 변환은 유지하고 clipPath 만 새 틀 이미지로 다시 만듦 */
@@ -109,7 +118,7 @@ export interface SkinMergeReport {
   textsUnverified: number
   /** 고객 추가 요소로 남긴 수 */
   customerKept: number
-  /** 그중 id 충돌로 새 id 를 받은 수 */
+  /** 그중 id 충돌(자신·그룹 자식·clipPath 중 하나라도)로 새 id 를 받은 객체 수 */
   customerReissued: number
   /** 판정 오류 의심 — '고객 추가' 개수가 기준 템플릿 객체 수에 가깝다(`isSkinMergeSuspect`). true 면 적용하지 않는다 */
   suspect: boolean
@@ -160,6 +169,7 @@ export function summarizeSkinMergeReports(reports: readonly SkinMergeReport[]): 
   const sum: SkinMergeSummary = {
     templateRemoved: 0,
     gridsRemoved: 0,
+    auxiliaryTemplateCount: 0,
     photosKept: 0,
     photosClipRebuilt: 0,
     photosRelinked: 0,
@@ -177,6 +187,7 @@ export function summarizeSkinMergeReports(reports: readonly SkinMergeReport[]): 
   reports.forEach((r, i) => {
     sum.templateRemoved += r.templateRemoved
     sum.gridsRemoved += r.gridsRemoved
+    sum.auxiliaryTemplateCount += r.auxiliaryTemplateCount
     sum.photosKept += r.photosKept
     sum.photosClipRebuilt += r.photosClipRebuilt
     sum.photosRelinked += r.photosRelinked
@@ -227,16 +238,18 @@ export function mergeSkinCanvas(
   for (const o of fromObjs ?? []) if (typeof o.id === 'string') judge.add(o.id)
   for (const o of toObjs) if (typeof o.id === 'string') judge.add(o.id)
 
-  const isTemplateOrigin = (o: SkinObject): boolean =>
-    (typeof o.id === 'string' && judge.has(o.id))
-    || o.deleteable === false
+  const inJudge = (o: SkinObject): boolean => typeof o.id === 'string' && judge.has(o.id)
+  const isAuxiliaryTemplate = (o: SkinObject): boolean =>
+    o.deleteable === false
     || hasTemplateLock(o.lockInfo)
     || (typeof o.extensionType === 'string' && SKIN_TEMPLATE_EXTENSION_TYPES.includes(o.extensionType))
+  const isTemplateOrigin = (o: SkinObject): boolean => inJudge(o) || isAuxiliaryTemplate(o)
 
   const report: SkinMergeReport = {
     referenceObjectCount: opts.referenceObjectCount ?? countDesignObjects(fromObjs ?? toObjs),
     templateRemoved: 0,
     gridsRemoved: 0,
+    auxiliaryTemplateCount: 0,
     photosKept: 0,
     photosClipRebuilt: 0,
     photosRelinked: 0,
@@ -278,6 +291,7 @@ export function mergeSkinCanvas(
       continue
     }
     report.templateRemoved += 1
+    if (!inJudge(o)) report.auxiliaryTemplateCount += 1
     if (o.extensionType === GRID_EXTENSION_TYPE) {
       report.gridsRemoved += 1
       continue
@@ -376,16 +390,23 @@ export function mergeSkinCanvas(
   for (const t of toKept) collectIds(t, used)
   for (const list of placed.values()) for (const p of list) collectIds(p.obj, used)
 
+  // 고객 요소 id 충돌 — 출력 쪽 collectIds 와 같은 기준(자신·그룹 자식·clipPath)으로 검사·재부여
   const idMap = new Map<string, string>()
   for (const c of customers) {
-    if (typeof c.id === 'string' && used.has(c.id)) {
-      const next = createId()
-      idMap.set(c.id, next)
-      used.add(next)
-      report.customerReissued += 1
-    } else if (typeof c.id === 'string') {
-      used.add(c.id)
+    const own: string[] = []
+    collectIdList(c, own)
+    let reissued = false
+    for (const id of own) {
+      if (used.has(id)) {
+        const next = createId()
+        idMap.set(id, next)
+        used.add(next)
+        reissued = true
+      } else {
+        used.add(id)
+      }
     }
+    if (reissued) report.customerReissued += 1
   }
   report.customerKept = customers.length
   report.suspect = isSkinMergeSuspect(report.customerKept, report.referenceObjectCount)
@@ -618,6 +639,13 @@ function collectIds(o: SkinObject, into: Set<string>): void {
   if (Array.isArray(o.objects)) for (const child of o.objects) if (isRecord(child)) collectIds(child, into)
 }
 
+/** collectIds 와 같은 순회 순서로 id 목록(중복 포함 — 고객 요소 안의 중복 id 도 충돌로 본다) */
+function collectIdList(o: SkinObject, into: string[]): void {
+  if (typeof o.id === 'string') into.push(o.id)
+  if (isRecord(o.clipPath)) collectIdList(o.clipPath, into)
+  if (Array.isArray(o.objects)) for (const child of o.objects) if (isRecord(child)) collectIdList(child, into)
+}
+
 function remapId(id: unknown, idMap: Map<string, string>): unknown {
   if (typeof id !== 'string') return id
   const direct = idMap.get(id)
@@ -628,14 +656,19 @@ function remapId(id: unknown, idMap: Map<string, string>): unknown {
   return id
 }
 
-/** 고객 요소 — 충돌로 바뀐 id 와 그 id 를 가리키는 참조(frameRef·parentLayerId·fillImage·clipPath id)를 고친다 */
+/**
+ * 고객 요소 — 충돌로 바뀐 id 와 그 id 를 가리키는 참조(frameRef·parentLayerId·fillImage)를 고친다.
+ * 그룹 자식·clipPath 까지 같은 규칙으로 내려간다.
+ */
 function remapCustomer(c: SkinObject, idMap: Map<string, string>): SkinObject {
   if (idMap.size === 0) return c
-  const next: SkinObject = { ...c, id: remapId(c.id, idMap) }
+  const next: SkinObject = { ...c }
+  if (c.id !== undefined) next.id = remapId(c.id, idMap)
   for (const key of ['frameRef', 'parentLayerId', 'fillImage'] as const) {
     if (c[key] !== undefined) next[key] = remapId(c[key], idMap)
   }
-  if (isRecord(c.clipPath)) next.clipPath = { ...c.clipPath, id: remapId(c.clipPath.id, idMap) }
+  if (isRecord(c.clipPath)) next.clipPath = remapCustomer(c.clipPath, idMap)
+  if (Array.isArray(c.objects)) next.objects = c.objects.map((child) => (isRecord(child) ? remapCustomer(child, idMap) : child))
   return next
 }
 

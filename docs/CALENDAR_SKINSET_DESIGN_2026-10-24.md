@@ -175,7 +175,8 @@ export interface CalendarSessionMeta {
 
 **템플릿 유래 판정(R 검토 반영).** `from` 하나의 id 만으로 판정하면 `from` 이 알 수 없을 때(스킨 삭제·§9 R4)나 판매 중인 템플릿을 개정한 뒤에 옛 디자인 요소가 "고객 추가"로 잘못 분류된다. 그래서 다음 두 단계로 판정한다.
 - **판정 집합** `T[i]` = 기준 세트 템플릿 i 의 ids ∪ 현재 등록된 모든 스킨 세트 템플릿 i 의 ids. 복제로 만든 스킨은 id 를 공유하므로 집합이 크게 늘지 않는다. `from` 이 알 수 없어도 이 집합은 만들 수 있다.
-- **보조 판정**: id 가 `T[i]` 에 없어도 `deleteable:false` 이거나 `lockInfo` 가 있거나 `extensionType ∈ {background, frame, calendar-grid, template-element}` 이면 템플릿 유래로 본다.
+- **보조 판정**(T7a 정정 2026-10-25): id 가 `T[i]` 에 없으면 고객이 만들 수 없는 표지 — `deleteable:false`·템플릿 잠금(`lockInfo.isLocked` + `designer`/`admin`)·날짜 그리드(`calendar-grid`, editMode 전용 도구로만 추가) — 가 있을 때만 템플릿 유래로 본다.
+  `extensionType`(frame·background·template-element)만으로는 고객 요소로 둔다(고객도 라이브러리 틀·배경을 추가함 — 오분류 시 요소가 하나 더 남는 쪽으로 실패, Q2 사진 손실 없음). 사진틀 순서 짝짓기는 템플릿 유래 틀끼리만 한다.
 - **차단**: dryRun 의 '고객 추가' 개수가 기준 템플릿 객체 수에 가까우면 판정이 어긋난 것으로 보고 적용을 막는다. 임계값은 T7a 가 실측으로 정한다.
 
 | 현재 객체 분류 | 판정 | 처리 |

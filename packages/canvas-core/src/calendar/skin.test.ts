@@ -145,7 +145,7 @@ describe('mergeSkinCanvas — 채움 사진', () => {
   it('같은 id 틀이 먼저 짝을 잡고, 남은 틀만 읽는 순서로 짝짓는다', () => {
     const cur = canvas([ws(), frame('f1', 300, 0), frame('fx', 0, 0), photo('f1', '/u/1.jpg'), photo('fx', '/u/x.jpg')])
     const to = canvas([ws(), frame('s0', 0, 0), frame('f1', 300, 0)])
-    const { json } = mergeSkinCanvas(cur, null, to)
+    const { json } = mergeSkinCanvas(cur, null, to, { templateIds: ['fx'] })
     expect(byId(json, 'f1_fillImage')?.src).toBe('/u/1.jpg')
     expect(byId(json, 's0_fillImage')?.src).toBe('/u/x.jpg')
   })
@@ -165,7 +165,7 @@ describe('mergeSkinCanvas — 채움 사진', () => {
   it('대상 틀 없음(Q2 정책 — 호환 검사 밖의 방어) → 캔버스에서 빼고 보고', () => {
     const cur = canvas([ws(), frame('fa', 0, 0), frame('fb', 300, 0), photo('fa', '/u/a.jpg'), photo('fb', '/u/b.jpg')])
     const to = canvas([ws(), frame('s1', 0, 0)])
-    const { json, report } = mergeSkinCanvas(cur, null, to)
+    const { json, report } = mergeSkinCanvas(cur, null, to, { templateIds: ['fa', 'fb'] })
     expect(byId(json, 's1_fillImage')?.src).toBe('/u/a.jpg')
     expect(objs(json).filter((o) => o.extensionType === 'fillImage')).toHaveLength(1)
     expect(report.photosDropped).toBe(1)
@@ -243,9 +243,8 @@ describe('mergeSkinCanvas — 템플릿 유래 판정(판정 집합 · 보조 �
       { type: 'path', id: 'old-deco-shared' }, // 다른 등록 스킨과 공유하는 id → 판정 집합
       { type: 'path', id: 'old-deco-locked', deleteable: false }, // 보조: deleteable:false
       { type: 'path', id: 'old-deco-admin-lock', lockInfo: { isLocked: true, lockLevel: 'admin' } }, // 보조: 템플릿 잠금
-      { type: 'rect', id: 'old-bg', extensionType: 'background' }, // 보조: extensionType
-      { type: 'group', id: 'old-el', extensionType: 'template-element' },
-      grid('old-grid'),
+      { type: 'rect', id: 'old-bg', extensionType: 'background', deleteable: false }, // 보조: deleteable:false
+      grid('old-grid'), // 보조: 날짜 그리드(고객 추가 경로 없음)
       sticker('st-1'),
       // 고객이 직접 잠근(또는 잠갔다 푼) 요소는 고객 요소로 남긴다
       sticker('st-locked', { lockInfo: { isLocked: true, lockLevel: 'user' } }),
@@ -258,7 +257,19 @@ describe('mergeSkinCanvas — 템플릿 유래 판정(판정 집합 · 보조 �
     expect([...templateIds].sort()).toEqual(['bg-1', 'bg-s', 'g-s', 'g1', 'old-deco-shared', 'workspace'])
     const { json, report } = mergeSkinCanvas(cur, null, to, { templateIds })
     expect(ids(json)).toEqual(['workspace', 'bg-s', 'g-s', 'st-1', 'st-locked', 'st-unlocked'])
-    expect(report).toMatchObject({ templateRemoved: 6, customerKept: 3, suspect: false })
+    expect(report).toMatchObject({ templateRemoved: 5, auxiliaryTemplateCount: 4, customerKept: 3, suspect: false })
+  })
+
+  it('판정 집합 밖 객체는 extensionType(frame·background·template-element)만으로는 고객 요소로 남는다', () => {
+    const cur = canvas([
+      ws(),
+      { type: 'rect', id: 'x-bg', extensionType: 'background' },
+      { type: 'group', id: 'x-el', extensionType: 'template-element' },
+      frame('x-frame', 0, 0),
+    ])
+    const { json, report } = mergeSkinCanvas(cur, null, canvas([ws(), bg('bg-s')]))
+    expect(ids(json)).toEqual(['workspace', 'bg-s', 'x-bg', 'x-el', 'x-frame'])
+    expect(report).toMatchObject({ templateRemoved: 0, auxiliaryTemplateCount: 0, customerKept: 3 })
   })
 
   it("'고객 추가' 개수가 임계 이상이면 차단 보고(suspect) — 합계 blocked, 임계 미만은 통과", () => {
@@ -311,6 +322,76 @@ describe('mergeSkinCanvas — 고객 추가 요소', () => {
     const { json, report } = mergeSkinCanvas(canvas([ws(), c]), null, canvas([ws()]))
     expect(byId(json, 'st-9')).toEqual(c)
     expect(report.customerReissued).toBe(0)
+  })
+})
+
+describe('mergeSkinCanvas — 고객 라이브러리 사진틀(R 재현 1~3)', () => {
+  // 편집기 라이브러리 틀 추가(useEditorContents 프레임 콘텐츠 경로): extensionType 'frame' 만 붙고 잠금·deleteable 없음, id = uuid
+  const libFrame = (patch: Obj = {}): Obj =>
+    ({ type: 'image', id: 'lib-uuid-1', extensionType: 'frame', src: '/storage/frames/heart.png', left: 500, top: 300, width: 120, height: 120, ...patch })
+  const from = canvas([ws(), bg('bgA'), frame('fA', 100, 100)])
+  const to = canvas([ws(), bg('bgB'), frame('fB', 100, 100)])
+  const templateIds = collectSkinTemplateIds([from, to])
+
+  it('재현 1: 템플릿 틀 사진은 스킨 틀로, 라이브러리 틀과 그 사진·고객 문구는 고객 요소로 보존', () => {
+    const libPhoto = photo('lib-uuid-1', 'p2.jpg')
+    const cur = canvas([
+      ws(), bg('bgA'), photo('fA', 'p1.jpg'), frame('fA', 100, 100, { fillImage: 'fA_fillImage' }),
+      libPhoto, libFrame({ fillImage: 'lib-uuid-1_fillImage' }), text('t-user', 'hi'),
+    ])
+    const { json, refills, report } = mergeSkinCanvas(cur, from, to, { templateIds })
+    expect(ids(json)).toEqual(['workspace', 'bgB', 'fB_fillImage', 'fB', 'lib-uuid-1_fillImage', 'lib-uuid-1', 't-user'])
+    expect(byId(json, 'fB_fillImage')?.src).toBe('p1.jpg')
+    expect(byId(json, 'lib-uuid-1_fillImage')).toEqual(libPhoto)
+    expect(byId(json, 'lib-uuid-1')).toEqual(libFrame({ fillImage: 'lib-uuid-1_fillImage' }))
+    expect(refills).toEqual([])
+    expect(report).toMatchObject({ photosKept: 1, photosRelinked: 1, photosDropped: 0, customerKept: 3, templateRemoved: 2, auxiliaryTemplateCount: 0 })
+    expect(report.dropped).toEqual([])
+  })
+
+  it('재현 2: 템플릿 틀이 없으면 고객 라이브러리 틀(과 사진)은 스킨 틀과 짝지어지지 않는다', () => {
+    const cur = canvas([ws(), bg('bgA'), photo('lib-uuid-1', 'p2.jpg'), libFrame({ fillImage: 'lib-uuid-1_fillImage' })])
+    const { json, refills, report } = mergeSkinCanvas(cur, from, to, { templateIds })
+    expect(ids(json)).toEqual(['workspace', 'bgB', 'fB', 'lib-uuid-1_fillImage', 'lib-uuid-1'])
+    expect(byId(json, 'fB')?.fillImage).toBeUndefined()
+    expect(byId(json, 'lib-uuid-1_fillImage')?.frameRef).toBe('lib-uuid-1')
+    expect(refills).toEqual([])
+    expect(report).toMatchObject({ photosKept: 0, photosRelinked: 0, photosDropped: 0, customerKept: 2 })
+  })
+
+  it('재현 3: 빈 라이브러리 틀(사진 없음)도 고객 요소로 보존(보고 없이 사라지지 않음)', () => {
+    const cur = canvas([ws(), bg('bgA'), frame('fA', 100, 100), libFrame()])
+    const { json, report } = mergeSkinCanvas(cur, from, to, { templateIds })
+    expect(ids(json)).toEqual(['workspace', 'bgB', 'fB', 'lib-uuid-1'])
+    expect(report).toMatchObject({ templateRemoved: 2, customerKept: 1, dropped: [] })
+  })
+})
+
+describe('mergeSkinCanvas — 고객 요소 그룹 자식·clipPath id 충돌', () => {
+  it('그룹 자식·clipPath id 가 출력과 충돌하면 그 id 만 새로 받고 참조도 고친다(자신 id 는 유지)', () => {
+    const to = canvas([ws(), bg('bg-s'), grid('g-s')])
+    const group: Obj = {
+      type: 'group', id: 'cg', extensionType: 'clipart',
+      objects: [{ type: 'rect', id: 'bg-s' }, { type: 'image', id: 'cg-img', parentLayerId: 'bg-s' }],
+      clipPath: { type: 'rect', id: 'g-s-bounds' },
+    }
+    const { json, report } = mergeSkinCanvas(canvas([ws(), group]), null, to, { createId: seqIds() })
+    const out = byId(json, 'cg') as Obj
+    const children = out.objects as Obj[]
+    // 순회 순서(collectIds 와 같음): clipPath → 그룹 자식
+    expect((out.clipPath as Obj).id).toBe('new-1')
+    expect(children.map((c) => c.id)).toEqual(['new-2', 'cg-img'])
+    expect(children[1].parentLayerId).toBe('new-2')
+    expect(report).toMatchObject({ customerKept: 1, customerReissued: 1 })
+    // 출력 전체에서 id 중복 없음(그룹 자식·clipPath 포함)
+    const all: string[] = []
+    const walk = (o: Obj) => {
+      if (typeof o.id === 'string') all.push(o.id)
+      if (o.clipPath) walk(o.clipPath as Obj)
+      for (const c of (o.objects as Obj[] | undefined) ?? []) walk(c)
+    }
+    objs(json).forEach(walk)
+    expect(new Set(all).size).toBe(all.length)
   })
 })
 
