@@ -19,6 +19,10 @@ import {
   findCoverTemplate,
   formatMmSize,
   isBleedOutOfInputRange,
+  bleedInputError,
+  toleranceInputError,
+  BLEED_INPUT_ERROR,
+  TOLERANCE_INPUT_ERROR,
 } from './printGeometryPreview';
 import { CALENDAR_PROFILE_PRESETS } from './calendarProfilePresets';
 import { TemplateSetForm } from './TemplateSetForm';
@@ -172,6 +176,27 @@ describe('bleedFieldsForToggle — 토글을 바꿀 때만 쓰는 저장 매핑'
   });
 });
 
+describe('저장 전 범위 검사 — 불러온 값은 통과, 새 값만 검사', () => {
+  it('사방 도련', () => {
+    expect(bleedInputError(8, 8)).toBeNull();
+    expect(bleedInputError(1.125, 1.125)).toBeNull();
+    expect(bleedInputError(8, 3)).toBe(BLEED_INPUT_ERROR);
+    expect(bleedInputError(1.2, 3)).toBe(BLEED_INPUT_ERROR);
+    expect(bleedInputError(-0.5, 3)).toBe(BLEED_INPUT_ERROR);
+    expect(bleedInputError(1.5, 3)).toBeNull();
+    expect(bleedInputError(5, undefined)).toBeNull();
+    expect(bleedInputError(null, 3)).toBeNull();
+  });
+
+  it('업로드 허용오차', () => {
+    expect(toleranceInputError(7, 7)).toBeNull();
+    expect(toleranceInputError(7, 0.2)).toBe(TOLERANCE_INPUT_ERROR);
+    expect(toleranceInputError(-0.1, 0.2)).toBe(TOLERANCE_INPUT_ERROR);
+    expect(toleranceInputError(0.125, 0.2)).toBeNull();
+    expect(toleranceInputError(undefined, 0.2)).toBeNull();
+  });
+});
+
 describe('buildCompositionSummary — 표시만', () => {
   it('캘린더 프로파일 세트는 표지/월/에필로그 수와 읽기 전용 페이지 규칙', () => {
     const profile = CALENDAR_PROFILE_PRESETS[0].profile as ProductProfile;
@@ -290,6 +315,15 @@ async function submitAndCapture(): Promise<Record<string, unknown>> {
   return data;
 }
 
+/** 「수정」 클릭 후 마지막 저장 payload — 키 입력이 먼저 제출을 일으켰어도 마지막 호출을 본다 */
+async function submitLatest(): Promise<Record<string, unknown>> {
+  fireEvent.click(screen.getByText('수정').closest('button') as HTMLButtonElement);
+  await waitFor(() => expect(mocks.update).toHaveBeenCalled());
+  const calls = mocks.update.mock.calls as Array<[string, Record<string, unknown>]>;
+  for (const [, data] of calls) expect(data).toEqual(calls[calls.length - 1][1]);
+  return calls[calls.length - 1][1];
+}
+
 /** 도련 라디오 선택 — happy-dom 은 label 클릭을 input 으로 넘기지 않아 input 을 직접 누른다 */
 function chooseBleed(card: HTMLElement, label: string): void {
   const input = within(card).getByText(label).closest('label')?.querySelector('input');
@@ -352,7 +386,7 @@ describe('TemplateSetForm 규격 카드 — 기존 세트를 열고 그대로 �
     expect(pickSpec(data)).toEqual(loaded);
   });
 
-  it('범위 밖 도련(8) 칸에서 Enter — 클램프·제출 없이 저장값 유지', async () => {
+  it('범위 밖 도련(8) 칸에서 Enter — 클램프 없이 불러온 값 그대로 제출', async () => {
     const spec: SetFixture = { cropMarkEnabled: true, bleedMm: 8, sizeToleranceMm: 0.2 };
     mocks.getById.mockResolvedValue(templateSetFixture(spec));
     renderForm();
@@ -361,16 +395,60 @@ describe('TemplateSetForm 규격 카드 — 기존 세트를 열고 그대로 �
     expect(Number(bleedInput.value)).toBe(8);
 
     fireEvent.focusIn(bleedInput);
-    const notPrevented = fireEvent.keyDown(bleedInput, { key: 'Enter', code: 'Enter' });
-    expect(notPrevented).toBe(false);
+    fireEvent.keyDown(bleedInput, { key: 'Enter', code: 'Enter' });
     fireEvent.keyUp(bleedInput, { key: 'Enter', code: 'Enter' });
     fireEvent.focusOut(bleedInput);
     expect(Number(bleedInput.value)).toBe(8);
-    expect(fireEvent.keyDown(toleranceInput, { key: 'Enter', code: 'Enter' })).toBe(false);
-    expect(mocks.update).not.toHaveBeenCalled();
+    fireEvent.keyDown(toleranceInput, { key: 'Enter', code: 'Enter' });
 
-    const data = await submitAndCapture();
+    const data = await submitLatest();
     expect(pickSpec(data)).toEqual({ width: 210, height: 150, ...spec });
+  });
+});
+
+describe('TemplateSetForm 규격 카드 — 새로 입력한 값은 저장 전 범위 검사', () => {
+  const base: SetFixture = { cropMarkEnabled: true, bleedMm: 3, sizeToleranceMm: 0.2 };
+
+  function typeInto(input: HTMLInputElement, text: string): void {
+    fireEvent.focusIn(input);
+    fireEvent.change(input, { target: { value: text } });
+    fireEvent.focusOut(input);
+  }
+
+  async function expectBlocked(card: HTMLElement, errorText: string): Promise<void> {
+    fireEvent.click(screen.getByText('수정').closest('button') as HTMLButtonElement);
+    expect(await within(card).findByText(errorText)).toBeTruthy();
+    expect(mocks.update).not.toHaveBeenCalled();
+  }
+
+  it('도련에 8 입력 → 저장 시 오류 표시, 저장 안 함', async () => {
+    mocks.getById.mockResolvedValue(templateSetFixture(base));
+    renderForm();
+    const card = await specCard();
+    const [, , bleedInput] = specNumberInputs(card);
+    typeInto(bleedInput, '8');
+    expect(Number(bleedInput.value)).toBe(8);
+    await expectBlocked(card, BLEED_INPUT_ERROR);
+  });
+
+  it('허용오차에 7 입력 → 저장 시 오류 표시, 저장 안 함', async () => {
+    mocks.getById.mockResolvedValue(templateSetFixture(base));
+    renderForm();
+    const card = await specCard();
+    const [, , , toleranceInput] = specNumberInputs(card);
+    typeInto(toleranceInput, '7');
+    await expectBlocked(card, TOLERANCE_INPUT_ERROR);
+  });
+
+  it('범위 안 새 도련 1.5 입력 → 저장 payload 에 반영', async () => {
+    mocks.getById.mockResolvedValue(templateSetFixture(base));
+    renderForm();
+    const card = await specCard();
+    const [, , bleedInput] = specNumberInputs(card);
+    typeInto(bleedInput, '1.5');
+    await waitFor(() => expect(within(card).getByTestId('spec-work').textContent).toBe('213 × 153 mm'));
+    const data = await submitAndCapture();
+    expect(pickSpec(data)).toEqual({ width: 210, height: 150, bleedMm: 1.5, cropMarkEnabled: true, sizeToleranceMm: 0.2 });
   });
 });
 

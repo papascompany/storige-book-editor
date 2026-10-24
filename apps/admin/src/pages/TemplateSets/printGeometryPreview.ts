@@ -63,6 +63,33 @@ export function isBleedOutOfInputRange(bleedMm: unknown): boolean {
   return Math.abs(bleedMm / BLEED_STEP_MM - Math.round(bleedMm / BLEED_STEP_MM)) > 1e-9;
 }
 
+/** 업로드 허용오차 입력 범위(mm) */
+export const TOLERANCE_MIN_MM = 0;
+export const TOLERANCE_MAX_MM = 5;
+
+export const BLEED_INPUT_ERROR = `사방 도련은 ${BLEED_STEP_MM}mm 단위, ${BLEED_MIN_MM}~${BLEED_MAX_MM}mm 로 입력하세요.`;
+export const TOLERANCE_INPUT_ERROR = `업로드 허용오차는 ${TOLERANCE_MIN_MM}~${TOLERANCE_MAX_MM}mm 로 입력하세요.`;
+
+/** 비어 있거나 숫자가 아니면 검사하지 않는다(저장 시 기존 기본값 규칙을 따른다). */
+function isCheckableNumber(value: unknown): value is number {
+  return typeof value === 'number' && Number.isFinite(value);
+}
+
+/**
+ * 사방 도련 칸 저장 전 검사. 불러온 저장값과 같으면 범위 밖이어도 통과(기존 값 보존),
+ * 새로 입력한 값이 0.5mm 단위·0~5mm 를 벗어나면 오류 메시지.
+ */
+export function bleedInputError(value: unknown, loadedValue: unknown): string | null {
+  if (!isCheckableNumber(value) || value === loadedValue) return null;
+  return isBleedOutOfInputRange(value) ? BLEED_INPUT_ERROR : null;
+}
+
+/** 업로드 허용오차 칸 저장 전 검사 — 불러온 저장값과 같으면 통과, 새 값이 0~5mm 밖이면 오류 메시지. */
+export function toleranceInputError(value: unknown, loadedValue: unknown): string | null {
+  if (!isCheckableNumber(value) || value === loadedValue) return null;
+  return value < TOLERANCE_MIN_MM || value > TOLERANCE_MAX_MM ? TOLERANCE_INPUT_ERROR : null;
+}
+
 /** 규격 카드 입력 — 폼 값(로드 직후에는 저장값 그대로). */
 export interface SpecFormValues {
   width?: number | null;

@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useMemo, type KeyboardEvent as ReactKeyboardEvent } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import {
@@ -88,6 +88,8 @@ import {
   findCoverTemplate,
   formatMmSize,
   isBleedOutOfInputRange,
+  bleedInputError,
+  toleranceInputError,
   roundMm,
   type PrintGeometryPreview,
 } from './printGeometryPreview';
@@ -179,18 +181,6 @@ interface DimAlignmentInfo {
   /** mismatch 일 때만 채움 — 판형 재단·작업 기대치 안내 */
   tooltip?: string;
 }
-
-/**
- * 규격 카드 숫자 칸의 Enter — rc-input-number 는 Enter 에서 입력값을 min/max 로 맞춰 onChange 를 내보낸 뒤
- * 폼 제출로 이어진다. 범위 밖 기존 저장값이 사용자 수정 없이 바뀌지 않도록 input 단계에서 막는다
- * (입력 중인 범위 안 값은 타이핑 시점에 이미 반영된다).
- */
-const blockEnterRangeFlush = (e: ReactKeyboardEvent<HTMLInputElement>) => {
-  if (e.key === 'Enter') {
-    e.preventDefault();
-    e.stopPropagation();
-  }
-};
 
 /** 규격 미리보기 — 작업(도련 포함) 바깥 사각형 + 재단 점선. 도련 폭이 너무 얇으면 보이도록 확대한다. */
 const PREVIEW_BOX_PX = 160;
@@ -899,6 +889,11 @@ export const TemplateSetForm = () => {
     form,
   );
   const bleedOn = specWatch?.cropMarkEnabled === true;
+  // 불러온 저장값(폼 로드와 같은 기본값 규칙) — 범위 밖이어도 그대로면 저장 전 검사를 통과한다.
+  const loadedBleedMm: number | undefined = templateSet ? ((templateSet as any).bleedMm ?? 3) : undefined;
+  const loadedSizeToleranceMm: number | undefined = templateSet
+    ? ((templateSet as any).sizeToleranceMm ?? 0.2)
+    : undefined;
   // 「있음 → 없음」으로 바꿀 때의 도련 값 — 다시 「있음」으로 돌아오면 이 값을 쓴다.
   const rememberedBleedMmRef = useRef<number | undefined>(undefined);
   const templateDetails = useMemo(() => templates.map((t) => t.template), [templates]);
@@ -1122,33 +1117,38 @@ export const TemplateSetForm = () => {
                           </Radio.Group>
                         </Form.Item>
 
+                        {/* 범위는 입력 제한(min/max) 대신 저장 전 검사로 둔다 — 입력값이 항상 폼에 들어가고,
+                            불러온 저장값은 범위 밖이어도 그대로 저장된다. */}
                         <Form.Item
                           name="bleedMm"
                           label="사방 도련 (mm)"
                           extra={`${BLEED_STEP_MM}mm 단위, ${BLEED_MIN_MM}~${BLEED_MAX_MM}mm`}
+                          rules={[
+                            {
+                              validator: async (_rule, value: unknown) => {
+                                const error = bleedInputError(value, loadedBleedMm);
+                                if (error) throw new Error(error);
+                              },
+                            },
+                          ]}
                         >
-                          <InputNumber
-                            min={BLEED_MIN_MM}
-                            max={BLEED_MAX_MM}
-                            step={BLEED_STEP_MM}
-                            changeOnBlur={false}
-                            onKeyDown={blockEnterRangeFlush}
-                            disabled={!bleedOn}
-                          />
+                          <InputNumber step={BLEED_STEP_MM} disabled={!bleedOn} />
                         </Form.Item>
 
                         <Form.Item
                           name="sizeToleranceMm"
                           label="업로드 허용오차 (mm)"
                           extra="편집 완료 검증은 도련 있음일 때 이 값을, 없음이면 기본 1mm 를 씁니다."
+                          rules={[
+                            {
+                              validator: async (_rule, value: unknown) => {
+                                const error = toleranceInputError(value, loadedSizeToleranceMm);
+                                if (error) throw new Error(error);
+                              },
+                            },
+                          ]}
                         >
-                          <InputNumber
-                            min={0}
-                            max={5}
-                            step={0.1}
-                            changeOnBlur={false}
-                            onKeyDown={blockEnterRangeFlush}
-                          />
+                          <InputNumber step={0.1} />
                         </Form.Item>
                       </Space>
 
@@ -1160,7 +1160,7 @@ export const TemplateSetForm = () => {
                           message={`도련 없음으로 출력됩니다. 저장된 도련 값 ${roundMm(specPreview.storedBleedMm)}mm 는 그대로 유지됩니다.`}
                         />
                       )}
-                      {bleedOn && isBleedOutOfInputRange(bleedMmWatch) && (
+                      {bleedOn && bleedMmWatch === loadedBleedMm && isBleedOutOfInputRange(bleedMmWatch) && (
                         <Alert
                           type="warning"
                           showIcon
