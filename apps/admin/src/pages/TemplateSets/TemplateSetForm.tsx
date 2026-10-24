@@ -77,6 +77,20 @@ import {
   workSize,
   type TemplateDimAlignmentStatus,
 } from '../../components/formatPresetHelpers';
+// 규격 카드 (2026-10-24) — 미리보기 수치는 resolvePrintGeometry 결과, 구성 요약은 표시만
+import {
+  BLEED_MAX_MM,
+  BLEED_MIN_MM,
+  BLEED_STEP_MM,
+  bleedFieldsForToggle,
+  buildCompositionSummary,
+  buildPrintGeometryPreview,
+  findCoverTemplate,
+  formatMmSize,
+  isBleedOutOfInputRange,
+  roundMm,
+  type PrintGeometryPreview,
+} from './printGeometryPreview';
 
 const { Title, Text } = Typography;
 
@@ -165,6 +179,57 @@ interface DimAlignmentInfo {
   /** mismatch 일 때만 채움 — 판형 재단·작업 기대치 안내 */
   tooltip?: string;
 }
+
+/** 규격 미리보기 — 작업(도련 포함) 바깥 사각형 + 재단 점선. 도련 폭이 너무 얇으면 보이도록 확대한다. */
+const PREVIEW_BOX_PX = 160;
+const PREVIEW_MIN_BLEED_PX = 5;
+
+const PrintGeometrySvg = ({ preview }: { preview: PrintGeometryPreview }) => {
+  const { trimMm, workMm, bleedMm } = preview.geometry;
+  const scale = PREVIEW_BOX_PX / Math.max(workMm.w, workMm.h);
+  const trimW = trimMm.w * scale;
+  const trimH = trimMm.h * scale;
+  const rawBleedPx = bleedMm * scale;
+  const bleedPx = bleedMm > 0 ? Math.max(rawBleedPx, PREVIEW_MIN_BLEED_PX) : 0;
+  const totalW = trimW + bleedPx * 2;
+  const totalH = trimH + bleedPx * 2;
+  return (
+    <div>
+      <svg
+        width={totalW + 2}
+        height={totalH + 2}
+        viewBox={`-1 -1 ${totalW + 2} ${totalH + 2}`}
+        role="img"
+        aria-label={`재단 ${formatMmSize(trimMm)}, 작업 ${formatMmSize(workMm)}`}
+        data-testid="spec-preview-svg"
+      >
+        {bleedPx > 0 && (
+          <rect x={0} y={0} width={totalW} height={totalH} fill="#fff1f0" stroke="#ff7875" strokeWidth={1} />
+        )}
+        <rect
+          x={bleedPx}
+          y={bleedPx}
+          width={trimW}
+          height={trimH}
+          fill="#ffffff"
+          stroke="#1677ff"
+          strokeWidth={1}
+          strokeDasharray={bleedPx > 0 ? '4 3' : undefined}
+        />
+        <text x={bleedPx + trimW / 2} y={bleedPx + trimH / 2} textAnchor="middle" dominantBaseline="middle" fontSize={11} fill="#595959">
+          재단 {roundMm(trimMm.w)}×{roundMm(trimMm.h)}
+        </text>
+      </svg>
+      <div>
+        <Text type="secondary" style={{ fontSize: 12 }}>
+          {bleedMm > 0
+            ? `빨간 영역 = 도련 ${roundMm(bleedMm)}mm${bleedPx > rawBleedPx ? ' (보기 쉽게 확대)' : ''} · 점선 = 재단선`
+            : '도련 없음 · 실선 = 재단'}
+        </Text>
+      </div>
+    </div>
+  );
+};
 
 // Sortable Template Item Component
 interface SortableTemplateItemProps {
@@ -804,6 +869,67 @@ export const TemplateSetForm = () => {
     return `템플릿 ${value.pages.count}개 연결 필요, 현재 ${templates.length}개`;
   }, [productProfileJsonWatch, templates.length]);
 
+  // 규격 카드 (2026-10-24) — 표시 전용 값. 저장 데이터는 아래 handleSubmit 그대로(도련 토글만 매핑).
+  const specWatch = Form.useWatch(
+    (v) => ({
+      cropMarkEnabled: v.cropMarkEnabled as boolean | undefined,
+      sizeToleranceMm: v.sizeToleranceMm as number | undefined,
+      editorMode: v.editorMode as EditorMode | undefined,
+      coverType: v.coverType as string | undefined,
+      useEndpaper: v.useEndpaper as boolean | undefined,
+      endpaperFrontCount: v.endpaperFrontCount as number | undefined,
+      endpaperBackCount: v.endpaperBackCount as number | undefined,
+      canAddPage: v.canAddPage as boolean | undefined,
+      pageCountMin: v.pageCountMin as number | undefined,
+      pageCountMax: v.pageCountMax as number | undefined,
+      pageStep: v.pageStep as number | undefined,
+    }),
+    form,
+  );
+  const bleedOn = specWatch?.cropMarkEnabled === true;
+  // 「있음 → 없음」으로 바꿀 때의 도련 값 — 다시 「있음」으로 돌아오면 이 값을 쓴다.
+  const rememberedBleedMmRef = useRef<number | undefined>(undefined);
+  const templateDetails = useMemo(() => templates.map((t) => t.template), [templates]);
+  const coverTemplate = useMemo(() => findCoverTemplate(templateDetails), [templateDetails]);
+  const specPreview = useMemo(
+    () =>
+      buildPrintGeometryPreview(
+        {
+          width,
+          height,
+          bleedMm: bleedMmWatch,
+          cropMarkEnabled: specWatch?.cropMarkEnabled,
+          sizeToleranceMm: specWatch?.sizeToleranceMm,
+        },
+        coverTemplate,
+        specWatch?.editorMode === EditorMode.BOOK,
+      ),
+    [width, height, bleedMmWatch, specWatch?.cropMarkEnabled, specWatch?.sizeToleranceMm, specWatch?.editorMode, coverTemplate],
+  );
+  const compositionSummary = useMemo(
+    () =>
+      buildCompositionSummary({
+        productProfile: parseProductProfileJson(productProfileJsonWatch).value,
+        templates: templateDetails,
+        useEndpaper: specWatch?.useEndpaper,
+        endpaperFrontCount: specWatch?.endpaperFrontCount,
+        endpaperBackCount: specWatch?.endpaperBackCount,
+        canAddPage: specWatch?.canAddPage,
+        pageCountMin: specWatch?.pageCountMin,
+        pageCountMax: specWatch?.pageCountMax,
+        pageStep: specWatch?.pageStep,
+      }),
+    [productProfileJsonWatch, templateDetails, specWatch],
+  );
+
+  const handleBleedToggle = (next: boolean) => {
+    const current: unknown = form.getFieldValue('bleedMm');
+    if (!next && typeof current === 'number' && current > 0) {
+      rememberedBleedMmRef.current = current;
+    }
+    form.setFieldsValue(bleedFieldsForToggle(next, current, rememberedBleedMmRef.current));
+  };
+
   const handleApplyCalendarPreset = () => {
     const preset = findCalendarProfilePreset(calendarPresetKey);
     if (!preset) {
@@ -927,34 +1053,185 @@ export const TemplateSetForm = () => {
                       </Radio.Group>
                     </Form.Item>
 
-                    {/* 판형 프리셋 픽커 — DB 정본(format_presets) 값 복사 주입(재단 W/H + bleedMm).
-                        presetId 저장 없음(무스키마). width/height 는 Form.useWatch 로
-                        템플릿 필터에 자동 연동된다. */}
-                    <Form.Item label="판형 프리셋">
-                      <FormatPresetSelect
-                        onApply={({ trimW, trimH, bleedMm }) =>
-                          form.setFieldsValue({ width: trimW, height: trimH, bleedMm })
-                        }
-                      />
-                    </Form.Item>
-
-                    <Space size="large">
-                      <Form.Item
-                        name="width"
-                        label="너비 (mm)"
-                        rules={[{ required: true, message: '너비를 입력하세요' }]}
-                      >
-                        <InputNumber min={50} max={1000} />
+                    {/* 규격 카드 (2026-10-24) — 판형 프리셋 · 재단 · 도련 · 허용오차 · 미리보기 · 구성 요약.
+                        저장 필드는 width/height/bleedMm/cropMarkEnabled/sizeToleranceMm 그대로(추가 없음). */}
+                    <Card size="small" title="규격" data-testid="spec-card" style={{ marginBottom: 16 }}>
+                      {/* 판형 프리셋 픽커 — DB 정본(format_presets) 값 복사 주입(재단 W/H + bleedMm).
+                          presetId 저장 없음(무스키마). width/height 는 Form.useWatch 로
+                          템플릿 필터에 자동 연동된다. */}
+                      <Form.Item label="판형 프리셋">
+                        <FormatPresetSelect
+                          onApply={({ trimW, trimH, bleedMm }) =>
+                            form.setFieldsValue({ width: trimW, height: trimH, bleedMm })
+                          }
+                        />
                       </Form.Item>
 
-                      <Form.Item
-                        name="height"
-                        label="높이 (mm)"
-                        rules={[{ required: true, message: '높이를 입력하세요' }]}
-                      >
-                        <InputNumber min={50} max={1000} />
-                      </Form.Item>
-                    </Space>
+                      <Space size="large" wrap align="start">
+                        <Form.Item
+                          name="width"
+                          label="재단 너비 (mm)"
+                          rules={[{ required: true, message: '너비를 입력하세요' }]}
+                        >
+                          <InputNumber min={50} max={1000} />
+                        </Form.Item>
+
+                        <Form.Item
+                          name="height"
+                          label="재단 높이 (mm)"
+                          rules={[{ required: true, message: '높이를 입력하세요' }]}
+                        >
+                          <InputNumber min={50} max={1000} />
+                        </Form.Item>
+                      </Space>
+
+                      <Space size="large" wrap align="start">
+                        <Form.Item name="cropMarkEnabled" label="도련">
+                          <Radio.Group onChange={(e) => handleBleedToggle(e.target.value === true)}>
+                            <Radio value={false}>없음</Radio>
+                            <Radio value={true}>있음 (재단선 마커·TrimBox 포함)</Radio>
+                          </Radio.Group>
+                        </Form.Item>
+
+                        <Form.Item
+                          name="bleedMm"
+                          label="사방 도련 (mm)"
+                          extra={`${BLEED_STEP_MM}mm 단위, ${BLEED_MIN_MM}~${BLEED_MAX_MM}mm`}
+                        >
+                          <InputNumber
+                            min={BLEED_MIN_MM}
+                            max={BLEED_MAX_MM}
+                            step={BLEED_STEP_MM}
+                            changeOnBlur={false}
+                            disabled={!bleedOn}
+                          />
+                        </Form.Item>
+
+                        <Form.Item
+                          name="sizeToleranceMm"
+                          label="업로드 허용오차 (mm)"
+                          extra="편집 완료 검증은 도련 있음일 때 이 값을, 없음이면 기본 1mm 를 씁니다."
+                        >
+                          <InputNumber min={0} max={5} step={0.1} />
+                        </Form.Item>
+                      </Space>
+
+                      {specPreview?.storedBleedKept && (
+                        <Alert
+                          type="info"
+                          showIcon
+                          style={{ marginBottom: 12 }}
+                          message={`도련 없음으로 출력됩니다. 저장된 도련 값 ${roundMm(specPreview.storedBleedMm)}mm 는 그대로 유지됩니다.`}
+                        />
+                      )}
+                      {bleedOn && isBleedOutOfInputRange(bleedMmWatch) && (
+                        <Alert
+                          type="warning"
+                          showIcon
+                          style={{ marginBottom: 12 }}
+                          message={`저장된 도련 ${bleedMmWatch}mm 는 입력 범위(${BLEED_STEP_MM}mm 단위, ${BLEED_MIN_MM}~${BLEED_MAX_MM}mm) 밖의 값입니다. 바꾸지 않으면 그대로 저장됩니다.`}
+                        />
+                      )}
+                      {bleedOn && specPreview && !specPreview.geometry.cropMarks && (
+                        <Alert
+                          type="warning"
+                          showIcon
+                          style={{ marginBottom: 12 }}
+                          message="도련이 0mm 이면 재단선 마커·TrimBox 가 출력되지 않습니다."
+                        />
+                      )}
+
+                      {specPreview ? (
+                        <div style={{ display: 'flex', gap: 24, flexWrap: 'wrap', alignItems: 'flex-start' }}>
+                          <PrintGeometrySvg preview={specPreview} />
+                          <div data-testid="spec-preview-values" style={{ minWidth: 260 }}>
+                            <div>
+                              <Text type="secondary">재단 </Text>
+                              <Text data-testid="spec-trim">{formatMmSize(specPreview.geometry.trimMm)}</Text>
+                            </div>
+                            <div>
+                              <Text type="secondary">작업 크기 (편집 화면·템플릿) </Text>
+                              <Text data-testid="spec-work">{formatMmSize(specPreview.geometry.workMm)}</Text>
+                            </div>
+                            <div>
+                              <Text type="secondary">완료 PDF </Text>
+                              <Text data-testid="spec-pdf">
+                                {formatMmSize(specPreview.pdfPageMm)}
+                                {specPreview.pdfTrimBoxMm
+                                  ? ` · TrimBox ${formatMmSize(specPreview.pdfTrimBoxMm)} · 재단 마커`
+                                  : ''}
+                              </Text>
+                            </div>
+                            <div>
+                              <Text type="secondary">검증 통과 크기 </Text>
+                              <Text data-testid="spec-validation">
+                                {specPreview.validationSizesMm.map(formatMmSize).join(' 또는 ')} (±
+                                {roundMm(specPreview.validationToleranceMm)}mm
+                                {specPreview.validationToleranceSource === 'legacy' ? ', 기본값' : ''})
+                              </Text>
+                            </div>
+                            {specPreview.coverCutSize && (
+                              <div>
+                                <Text type="secondary">표지 펼침면 도련 </Text>
+                                <Text data-testid="spec-cover-cut">
+                                  변당 {roundMm(specPreview.coverCutSize.perEdgeMm)}mm (양변 합{' '}
+                                  {roundMm(specPreview.coverCutSize.totalMm)}mm)
+                                </Text>
+                                <div>
+                                  <Text type="secondary" style={{ fontSize: 12 }}>
+                                    {specPreview.coverCutSize.source === 'set' &&
+                                      '세트 도련 기준 — 표지 템플릿 저장값보다 우선합니다.'}
+                                    {specPreview.coverCutSize.source === 'template' &&
+                                      '표지 템플릿에 저장된 값입니다(도련 없음일 때 템플릿 값 우선).'}
+                                    {specPreview.coverCutSize.source === 'default' &&
+                                      '기본값 — 표지 템플릿에 저장된 값이 없습니다.'}
+                                    {specPreview.coverCutSize.source === 'unknown' &&
+                                      '기본값 — 표지 템플릿에 저장된 값이 있으면 그 값이 우선합니다.'}
+                                    {specWatch?.coverType?.trim() === 'hardcover_wrap' &&
+                                      ' 싸바리 편집 모드로 열리면 표지 여분은 싸바리 기준으로 따로 계산됩니다.'}
+                                  </Text>
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      ) : (
+                        <Text type="secondary">재단 너비·높이를 입력하면 미리보기가 표시됩니다.</Text>
+                      )}
+
+                      {dimMismatchCount > 0 && (
+                        <Alert
+                          type="warning"
+                          showIcon
+                          style={{ marginTop: 12 }}
+                          message={`연결 템플릿 ${dimMismatchCount}개가 재단·작업 크기와 다릅니다 (템플릿 구성의 「치수 불일치」 배지 참고)`}
+                        />
+                      )}
+
+                      <Divider style={{ margin: '16px 0 8px' }} />
+                      <div data-testid="spec-composition">
+                        <Text strong>구성</Text>
+                        <Text type="secondary">
+                          {compositionSummary.source === 'profile' ? ' (상품 프로파일)' : ' (책자)'}
+                        </Text>
+                        <div>
+                          {compositionSummary.items.map((item) => (
+                            <Tag key={item.label} style={{ marginTop: 4 }}>
+                              {item.label} {item.value}
+                            </Tag>
+                          ))}
+                        </div>
+                        <div style={{ marginTop: 8 }}>
+                          <Text strong>페이지 규칙 </Text>
+                          <Text data-testid="spec-page-rule">{compositionSummary.pageRule}</Text>
+                          <Text type="secondary" style={{ fontSize: 12 }}>
+                            {compositionSummary.source === 'profile'
+                              ? ' · 읽기 전용 — 「상품 프로파일」에서 바꿉니다.'
+                              : ' · 「페이지 · 면지」에서 설정합니다.'}
+                          </Text>
+                        </div>
+                      </div>
+                    </Card>
                   </>
                 ),
               },
@@ -1236,34 +1513,7 @@ export const TemplateSetForm = () => {
                       />
                     </Form.Item>
 
-                    <Divider>재단 · 블리드</Divider>
-
-                    <Space size="large" wrap align="start">
-                      <Form.Item
-                        name="bleedMm"
-                        label="블리드(사방 mm)"
-                        extra="재단선 밖 여백. 작업사이즈=재단+블리드×2. 0이면 없음."
-                      >
-                        <InputNumber min={0} max={10} step={0.5} />
-                      </Form.Item>
-
-                      <Form.Item
-                        name="cropMarkEnabled"
-                        label="재단선 마커 표기"
-                        valuePropName="checked"
-                        extra="PDF에 코너 재단 마커 표시"
-                      >
-                        <Switch checkedChildren="표기" unCheckedChildren="없음" />
-                      </Form.Item>
-
-                      <Form.Item
-                        name="sizeToleranceMm"
-                        label="업로드 허용오차(mm)"
-                        extra="고객 업로드 PDF 사이즈 검증 허용오차"
-                      >
-                        <InputNumber min={0} max={5} step={0.1} />
-                      </Form.Item>
-                    </Space>
+                    {/* 재단 · 도련 · 허용오차 입력은 「기본 정보」의 규격 카드로 옮겼다(2026-10-24). */}
 
                     {/* D-4 커버 종류 (2026-07-06, C-4 Track 3) — 공통 3종 시드 + 자유 코드 확장 */}
                     <Divider>커버 종류 (공통 3종 + 확장)</Divider>
