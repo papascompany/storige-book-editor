@@ -215,6 +215,7 @@ interface SetFixture {
   cropMarkEnabled: boolean;
   bleedMm: number;
   sizeToleranceMm: number;
+  width?: number;
 }
 
 function templateSetFixture(spec: SetFixture, overrides: Record<string, unknown> = {}) {
@@ -247,10 +248,11 @@ function templateSetFixture(spec: SetFixture, overrides: Record<string, unknown>
   };
 }
 
-function renderForm() {
+function renderForm(path = '/template-sets/ts-1') {
   return renderWithAntd(
-    <MemoryRouter initialEntries={['/template-sets/ts-1']}>
+    <MemoryRouter initialEntries={[path]}>
       <Routes>
+        <Route path="/template-sets/new" element={<TemplateSetForm />} />
         <Route path="/template-sets/:id" element={<TemplateSetForm />} />
         <Route path="/template-sets" element={<div>목록</div>} />
       </Routes>
@@ -259,10 +261,25 @@ function renderForm() {
   );
 }
 
-async function specCard(): Promise<HTMLElement> {
+async function specCard(trimText = '210 × 150 mm'): Promise<HTMLElement> {
   const card = await screen.findByTestId('spec-card');
-  await waitFor(() => expect(within(card).getByTestId('spec-trim').textContent).toBe('210 × 150 mm'));
+  await waitFor(() => expect(within(card).getByTestId('spec-trim').textContent).toBe(trimText));
   return card;
+}
+
+/** 규격 카드 숫자 칸(재단 너비·높이·사방 도련·허용오차) */
+function specNumberInputs(card: HTMLElement): HTMLInputElement[] {
+  const inputs = within(card).getAllByRole('spinbutton') as HTMLInputElement[];
+  expect(inputs).toHaveLength(4);
+  return inputs;
+}
+
+/** 칸에 들어갔다 나오기 — React onBlur 는 focusout 으로 받는다 */
+function focusAndBlur(input: HTMLInputElement): void {
+  fireEvent.focusIn(input);
+  fireEvent.focus(input);
+  fireEvent.focusOut(input);
+  fireEvent.blur(input);
 }
 
 async function submitAndCapture(): Promise<Record<string, unknown>> {
@@ -308,21 +325,86 @@ describe('TemplateSetForm 규격 카드 — 기존 세트를 열고 그대로 �
     ['재단선 off · 도련 3', { cropMarkEnabled: false, bleedMm: 3, sizeToleranceMm: 0.2 }],
     ['재단선 on · 도련 3', { cropMarkEnabled: true, bleedMm: 3, sizeToleranceMm: 0.2 }],
     ['재단선 on · 도련 1', { cropMarkEnabled: true, bleedMm: 1, sizeToleranceMm: 0.5 }],
+    ['재단선 on · 도련 8(입력 범위 밖) · 허용오차 0.2', { cropMarkEnabled: true, bleedMm: 8, sizeToleranceMm: 0.2 }],
+    [
+      '재단선 on · 도련 1.125 · 허용오차 0.125 · 너비 210.125',
+      { cropMarkEnabled: true, bleedMm: 1.125, sizeToleranceMm: 0.125, width: 210.125 },
+    ],
+    ['재단선 on · 도련 0 · 허용오차 0.2', { cropMarkEnabled: true, bleedMm: 0, sizeToleranceMm: 0.2 }],
+    ['재단선 off · 도련 8 · 허용오차 7(입력 범위 밖)', { cropMarkEnabled: false, bleedMm: 8, sizeToleranceMm: 7 }],
   ];
 
-  it.each(fixtures)('%s', async (_name, spec) => {
-    mocks.getById.mockResolvedValue(templateSetFixture(spec));
+  it.each(fixtures)('%s — 각 칸 focus/blur 후 저장', async (_name, spec) => {
+    const loaded = { width: 210, height: 150, ...spec };
+    mocks.getById.mockResolvedValue(templateSetFixture(spec, { width: loaded.width }));
     renderForm();
-    const card = await specCard();
+    const card = await specCard(formatMmSize({ w: loaded.width, h: 150 }));
 
-    const expected = resolvePrintGeometry({ width: 210, height: 150, ...spec });
+    const expected = resolvePrintGeometry(loaded);
     expect(within(card).getByTestId('spec-work').textContent).toBe(formatMmSize(expected.workMm));
-    if (!spec.cropMarkEnabled) {
+    if (!spec.cropMarkEnabled && spec.bleedMm > 0) {
       expect(within(card).getByText(`도련 없음으로 출력됩니다. 저장된 도련 값 ${spec.bleedMm}mm 는 그대로 유지됩니다.`)).toBeTruthy();
     }
 
+    for (const input of specNumberInputs(card)) focusAndBlur(input);
+
+    const data = await submitAndCapture();
+    expect(pickSpec(data)).toEqual(loaded);
+  });
+
+  it('범위 밖 도련(8) 칸에서 Enter — 클램프·제출 없이 저장값 유지', async () => {
+    const spec: SetFixture = { cropMarkEnabled: true, bleedMm: 8, sizeToleranceMm: 0.2 };
+    mocks.getById.mockResolvedValue(templateSetFixture(spec));
+    renderForm();
+    const card = await specCard();
+    const [, , bleedInput, toleranceInput] = specNumberInputs(card);
+    expect(Number(bleedInput.value)).toBe(8);
+
+    fireEvent.focusIn(bleedInput);
+    const notPrevented = fireEvent.keyDown(bleedInput, { key: 'Enter', code: 'Enter' });
+    expect(notPrevented).toBe(false);
+    fireEvent.keyUp(bleedInput, { key: 'Enter', code: 'Enter' });
+    fireEvent.focusOut(bleedInput);
+    expect(Number(bleedInput.value)).toBe(8);
+    expect(fireEvent.keyDown(toleranceInput, { key: 'Enter', code: 'Enter' })).toBe(false);
+    expect(mocks.update).not.toHaveBeenCalled();
+
     const data = await submitAndCapture();
     expect(pickSpec(data)).toEqual({ width: 210, height: 150, ...spec });
+  });
+});
+
+describe('TemplateSetForm 규격 카드 — 검증 안내 · 신규 세트 · 표지 없는 책모드', () => {
+  it('유효 도련 0 인 일반 세트는 종전 호환 검증 안내, 도련 있음 세트는 안내 없음', async () => {
+    mocks.getById.mockResolvedValue(templateSetFixture({ cropMarkEnabled: false, bleedMm: 3, sizeToleranceMm: 0.2 }));
+    renderForm();
+    const card = await specCard();
+    expect(within(card).getByTestId('spec-validation-legacy').textContent).toBe(
+      '도련 없음 세트는 종전 호환으로 사방 3mm 포함 크기도 검증을 통과하며, 재단 크기 PDF 에는 도련 권장 경고가 붙습니다',
+    );
+    chooseBleed(card, '있음 (재단선 마커·TrimBox 포함)');
+    await waitFor(() => expect(within(card).queryByTestId('spec-validation-legacy')).toBeNull());
+  });
+
+  it('신규 세트는 저장된 도련 값 유지 안내를 띄우지 않는다', async () => {
+    renderForm('/template-sets/new');
+    const card = await screen.findByTestId('spec-card');
+    expect(within(card).queryByText(/저장된 도련 값/)).toBeNull();
+    expect(mocks.getById).not.toHaveBeenCalled();
+  });
+
+  it('책모드인데 표지 템플릿이 없는 세트는 표지 펼침면 도련 줄을 숨긴다', async () => {
+    mocks.getAllTemplates.mockResolvedValue([innerPage()]);
+    mocks.getById.mockResolvedValue(
+      templateSetFixture(
+        { cropMarkEnabled: false, bleedMm: 3, sizeToleranceMm: 0.2 },
+        { type: TemplateSetType.BOOK, editorMode: EditorMode.BOOK, templates: [{ templateId: 'tpl-page', required: true }] },
+      ),
+    );
+    renderForm();
+    const card = await specCard();
+    await waitFor(() => expect(within(card).getByText('표지 없음')).toBeTruthy());
+    expect(within(card).queryByTestId('spec-cover-cut')).toBeNull();
   });
 });
 

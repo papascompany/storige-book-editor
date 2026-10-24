@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useMemo } from 'react';
+import { useState, useEffect, useRef, useMemo, type KeyboardEvent as ReactKeyboardEvent } from 'react';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import {
@@ -179,6 +179,18 @@ interface DimAlignmentInfo {
   /** mismatch 일 때만 채움 — 판형 재단·작업 기대치 안내 */
   tooltip?: string;
 }
+
+/**
+ * 규격 카드 숫자 칸의 Enter — rc-input-number 는 Enter 에서 입력값을 min/max 로 맞춰 onChange 를 내보낸 뒤
+ * 폼 제출로 이어진다. 범위 밖 기존 저장값이 사용자 수정 없이 바뀌지 않도록 input 단계에서 막는다
+ * (입력 중인 범위 안 값은 타이핑 시점에 이미 반영된다).
+ */
+const blockEnterRangeFlush = (e: ReactKeyboardEvent<HTMLInputElement>) => {
+  if (e.key === 'Enter') {
+    e.preventDefault();
+    e.stopPropagation();
+  }
+};
 
 /** 규격 미리보기 — 작업(도련 포함) 바깥 사각형 + 재단 점선. 도련 폭이 너무 얇으면 보이도록 확대한다. */
 const PREVIEW_BOX_PX = 160;
@@ -890,6 +902,12 @@ export const TemplateSetForm = () => {
   // 「있음 → 없음」으로 바꿀 때의 도련 값 — 다시 「있음」으로 돌아오면 이 값을 쓴다.
   const rememberedBleedMmRef = useRef<number | undefined>(undefined);
   const templateDetails = useMemo(() => templates.map((t) => t.template), [templates]);
+  // 연결 템플릿 중 상세를 아직 모르는 항목이 있으면 표지 유무를 확정할 수 없다.
+  const hasUnknownTemplate = useMemo(() => templates.some((t) => !t.template), [templates]);
+  const specProductProfile = useMemo(
+    () => parseProductProfileJson(productProfileJsonWatch).value,
+    [productProfileJsonWatch],
+  );
   const coverTemplate = useMemo(() => findCoverTemplate(templateDetails), [templateDetails]);
   const specPreview = useMemo(
     () =>
@@ -902,14 +920,25 @@ export const TemplateSetForm = () => {
           sizeToleranceMm: specWatch?.sizeToleranceMm,
         },
         coverTemplate,
-        specWatch?.editorMode === EditorMode.BOOK,
+        specWatch?.editorMode === EditorMode.BOOK && hasUnknownTemplate,
+        specProductProfile !== null,
       ),
-    [width, height, bleedMmWatch, specWatch?.cropMarkEnabled, specWatch?.sizeToleranceMm, specWatch?.editorMode, coverTemplate],
+    [
+      width,
+      height,
+      bleedMmWatch,
+      specWatch?.cropMarkEnabled,
+      specWatch?.sizeToleranceMm,
+      specWatch?.editorMode,
+      coverTemplate,
+      hasUnknownTemplate,
+      specProductProfile,
+    ],
   );
   const compositionSummary = useMemo(
     () =>
       buildCompositionSummary({
-        productProfile: parseProductProfileJson(productProfileJsonWatch).value,
+        productProfile: specProductProfile,
         templates: templateDetails,
         useEndpaper: specWatch?.useEndpaper,
         endpaperFrontCount: specWatch?.endpaperFrontCount,
@@ -919,7 +948,7 @@ export const TemplateSetForm = () => {
         pageCountMax: specWatch?.pageCountMax,
         pageStep: specWatch?.pageStep,
       }),
-    [productProfileJsonWatch, templateDetails, specWatch],
+    [specProductProfile, templateDetails, specWatch],
   );
 
   const handleBleedToggle = (next: boolean) => {
@@ -1103,6 +1132,7 @@ export const TemplateSetForm = () => {
                             max={BLEED_MAX_MM}
                             step={BLEED_STEP_MM}
                             changeOnBlur={false}
+                            onKeyDown={blockEnterRangeFlush}
                             disabled={!bleedOn}
                           />
                         </Form.Item>
@@ -1112,11 +1142,17 @@ export const TemplateSetForm = () => {
                           label="업로드 허용오차 (mm)"
                           extra="편집 완료 검증은 도련 있음일 때 이 값을, 없음이면 기본 1mm 를 씁니다."
                         >
-                          <InputNumber min={0} max={5} step={0.1} />
+                          <InputNumber
+                            min={0}
+                            max={5}
+                            step={0.1}
+                            changeOnBlur={false}
+                            onKeyDown={blockEnterRangeFlush}
+                          />
                         </Form.Item>
                       </Space>
 
-                      {specPreview?.storedBleedKept && (
+                      {isEditing && specPreview?.storedBleedKept && (
                         <Alert
                           type="info"
                           showIcon
@@ -1169,6 +1205,13 @@ export const TemplateSetForm = () => {
                                 {roundMm(specPreview.validationToleranceMm)}mm
                                 {specPreview.validationToleranceSource === 'legacy' ? ', 기본값' : ''})
                               </Text>
+                              {specPreview.legacyBleedCompat && (
+                                <div>
+                                  <Text type="secondary" style={{ fontSize: 12 }} data-testid="spec-validation-legacy">
+                                    도련 없음 세트는 종전 호환으로 사방 3mm 포함 크기도 검증을 통과하며, 재단 크기 PDF 에는 도련 권장 경고가 붙습니다
+                                  </Text>
+                                </div>
+                              )}
                             </div>
                             {specPreview.coverCutSize && (
                               <div>

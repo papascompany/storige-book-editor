@@ -107,7 +107,13 @@ export interface PrintGeometryPreview {
   validationToleranceMm: number;
   /** 허용오차 출처 — 세트 입력값(도련 있음) | 기본값(도련 없음) */
   validationToleranceSource: 'set' | 'legacy';
-  /** 표지 스프레드가 있는(또는 책모드) 세트만 */
+  /**
+   * 유효 도련 0 이고 상품 프로파일이 없는 세트 — 편집 완료 검증의 기본 도련이 3mm 라
+   * 사방 3mm 포함 크기도 통과하고, 재단 크기 PDF 에는 도련 권장 경고가 붙는다.
+   * 프로파일 세트는 기본 도련이 0 이라 해당하지 않는다.
+   */
+  legacyBleedCompat: boolean;
+  /** 표지 스프레드가 있는 세트(또는 표지 템플릿을 아직 알 수 없는 책모드 세트)만 */
   coverCutSize: CoverCutSizePreview | null;
 }
 
@@ -117,12 +123,15 @@ export type CoverTemplateLike = Pick<Template, 'type' | 'spreadConfig'>;
 /**
  * 규격 미리보기 수치. 재단 W/H 가 양수가 아니면 null(입력 전).
  * @param coverTemplate 세트의 기본 표지(assemblePrintTemplates().coverDefault). 모르면 null.
- * @param showCoverWithoutTemplate 표지 템플릿이 없어도 표지 cutSizeMm 을 안내할지(책모드 세트)
+ * @param showCoverWithoutTemplate 표지 템플릿이 없어도 표지 cutSizeMm 을 안내할지
+ *   (책모드인데 연결 템플릿 상세를 아직 알 수 없을 때만 true — 표지 없는 세트는 cutSizeMm 을 쓰지 않는다)
+ * @param hasProductProfile 상품 프로파일 세트 여부(검증 기본 도련 안내 판단용)
  */
 export function buildPrintGeometryPreview(
   values: SpecFormValues,
   coverTemplate: CoverTemplateLike | null,
   showCoverWithoutTemplate: boolean,
+  hasProductProfile = false,
 ): PrintGeometryPreview | null {
   const width = positiveNumber(values.width);
   const height = positiveNumber(values.height);
@@ -156,6 +165,7 @@ export function buildPrintGeometryPreview(
     validationSizesMm,
     validationToleranceMm,
     validationToleranceSource: toleranceSource,
+    legacyBleedCompat: !geometry.cropMarks && !hasProductProfile,
     coverCutSize: resolveCoverCutSize(geometry, coverTemplate, showCoverWithoutTemplate),
   };
 }
