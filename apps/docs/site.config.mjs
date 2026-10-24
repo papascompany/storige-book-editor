@@ -183,6 +183,7 @@ export const OPENAPI = {
     { prefix: '/api/v1/book-specs', label: '판형 (book-specs)' },
     { prefix: '/api/v1/books', label: '도서 (books)' },
     { prefix: '/api/v1/webhooks', label: '웹훅 (webhooks)' },
+    { prefix: '/api/v1/sessions', label: '편집 세션 (sessions)' },
   ],
 
   /**
