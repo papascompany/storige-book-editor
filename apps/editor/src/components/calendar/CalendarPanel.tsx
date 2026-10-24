@@ -38,7 +38,7 @@ import {
 /**
  * CalendarPanel — 좌측 메뉴 `CALENDAR`(달력) 패널 (P1-d 캘린더, 2026-10-17)
  *
- * 세 섹션: 시작연월(allowedRange 안만 허용) · 표기 옵션(공휴일/음력/24절기) · 기념일 관리(목록 + 추가/수정/삭제).
+ * 세 섹션: 시작연월(allowedRange 안만 허용) · 표기 옵션(공휴일/임시공휴일/음력/24절기/잡절) · 기념일 관리(목록 + 추가/수정/삭제).
  * 변경은 useCalendarStore 에 쓰고 `rehydrateAllCalendarGrids()` 로 모든 캔버스의 그리드를 다시 그린다
  * (사진·텍스트 보존, dirty 마킹 → 자동저장). 활성 캔버스의 날짜칸 더블클릭은 그 날짜로 기념일 폼을 연다.
  * editMode(관리자 템플릿 제작)에서는 그리드 배치 도구(CalendarGridTools)를 추가로 노출한다.
@@ -59,6 +59,8 @@ export const LUNAR_DATA_PENDING_MESSAGE = '음력 환산 데이터 준비 중'
 export const OUT_OF_RANGE_BADGE = '범위 밖 — 수정 또는 삭제'
 /** 임시공휴일·선거일 체크박스 라벨 — 기본 해제(키 없음 = false = 법정 공휴일만, 2026-10-17 오너 결정) */
 export const TEMPORARY_HOLIDAYS_LABEL = '임시공휴일·선거일 표시(공표분)'
+/** 잡절(초복·중복·말복) 체크박스 라벨 — 기본 해제(키 없음 = false, 계약 v1.27 `show.minorTerms`). 월 그리드 칸 문구에만 나온다 */
+export const MINOR_TERMS_LABEL = '잡절(복날) 표시'
 /** 기념일 글자색 지정 시 처음 고르는 색(공휴일 기본색과 같은 빨강) */
 const DEFAULT_ANNIVERSARY_FILL = '#d93025'
 
@@ -273,6 +275,7 @@ function DisplayOptionsSection({ show }: { show: CalendarDisplayOptions }) {
     { key: 'temporaryHolidays', label: TEMPORARY_HOLIDAYS_LABEL },
     { key: 'lunar', label: '음력' },
     { key: 'solarTerms', label: '24절기' },
+    { key: 'minorTerms', label: MINOR_TERMS_LABEL },
   ]
   return (
     <section className="flex flex-col gap-2" aria-label="표기 옵션">

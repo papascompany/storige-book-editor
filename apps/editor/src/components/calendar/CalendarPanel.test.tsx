@@ -15,7 +15,7 @@ vi.mock('@storige/canvas-core', async (importOriginal) => {
 })
 
 import { resolveAnniversarySolarDate, CALENDAR_DATA_KR_2025_2035_V1 } from '@storige/canvas-core'
-import CalendarPanel, { DUPLICATE_DATE_MESSAGE, LUNAR_DATA_PENDING_MESSAGE, OUT_OF_RANGE_BADGE, START_MONTH_CONFIRM_MESSAGE, TEMPORARY_HOLIDAYS_LABEL } from './CalendarPanel'
+import CalendarPanel, { DUPLICATE_DATE_MESSAGE, LUNAR_DATA_PENDING_MESSAGE, MINOR_TERMS_LABEL, OUT_OF_RANGE_BADGE, START_MONTH_CONFIRM_MESSAGE, TEMPORARY_HOLIDAYS_LABEL } from './CalendarPanel'
 import { useAppStore } from '@/stores/useAppStore'
 import { useSettingsStore } from '@/stores/useSettingsStore'
 import { useCalendarStore } from '@/stores/useCalendarStore'
@@ -182,6 +182,41 @@ describe('CalendarPanel — 표기 옵션', () => {
       fireEvent.click(screen.getByLabelText(TEMPORARY_HOLIDAYS_LABEL))
     })
     expect(useCalendarStore.getState().meta?.show).toEqual({ holidays: true, lunar: false, solarTerms: false, temporaryHolidays: false })
+    expect(rehydrateAll).toHaveBeenCalledTimes(2)
+  })
+
+  it('잡절(복날) 체크박스(T4r, v1.27): 기본 해제(키 없음), 토글 → show.minorTerms + rehydrateAll + 저장 metadata.calendar.show, 재오픈 후 유지', async () => {
+    const actual = await vi.importActual<typeof import('@/utils/calendarRehydrateAll')>('@/utils/calendarRehydrateAll')
+    const { unmount } = wireCalendar()
+    const box = screen.getByLabelText(MINOR_TERMS_LABEL) as HTMLInputElement
+    expect(within(screen.getByRole('region', { name: '표기 옵션' })).getByLabelText(MINOR_TERMS_LABEL)).toBe(box)
+    expect(box.checked).toBe(false)
+    expect(useCalendarStore.getState().meta?.show).not.toHaveProperty('minorTerms')
+    await act(async () => {
+      fireEvent.click(box)
+    })
+    expect(useCalendarStore.getState().meta?.show).toEqual({ holidays: true, lunar: false, solarTerms: false, minorTerms: true })
+    expect((screen.getByLabelText(MINOR_TERMS_LABEL) as HTMLInputElement).checked).toBe(true)
+    expect(rehydrateAll).toHaveBeenCalledTimes(1)
+    const saved = actual.calendarSessionMetadataFields().metadata
+    expect(saved?.calendar.show.minorTerms).toBe(true)
+
+    // 재오픈: 새 세션 상태(프로파일 기본값) → 저장 metadata 복원 → 패널 다시 렌더
+    unmount()
+    act(() => {
+      useCalendarStore.getState().reset()
+      useCalendarStore.getState().setFromProfile(calendarProfile)
+    })
+    expect(useCalendarStore.getState().meta?.show).not.toHaveProperty('minorTerms')
+    expect(actual.restoreCalendarSessionMeta(JSON.parse(JSON.stringify(saved)))).toBe(true)
+    render(<CalendarPanel />)
+    expect((screen.getByLabelText(MINOR_TERMS_LABEL) as HTMLInputElement).checked).toBe(true)
+
+    await act(async () => {
+      fireEvent.click(screen.getByLabelText(MINOR_TERMS_LABEL))
+    })
+    expect(useCalendarStore.getState().meta?.show.minorTerms).toBe(false)
+    expect(actual.calendarSessionMetadataFields().metadata?.calendar.show.minorTerms).toBe(false)
     expect(rehydrateAll).toHaveBeenCalledTimes(2)
   })
 })
