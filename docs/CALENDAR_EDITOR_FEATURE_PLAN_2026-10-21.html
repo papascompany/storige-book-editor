@@ -218,7 +218,7 @@ footer { color: var(--ink-3); font-size: .8rem; border-top: 1px solid var(--line
       <span class="pill">상태 · W1 진행 중</span>
       <span class="pill">T1a 완료 (§8.1)</span>
       <span class="pill">T2 운영 반영 10-22 23:48 KST</span>
-      <span class="pill">10-24 오너 결정 D1~D11 답변 완료 → T3a·T3c·T1b 착수 가능</span>
+      <span class="pill">10-24 오너 결정 D1~D11 답변 · T1b 완료 · T3a·T3c 브랜치 R 조건부 GO(병합 대기) · D3 해소(벽걸이 1단 단면 14쪽)</span>
       <span class="pill">10-23 D12 방어선(max_allowed_packet 256M) 운영 적용</span>
       <span class="pill">운영 api/worker <code>11383962</code> (VPS 체크아웃 <code>e9725838</code>) · editor <code>c040b68e</code></span>
       <span class="pill">운영 프로파일 세트 0건 (10-22 읽기 전용 확인)</span>
@@ -264,7 +264,7 @@ footer { color: var(--ink-3); font-size: .8rem; border-top: 1px solid var(--line
       <ul class="tight">
         <li>T3a 연달력 코어 → <b>D2</b>(범위) 답변 대기</li>
         <li>T3b 연달력 UI·관리자 스타일 → <b>D1·D2</b> + T2·T3a</li>
-        <li>T5 벽걸이 2단 반영 → <b>D3</b>(필수)·T3b·T1b</li>
+        <li>T5 벽걸이 반영 → D3 해소(10-24: 1단 단면 14쪽, 2단 현행) · T3b</li>
         <li>T4 날짜 데이터 운영 → <b>D4</b>·T3a</li>
         <li>T6 C10 스킨셋 설계 → <b>D5</b></li>
         <li>T1b 전환 경로 실측 범위 → <b>D8</b></li>
@@ -408,7 +408,7 @@ footer { color: var(--ink-3); font-size: .8rem; border-top: 1px solid var(--line
       <rect x="640" y="158" width="300" height="80" rx="8" fill="var(--surface)" stroke="currentColor" stroke-width="1.2" stroke-dasharray="5 4"/>
       <text x="790" y="180" text-anchor="middle" font-weight="700">13세트 앞/뒤 분리 PDF</text>
       <text x="790" y="200" text-anchor="middle">세트 3종 × 전환 경로 실측 예정</text>
-      <text x="790" y="222" text-anchor="middle" fill="var(--amber)" font-size="11.5">T1b 미실측 — §8.2 작성 예정</text>
+      <text x="790" y="222" text-anchor="middle" fill="var(--amber)" font-size="11.5">T1b 실측 10-24 — 3세트 통과(§8.2)</text>
       <!-- C: sheet-map -->
       <rect x="300" y="290" width="260" height="104" rx="8" fill="var(--surface)" stroke="currentColor" stroke-width="1.2"/>
       <text x="430" y="312" text-anchor="middle" font-weight="700">C · sheet-map</text>
@@ -421,7 +421,7 @@ footer { color: var(--ink-3); font-size: .8rem; border-top: 1px solid var(--line
       <text x="790" y="312" text-anchor="middle" font-weight="700">13시트 per-sheet 또는 merged-duplex</text>
       <text x="790" y="332" text-anchor="middle">파트너 재합성 · deliverables sheets</text>
       <text x="790" y="350" text-anchor="middle">wall-2 는 상단/하단 짝 매핑 표 필요</text>
-      <text x="790" y="370" text-anchor="middle" fill="var(--amber)" font-size="11.5">T1b 미실측 — 노트의 13시트 e2e 는 로컬 전환 세션</text>
+      <text x="790" y="370" text-anchor="middle" fill="var(--amber)" font-size="11.5">T1b 실측 10-24 — 13시트, 산출 = duplex-split 과 동일 짝</text>
       <!-- D8 label -->
       <text x="250" y="134" text-anchor="middle" fill="var(--amber)" font-weight="700" font-size="12" paint-order="stroke" stroke="var(--surface)" stroke-width="4" stroke-linejoin="round">D8 미결</text>
       <text x="250" y="149" text-anchor="middle" fill="var(--ink-3)" font-size="11" paint-order="stroke" stroke="var(--surface)" stroke-width="4" stroke-linejoin="round">인쇄소 사양으로 택일</text>
@@ -627,13 +627,18 @@ footer { color: var(--ink-3); font-size: .8rem; border-top: 1px solid var(--line
     <p style="font-size:.82rem;color:var(--ink-3);margin-top:.6rem">watchdog max(120000, 15000×26) = 390s 는 생성 구간과 별개로 7.9% 만 쓰였다. D9 권고는 생성 로직·watchdog 식을 두고 진행 표시 + beforeunload 경고만 더하는 것(B10).</p>
   </div>
   <div class="card soft">
-    <h3>§8.2 T1b — 전환 경로(sheet-map per-sheet · duplex-split) <span class="chip wait">작성 예정</span></h3>
-    <div tabindex="0" class="tbl-wrap dense" style="margin-top:.6rem;border-style:dashed">
+    <h3>§8.2 T1b — 전환 경로(sheet-map per-sheet · duplex-split) <span class="chip ok">10-24 완료</span></h3>
+    <p style="font-size:.82rem;color:var(--ink-3)">15:05~15:26 KST, 코드 <code>12de30af</code>, 로컬. 6행 모두 검증 잡 COMPLETED warnings [] · 렌더 대조 13/13 · 원복 diff 0. 세 세트가 offset-next 26쪽이라 sheet-map 과 duplex-split 의 산출 파일 짝·크기가 같고 차이는 메타(sheets)뿐 — D8 근거. 일부 실행은 백그라운드 탭 스로틀로 시간 비교 불가. 발견 T1b-1(앞면/뒷면 라벨 vs offset-next)은 오너 레퍼런스로 해소: 탁상·벽걸이 2단은 offset-next 정상, 벽걸이 1단은 단면 14쪽으로 변경(T5).</p>
+    <div tabindex="0" class="tbl-wrap dense" style="margin-top:.6rem">
       <table>
         <thead><tr><th scope="col">세트</th><th scope="col">경로</th><th scope="col">잡·산출 파일</th><th scope="col">쪽수 일치</th><th scope="col">deliverables sheets/copies</th><th scope="col">비고</th></tr></thead>
         <tbody>
-          <tr><td>(각 세트)</td><td>sheet-map per-sheet</td><td class="num">—</td><td class="num">—</td><td class="num">—</td><td>T1a 종료 후 순차 · D8 범위</td></tr>
-          <tr><td>(각 세트)</td><td>duplex-split</td><td class="num">—</td><td class="num">—</td><td class="num">—</td><td>실측 후 로컬 세트 JSON 원복</td></tr>
+          <tr><td>wall1_a3</td><td>A sheet-map</td><td>sheet-map-r1 · 13파일×2쪽</td><td class="num">13/13</td><td>sheets 13 · copies/label null</td><td>완료 후 탭 유지로 status editing(기존 동작)</td></tr>
+          <tr><td>wall2_a4</td><td>A sheet-map</td><td>sheet-map-r1 · 13파일×2쪽</td><td class="num">13/13</td><td>sheets 13 · ready r1</td><td>짝: 시트 0 표지/1월 상단, k = k월 하단/(k+1)월 상단, 12 = 12월 하단/에필로그</td></tr>
+          <tr><td>desk_large + 사진 13</td><td>A sheet-map</td><td>sheet-map-r1 · 13파일×2쪽 · 합 ≈ 18.68MB</td><td class="num">13/13</td><td>sheets 13 · ready r1</td><td>PDF 생성 31.3s · 이미지 중복 없음</td></tr>
+          <tr><td>wall1_a3</td><td>B duplex-split</td><td>duplex-split-r1 · 13파일×2쪽</td><td class="num">13/13</td><td>sheets null · ready r1</td><td>파일 크기 = A</td></tr>
+          <tr><td>wall2_a4</td><td>B duplex-split</td><td>duplex-split-r1 · 13파일×2쪽</td><td class="num">13/13</td><td>sheets null · ready r1</td><td>스로틀 없음 13.4s = T1a</td></tr>
+          <tr><td>desk_large + 사진 13</td><td>B duplex-split</td><td>duplex-split-r1 · 13파일×2쪽</td><td class="num">13/13</td><td>sheets null · ready r1</td><td>PDF 생성 30.4s</td></tr>
         </tbody>
       </table>
     </div>
