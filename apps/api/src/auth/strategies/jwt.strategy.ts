@@ -18,7 +18,7 @@ export interface JwtPayload {
   sub: string;
   email: string;
   role: string;
-  source?: string; // 'shop' for bookmoa shop sessions
+  source?: string; // 'shop' for partner shop sessions
   name?: string;
   permissions?: string[];
   /** Patch D (2026-05-03): 주문 컨텍스트 — 명시 시 EditSession 생성 시 검증 */

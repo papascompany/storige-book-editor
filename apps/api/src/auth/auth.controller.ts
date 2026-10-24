@@ -100,7 +100,7 @@ export class AuthController {
 
   @Public()
   @Post('login')
-  @Throttle({ default: { limit: 10, ttl: 60000 } }) // SEC-4 brute-force 방어
+  @Throttle({ default: { limit: 10, ttl: 60000 } }) // brute-force 방어
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'User login' })
   @ApiResponse({ status: 200, description: 'Login successful' })
@@ -116,7 +116,7 @@ export class AuthController {
 
   @Public()
   @Post('register')
-  @Throttle({ default: { limit: 5, ttl: 60000 } }) // SEC-4 대량 계정 생성 방어
+  @Throttle({ default: { limit: 5, ttl: 60000 } }) // 대량 계정 생성 방어
   @ApiOperation({ summary: 'User registration' })
   @ApiResponse({ status: 201, description: 'User registered successfully' })
   @ApiResponse({ status: 409, description: 'Email already exists' })
@@ -128,7 +128,7 @@ export class AuthController {
 
   @Public()
   @Post('refresh')
-  @Throttle({ default: { limit: 20, ttl: 60000 } }) // SEC-4 토큰 무차별 대입 방어
+  @Throttle({ default: { limit: 20, ttl: 60000 } }) // 토큰 무차별 대입 방어
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Refresh access token' })
   @ApiResponse({ status: 200, description: 'Token refreshed successfully' })
@@ -230,7 +230,7 @@ export class AuthController {
    */
   @ApiBearerAuth()
   @Patch('change-password')
-  @Throttle({ default: { limit: 10, ttl: 60000 } }) // SEC-4 현재 비번 추측 방어
+  @Throttle({ default: { limit: 10, ttl: 60000 } }) // 현재 비번 추측 방어
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Change current admin password' })
   @ApiResponse({ status: 200, description: 'Password changed successfully' })
@@ -248,18 +248,18 @@ export class AuthController {
   }
 
   /**
-   * bookmoa 쇼핑몰 회원을 위한 세션 생성
+   * 파트너 쇼핑몰 회원을 위한 세션 생성
    * API Key 인증을 통해 호출되며, HttpOnly JWT 쿠키를 발급합니다.
    */
   @Public()
   @UseGuards(ApiKeyGuard)
   @Post('shop-session')
-  // SEC-4: API Key 무차별 대입 방어. 주의 — 호출원이 bookmoa 서버(단일 IP)이므로
+  // 요청 한도. 주의 — 호출원이 파트너 서버(대개 단일 IP)이므로
   // 분당 20 세션 생성 초과 규모가 되면 이 한도를 상향해야 함 (현재 트래픽 « 20/분).
   @Throttle({ default: { limit: 20, ttl: 60000 } })
   @HttpCode(HttpStatus.OK)
   @ApiSecurity('api-key')
-  @ApiOperation({ summary: 'Create shop session for bookmoa members' })
+  @ApiOperation({ summary: 'Create shop session for partner shop members' })
   @ApiResponse({
     status: 200,
     description: 'Session created successfully',
@@ -300,7 +300,7 @@ export class AuthController {
     return {
       success: true,
       accessToken,
-      // 임베드 편집기 사일런트 리프레시용 — 호스트(bookmoa)가 /embed?refreshToken= 로 전달.
+      // 임베드 편집기 사일런트 리프레시용 — 호스트(파트너 쇼핑몰)가 /embed?refreshToken= 로 전달.
       // (쿠키 storige_refresh 는 크로스오리진 iframe 에서 못 쓰므로 body 로도 반환.)
       refreshToken,
       expiresIn: 3600,
@@ -317,7 +317,7 @@ export class AuthController {
    */
   @Public()
   @Post('shop-refresh')
-  @Throttle({ default: { limit: 20, ttl: 60000 } }) // SEC-4 refresh 계열 동일 한도
+  @Throttle({ default: { limit: 20, ttl: 60000 } }) // refresh 계열 동일 한도
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Refresh shop session token' })
   @ApiResponse({ status: 200, description: 'Token refreshed successfully' })
@@ -359,7 +359,7 @@ export class AuthController {
    */
   @Public()
   @Post('shop-refresh-body')
-  @Throttle({ default: { limit: 20, ttl: 60000 } }) // SEC-4 refresh 계열 동일 한도
+  @Throttle({ default: { limit: 20, ttl: 60000 } }) // refresh 계열 동일 한도
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Refresh shop session token (embed/body variant)' })
   @ApiResponse({ status: 200, description: 'New access token in body' })

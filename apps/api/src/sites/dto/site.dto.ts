@@ -2,22 +2,22 @@ import { ApiProperty, ApiPropertyOptional, PartialType } from '@nestjs/swagger';
 import { ArrayMaxSize, IsArray, IsBoolean, IsIn, IsInt, IsOptional, IsString, IsUrl, Length, Max, Min, ValidateIf } from 'class-validator';
 
 export class CreateSiteDto {
-  @ApiProperty({ example: '북모아 메인', description: '사이트명' })
+  @ApiProperty({ example: 'Example Shop', description: '사이트명' })
   @IsString()
   @Length(1, 100)
   name: string;
 
-  @ApiPropertyOptional({ example: 'https://www.bookmoa.co.kr' })
+  @ApiPropertyOptional({ example: 'https://shop.example.com' })
   @IsOptional()
   @IsUrl({ require_tld: false })
   domain?: string;
 
-  @ApiPropertyOptional({ example: 'https://www.bookmoa.co.kr/mypage' })
+  @ApiPropertyOptional({ example: 'https://shop.example.com/mypage' })
   @IsOptional()
   @IsUrl({ require_tld: false })
   returnUrlBase?: string;
 
-  @ApiPropertyOptional({ example: 'https://www.bookmoa.co.kr/storige/proc/synthesis_callback.php' })
+  @ApiPropertyOptional({ example: 'https://shop.example.com/storige/synthesis-callback' })
   @IsOptional()
   @IsUrl({ require_tld: false })
   // S2-4: 타입만 | null 확장 — @IsOptional 은 원래 null 도 스킵하므로 런타임 불변.
@@ -108,7 +108,7 @@ export class CreateSiteDto {
   @ApiPropertyOptional({
     type: [String],
     description:
-      'CORS allowlist (외부 사이트 브라우저 origin). 예: ["https://www.bookmoa.co.kr"]',
+      'CORS allowlist (외부 사이트 브라우저 origin). 예: ["https://shop.example.com"]',
   })
   @IsOptional()
   @IsArray()
@@ -119,7 +119,7 @@ export class CreateSiteDto {
   @ApiPropertyOptional({
     type: [String],
     description:
-      'iframe embed parent origin allowlist (CSP frame-ancestors). 예: ["https://www.bookmoa.co.kr"]',
+      'iframe embed parent origin allowlist (CSP frame-ancestors). 예: ["https://shop.example.com"]',
   })
   @IsOptional()
   @IsArray()

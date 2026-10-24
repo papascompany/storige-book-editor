@@ -15,7 +15,7 @@ import { Public } from '../auth/decorators/public.decorator';
  *  - 반환값은 편집기 응답의 CSP 헤더로 어차피 전 세계에 공개되는 값(비민감 정보).
  *  - 소비자는 파트너가 아니라 우리 편집기 인프라(Edge Middleware) — X-API-Key 를
  *    엣지에 심으면 오히려 시크릿 표면만 늘어난다.
- *  - 읽기 전용·부수효과 없음. 전역 ThrottlerGuard(SEC-4)는 그대로 적용된다.
+ *  - 읽기 전용·부수효과 없음. 전역 ThrottlerGuard 는 그대로 적용된다.
  *  - GUARDED spec(guarded-routes.spec.ts)은 "@Public + ApiKeyGuard(X-API-Key 파트너
  *    표면)" 계약 전용이므로 이 라우트는 등재하지 않는다 — 대신 전용 spec
  *    (frame-ancestors.controller.spec.ts)에서 경로·메서드·@Public 시맨틱을 고정한다.

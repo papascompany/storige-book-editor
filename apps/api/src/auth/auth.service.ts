@@ -166,7 +166,7 @@ export class AuthService {
   }
 
   /**
-   * bookmoa 쇼핑몰 회원을 위한 세션 생성
+   * 파트너 쇼핑몰 회원을 위한 세션 생성
    * API Key 인증을 통해 호출되며, JWT 쿠키를 발급합니다.
    */
   async createShopSession(

@@ -122,9 +122,8 @@ export class CreateComposeMixedJobDto {
   /**
    * 다른 라우트에서는 컨트롤러가 `@CurrentSite()` 로 자동 주입한다.
    *
-   * ⚠️ [2026-08-13] compose-mixed 라우트는 `@Public` 이라 이 필드가 **무인증 호출자 입력**이다.
-   *    잡 스탬프로 그대로 채택되지 않는다 — 검증된 shop-session 의 siteId 와 일치할 때만
-   *    채택되고, 불일치·토큰 부재면 무시(NULL 스탬프)된다(400 아님, 무중단).
+   * compose-mixed 라우트에서는 이 값을 잡 스탬프로 그대로 쓰지 않는다 — 검증된 shop-session 의
+   * siteId 와 일치할 때만 채택하고, 불일치·토큰 부재면 무시(NULL 스탬프)한다(400 아님).
    *    판정 근거: worker-jobs.service.ts `resolveComposeMixedSiteId`.
    */
   @IsOptional()

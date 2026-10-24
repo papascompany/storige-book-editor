@@ -7,7 +7,7 @@ import { Request } from 'express';
 /**
  * JWT Cookie Strategy
  * HttpOnly 쿠키에서 JWT를 추출하여 인증합니다.
- * bookmoa 쇼핑몰 회원이 storige 편집기를 사용할 때 적용됩니다.
+ * 파트너 쇼핑몰 회원이 storige 편집기를 사용할 때 적용됩니다.
  */
 @Injectable()
 export class JwtCookieStrategy extends PassportStrategy(Strategy, 'jwt-cookie') {

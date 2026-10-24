@@ -94,7 +94,7 @@ export class LibraryController {
 
   @Post('woff2ToTtf')
   @Public()
-  // SEC-4: CPU 비용 큰 변환 endpoint — IP 당 분당 15회.
+  // CPU 비용 큰 변환 endpoint — IP 당 분당 15회.
   // 편집기는 폰트당 1회 호출 후 immutable 캐시하므로 정상 사용(문서당 폰트 수 « 15) 영향 없음.
   @Throttle({ default: { limit: 15, ttl: 60000 } })
   @Header('Content-Type', 'application/octet-stream')

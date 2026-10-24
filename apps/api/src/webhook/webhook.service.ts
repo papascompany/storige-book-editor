@@ -184,9 +184,8 @@ export class WebhookService {
       return false;
     }
 
-    // SSRF 방어 2선 — 정본 발신 시점 가드(2026-07-16). allowlist/DB 는 호스트 문자열만
-    // 대조하므로 "공개 DNS 이름 → 내부 IP A레코드"·IPv4-mapped IPv6·정수 IP 표기가 관통한다.
-    // 발신 직전에 실 IP 를 해석해 사설/링크로컬/루프백/메타데이터 대역이면 차단(DNS 리바인딩 완화).
+    // 발신 시점 가드 — allowlist/DB 대조는 호스트 문자열 기준이므로, 발신 직전에 실제 IP 를
+    // 해석해 사설/링크로컬/루프백/메타데이터 대역이면 차단한다.
     if (!(await isRemoteUrlPublic(callbackUrl))) {
       this.logger.error(
         `[Webhook] Blocked callback URL resolving to private/internal address: ${callbackUrl}`,

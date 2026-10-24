@@ -125,7 +125,7 @@ if (process.env.BOOKMOA_DB_PASSWORD) {
     // Cron schedules (시점 썸네일 orphan cleanup 등)
     ScheduleModule.forRoot(),
 
-    // SEC-4 글로벌 rate limiting (per-IP · per-endpoint, 60초 윈도우 300회).
+    // 글로벌 rate limiting (per-IP · per-endpoint, 60초 윈도우 300회).
     // nginx 뒤에서 동작 — main.ts 의 `trust proxy` 설정으로 X-Forwarded-For 의
     // 실제 클라이언트 IP 가 추적 키로 사용됨 (nginx.conf 가 XFF 전달 확인됨).
     // 민감 라우트(login/register/refresh/shop-session/upload-public/woff2ToTtf)는
@@ -189,7 +189,7 @@ if (process.env.BOOKMOA_DB_PASSWORD) {
       provide: APP_FILTER,
       useClass: PayloadTooLargeFilter,
     },
-    // SEC-4: 전역 rate limit 가드 (ThrottlerModule 설정 사용)
+    // 전역 rate limit 가드 (ThrottlerModule 설정 사용)
     {
       provide: APP_GUARD,
       useClass: ThrottlerGuard,

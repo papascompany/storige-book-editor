@@ -15,18 +15,18 @@ import {
  * - editor_auth_code: PHP/외부 사이트가 X-API-Key로 사용 (호환성: 기존 .env API_KEYS 값 시드)
  * - worker_auth_code: 워커 호출용 (편집기와 분리, 향후 권한 차등 가능)
  * - status: active(운영중) / suspended(운영중지)
- * - 한 site row가 한 외부 사이트(예: 북모아, 점보포토)에 매핑
+ * - 한 site row가 한 외부 사이트(파트너 쇼핑몰 등)에 매핑
  */
 @Entity('sites')
 export class Site {
   @PrimaryGeneratedColumn('uuid')
   id: string;
 
-  /** 사이트명 (admin 표시용, 예: "북모아 메인") */
+  /** 사이트명 (admin 표시용, 예: "Example Shop") */
   @Column({ type: 'varchar', length: 100 })
   name: string;
 
-  /** 사이트 메인 URL (예: https://www.bookmoa.co.kr) */
+  /** 사이트 메인 URL (예: https://shop.example.com) */
   @Column({ type: 'varchar', length: 500, nullable: true })
   domain: string | null;
 
@@ -59,7 +59,7 @@ export class Site {
    * 파일 보존 기간(일) (2026-06-15). null/0 = 영구보관(기본).
    * 이 사이트가 업로드(/files/upload/external)한 파일에 expires_at = now + N일 자동 설정 →
    * retention cron 이 만료분 삭제. 인쇄 완료분 정리용(테넌트가 원본에서 재생성 가능).
-   * bookmoa 등 영구보관이 필요한 사이트는 null 유지.
+   * 영구보관이 필요한 사이트는 null 유지.
    */
   @Column({ name: 'retention_days', type: 'int', nullable: true })
   retentionDays: number | null;
@@ -114,7 +114,7 @@ export class Site {
 
   /**
    * CORS allowlist (외부 사이트 브라우저 origin).
-   * 예: ['https://www.bookmoa.co.kr', 'https://bookmoa-mobile.vercel.app']
+   * 예: ['https://shop.example.com', 'https://m.shop.example.com']
    * 빈 배열이면 환경변수(CORS_ORIGIN) + 정적 패턴 fallback.
    */
   @Column({ name: 'allowed_origins', type: 'json', nullable: true })
@@ -122,7 +122,7 @@ export class Site {
 
   /**
    * iframe embed parent origin allowlist (CSP frame-ancestors 합성용).
-   * 예: ['https://www.bookmoa.co.kr', 'https://bookmoa-mobile.vercel.app']
+   * 예: ['https://shop.example.com', 'https://m.shop.example.com']
    * 빈 배열이면 'self' 만 허용.
    */
   @Column({ name: 'frame_ancestors', type: 'json', nullable: true })

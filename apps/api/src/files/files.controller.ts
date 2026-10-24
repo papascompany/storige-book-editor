@@ -498,7 +498,7 @@ export class FilesController {
 
   /**
    * 외부 연동용 파일 업로드 (API Key 인증)
-   * bookmoa 등 외부 시스템에서 서버 간 통신으로 호출
+   * 파트너 서버 등 외부 시스템에서 서버 간 통신으로 호출
    */
   @Post('upload/external')
   @Public()
@@ -730,7 +730,7 @@ export class FilesController {
 
   /**
    * 외부 연동용 파일 다운로드 (API Key 인증)
-   * bookmoa 등 외부 시스템에서 합성 결과 PDF를 가져갈 때 사용.
+   * 파트너 서버 등 외부 시스템에서 합성 결과 PDF를 가져갈 때 사용.
    */
   @Get(':id/download/external')
   @Public()

@@ -47,8 +47,7 @@ export class ApiKeyStrategy extends PassportStrategy(Strategy, 'api-key') {
         return;
       }
 
-      // W1 (2026-09-25): ApiKeyGuard 와 같은 판정. 현재 AuthGuard('api-key') 사용처는 0곳이지만
-      // 연결되는 순간 파트너 worker 키 테넌시 우회가 재발하지 않도록 같은 단일 원천을 쓴다.
+      // ApiKeyGuard 와 같은 판정(resolveApiKeyRole 단일 원천). 현재 AuthGuard('api-key') 사용처는 0곳이다.
       const role = resolveApiKeyRole(apiKey, process.env.WORKER_API_KEY);
 
       done(null, {

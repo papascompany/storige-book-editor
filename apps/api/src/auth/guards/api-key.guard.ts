@@ -39,10 +39,10 @@ export class ApiKeyGuard implements CanActivate {
       throw new UnauthorizedException('Invalid API Key');
     }
 
-    // role='worker'(테넌트 바이패스 신뢰 주체)는 내부 WORKER_API_KEY 에만 부여한다.
-    // 종전에는 worker 코드로 매칭되기만 하면 'worker' 였다 → 파트너 worker 키가 테넌시를 전부 우회했다.
+    // role='worker'(테넌트 검사를 건너뛰는 신뢰 주체)는 내부 WORKER_API_KEY 에만 부여한다.
+    // 사이트의 worker 코드로 매칭돼도 내부 키가 아니면 'worker' 가 되지 않는다.
     // 내부 키는 Default Site 의 editor==worker 코드라 위에서 editor 로 매칭돼도 여기서 'worker' 가 된다
-    // (워커 콜백 PATCH status·파일 처리 download/external 의 테넌트 잡/파일 무중단 — 종전과 동일).
+    // (워커 콜백 PATCH status·파일 처리 download/external 경로가 이 판정을 쓴다).
     const role = resolveApiKeyRole(apiKey, process.env.WORKER_API_KEY);
 
     request.user = {
