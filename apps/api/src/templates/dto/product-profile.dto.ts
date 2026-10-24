@@ -29,6 +29,10 @@ import {
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
 import {
+  CALENDAR_SKIN_LABEL_MAX,
+  CALENDAR_SKIN_MAX,
+  CALENDAR_SKIN_TEMPLATE_SET_ID_MAX,
+  CALENDAR_SKIN_THUMBNAIL_URL_MAX,
   CALENDAR_YEAR_DELTA_LIMIT,
   CALENDAR_LAYOUTS,
   CALENDAR_YEAR_SPANS,
@@ -54,6 +58,7 @@ import type {
   CalendarLayout,
   CalendarMonthRange,
   CalendarProfile,
+  CalendarSkin,
   CalendarWeekStart,
   CalendarYearPolicy,
   CalendarYearSelectRange,
@@ -272,6 +277,33 @@ export class CalendarYearPolicyDto implements CalendarYearPolicy {
   select?: CalendarYearSelectRangeDto;
 }
 
+/**
+ * v1.29(설계 C10, 오너 결정 D5): 캘린더 스킨 1건. 형식·유일·'default' 금지·개수 상한은 types
+ * `validateProductProfile` 이 단일 출처로 검사한다(여기는 whitelist 등재와 기본 형식만).
+ */
+export class CalendarSkinDto implements CalendarSkin {
+  @ApiProperty({ example: 'spring', description: "세션 기록 키 — 소문자·숫자로 시작, 소문자·숫자·'_'·'-' 1~32자, 프로파일 안에서 유일, 'default' 금지" })
+  @IsString()
+  @MaxLength(32)
+  key: string;
+
+  @ApiProperty({ example: '봄 디자인', description: `고객 카드 이름 1~${CALENDAR_SKIN_LABEL_MAX}자` })
+  @IsString()
+  @MaxLength(CALENDAR_SKIN_LABEL_MAX)
+  label: string;
+
+  @ApiProperty({ example: 'ffffffff-ffff-4fff-8fff-ffffffffffff', description: '스킨 템플릿셋 id(기준 세트와 구조가 같은 캘린더 세트, 프로파일 안에서 유일)' })
+  @IsString()
+  @MaxLength(CALENDAR_SKIN_TEMPLATE_SET_ID_MAX)
+  templateSetId: string;
+
+  @ApiPropertyOptional({ example: '/storage/thumbnails/skin-spring.png', description: '카드 썸네일(선택)' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(CALENDAR_SKIN_THUMBNAIL_URL_MAX)
+  thumbnailUrl?: string;
+}
+
 export class CalendarProfileDto implements CalendarProfile {
   @ApiProperty({ enum: CALENDAR_LAYOUTS, example: 'desk', description: '탁상(desk) | 벽걸이 1단(wall-1) | 벽걸이 2단(wall-2)' })
   @IsIn(CALENDAR_LAYOUTS)
@@ -327,6 +359,14 @@ export class CalendarProfileDto implements CalendarProfile {
   @ValidateNested()
   @Type(() => CalendarYearPolicyDto)
   yearPolicy?: CalendarYearPolicyDto;
+
+  @ApiPropertyOptional({ type: [CalendarSkinDto], description: `캘린더 스킨(v1.29, 1~${CALENDAR_SKIN_MAX}개, 생략 = 스킨 기능 없음)` })
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(CALENDAR_SKIN_MAX)
+  @ValidateNested({ each: true })
+  @Type(() => CalendarSkinDto)
+  skins?: CalendarSkinDto[];
 }
 
 // ─── 사진인화(P2-d) ──────────────────────────────────────────────────────────

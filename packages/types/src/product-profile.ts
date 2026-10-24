@@ -14,6 +14,8 @@
  *   = 1 + 24 + 1 = 26 (13장 양면), PDF 는 캔버스 순서 그대로 26쪽 단일 파일(홀수=앞면·짝수=뒷면).
  */
 
+import { resolvePrintGeometry, type PrintGeometrySource } from './print-geometry';
+
 // ─── 기본 어휘 ────────────────────────────────────────────────────────────
 
 export const PRODUCT_PROFILE_VERSION = 1 as const;
@@ -190,6 +192,43 @@ export interface CalendarProfile {
   dataVersion: string;
   /** 연달력 정책(v1.26 additive). 생략 = 기본 규칙·고객 연도 선택 없음 */
   yearPolicy?: CalendarYearPolicy;
+  /**
+   * 캘린더 스킨(디자인 묶음, v1.29 additive — 설계 C10). 생략 = 스킨 기능 없음(현행 동작).
+   * 각 원소는 이 세트와 구조가 같은 별도 캘린더 템플릿셋을 가리키며, 편집기는 그 세트의 캔버스별 템플릿 디자인만 쓴다.
+   */
+  skins?: CalendarSkin[];
+}
+
+/**
+ * 스킨 정의(관리자, v1.29). 스킨 세트에서는 캔버스별 템플릿 canvasData 만 소비한다 —
+ * 프로파일·판형·도련·출력 설정은 모두 기준 세트 값을 쓴다.
+ */
+export interface CalendarSkin {
+  /** 세션 기록 키(`CALENDAR_SKIN_KEY_RE`). 프로파일 안에서 유일, 'default' 금지(기본 디자인 = 키 없음) */
+  key: string;
+  /** 고객 카드 이름 1~40자(trim 후 비어 있지 않음) */
+  label: string;
+  /** 스킨 템플릿셋 id(비어 있지 않은 문자열 ≤64, 프로파일 안에서 유일) */
+  templateSetId: string;
+  /** 카드 썸네일(선택, 1~2048자). 관리자 UI 가 스킨 세트 썸네일로 자동 채운다 */
+  thumbnailUrl?: string;
+}
+
+/** 프로파일 하나에 둘 수 있는 스킨 수 상한 */
+export const CALENDAR_SKIN_MAX = 10;
+/** 스킨 key 형식 — 소문자·숫자로 시작, 소문자·숫자·'_'·'-' 1~32자 */
+export const CALENDAR_SKIN_KEY_RE = /^[a-z0-9][a-z0-9_-]{0,31}$/;
+/** 기본 디자인을 뜻하는 예약어(스킨 key 로 쓸 수 없음 — 기본 디자인은 키 없음) */
+export const CALENDAR_SKIN_RESERVED_KEY = 'default';
+export const CALENDAR_SKIN_LABEL_MAX = 40;
+export const CALENDAR_SKIN_TEMPLATE_SET_ID_MAX = 64;
+export const CALENDAR_SKIN_THUMBNAIL_URL_MAX = 2048;
+/** 스킨 객체에 허용하는 키(그 밖의 키는 검증 오류) */
+export const CALENDAR_SKIN_KEYS: readonly (keyof CalendarSkin)[] = ['key', 'label', 'templateSetId', 'thumbnailUrl'];
+
+/** 스킨 key 형식 판정(세션 `metadata.calendar.skinKey` 읽기 정제용) — 형식이 맞고 예약어가 아니면 true */
+export function isCalendarSkinKey(v: unknown): v is string {
+  return typeof v === 'string' && CALENDAR_SKIN_KEY_RE.test(v) && v !== CALENDAR_SKIN_RESERVED_KEY;
 }
 
 export interface PhotoPrintSize {
@@ -319,6 +358,8 @@ export interface CalendarSessionMeta {
   dataVersion: string;
   /** v1.26 additive. 프로파일 yearPolicy.select 가 있는 세트에서만 편집기가 기록. 생략 = 템플릿 값(extension.yearDelta) */
   yearDeltas?: CalendarYearDeltas;
+  /** v1.29 additive. 고객이 적용한 스킨 key(`calendar.skins[].key`). 생략 = 기준 세트 디자인 */
+  skinKey?: string;
 }
 
 // ─── 세션 메타(edit_sessions.metadata.items) — 사진인화 항목 ─────────────────
@@ -539,6 +580,8 @@ export function validateProductProfile(input: unknown): string[] {
         errors.push('calendar.show.minorTerms 는 생략하거나 boolean 이어야 합니다');
       }
       if (cal.yearPolicy !== undefined) validateCalendarYearPolicy(cal.yearPolicy, range, cal.dataVersion, errors);
+      // v1.29 스킨 — 같은 이유로 v1.27 검사 뒤(키 생략 = 검사·메시지 0)
+      if (cal.skins !== undefined) validateCalendarSkins(cal.skins, errors);
     }
   } else if (cal !== undefined) {
     errors.push("calendar 프로파일은 kind='calendar' 에서만 지정합니다");
@@ -626,6 +669,185 @@ function validateCalendarYearPolicy(policy: unknown, range: unknown, dataVersion
   if (compareMonth(a, data.from) < 0 || compareMonth(b, data.to) > 0) {
     errors.push(`calendar.yearPolicy.select 연달력 범위(${a}~${b})는 데이터 범위 ${data.from}~${data.to} 안이어야 합니다`);
   }
+}
+
+/**
+ * calendar.skins(v1.29) — 1~CALENDAR_SKIN_MAX 개 배열, 원소는 허용 키 4개만 가진 객체.
+ * key 형식·유일·'default' 금지, label 1~40자(trim 후 비어 있지 않음), templateSetId 비어 있지 않은 ≤64자·유일,
+ * thumbnailUrl 생략 또는 1~2048자. 스킨 세트의 실재·구조 정합은 여기서 보지 않는다(`checkCalendarSkinCompatibility`).
+ */
+function validateCalendarSkins(skins: unknown, errors: string[]): void {
+  if (!Array.isArray(skins) || skins.length < 1 || skins.length > CALENDAR_SKIN_MAX) {
+    errors.push(`calendar.skins 는 1~${CALENDAR_SKIN_MAX}개 배열이어야 합니다`);
+    return;
+  }
+  const keys = new Set<string>();
+  const setIds = new Set<string>();
+  skins.forEach((skin, i) => {
+    const at = `calendar.skins[${i}]`;
+    if (!isRecord(skin)) {
+      errors.push(`${at} 는 객체여야 합니다`);
+      return;
+    }
+    const unknownKeys = Object.keys(skin).filter((k) => !(CALENDAR_SKIN_KEYS as readonly string[]).includes(k));
+    if (unknownKeys.length > 0) errors.push(`${at} 에 허용되지 않은 키(${unknownKeys.join(', ')})가 있습니다`);
+    if (typeof skin.key !== 'string' || !CALENDAR_SKIN_KEY_RE.test(skin.key)) {
+      errors.push(`${at}.key 는 소문자·숫자로 시작하는 소문자·숫자·'_'·'-' 1~32자여야 합니다`);
+    } else if (skin.key === CALENDAR_SKIN_RESERVED_KEY) {
+      errors.push(`${at}.key '${CALENDAR_SKIN_RESERVED_KEY}' 는 쓸 수 없습니다(기본 디자인 = 키 없음)`);
+    } else if (keys.has(skin.key)) {
+      errors.push(`${at}.key(${skin.key}) 가 중복됩니다`);
+    } else {
+      keys.add(skin.key);
+    }
+    if (typeof skin.label !== 'string' || skin.label.trim().length === 0 || skin.label.length > CALENDAR_SKIN_LABEL_MAX) {
+      errors.push(`${at}.label 은 공백이 아닌 1~${CALENDAR_SKIN_LABEL_MAX}자 문자열이어야 합니다`);
+    }
+    const setId = skin.templateSetId;
+    if (typeof setId !== 'string' || setId.trim().length === 0 || setId.length > CALENDAR_SKIN_TEMPLATE_SET_ID_MAX) {
+      errors.push(`${at}.templateSetId 는 비어 있지 않은 ${CALENDAR_SKIN_TEMPLATE_SET_ID_MAX}자 이하 문자열이어야 합니다`);
+    } else if (setIds.has(setId)) {
+      errors.push(`${at}.templateSetId(${setId}) 가 중복됩니다`);
+    } else {
+      setIds.add(setId);
+    }
+    const thumb = skin.thumbnailUrl;
+    if (thumb !== undefined && (typeof thumb !== 'string' || thumb.length === 0 || thumb.length > CALENDAR_SKIN_THUMBNAIL_URL_MAX)) {
+      errors.push(`${at}.thumbnailUrl 은 생략하거나 1~${CALENDAR_SKIN_THUMBNAIL_URL_MAX}자 문자열이어야 합니다`);
+    }
+  });
+}
+
+// ─── 캘린더 스킨 구조 호환 판정(순수 함수, v1.29) ───────────────────────────
+
+/** 호환 판정 입력의 템플릿셋 부분 — 공유 `TemplateSet`·API 엔티티·with-templates 응답 `templateSet` 이 그대로 들어간다 */
+export interface CalendarSkinSetSource extends PrintGeometrySource {
+  id: string;
+  /** 소속 사이트. null/생략 = 시스템 공유 */
+  siteId?: string | null;
+  productProfile?: unknown;
+}
+
+/** 호환 판정 입력의 템플릿 부분(with-templates `templateDetails[i]`) — canvasData 만 본다 */
+export interface CalendarSkinTemplateSource {
+  canvasData?: unknown;
+}
+
+/** 호환 판정 입력 — with-templates 응답과 같은 모양 */
+export interface CalendarSkinSetInput {
+  templateSet: CalendarSkinSetSource;
+  /**
+   * with-templates 응답 `templateDetails`(참조 순서). 생략하면 템플릿 수·면별 사진틀 수 검사를 하지 않는다
+   * (목록 단계 1차 거르기용 — 적용·저장 전 최종 판정은 양쪽 모두 넘긴다).
+   */
+  templateDetails?: ReadonlyArray<CalendarSkinTemplateSource | null | undefined>;
+}
+
+/** 판형·작업 크기 비교 허용 오차(mm) — float 컬럼 왕복 오차만 흡수 */
+const CALENDAR_SKIN_MM_EPSILON = 0.01;
+
+function sameMm(a: number, b: number): boolean {
+  return Number.isFinite(a) && Number.isFinite(b) && Math.abs(a - b) <= CALENDAR_SKIN_MM_EPSILON;
+}
+
+function canvasObjectsOf(canvasData: unknown): unknown[] | null {
+  let data = canvasData;
+  if (typeof data === 'string') {
+    try {
+      data = JSON.parse(data);
+    } catch {
+      return null;
+    }
+  }
+  if (!isRecord(data)) return null;
+  return Array.isArray(data.objects) ? data.objects : [];
+}
+
+/**
+ * 템플릿 canvasData 의 사진틀 수 — top-level `extensionType 'frame'` 객체(workspace 제외).
+ * canvasData 를 읽을 수 없으면 null.
+ */
+export function countCalendarSkinFrames(canvasData: unknown): number | null {
+  const objects = canvasObjectsOf(canvasData);
+  if (!objects) return null;
+  return objects.filter((o) => isRecord(o) && o.extensionType === 'frame' && o.id !== 'workspace').length;
+}
+
+/**
+ * 기준 세트 ↔ 스킨 세트 구조 호환 판정(설계 C10 §2.2). 오류 문구 배열(빈 배열 = 호환).
+ * admin(스킨 지정 전)·편집기(적용 전)가 같은 함수를 쓰며, 오류가 1건이라도 있으면 그 스킨은 쓸 수 없다.
+ *
+ * 검사: 자기 참조 · 테넌트(스킨 siteId 가 기준과 같거나 null) · 두 프로파일 kind='calendar' ·
+ * layout·coverCanvases·canvasesPerMonth·epilogueCanvases·pages.count · 판형 width/height ·
+ * 작업 크기(`resolvePrintGeometry` — 도련·재단선 게이트 포함) · 템플릿 수(templateDetails.length === pages.count) ·
+ * 면별 사진틀 수(오너 결정 Q2 (a)).
+ */
+export function checkCalendarSkinCompatibility(base: CalendarSkinSetInput, skin: CalendarSkinSetInput): string[] {
+  const errors: string[] = [];
+  const b = base.templateSet;
+  const s = skin.templateSet;
+
+  if (s.id === b.id) errors.push('스킨 세트가 기준 세트 자신입니다');
+  const skinSite = s.siteId ?? null;
+  if (skinSite !== null && skinSite !== (b.siteId ?? null)) {
+    errors.push('다른 사이트의 템플릿셋은 스킨으로 지정할 수 없습니다');
+  }
+
+  const bp = b.productProfile;
+  const sp = s.productProfile;
+  const bCal = isRecord(bp) && bp.kind === 'calendar' && isRecord(bp.calendar) ? bp.calendar : null;
+  const sCal = isRecord(sp) && sp.kind === 'calendar' && isRecord(sp.calendar) ? sp.calendar : null;
+  if (!bCal) errors.push("기준 세트 프로파일이 캘린더(kind='calendar')가 아닙니다");
+  if (!sCal) errors.push("스킨 세트 프로파일이 캘린더(kind='calendar')가 아닙니다");
+
+  let pageCount: number | null = null;
+  if (bCal && sCal && isRecord(bp) && isRecord(sp)) {
+    for (const key of ['layout', 'coverCanvases', 'canvasesPerMonth', 'epilogueCanvases'] as const) {
+      if (bCal[key] !== sCal[key]) {
+        errors.push(`calendar.${key} 가 기준과 다릅니다(기준 ${String(bCal[key])} · 스킨 ${String(sCal[key])})`);
+      }
+    }
+    const bCount = isRecord(bp.pages) ? bp.pages.count : undefined;
+    const sCount = isRecord(sp.pages) ? sp.pages.count : undefined;
+    if (bCount !== sCount) {
+      errors.push(`pages.count 가 기준과 다릅니다(기준 ${String(bCount)} · 스킨 ${String(sCount)})`);
+    } else if (isInt(bCount, 1)) {
+      pageCount = bCount;
+    }
+  }
+
+  if (!sameMm(b.width, s.width) || !sameMm(b.height, s.height)) {
+    errors.push(`판형이 기준과 다릅니다(기준 ${b.width}×${b.height}mm · 스킨 ${s.width}×${s.height}mm)`);
+  }
+  const bWork = resolvePrintGeometry(b).workMm;
+  const sWork = resolvePrintGeometry(s).workMm;
+  if (!sameMm(bWork.w, sWork.w) || !sameMm(bWork.h, sWork.h)) {
+    errors.push(`작업 크기(도련·재단선 포함)가 기준과 다릅니다(기준 ${bWork.w}×${bWork.h}mm · 스킨 ${sWork.w}×${sWork.h}mm)`);
+  }
+
+  if (pageCount === null) return errors;
+  const bDetails = base.templateDetails;
+  const sDetails = skin.templateDetails;
+  let countsOk = true;
+  if (bDetails && bDetails.length !== pageCount) {
+    errors.push(`기준 세트 템플릿 수(${bDetails.length})가 pages.count(${pageCount})와 다릅니다`);
+    countsOk = false;
+  }
+  if (sDetails && sDetails.length !== pageCount) {
+    errors.push(`스킨 세트 템플릿 수(${sDetails.length})가 pages.count(${pageCount})와 다릅니다`);
+    countsOk = false;
+  }
+  if (!bDetails || !sDetails || !countsOk) return errors;
+  for (let i = 0; i < pageCount; i += 1) {
+    const bf = countCalendarSkinFrames(bDetails[i]?.canvasData);
+    const sf = countCalendarSkinFrames(sDetails[i]?.canvasData);
+    if (bf === null || sf === null) {
+      errors.push(`캔버스 ${i + 1}: 템플릿 canvasData 를 읽을 수 없습니다`);
+    } else if (bf !== sf) {
+      errors.push(`캔버스 ${i + 1}: 사진틀 수가 기준과 다릅니다(기준 ${bf} · 스킨 ${sf})`);
+    }
+  }
+  return errors;
 }
 
 const PHOTO_SIZE_CODE_RE = /^[A-Za-z0-9_-]{1,32}$/;

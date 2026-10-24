@@ -366,6 +366,11 @@ export interface TemplateSet {
    */
   productProfile?: ProductProfile | null;
   /**
+   * 소속 사이트 id — 응답에 종전부터 실려 있던 값의 타입 보강(v1.29, 캘린더 스킨 테넌트 판정용).
+   * null = 시스템 공유. 생략 = 값을 모름(구 응답·부분형).
+   */
+  siteId?: string | null;
+  /**
    * 표지 편집 가능 여부 — Phase 2 (2026-05-19), 2026-08-13 재정의.
    * - true (기본): 일반 책 표지 — 편집기에서 디자인 가능
    * - false: 페브릭·기성 — 표지 템플릿 캔버스를 그대로 보여 주고 소재 배경만 잠금.

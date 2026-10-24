@@ -408,6 +408,54 @@ describe('ProductProfileDto (P1 캘린더 프로파일 파이프)', () => {
     expect(msgs.join('\n')).toMatch(/minorTerms/);
   });
 
+  // ── T7a 캘린더 스킨(설계 C10, v1.29): calendar.skins — whitelist 등재(미등재면 forbidNonWhitelisted 로 admin 저장 400) ──
+  describe('calendar.skins (T7a, v1.29)', () => {
+    const skins = [
+      { key: 'spring', label: '봄 디자인', templateSetId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', thumbnailUrl: '/storage/thumbnails/spring.png' },
+      { key: 'mono_2', label: '모노', templateSetId: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb' },
+    ];
+    const withSkins = (value: unknown) => ({
+      ...base,
+      productProfile: { ...deskLargeProfile, calendar: { ...deskLargeProfile.calendar, skins: value } },
+    });
+
+    it('skins 생략 → 직렬화에 키 없음(바이트 동일)', async () => {
+      const out = await pipe.transform({ ...base, productProfile: deskLargeProfile }, { type: 'body', metatype: CreateTemplateSetDto });
+      expect(JSON.stringify(out.productProfile)).toBe(JSON.stringify(deskLargeProfile));
+      expect(Object.keys(JSON.parse(JSON.stringify(out.productProfile)).calendar)).not.toContain('skins');
+    });
+
+    it('skins 포함 프로파일 → Create·Update 통과(400 아님), 중첩 값 보존', async () => {
+      const body = withSkins(skins);
+      const created = await pipe.transform(body, { type: 'body', metatype: CreateTemplateSetDto });
+      expect(JSON.parse(JSON.stringify(created.productProfile))).toEqual(body.productProfile);
+      const updated = await pipe.transform({ productProfile: body.productProfile }, { type: 'body', metatype: UpdateTemplateSetDto });
+      expect(JSON.parse(JSON.stringify(updated.productProfile.calendar.skins))).toEqual(skins);
+    });
+
+    it('skins[] 미지 키 → 400 (forbidNonWhitelisted)', async () => {
+      const msgs = await expect400(withSkins([{ ...skins[0], price: 1000 }]));
+      expect(msgs.join('\n')).toContain('price');
+    });
+
+    it("key 'default'·중복 templateSetId·11개 → 400 메시지에 types 문구 포함", async () => {
+      const m1 = await expect400(withSkins([{ ...skins[0], key: 'default' }]));
+      expect(m1.join('\n')).toContain("calendar.skins[0].key 'default' 는 쓸 수 없습니다(기본 디자인 = 키 없음)");
+      const m2 = await expect400(withSkins([skins[0], { ...skins[1], templateSetId: skins[0].templateSetId }]));
+      expect(m2.join('\n')).toContain(`calendar.skins[1].templateSetId(${skins[0].templateSetId}) 가 중복됩니다`);
+      const eleven = Array.from({ length: 11 }, (_, i) => ({ key: `s${i}`, label: `스킨 ${i}`, templateSetId: `set-${i}` }));
+      const m3 = await expect400(withSkins(eleven));
+      expect(m3.join('\n')).toContain('calendar.skins 는 1~10개 배열이어야 합니다');
+    });
+
+    it('skins 가 배열이 아님·원소가 객체 아님 → 400', async () => {
+      const m1 = await expect400(withSkins({ key: 'spring' }));
+      expect(m1.join('\n')).toContain('skins');
+      const m2 = await expect400(withSkins(['spring']));
+      expect(m2.join('\n')).toContain('skins');
+    });
+  });
+
   it('faceLabels 1개 → 400', async () => {
     const messages = await expect400({
       ...base,

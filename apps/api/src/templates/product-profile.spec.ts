@@ -4,10 +4,14 @@
  */
 import {
   addMonths,
+  CALENDAR_SKIN_MAX,
   CALENDAR_YEAR_MONTH_COUNT,
+  checkCalendarSkinCompatibility,
+  countCalendarSkinFrames,
   DEFAULT_CALENDAR_YEAR_SPAN,
   formatCalendarPageLabel,
   formatPhotoPageLabel,
+  isCalendarSkinKey,
   isCalendarYearDeltaAllowed,
   isStartMonthAllowed,
   readPhotoItems,
@@ -750,5 +754,237 @@ describe('validateProductProfile — 잡절 show.minorTerms (T4, v1.27)', () => 
       'calendar.show.yearTitle 은 생략하거나 boolean 이어야 합니다',
       'calendar.show.minorTerms 는 생략하거나 boolean 이어야 합니다',
     ]);
+  });
+});
+
+// ── T7a 캘린더 스킨(설계 C10, v1.29): calendar.skins · checkCalendarSkinCompatibility ──────────────────
+describe('validateProductProfile — 캘린더 스킨 calendar.skins (T7a, v1.29)', () => {
+  const skin = (i: number, patch: Record<string, unknown> = {}) => ({
+    key: `skin_${i}`,
+    label: `스킨 ${i}`,
+    templateSetId: `set-${i}`,
+    ...patch,
+  });
+  const withSkins = (skins: unknown) => withPatch(deskLarge, (p) => { p.calendar.skins = skins; });
+  // 7종 (editorType, layout) — admin calendarProfilePresets.ts · scripts/register-calendar-samples.mjs 값 명시 복제(T3a 픽스처와 같음)
+  const PRESET_PAIRS: Array<[string, 'desk' | 'wall-1' | 'wall-2']> = [
+    ['calendar_desk_large', 'desk'], ['calendar_desk_basic', 'desk'], ['calendar_desk_tiny', 'desk'], ['calendar_desk_mini', 'desk'],
+    ['calendar_wall1_a3', 'wall-1'], ['calendar_wall2_a4', 'wall-2'], ['calendar_wall2_a3', 'wall-2'],
+  ];
+
+  it('skins 생략: 프리셋 7종 검증 [] · resolveProductProfile 결과 JSON 이 입력과 같다(skins 키 없음)', () => {
+    const warn = jest.fn();
+    for (const [editorType, layout] of PRESET_PAIRS) {
+      const profile = withPatch(deskLarge, (p) => { p.editorType = editorType; p.calendar.layout = layout; });
+      const before = JSON.stringify(profile);
+      expect(before).not.toContain('skins');
+      expect(validateProductProfile(profile)).toEqual([]);
+      expect(JSON.stringify(resolveProductProfile({ productProfile: profile as ProductProfile }, warn))).toBe(before);
+    }
+    expect(warn).not.toHaveBeenCalled();
+  });
+
+  it('유효 1개·10개(CALENDAR_SKIN_MAX) 통과, thumbnailUrl 1~2048자 통과', () => {
+    expect(CALENDAR_SKIN_MAX).toBe(10);
+    expect(validateProductProfile(withSkins([skin(0)]))).toEqual([]);
+    expect(validateProductProfile(withSkins(Array.from({ length: 10 }, (_, i) => skin(i))))).toEqual([]);
+    expect(validateProductProfile(withSkins([skin(0, { thumbnailUrl: '/storage/t.png' })]))).toEqual([]);
+    expect(validateProductProfile(withSkins([skin(0, { thumbnailUrl: 'x'.repeat(2048) })]))).toEqual([]);
+  });
+
+  it('11개·빈 배열·배열 아님 → 개수 문구', () => {
+    const msg = 'calendar.skins 는 1~10개 배열이어야 합니다';
+    expect(validateProductProfile(withSkins(Array.from({ length: 11 }, (_, i) => skin(i))))).toEqual([msg]);
+    expect(validateProductProfile(withSkins([]))).toEqual([msg]);
+    expect(validateProductProfile(withSkins({ key: 'a' }))).toEqual([msg]);
+    expect(validateProductProfile(withSkins(null))).toEqual([msg]);
+  });
+
+  it('key 형식·중복·default 거부', () => {
+    const fmt = "calendar.skins[0].key 는 소문자·숫자로 시작하는 소문자·숫자·'_'·'-' 1~32자여야 합니다";
+    for (const key of ['', 'Spring', '_a', '-a', 'a b', 'a'.repeat(33), 3]) {
+      expect(validateProductProfile(withSkins([skin(0, { key })]))).toEqual([fmt]);
+    }
+    expect(validateProductProfile(withSkins([skin(0, { key: 'a'.repeat(32) })]))).toEqual([]);
+    expect(validateProductProfile(withSkins([skin(0, { key: 'default' })])))
+      .toEqual(["calendar.skins[0].key 'default' 는 쓸 수 없습니다(기본 디자인 = 키 없음)"]);
+    expect(validateProductProfile(withSkins([skin(0, { key: 'dup' }), skin(1, { key: 'dup' })])))
+      .toEqual(['calendar.skins[1].key(dup) 가 중복됩니다']);
+  });
+
+  it('label 빈 값·공백·41자 거부, 40자 통과', () => {
+    const msg = 'calendar.skins[0].label 은 공백이 아닌 1~40자 문자열이어야 합니다';
+    for (const label of ['', '   ', 'x'.repeat(41), undefined, 1]) {
+      expect(validateProductProfile(withSkins([skin(0, { label })]))).toEqual([msg]);
+    }
+    expect(validateProductProfile(withSkins([skin(0, { label: 'x'.repeat(40) })]))).toEqual([]);
+  });
+
+  it('templateSetId 빈 값·65자 거부, 중복 거부', () => {
+    const msg = 'calendar.skins[0].templateSetId 는 비어 있지 않은 64자 이하 문자열이어야 합니다';
+    for (const templateSetId of ['', '  ', 'x'.repeat(65), undefined, 7]) {
+      expect(validateProductProfile(withSkins([skin(0, { templateSetId })]))).toEqual([msg]);
+    }
+    expect(validateProductProfile(withSkins([skin(0, { templateSetId: 'x'.repeat(64) })]))).toEqual([]);
+    expect(validateProductProfile(withSkins([skin(0, { templateSetId: 'same' }), skin(1, { templateSetId: 'same' })])))
+      .toEqual(['calendar.skins[1].templateSetId(same) 가 중복됩니다']);
+  });
+
+  it('미지 하위 키·객체 아닌 원소 거부', () => {
+    expect(validateProductProfile(withSkins([skin(0, { price: 1, slots: {} })])))
+      .toEqual(['calendar.skins[0] 에 허용되지 않은 키(price, slots)가 있습니다']);
+    expect(validateProductProfile(withSkins(['spring']))).toEqual(['calendar.skins[0] 는 객체여야 합니다']);
+  });
+
+  it('thumbnailUrl 형식: 빈 문자열·2049자·문자열 아님 거부', () => {
+    const msg = 'calendar.skins[0].thumbnailUrl 은 생략하거나 1~2048자 문자열이어야 합니다';
+    for (const thumbnailUrl of ['', 'x'.repeat(2049), 5, null]) {
+      expect(validateProductProfile(withSkins([skin(0, { thumbnailUrl })]))).toEqual([msg]);
+    }
+  });
+
+  it('skins 오류는 기존 calendar 메시지 뒤에 붙는다(순서 불변)', () => {
+    expect(validateProductProfile(withPatch(deskLarge, (p) => {
+      p.calendar.weekStart = 2;
+      p.calendar.show.minorTerms = 'x';
+      p.calendar.skins = [];
+    }))).toEqual([
+      'calendar.weekStart 는 0|1 이어야 합니다',
+      'calendar.show.minorTerms 는 생략하거나 boolean 이어야 합니다',
+      'calendar.skins 는 1~10개 배열이어야 합니다',
+    ]);
+  });
+
+  it('isCalendarSkinKey: 형식 맞고 default 아님만 true', () => {
+    expect(isCalendarSkinKey('spring')).toBe(true);
+    expect(isCalendarSkinKey('0-a_b')).toBe(true);
+    expect(isCalendarSkinKey('default')).toBe(false);
+    expect(isCalendarSkinKey('Spring')).toBe(false);
+    expect(isCalendarSkinKey('a'.repeat(33))).toBe(false);
+    expect(isCalendarSkinKey(undefined)).toBe(false);
+  });
+});
+
+describe('checkCalendarSkinCompatibility (T7a, v1.29 — 설계 §2.2 · Q2 (a))', () => {
+  /** 26캔버스: 표지·에필로그 사진틀 1, 월 앞면 1, 월 뒷면 2 */
+  const framesAt = (i: number) => (i === 0 || i === 25 ? 1 : i % 2 === 1 ? 1 : 2);
+  const canvasWithFrames = (n: number, prefix: string) => ({
+    version: '5.5.2',
+    objects: [
+      { type: 'rect', id: 'workspace', extensionType: 'frame' }, // workspace 는 세지 않는다
+      { type: 'rect', id: `${prefix}-bg`, extensionType: 'background' },
+      ...Array.from({ length: n }, (_, k) => ({ type: 'rect', id: `${prefix}-frame-${k}`, extensionType: 'frame' })),
+    ],
+  });
+  const details = (prefix: string, frames: (i: number) => number = framesAt) =>
+    Array.from({ length: 26 }, (_, i) => ({ canvasData: canvasWithFrames(frames(i), `${prefix}${i}`) }));
+  const set = (id: string, patch: Record<string, unknown> = {}) => ({
+    id,
+    siteId: 'site-a' as string | null,
+    width: 265,
+    height: 190,
+    bleedMm: 3,
+    cropMarkEnabled: true,
+    productProfile: deskLarge as unknown,
+    ...patch,
+  });
+  const baseInput = { templateSet: set('base'), templateDetails: details('b') };
+  const skinInput = (patch: Record<string, unknown> = {}, d: unknown[] | undefined = details('s')) => ({
+    templateSet: set('skin', patch),
+    templateDetails: d as Array<{ canvasData?: unknown }> | undefined,
+  });
+
+  it('구조가 같으면 오류 0 · 공유(null) 스킨도 호환 · templateDetails 생략(목록 단계)은 수·틀 검사 생략', () => {
+    expect(checkCalendarSkinCompatibility(baseInput, skinInput())).toEqual([]);
+    expect(checkCalendarSkinCompatibility(baseInput, skinInput({ siteId: null }))).toEqual([]);
+    expect(checkCalendarSkinCompatibility(baseInput, skinInput({ siteId: undefined }))).toEqual([]);
+    expect(checkCalendarSkinCompatibility({ templateSet: set('base') }, skinInput({}, undefined))).toEqual([]);
+  });
+
+  it('레이아웃 다름 → 1건', () => {
+    const profile = withPatch(deskLarge, (p) => { p.calendar.layout = 'wall-1'; });
+    expect(checkCalendarSkinCompatibility(baseInput, skinInput({ productProfile: profile })))
+      .toEqual(['calendar.layout 가 기준과 다릅니다(기준 desk · 스킨 wall-1)']);
+  });
+
+  it('캔버스 구성(cover·perMonth·epilogue) 다름 → 해당 키와 pages.count', () => {
+    // cover 2 + 24 + epilogue 0 = 26 — count 는 같고 구성만 다름
+    const profile = withPatch(deskLarge, (p) => { p.calendar.coverCanvases = 2; p.calendar.epilogueCanvases = 0; p.pages.protectedIndices = [0, 1]; });
+    expect(validateProductProfile(profile)).toEqual([]);
+    expect(checkCalendarSkinCompatibility(baseInput, skinInput({ productProfile: profile }))).toEqual([
+      'calendar.coverCanvases 가 기준과 다릅니다(기준 1 · 스킨 2)',
+      'calendar.epilogueCanvases 가 기준과 다릅니다(기준 1 · 스킨 0)',
+    ]);
+    const perMonth = withPatch(deskLarge, (p) => { p.calendar.canvasesPerMonth = 1; p.pages.count = 14; p.pages.protectedIndices = [0, 13]; });
+    expect(checkCalendarSkinCompatibility(baseInput, skinInput({ productProfile: perMonth }))).toEqual([
+      'calendar.canvasesPerMonth 가 기준과 다릅니다(기준 2 · 스킨 1)',
+      'pages.count 가 기준과 다릅니다(기준 26 · 스킨 14)',
+    ]);
+  });
+
+  it('pages.count 다름 → 1건(구성 검사와 별개)', () => {
+    const profile = withPatch(deskLarge, (p) => { p.pages.count = 24; });
+    expect(checkCalendarSkinCompatibility(baseInput, skinInput({ productProfile: profile })))
+      .toEqual(['pages.count 가 기준과 다릅니다(기준 26 · 스킨 24)']);
+  });
+
+  it('스킨 프로파일이 캘린더가 아님(NULL·sheet) → 1건', () => {
+    const msg = "스킨 세트 프로파일이 캘린더(kind='calendar')가 아닙니다";
+    expect(checkCalendarSkinCompatibility(baseInput, skinInput({ productProfile: null }))).toEqual([msg]);
+    expect(checkCalendarSkinCompatibility(baseInput, skinInput({ productProfile: sheetProfile }))).toEqual([msg]);
+  });
+
+  it('판형 다름 → 판형·작업 크기 2건', () => {
+    expect(checkCalendarSkinCompatibility(baseInput, skinInput({ width: 210 }))).toEqual([
+      '판형이 기준과 다릅니다(기준 265×190mm · 스킨 210×190mm)',
+      '작업 크기(도련·재단선 포함)가 기준과 다릅니다(기준 271×196mm · 스킨 216×196mm)',
+    ]);
+  });
+
+  it('작업 크기(resolvePrintGeometry): 재단선 게이트 OFF·도련 다름 → 1건, 게이트 OFF 끼리는 도련값이 달라도 호환', () => {
+    const msg = '작업 크기(도련·재단선 포함)가 기준과 다릅니다(기준 271×196mm · 스킨 265×190mm)';
+    expect(checkCalendarSkinCompatibility(baseInput, skinInput({ cropMarkEnabled: false }))).toEqual([msg]);
+    expect(checkCalendarSkinCompatibility(baseInput, skinInput({ bleedMm: 0 }))).toEqual([msg]);
+    expect(checkCalendarSkinCompatibility(baseInput, skinInput({ bleedMm: 2 }))).toEqual([
+      '작업 크기(도련·재단선 포함)가 기준과 다릅니다(기준 271×196mm · 스킨 269×194mm)',
+    ]);
+    const offBase = { templateSet: set('base', { cropMarkEnabled: false, bleedMm: 3 }), templateDetails: details('b') };
+    expect(checkCalendarSkinCompatibility(offBase, skinInput({ cropMarkEnabled: false, bleedMm: 5 }))).toEqual([]);
+  });
+
+  it('템플릿 수 ≠ pages.count(누락 참조) → 1건', () => {
+    expect(checkCalendarSkinCompatibility(baseInput, skinInput({}, details('s').slice(0, 25))))
+      .toEqual(['스킨 세트 템플릿 수(25)가 pages.count(26)와 다릅니다']);
+  });
+
+  it('테넌트: 다른 사이트 스킨 → 1건, 기준이 공유(null)인데 스킨이 사이트 소속이어도 1건', () => {
+    const msg = '다른 사이트의 템플릿셋은 스킨으로 지정할 수 없습니다';
+    expect(checkCalendarSkinCompatibility(baseInput, skinInput({ siteId: 'site-b' }))).toEqual([msg]);
+    const sharedBase = { templateSet: set('base', { siteId: null }), templateDetails: details('b') };
+    expect(checkCalendarSkinCompatibility(sharedBase, skinInput({ siteId: 'site-a' }))).toEqual([msg]);
+    expect(checkCalendarSkinCompatibility(sharedBase, skinInput({ siteId: null }))).toEqual([]);
+  });
+
+  it('자기 참조 → 1건', () => {
+    expect(checkCalendarSkinCompatibility(baseInput, { templateSet: set('base'), templateDetails: details('b') }))
+      .toEqual(['스킨 세트가 기준 세트 자신입니다']);
+  });
+
+  it('면별 사진틀 수(Q2 (a)) 다름 → 해당 캔버스마다 1건, canvasData 문자열 JSON 도 읽는다', () => {
+    const skinFrames = (i: number) => (i === 4 ? 1 : framesAt(i));
+    expect(checkCalendarSkinCompatibility(baseInput, skinInput({}, details('s', skinFrames))))
+      .toEqual(['캔버스 5: 사진틀 수가 기준과 다릅니다(기준 2 · 스킨 1)']);
+    const asString = details('s').map((d) => ({ canvasData: JSON.stringify(d.canvasData) }));
+    expect(checkCalendarSkinCompatibility(baseInput, skinInput({}, asString))).toEqual([]);
+    const broken = details('s').map((d, i) => (i === 5 ? { canvasData: '{not json' } : d));
+    expect(checkCalendarSkinCompatibility(baseInput, skinInput({}, broken)))
+      .toEqual(['캔버스 6: 템플릿 canvasData 를 읽을 수 없습니다']);
+  });
+
+  it('countCalendarSkinFrames: top-level frame 만(workspace 제외), 읽을 수 없으면 null', () => {
+    expect(countCalendarSkinFrames(canvasWithFrames(3, 'x'))).toBe(3);
+    expect(countCalendarSkinFrames({ objects: [{ type: 'group', objects: [{ extensionType: 'frame' }] }] })).toBe(0);
+    expect(countCalendarSkinFrames({})).toBe(0);
+    expect(countCalendarSkinFrames(null)).toBeNull();
   });
 });
