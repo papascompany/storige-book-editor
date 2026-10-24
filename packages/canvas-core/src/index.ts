@@ -43,6 +43,8 @@ export {
 export * from './calendar/types';
 export * from './calendar/core';
 export * from './calendar/data';
+// 캘린더 스킨 적용 병합(순수 함수, v1.29 설계 C10)
+export * from './calendar/skin';
 // P2-d 사진인화 — 사진틀 fitMode/유테·촬영일·흑백 적용 플러그인 + 순수 헬퍼
 export {
   default as PhotoPrintPlugin,
