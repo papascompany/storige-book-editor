@@ -162,6 +162,10 @@ describe('kr-2025-2035-v1 — 공휴일', () => {
     const t = (y: number) => data.holidays[String(y)].filter((h) => h.temporary).map((h) => `${h.date} ${h.name}`);
     expect(t(2025)).toEqual(['2025-01-27 임시공휴일', '2025-06-03 대통령선거일']);
     expect(t(2026)).toEqual(['2026-06-03 지방선거일']);
+    // D4(2026-10-24): 2028 국회의원선거일(공직선거법 제34조 — 임기만료일 전 50일 이후 첫 수요일)은 temporary·기본 미표시
+    expect(t(2027)).toEqual([]);
+    expect(t(2028)).toEqual(['2028-04-12 국회의원선거일']);
+    expect(weekdayOf('2028-04-12')).toBe(3);
   });
 });
 
@@ -188,6 +192,70 @@ describe('kr-2025-2035-v1 — 24절기', () => {
     for (const [name, date] of Object.entries({ ...TERMS_2026_PARTIAL, ...TERMS_2026_KASI_EXTRA })) expect(t2026[name], `2026 ${name}`).toBe(date);
     const t2027 = Object.fromEntries(data.solarTerms['2027'].map((t) => [t.name, t.date]));
     expect(t2027).toEqual(TERMS_2027);
+  });
+});
+
+/**
+ * 잡절(삼복) 공표값 — 월력요항 「□ 잡절(삼복)」 표(전자관보, KASI 달력자료 > 월력요항 링크, 2026-10-24 조회):
+ *  2025 우주항공청공고 제2024-1호(2024-06-20) · 2026 제2025-0044호(2025-06-30) · 2027 제2026-0078호(2026-06-29).
+ * 2028 은 월력요항 미공고(KASI 월력요항 2028년 '등록된 게시글이 없습니다', 2026-10-24)라 공표값 대조에서 제외 —
+ * 아래 규칙 테스트로만 고정한다(계산값 2028-07-14·07-24·08-13).
+ */
+const MINOR_TERMS_PUBLISHED: Record<number, Record<string, string>> = {
+  2025: { 초복: '2025-07-20', 중복: '2025-07-30', 말복: '2025-08-09' },
+  2026: { 초복: '2026-07-15', 중복: '2026-07-25', 말복: '2026-08-14' },
+  2027: { 초복: '2027-07-20', 중복: '2027-07-30', 말복: '2027-08-09' },
+};
+/** 'YYYY-MM-DD' → 일진 천간 번호(0=갑 … 6=경). JDN 기준 (JDN + 49) mod 60 = 육십갑자 번호(0=갑자) */
+const dayStem = (key: string): number => {
+  const jdn = Date.parse(`${key}T00:00:00Z`) / 86400000 + 2440588;
+  return (((jdn + 49) % 60) + 60) % 60 % 10;
+};
+const GYEONG = 6;
+const addDays = (key: string, n: number): string => new Date(Date.parse(`${key}T00:00:00Z`) + n * 86400000).toISOString().slice(0, 10);
+/** start 당일부터 세어 n번째 경일(start 가 경일이면 그날이 첫째 — KASI 2019 초복·2012/2014 말복 선례) */
+const nthGyeongFrom = (start: string, n: number): string => {
+  let d = start;
+  let count = 0;
+  for (;;) {
+    if (dayStem(d) === GYEONG && ++count === n) return d;
+    d = addDays(d, 1);
+  }
+};
+
+describe('kr-2025-2035-v1 — 잡절(삼복, T4)', () => {
+  it('2025~2027 초복·중복·말복이 월력요항 공표값과 정확히 같다(2028 은 미공고로 제외)', () => {
+    for (const [y, exp] of Object.entries(MINOR_TERMS_PUBLISHED)) {
+      const got = Object.fromEntries((data.minorTerms?.[y] ?? []).map((t) => [t.name, t.date]));
+      expect(got, `${y} 잡절`).toEqual(exp);
+    }
+  });
+
+  it('매년 초복·중복·말복 3건(순서·연도 일치), 모두 경일, 하지·입추 기준 규칙(당일 포함)과 일치', () => {
+    expect(dayStem('2000-01-01')).toBe(4); // 2000-01-01 = 무오(戊午)일 — 공식 기준점 확인
+    for (const y of YEARS) {
+      const list = data.minorTerms?.[String(y)] ?? [];
+      expect(list.map((t) => t.name), `${y}`).toEqual(['초복', '중복', '말복']);
+      const terms = Object.fromEntries(data.solarTerms[String(y)].map((t) => [t.name, t.date]));
+      const [cho, jung, mal] = list.map((t) => t.date);
+      for (const d of [cho, jung, mal]) {
+        expect(d.startsWith(`${y}-`)).toBe(true);
+        expect(dayStem(d), `${y} ${d} 경일`).toBe(GYEONG);
+      }
+      expect(cho, `${y} 초복`).toBe(nthGyeongFrom(terms['하지'], 3));
+      expect(jung, `${y} 중복`).toBe(nthGyeongFrom(terms['하지'], 4));
+      expect(mal, `${y} 말복`).toBe(nthGyeongFrom(terms['입추'], 1));
+      expect(daysBetween(cho, jung)).toBe(10);
+      expect([10, 20]).toContain(daysBetween(jung, mal)); // 20 = 월복
+    }
+  });
+
+  it('입추 당일이 경일인 2031·2033 은 말복 = 입추 당일(KASI 2012·2014 월력요항 말복 08-07 = 입추 선례)', () => {
+    for (const y of [2031, 2033]) {
+      const ipchu = data.solarTerms[String(y)].find((t) => t.name === '입추')?.date;
+      expect(ipchu && dayStem(ipchu)).toBe(GYEONG);
+      expect(data.minorTerms?.[String(y)]?.find((t) => t.name === '말복')?.date).toBe(ipchu);
+    }
   });
 });
 

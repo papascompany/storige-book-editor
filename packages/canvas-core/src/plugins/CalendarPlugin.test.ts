@@ -19,7 +19,8 @@ import CalendarPlugin, { CALENDAR_GRID_EXTENSION_TYPE, type CalendarRenderContex
 import type Editor from '../Editor'
 import type { CalendarData, MonthCell, MonthMatrix } from '../calendar/types'
 
-const { buildCalls, yearCalls } = vi.hoisted(() => ({
+const { buildCalls, yearCalls, minorCalls } = vi.hoisted(() => ({
+  minorCalls: [] as Array<{ year: number; month: number }>,
   buildCalls: [] as Array<{ year: number; month: number; includeTemporaryHolidays?: boolean }>,
   yearCalls: [] as Array<{ year: number; month: number; weekStart: 0 | 1; monthCount?: number; includeTemporaryHolidays?: boolean; anniversaries?: unknown[] }>,
 }))
@@ -37,6 +38,11 @@ vi.mock('../calendar/core', () => ({
       months.push(synthMatrix(Math.floor(idx / 12), (idx % 12) + 1, opts.weekStart))
     }
     return { year, month, weekStart: opts.weekStart, weekdayOrder: months[0].weekdayOrder, months }
+  },
+  // 잡절(삼복, T4): 실제 core 와 같은 규칙(ctx.data.minorTerms 의 그 달 항목) — 데이터 정확성은 data 테스트가 담당
+  getMinorTermsForMonth: (year: number, month: number, d: CalendarData) => {
+    minorCalls.push({ year, month })
+    return (d.minorTerms?.[String(year)] ?? []).filter((t) => t.date.startsWith(`${year}-${String(month).padStart(2, '0')}-`))
   },
 }))
 
@@ -324,6 +330,57 @@ describe('CalendarPlugin — 임시공휴일·선거일 옵션(show.temporaryHol
     buildCalls.length = 0
     expect(await plugin.rehydrate(ctx())).toBe(1)
     expect(buildCalls).toEqual([{ year: 2027, month: 1, includeTemporaryHolidays: false }])
+  })
+})
+
+describe('CalendarPlugin — 잡절(삼복) 칸 문구(show.minorTerms, T4 — 기본 off)', () => {
+  const minorData = {
+    ...data,
+    minorTerms: { '2027': [{ date: '2027-07-20', name: '초복' }, { date: '2027-07-30', name: '중복' }, { date: '2027-08-09', name: '말복' }] },
+  } as CalendarData
+  const box = { left: 0, top: 0, width: 700, height: 520 }
+  const julyCtx = (show: CalendarRenderContext['show']) => ctx({ startMonth: 7, data: minorData, show })
+  const minorIds = (g: fabric.Group) =>
+    g.getObjects().map((o) => (o as fabric.Object & { id?: string }).id ?? '').filter((id) => id.endsWith('-minor')).map((id) => id.replace(/^.*-n-/, ''))
+
+  it('키 생략·false 면 잡절 문구 없음(조회도 안 함), true 면 그 달 초복·중복이 칸 문구로, extension.show 가 ctx 보다 우선', async () => {
+    const plugin = makePlugin(makeCanvas())
+    minorCalls.length = 0
+    const off = await plugin.createGrid({ variant: 'month' }, julyCtx({ holidays: true, lunar: true, solarTerms: true }), box)
+    expect(minorIds(off)).toEqual([])
+    expect(texts(off)).not.toContain('초복')
+    expect(minorCalls).toEqual([])
+
+    const on = await plugin.createGrid({ variant: 'month' }, julyCtx({ holidays: true, lunar: true, solarTerms: true, minorTerms: true }), box)
+    expect(minorIds(on)).toEqual(['2027-07-20-minor', '2027-07-30-minor'])
+    expect(texts(on)).toEqual(expect.arrayContaining(['초복', '중복']))
+    expect(texts(on)).not.toContain('말복')
+    expect(minorCalls).toEqual([{ year: 2027, month: 7 }])
+    // 켜도 잡절 칸 외 자식은 그대로 — 끈 그리드 자식 + 잡절 2개
+    expect(on.getObjects().length).toBe(off.getObjects().length + 2)
+
+    const extOff = await plugin.createGrid({ variant: 'month', show: { minorTerms: false } }, julyCtx({ holidays: true, lunar: true, solarTerms: true, minorTerms: true }), box)
+    expect(minorIds(extOff)).toEqual([])
+    const extOn = await plugin.createGrid({ variant: 'month', show: { minorTerms: true } }, julyCtx({ holidays: true, lunar: true, solarTerms: true }), box)
+    expect(minorIds(extOn)).toEqual(['2027-07-20-minor', '2027-07-30-minor'])
+  })
+
+  it("'mini' 는 칸 문구를 그리지 않아 켜도 잡절 없음, 데이터에 minorTerms 가 없으면 켜도 없음", async () => {
+    const plugin = makePlugin(makeCanvas())
+    const mini = await plugin.createGrid({ variant: 'mini' }, julyCtx({ holidays: true, lunar: true, solarTerms: true, minorTerms: true }), box)
+    expect(minorIds(mini)).toEqual([])
+    const noData = await plugin.createGrid({ variant: 'month' }, ctx({ startMonth: 7, show: { holidays: true, lunar: true, solarTerms: true, minorTerms: true } }), box)
+    expect(minorIds(noData)).toEqual([])
+  })
+
+  it('rehydrate 는 새 ctx 의 minorTerms 로 다시 그린다(켬 → 끔)', async () => {
+    const canvas = makeCanvas()
+    const plugin = makePlugin(canvas)
+    canvas.add(await plugin.createGrid({ variant: 'month' }, julyCtx({ holidays: true, lunar: true, solarTerms: true, minorTerms: true }), box))
+    const grid = () => canvas.getObjects().find((o) => (o as fabric.Object & { extensionType?: string }).extensionType === CALENDAR_GRID_EXTENSION_TYPE) as fabric.Group
+    expect(minorIds(grid())).toHaveLength(2)
+    expect(await plugin.rehydrate(julyCtx({ holidays: true, lunar: true, solarTerms: true }))).toBe(1)
+    expect(minorIds(grid())).toEqual([])
   })
 })
 

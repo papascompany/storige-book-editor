@@ -11,7 +11,7 @@ import {
   type CalendarYearSpan,
 } from '@storige/types';
 import type { CalendarData, AnniversaryInput, DateKey, MonthCell, MonthMatrix } from '../calendar/types';
-import { buildMonthMatrix, buildYearMatrix } from '../calendar/core';
+import { buildMonthMatrix, buildYearMatrix, getMinorTermsForMonth } from '../calendar/core';
 
 /**
  * CalendarPlugin — 캘린더 날짜 그리드(`extensionType:'calendar-grid'`) 생성·재합성 (P1, 2026-10-17)
@@ -61,8 +61,8 @@ export interface CalendarGridExtension {
   /** 캔버스 월 기준 상대 이동(mini 전월 -1 / 익월 +1). 기본 0. month/mini 전용 — 'year' 에서는 무시 */
   monthDelta?: number;
   weekStart?: 0 | 1;
-  /** `yearTitle` 은 'year' 전용(연도 제목 표시, 생략 = ctx.show.yearTitle) */
-  show?: { holidays?: boolean; lunar?: boolean; solarTerms?: boolean; temporaryHolidays?: boolean; yearTitle?: boolean };
+  /** `yearTitle` 은 'year' 전용(연도 제목 표시, 생략 = ctx.show.yearTitle). `minorTerms` 는 'month' 칸 문구 전용(생략 = ctx.show.minorTerms) */
+  show?: { holidays?: boolean; lunar?: boolean; solarTerms?: boolean; temporaryHolidays?: boolean; yearTitle?: boolean; minorTerms?: boolean };
   style?: CalendarGridStyle;
   /** 'year' 전용 — 시작연도 기준 연도 이동(기본 0). ctx.yearDelta 가 정수면 그 값이 우선 */
   yearDelta?: number;
@@ -78,8 +78,9 @@ export interface CalendarRenderContext {
   /**
    * `temporaryHolidays`(임시공휴일·선거일 표시)는 생략 시 false — 법정 공휴일만 휴일로 칠한다.
    * `yearTitle`('year' 연도 제목 표시)은 생략 시 true.
+   * `minorTerms`(잡절 — 초복·중복·말복 칸 문구, T4)는 생략 시 false. 'month' 칸 문구에만 쓰고 'mini'·'year' 는 문구를 그리지 않는다.
    */
-  show: { holidays: boolean; lunar: boolean; solarTerms: boolean; temporaryHolidays?: boolean; yearTitle?: boolean };
+  show: { holidays: boolean; lunar: boolean; solarTerms: boolean; temporaryHolidays?: boolean; yearTitle?: boolean; minorTerms?: boolean };
   anniversaries: AnniversaryInput[];
   data: CalendarData;
   /** 'year' 전용 — 프로파일 calendar.yearPolicy.span. 생략 = 기본 규칙(resolveCalendarYearSpan: 1월 시작이면 calendar-year, 아니면 start-span) */
@@ -359,7 +360,12 @@ class CalendarPlugin extends PluginBase {
       lunar: ext.show?.lunar ?? ctx.show.lunar,
       solarTerms: ext.show?.solarTerms ?? ctx.show.solarTerms,
       temporaryHolidays: ext.show?.temporaryHolidays ?? ctx.show.temporaryHolidays ?? false,
+      minorTerms: ext.show?.minorTerms ?? ctx.show.minorTerms ?? false,
     };
+    // 잡절(삼복)은 옵션을 켠 경우만 조회 — 끄면(기본) 칸 문구·자식 구성이 종전과 같다(T4)
+    const minorTermByDate = new Map<DateKey, string>(
+      show.minorTerms ? getMinorTermsForMonth(ym.year, ym.month, ctx.data).map((t) => [t.date, t.name]) : [],
+    );
     const matrix = buildMonthMatrix(ym.year, ym.month, {
       weekStart,
       data: ctx.data,
@@ -468,7 +474,7 @@ class CalendarPlugin extends PluginBase {
           fontSize: numberSize, fill: color,
         } as TextOpts));
         if (isMini || !cell.inMonth) continue;
-        const notes = this.cellNotes(cell, show);
+        const notes = this.cellNotes(cell, show, minorTermByDate);
         let ny = y0 + pad + numberSize * 1.15;
         for (const note of notes.slice(0, 3)) {
           if (ny + smallSize > y0 + cellH) break;
@@ -641,14 +647,18 @@ class CalendarPlugin extends PluginBase {
     return colors.text;
   }
 
+  /** 칸 문구 순서: 공휴일 → 기념일 → 절기 → 잡절(삼복, minorTermByDate 가 빈 맵이면 없음) → 음력(1·15일). 렌더는 앞 3개까지 */
   private cellNotes(
     cell: MonthCell,
     show: { holidays: boolean; lunar: boolean; solarTerms: boolean },
-  ): Array<{ kind: 'holiday' | 'anniversary' | 'term' | 'lunar'; text: string }> {
-    const notes: Array<{ kind: 'holiday' | 'anniversary' | 'term' | 'lunar'; text: string }> = [];
+    minorTermByDate: ReadonlyMap<DateKey, string>,
+  ): Array<{ kind: 'holiday' | 'anniversary' | 'term' | 'minor' | 'lunar'; text: string }> {
+    const notes: Array<{ kind: 'holiday' | 'anniversary' | 'term' | 'minor' | 'lunar'; text: string }> = [];
     if (show.holidays) for (const n of cell.holidayNames) notes.push({ kind: 'holiday', text: n });
     for (const a of cell.anniversaries) notes.push({ kind: 'anniversary', text: a });
     if (show.solarTerms && cell.solarTerm) notes.push({ kind: 'term', text: cell.solarTerm });
+    const minor = minorTermByDate.get(cell.date);
+    if (minor) notes.push({ kind: 'minor', text: minor });
     if (show.lunar && cell.lunar && (cell.lunar.day === 1 || cell.lunar.day === 15)) {
       notes.push({ kind: 'lunar', text: `${cell.lunar.isLeapMonth ? '윤' : ''}${cell.lunar.month}.${cell.lunar.day}` });
     }

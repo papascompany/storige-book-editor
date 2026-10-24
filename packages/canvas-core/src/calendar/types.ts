@@ -25,6 +25,16 @@ export interface CalendarSolarTerm {
   name: string;
 }
 
+/**
+ * 잡절(雜節) 중 삼복(T4, 2026-10-24). KASI 월력요항 규칙: 초복 = 하지부터 셋째 경일(庚日), 중복 = 넷째 경일,
+ * 말복 = 입추부터 첫째 경일 — 하지·입추 당일이 경일이면 그날을 첫째로 센다.
+ */
+export interface CalendarMinorTerm {
+  date: DateKey;
+  /** '초복' | '중복' | '말복' */
+  name: string;
+}
+
 export interface LunarMonthInfo {
   /** 음력 월(1~12) */
   month: number;
@@ -54,6 +64,11 @@ export interface CalendarData {
   holidays: Record<string, CalendarHoliday[]>;
   /** 양력 연도 → 24절기(날짜 오름차순) */
   solarTerms: Record<string, CalendarSolarTerm[]>;
+  /**
+   * 양력 연도 → 잡절(삼복: 초복·중복·말복, 날짜 오름차순). 선택(T4 additive) — 키가 없는 데이터는 잡절 없음.
+   * 표기는 `show.minorTerms`(기본 off)일 때만.
+   */
+  minorTerms?: Record<string, CalendarMinorTerm[]>;
   /** 음력 연도('2024'…) → 월 구성. range.from 직전 음력 연도부터 포함해야 양력 1월 환산이 가능하다. */
   lunarYears: Record<string, LunarYearInfo>;
 }

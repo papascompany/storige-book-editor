@@ -6,6 +6,13 @@
  *       (= `node scripts/gen-calendar-data.mjs`, Node ≥ 20, 외부 의존성 0, 네트워크 0)
  * 출력: `src/calendar/data/kr-2025-2035-v1.ts` — generatedAt 를 제외하면 재실행 시 결정적.
  *
+ * 옵션(T4, 2026-10-24)
+ *  --out <path>  출력 경로(현재 작업 디렉터리 기준 상대 또는 절대). 생략 = 위 기본 경로.
+ *  --check       파일을 쓰지 않고, 새로 산출한 내용과 출력 경로의 기존 파일을 generatedAt 줄을 제외하고 비교한다.
+ *                같으면 exit 0, 다르거나 파일이 없으면 첫 차이 줄을 출력하고 exit 1.
+ *  --help        사용법 출력.
+ *  쓰기 모드에서도 기존 파일과 generatedAt 외 차이가 없으면 파일을 다시 쓰지 않는다(재실행 diff 0).
+ *
  * 알고리즘 요약
  *  - 천문 계산은 Jean Meeus, Astronomical Algorithms(2판) 기준.
  *    · 신월(합삭) 순간: 49장(평균 위상 + 주기항 25개 + 추가 보정 14개). 분 단위 정확도.
@@ -16,18 +23,21 @@
  *    두 동지 사이의 달이 13개면 윤년이고, 그중 중기가 없는 첫 달이 윤달(앞 달 번호를 따른다).
  *  - 공휴일: 관공서의 공휴일에 관한 규정(2023-05 개정 대체공휴일 기준). 규정 밖 지정일(임시공휴일·선거일)은
  *    `scripts/calendar-overrides.json` 에서 병합한다(대체공휴일 계산에는 참여하지 않는다).
+ *  - 잡절(삼복, T4): 초복 = 하지부터 셋째 경일(庚日), 중복 = 넷째 경일, 말복 = 입추부터 첫째 경일. 하지·입추 당일이
+ *    경일이면 그날을 첫째로 센다(KASI 월력요항 선례: 2019 하지 06-22 경일 → 초복 07-12, 2012·2014 입추 08-07 경일 →
+ *    말복 08-07). 일진: JDN 기준 (JDN + 49) mod 60(0 = 갑자), 천간 번호 6 = 경. 위 절기 KST 날짜를 그대로 쓴다.
  *
- * 검증: 실행 로그에 참고값(설날·추석·부처님오신날·윤달·절기·대체공휴일) 대조 결과와
+ * 검증: 실행 로그에 참고값(설날·추석·부처님오신날·윤달·절기·대체공휴일·잡절) 대조 결과와
  *       KST 자정 ±30분 안에 든 천문 이벤트(날짜 경계 위험)를 출력한다. 차이가 있으면 강제하지 말고 보고한다.
  */
-import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
+import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import process from 'node:process';
 import console from 'node:console';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const OUT_PATH = resolve(__dirname, '../src/calendar/data/kr-2025-2035-v1.ts');
+const DEFAULT_OUT_PATH = resolve(__dirname, '../src/calendar/data/kr-2025-2035-v1.ts');
 const OVERRIDES_PATH = resolve(__dirname, './calendar-overrides.json');
 
 const VERSION = 'kr-2025-2035-v1';
@@ -226,6 +236,36 @@ function recordNearMidnight(bucket, label, kst) {
   if (toMidnight <= 30) {
     bucket.push(`${label} ${kst.key} ${pad2(Math.floor(minutes / 60))}:${pad2(Math.floor(minutes % 60))} KST (자정 ±${toMidnight.toFixed(0)}분)`);
   }
+}
+
+// ─── 잡절(삼복) ──────────────────────────────────────────────────────────────
+
+const GYEONG_STEM = 6; // 천간 0=갑 1=을 2=병 3=정 4=무 5=기 6=경 …
+/** 일진 천간 번호(0=갑 … 9=계). (JDN + 49) mod 60 = 육십갑자 번호(0=갑자, 2000-01-01 = 54 무오) */
+const dayStemOfJdn = (jdn) => (((jdn + 49) % 60) + 60) % 60 % 10;
+
+/** startJdn 당일부터 세어 n번째 경일 JDN(당일이 경일이면 첫째) */
+function nthGyeongFrom(startJdn, n) {
+  let count = 0;
+  for (let j = startJdn; ; j++) {
+    if (dayStemOfJdn(j) === GYEONG_STEM && ++count === n) return j;
+  }
+}
+
+/** 해당 연도 삼복(초복·중복·말복) — 절기 목록(solarTermsOfYear 결과)의 하지·입추 KST 날짜 기준 */
+function minorTermsOfYear(year, terms) {
+  const haji = terms.find((t) => t.name === '하지');
+  const ipchu = terms.find((t) => t.name === '입추');
+  if (!haji || !ipchu) throw new Error(`${year} 하지·입추 없음`);
+  const list = [
+    { jdn: nthGyeongFrom(haji.jdn, 3), name: '초복' },
+    { jdn: nthGyeongFrom(haji.jdn, 4), name: '중복' },
+    { jdn: nthGyeongFrom(ipchu.jdn, 1), name: '말복' },
+  ];
+  for (let i = 1; i < list.length; i++) {
+    if (list[i].jdn <= list[i - 1].jdn) throw new Error(`${year} 삼복 순서 이상: ${list.map((x) => jdnToKey(x.jdn)).join(' ')}`);
+  }
+  return list.map((x) => ({ date: jdnToKey(x.jdn), name: x.name }));
 }
 
 // ─── 음력 ───────────────────────────────────────────────────────────────────
@@ -464,6 +504,13 @@ const REF = {
   terms2026: { 입춘: '2026-02-04', 춘분: '2026-03-20', 청명: '2026-04-05', 망종: '2026-06-06', 하지: '2026-06-21', 대서: '2026-07-23', 추분: '2026-09-23', 동지: '2026-12-22' },
   substitutesPresent: ['2025-03-03', '2025-05-06', '2025-10-08', '2026-03-02', '2026-05-25', '2026-08-17', '2026-10-05', '2027-02-09', '2027-05-03', '2027-07-19', '2027-08-16', '2027-10-04', '2027-10-11', '2027-12-27'],
   substitutesAbsent: ['2026-06-08', '2027-03-02'],
+  // 잡절(삼복) — 월력요항 공표값(전자관보: 2025 우주항공청공고 제2024-1호, 2026 제2025-0044호, 2027 제2026-0078호).
+  // 2028 월력요항은 미공고(2026-10-24 조회) — 공표 후 여기에 추가한다.
+  minorTerms: {
+    2025: { 초복: '2025-07-20', 중복: '2025-07-30', 말복: '2025-08-09' },
+    2026: { 초복: '2026-07-15', 중복: '2026-07-25', 말복: '2026-08-14' },
+    2027: { 초복: '2027-07-20', 중복: '2027-07-30', 말복: '2027-08-09' },
+  },
 };
 
 function crossCheck(data) {
@@ -481,6 +528,9 @@ function crossCheck(data) {
   const allSub = new Set(Object.values(data.holidays).flat().filter((h) => h.substitute).map((h) => h.date));
   for (const d of REF.substitutesPresent) if (!allSub.has(d)) diffs.push(`대체공휴일 ${d}: 알고리즘 없음 vs 참고 있음`);
   for (const d of REF.substitutesAbsent) if (allSub.has(d)) diffs.push(`대체공휴일 ${d}: 알고리즘 있음 vs 참고 없음`);
+  for (const [y, exp] of Object.entries(REF.minorTerms)) {
+    for (const [name, date] of Object.entries(exp)) check(`잡절 ${y} ${name}`, data.minorTerms[y]?.find((t) => t.name === name)?.date, date);
+  }
   return diffs;
 }
 
@@ -517,6 +567,13 @@ function serialize(data, header) {
     lines.push(`    ],`);
   }
   lines.push(`  },`);
+  lines.push(`  minorTerms: {`);
+  for (const y of Object.keys(data.minorTerms)) {
+    lines.push(`    ${q(y)}: [`);
+    for (const t of data.minorTerms[y]) lines.push(`      { date: ${q(t.date)}, name: ${q(t.name)} },`);
+    lines.push(`    ],`);
+  }
+  lines.push(`  },`);
   lines.push(`  lunarYears: {`);
   for (const y of Object.keys(data.lunarYears)) {
     const info = data.lunarYears[y];
@@ -535,9 +592,63 @@ function serialize(data, header) {
   return lines.join('\n');
 }
 
+// ─── CLI 옵션·결정성 비교 ────────────────────────────────────────────────────
+
+const USAGE = [
+  '사용법: node scripts/gen-calendar-data.mjs [--out <path>] [--check]',
+  '  --out <path>  출력 경로(기본: src/calendar/data/kr-2025-2035-v1.ts)',
+  '  --check       쓰지 않고 기존 파일과 비교(generatedAt 제외). 같으면 exit 0, 다르면 exit 1',
+  '  --help        이 도움말',
+].join('\n');
+
+function parseArgs(argv) {
+  const opts = { out: DEFAULT_OUT_PATH, check: false, help: false };
+  for (let i = 0; i < argv.length; i++) {
+    const a = argv[i];
+    if (a === '--check') opts.check = true;
+    else if (a === '--help' || a === '-h') opts.help = true;
+    else if (a === '--out') {
+      const v = argv[i + 1];
+      if (!v || v.startsWith('--')) throw new Error('--out 에는 경로가 필요합니다');
+      opts.out = resolve(process.cwd(), v);
+      i += 1;
+    } else if (a.startsWith('--out=')) {
+      const v = a.slice('--out='.length);
+      if (!v) throw new Error('--out 에는 경로가 필요합니다');
+      opts.out = resolve(process.cwd(), v);
+    } else {
+      throw new Error(`알 수 없는 옵션: ${a}\n${USAGE}`);
+    }
+  }
+  return opts;
+}
+
+/** generatedAt 이 든 줄(머리말 주석·객체 필드)을 고정 토큰으로 바꾼다 — 그 외 바이트는 그대로 비교 */
+function normalizeForCompare(text) {
+  return text
+    .replace(/^( \*\s+generatedAt: ).*$/m, '$1<generatedAt>')
+    .replace(/^(\s+generatedAt: ).*,$/m, '$1<generatedAt>,');
+}
+
+/** 첫 차이 줄 번호(1부터)와 양쪽 내용. 같으면 null */
+function firstDiff(a, b) {
+  const la = a.split('\n');
+  const lb = b.split('\n');
+  const n = Math.max(la.length, lb.length);
+  for (let i = 0; i < n; i++) {
+    if (la[i] !== lb[i]) return { line: i + 1, expected: la[i], actual: lb[i], expectedLines: la.length, actualLines: lb.length };
+  }
+  return null;
+}
+
 // ─── main ───────────────────────────────────────────────────────────────────
 
 function main() {
+  const opts = parseArgs(process.argv.slice(2));
+  if (opts.help) {
+    console.log(USAGE);
+    return;
+  }
   const nearMidnight = [];
 
   // 음력: 동지 2023 ~ 동지 2036 (음력 2023-11 ~ 2036-10, 2035-12 까지 완전히 덮음)
@@ -557,8 +668,11 @@ function main() {
   }
 
   const solarTerms = {};
+  const minorTerms = {};
   for (let y = SOLAR_YEAR_FROM; y <= SOLAR_YEAR_TO; y++) {
-    solarTerms[String(y)] = solarTermsOfYear(y, nearMidnight).map((t) => ({ date: t.date, name: t.name }));
+    const terms = solarTermsOfYear(y, nearMidnight);
+    solarTerms[String(y)] = terms.map((t) => ({ date: t.date, name: t.name }));
+    minorTerms[String(y)] = minorTermsOfYear(y, terms);
   }
 
   const holidays = {};
@@ -572,10 +686,11 @@ function main() {
     version: VERSION,
     range: RANGE,
     source:
-      'scripts/gen-calendar-data.mjs — Meeus 천문 계산(신월 49장, 태양 황경 25장 저정밀, KST) + 관공서의 공휴일에 관한 규정(2023-05 대체공휴일) + scripts/calendar-overrides.json(임시공휴일·선거일, 오너 확인 필요)',
+      'scripts/gen-calendar-data.mjs — Meeus 천문 계산(신월 49장, 태양 황경 25장 저정밀, KST) + 관공서의 공휴일에 관한 규정(2023-05 대체공휴일) + scripts/calendar-overrides.json(임시공휴일·선거일, 오너 확인 필요) + 잡절(삼복, 하지·입추 기준 경일)',
     generatedAt: new Date().toISOString(),
     holidays,
     solarTerms,
+    minorTerms,
     lunarYears,
   };
 
@@ -583,10 +698,11 @@ function main() {
 
   const header = [
     '/**',
-    ' * kr-2025-2035-v1.ts — 한국 캘린더 정적 데이터 (공휴일·대체공휴일·24절기·음력 환산표 2025~2035)',
+    ' * kr-2025-2035-v1.ts — 한국 캘린더 정적 데이터 (공휴일·대체공휴일·24절기·잡절(삼복)·음력 환산표 2025~2035)',
     ' *',
     ' * ⚠️ 이 파일은 생성물 — 직접 편집 금지. `scripts/calendar-overrides.json` 수정 후 재생성한다.',
     ' *   생성 명령: `pnpm --filter @storige/canvas-core gen:calendar-data` (= node scripts/gen-calendar-data.mjs)',
+    ' *   결정성 확인: `node scripts/gen-calendar-data.mjs --check` (generatedAt 제외 비교, 차이 있으면 exit 1)',
     ` *   generatedAt: ${data.generatedAt}`,
     ' *',
     ' * 출처·규칙 요약',
@@ -596,27 +712,49 @@ function main() {
     ' *    신정·삼일절·설날(3일)·부처님오신날·어린이날·현충일·광복절·추석(3일)·개천절·한글날·기독탄신일 + 2026년부터 노동절(5/1)·제헌절(7/17).',
     ' *    대체공휴일: 설날·추석은 일요일/다른 공휴일 겹침, 삼일절·노동절·어린이날·부처님오신날·제헌절·광복절·개천절·한글날·',
     ' *    기독탄신일은 토·일/다른 공휴일 겹침 → 다음 첫 비공휴일(토·일 제외). 신정·현충일 대체 없음.',
-    ' *  - temporary: 임시공휴일·선거일(overrides) — 2025 임시공휴일 2건(01-27, 06-03 대통령선거일)·2026 선거일 1건(06-03).',
-    ' *    대체공휴일 계산에 참여하지 않는다.',
+    ' *  - temporary: 임시공휴일·선거일(overrides) — 2025 임시공휴일 2건(01-27, 06-03 대통령선거일)·2026 선거일 1건(06-03)·',
+    ' *    2028 국회의원선거일 1건(04-12, 공직선거법 제34조 법정 선거일 — 기본 미표시). 대체공휴일 계산에 참여하지 않는다.',
+    ' *  - minorTerms(잡절·삼복): 초복 = 하지부터 셋째 경일, 중복 = 넷째, 말복 = 입추부터 첫째(당일 경일이면 그날). 표기는 show.minorTerms(기본 off).',
+    ' *    2025~2027 은 월력요항 공표값과 대조 완료(2026-10-24), 2028 이후는 공표 전 산출.',
     ' *',
     ' * 검증 절차',
-    ' *  1. 재생성 로그의 참고값 대조(설날·추석·부처님오신날·윤달·절기·대체공휴일)가 0건 차이인지 확인.',
+    ' *  1. 재생성 로그의 참고값 대조(설날·추석·부처님오신날·윤달·절기·대체공휴일·잡절)가 0건 차이인지 확인.',
     ' *  2. `src/calendar/data/kr-2025-2035-v1.test.ts` 통과(연속성·중복·범위).',
     ' *  3. 공표 자료(KASI 달력자료·월력요항, 공공데이터포털 특일정보) 대조 후 오너 승인. 2025~2027 공휴일·절기는 KASI 와 대조 완료(2026-10-17).',
     ' *     2028 이후 임시공휴일·선거일은 공표 전.',
     ' */',
   ].join('\n');
 
-  mkdirSync(dirname(OUT_PATH), { recursive: true });
-  writeFileSync(OUT_PATH, serialize(data, header), 'utf8');
+  const content = serialize(data, header);
+  const existing = existsSync(opts.out) ? readFileSync(opts.out, 'utf8') : null;
+  const diff = existing == null ? null : firstDiff(normalizeForCompare(existing), normalizeForCompare(content));
 
-  console.log(`[gen-calendar-data] 출력: ${OUT_PATH}`);
+  if (opts.check) {
+    if (existing == null) {
+      console.error(`[gen-calendar-data] --check: 기존 파일 없음 — ${opts.out}`);
+      process.exitCode = 1;
+    } else if (diff) {
+      console.error(`[gen-calendar-data] --check: 차이 있음(generatedAt 제외) — ${opts.out}`);
+      console.error(`  첫 차이 ${diff.line}행 (기존 ${diff.expectedLines}행 / 산출 ${diff.actualLines}행)`);
+      console.error(`  기존: ${diff.expected ?? '(없음)'}`);
+      console.error(`  산출: ${diff.actual ?? '(없음)'}`);
+      process.exitCode = 1;
+    } else {
+      console.log(`[gen-calendar-data] --check: 차이 0 (generatedAt 제외) — ${opts.out}`);
+    }
+  } else if (existing != null && !diff) {
+    console.log(`[gen-calendar-data] 변경 없음(generatedAt 제외) — 파일을 다시 쓰지 않음: ${opts.out}`);
+  } else {
+    mkdirSync(dirname(opts.out), { recursive: true });
+    writeFileSync(opts.out, content, 'utf8');
+    console.log(`[gen-calendar-data] 출력: ${opts.out}`);
+  }
   console.log(`[gen-calendar-data] 음력 연도 ${LUNAR_YEAR_FROM}~${LUNAR_YEAR_TO} (${Object.keys(lunarYears).length}), 양력 ${SOLAR_YEAR_FROM}~${SOLAR_YEAR_TO}`);
   for (let y = SOLAR_YEAR_FROM; y <= SOLAR_YEAR_TO; y++) {
     const hs = holidays[String(y)];
     const leap = lunarYears[String(y)].months.find((m) => m.leap);
     console.log(
-      `  ${y}: 설날 ${lunarYears[String(y)].newYear} 추석 ${jdnToKey(lunarToJdn(lunarYears, y, 8, 15, false))} 윤달 ${leap ? `${leap.month}월` : '없음'} 공휴일 ${hs.length}건(대체 ${hs.filter((h) => h.substitute).length}, 임시 ${hs.filter((h) => h.temporary).length})`,
+      `  ${y}: 설날 ${lunarYears[String(y)].newYear} 추석 ${jdnToKey(lunarToJdn(lunarYears, y, 8, 15, false))} 윤달 ${leap ? `${leap.month}월` : '없음'} 공휴일 ${hs.length}건(대체 ${hs.filter((h) => h.substitute).length}, 임시 ${hs.filter((h) => h.temporary).length}) 삼복 ${minorTerms[String(y)].map((t) => t.date.slice(5)).join('·')}`,
     );
   }
   console.log(`[gen-calendar-data] 참고값 대조 차이: ${diffs.length}건`);
@@ -624,9 +762,14 @@ function main() {
   console.log(`[gen-calendar-data] KST 자정 ±30분 이벤트(날짜 경계 위험): ${nearMidnight.length}건`);
   for (const n of nearMidnight) console.log(`  - ${n}`);
   if (diffs.length >= 3) {
-    console.error('[gen-calendar-data] 참고값과 3건 이상 차이 — 원인 분석 필요(파일은 기록됨)');
+    console.error(`[gen-calendar-data] 참고값과 3건 이상 차이 — 원인 분석 필요${opts.check ? '' : '(쓰기 모드면 파일은 기록됨)'}`);
     process.exitCode = 2;
   }
 }
 
-main();
+try {
+  main();
+} catch (err) {
+  console.error(`[gen-calendar-data] ${err instanceof Error ? err.message : String(err)}`);
+  process.exitCode = 2;
+}

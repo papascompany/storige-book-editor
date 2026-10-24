@@ -11,6 +11,7 @@ import type {
   AnniversaryInput,
   CalendarData,
   CalendarHoliday,
+  CalendarMinorTerm,
   CalendarSolarTerm,
   DateKey,
   LunarDate,
@@ -170,6 +171,14 @@ export function getHolidaysForMonth(year: number, month: number, data: CalendarD
 
 export function getSolarTermsForMonth(year: number, month: number, data: CalendarData): CalendarSolarTerm[] {
   const list = data.solarTerms[String(year)];
+  if (!list) return [];
+  const prefix = monthPrefix(year, month);
+  return list.filter((t) => t.date.startsWith(prefix));
+}
+
+/** 잡절(삼복, T4). 데이터에 `minorTerms` 가 없거나(구 데이터) 그 연도가 없으면 빈 배열 */
+export function getMinorTermsForMonth(year: number, month: number, data: CalendarData): CalendarMinorTerm[] {
+  const list = data.minorTerms?.[String(year)];
   if (!list) return [];
   const prefix = monthPrefix(year, month);
   return list.filter((t) => t.date.startsWith(prefix));
