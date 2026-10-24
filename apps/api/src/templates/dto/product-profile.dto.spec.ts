@@ -312,6 +312,82 @@ describe('ProductProfileDto (P1 캘린더 프로파일 파이프)', () => {
     });
   });
 
+  // ── T3a 연달력(설계 C8, v1.26): calendar.yearPolicy · calendar.show.yearTitle ─────────────────────
+  describe('calendar.yearPolicy (T3a, v1.26)', () => {
+    const withCal = (patch: Record<string, unknown>) => ({
+      ...base,
+      productProfile: { ...deskLargeProfile, calendar: { ...deskLargeProfile.calendar, ...patch } },
+    });
+    const PRESET_PAIRS: Array<[string, string]> = [
+      ['calendar_desk_large', 'desk'], ['calendar_desk_basic', 'desk'], ['calendar_desk_tiny', 'desk'], ['calendar_desk_mini', 'desk'],
+      ['calendar_wall1_a3', 'wall-1'], ['calendar_wall2_a4', 'wall-2'], ['calendar_wall2_a3', 'wall-2'],
+    ];
+
+    it('yearPolicy 생략 → 통과, 변환 결과에 yearPolicy 키 없음(직렬화 바이트 동일) — 프리셋 7종', async () => {
+      for (const [editorType, layout] of PRESET_PAIRS) {
+        const profile = { ...deskLargeProfile, editorType, calendar: { ...deskLargeProfile.calendar, layout } };
+        const out = await pipe.transform({ ...base, productProfile: profile }, { type: 'body', metatype: CreateTemplateSetDto });
+        expect(JSON.stringify(out.productProfile)).toBe(JSON.stringify(profile));
+        // DTO 인스턴스는 선언 필드를 undefined 로 가질 수 있다(기존 faceLabels 와 같음) — 계약은 직렬화 결과
+        const wire = JSON.parse(JSON.stringify(out.productProfile));
+        expect(Object.keys(wire.calendar)).not.toContain('yearPolicy');
+        expect(Object.keys(wire.calendar.show)).not.toContain('yearTitle');
+      }
+    });
+
+    it("{span:'calendar-year'} → Create·Update 통과, 값 보존", async () => {
+      const body = withCal({ yearPolicy: { span: 'calendar-year' } });
+      const created = await pipe.transform(body, { type: 'body', metatype: CreateTemplateSetDto });
+      expect(JSON.parse(JSON.stringify(created.productProfile))).toEqual(body.productProfile);
+      const updated = await pipe.transform({ productProfile: body.productProfile }, { type: 'body', metatype: UpdateTemplateSetDto });
+      expect(JSON.parse(JSON.stringify(updated.productProfile.calendar.yearPolicy))).toEqual({ span: 'calendar-year' });
+    });
+
+    it("{span:'start-span', select:{minDelta:0,maxDelta:1}} · span 생략 {select} → 통과, 중첩 값 보존", async () => {
+      for (const yearPolicy of [{ span: 'start-span', select: { minDelta: 0, maxDelta: 1 } }, { select: { minDelta: -1, maxDelta: 1 } }]) {
+        const body = withCal({ yearPolicy });
+        const out = await pipe.transform(body, { type: 'body', metatype: CreateTemplateSetDto });
+        expect(JSON.parse(JSON.stringify(out.productProfile))).toEqual(body.productProfile);
+      }
+    });
+
+    it("show.yearTitle boolean → 통과·보존, 비불리언 → 400", async () => {
+      const body = withCal({ show: { ...deskLargeProfile.calendar.show, yearTitle: false } });
+      const out = await pipe.transform(body, { type: 'body', metatype: CreateTemplateSetDto });
+      expect(out.productProfile.calendar.show.yearTitle).toBe(false);
+      const msgs = await expect400(withCal({ show: { ...deskLargeProfile.calendar.show, yearTitle: 'no' } }));
+      expect(msgs.join('\n')).toContain('yearTitle');
+    });
+
+    it("span 미등재('fiscal') → 400", async () => {
+      const msgs = await expect400(withCal({ yearPolicy: { span: 'fiscal' } }));
+      expect(msgs.join('\n')).toContain('span');
+    });
+
+    it("select.minDelta 0.5·'1' → 400", async () => {
+      for (const minDelta of [0.5, '1']) {
+        const msgs = await expect400(withCal({ yearPolicy: { span: 'calendar-year', select: { minDelta, maxDelta: 1 } } }));
+        expect(msgs.join('\n')).toContain('minDelta');
+      }
+    });
+
+    it('미등재 키(yearPolicy.foo·select.bar) → 400 (forbidNonWhitelisted)', async () => {
+      const m1 = await expect400(withCal({ yearPolicy: { span: 'calendar-year', foo: 1 } }));
+      expect(m1.join('\n')).toContain('foo');
+      const m2 = await expect400(withCal({ yearPolicy: { span: 'calendar-year', select: { minDelta: 0, maxDelta: 1, bar: 1 } } }));
+      expect(m2.join('\n')).toContain('bar');
+    });
+
+    it('select 범위 위반(maxDelta 3·min>max·데이터 밖) → 400 메시지에 types 문구 포함', async () => {
+      const m1 = await expect400(withCal({ yearPolicy: { span: 'calendar-year', select: { minDelta: 0, maxDelta: 3 } } }));
+      expect(m1.join('\n')).toContain('calendar.yearPolicy.select.minDelta/maxDelta 는 -2~2 정수여야 합니다');
+      const m2 = await expect400(withCal({ yearPolicy: { span: 'calendar-year', select: { minDelta: 1, maxDelta: 0 } } }));
+      expect(m2.join('\n')).toContain('calendar.yearPolicy.select.minDelta 는 maxDelta 이하여야 합니다');
+      const m3 = await expect400(withCal({ yearPolicy: { span: 'calendar-year', select: { minDelta: -2, maxDelta: 0 } } }));
+      expect(m3.join('\n')).toContain('calendar.yearPolicy.select 연달력 범위(2024-01~2027-12)는 데이터 범위 2025-01~2035-12 안이어야 합니다');
+    });
+  });
+
   it('faceLabels 1개 → 400', async () => {
     const messages = await expect400({
       ...base,

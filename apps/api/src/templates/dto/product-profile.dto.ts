@@ -29,6 +29,7 @@ import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
 import {
   CALENDAR_LAYOUTS,
+  CALENDAR_YEAR_SPANS,
   PHOTO_BORDERS,
   PHOTO_FINISHES,
   PHOTO_FITS,
@@ -52,6 +53,9 @@ import type {
   CalendarMonthRange,
   CalendarProfile,
   CalendarWeekStart,
+  CalendarYearPolicy,
+  CalendarYearSelectRange,
+  CalendarYearSpan,
   PhotoBorder,
   PhotoFinish,
   PhotoFit,
@@ -221,6 +225,39 @@ export class CalendarDisplayOptionsDto implements CalendarDisplayOptions {
   @IsOptional()
   @IsBoolean()
   temporaryHolidays?: boolean;
+
+  /** v1.26(오너 답 Q3, 2026-10-24): 연달력(그리드 variant 'year') 연도 제목 표시. 생략 = true. */
+  @ApiPropertyOptional({ example: true, description: "연달력 연도 제목 표시(v1.26) — 생략 = 표시. 템플릿 그리드 style.showTitle=false 면 표시 안 함" })
+  @IsOptional()
+  @IsBoolean()
+  yearTitle?: boolean;
+}
+
+export class CalendarYearSelectRangeDto implements CalendarYearSelectRange {
+  @ApiProperty({ example: 0, description: '시작연도 기준 최소 연도 이동(-2~2)' })
+  @IsInt()
+  minDelta: number;
+
+  @ApiProperty({ example: 1, description: '시작연도 기준 최대 연도 이동(-2~2)' })
+  @IsInt()
+  maxDelta: number;
+}
+
+export class CalendarYearPolicyDto implements CalendarYearPolicy {
+  @ApiPropertyOptional({
+    enum: CALENDAR_YEAR_SPANS,
+    example: 'calendar-year',
+    description: "연달력 기간 기준 — 'calendar-year' 기준 연도 1~12월 / 'start-span' 시작연월부터. 생략 = 기본 규칙(1월 시작이면 calendar-year, 아니면 start-span)",
+  })
+  @IsOptional()
+  @IsIn(CALENDAR_YEAR_SPANS)
+  span?: CalendarYearSpan;
+
+  @ApiPropertyOptional({ type: CalendarYearSelectRangeDto, description: '고객 연도 선택 허용 폭(생략 = 선택 없음)' })
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => CalendarYearSelectRangeDto)
+  select?: CalendarYearSelectRangeDto;
 }
 
 export class CalendarProfileDto implements CalendarProfile {
@@ -272,6 +309,12 @@ export class CalendarProfileDto implements CalendarProfile {
   @IsString()
   @MaxLength(64)
   dataVersion: string;
+
+  @ApiPropertyOptional({ type: CalendarYearPolicyDto, description: '연달력 정책(v1.26, 생략 = 기본 규칙·고객 연도 선택 없음)' })
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => CalendarYearPolicyDto)
+  yearPolicy?: CalendarYearPolicyDto;
 }
 
 // ─── 사진인화(P2-d) ──────────────────────────────────────────────────────────

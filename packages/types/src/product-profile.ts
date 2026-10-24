@@ -38,6 +38,11 @@ export type ProductOutputSheetFiles = 'per-sheet' | 'merged-duplex';
 export type ProductPostProcessColorRule = 'any' | 'spot-only';
 export type CalendarLayout = 'desk' | 'wall-1' | 'wall-2';
 export type CalendarWeekStart = 0 | 1;
+/**
+ * 연달력(그리드 variant 'year', 설계 C8, v1.26) 기간 기준 — 'calendar-year' 기준 연도 1~12월 / 'start-span' 시작연월부터.
+ * 정책에 값이 없으면 기본 규칙(`resolveCalendarYearSpan`): 시작연월이 1월이면 'calendar-year', 아니면 'start-span'.
+ */
+export type CalendarYearSpan = 'calendar-year' | 'start-span';
 
 export const PRODUCT_KINDS: readonly ProductKind[] = ['sheet', 'calendar', 'photo-print'];
 export const PRODUCT_PAGE_LABEL_RULES: readonly ProductPageLabelRule[] = ['default', 'month', 'sheet', 'photo'];
@@ -48,6 +53,16 @@ export const PRODUCT_DUPLEX_FLIPS: readonly ProductDuplexFlip[] = ['short-edge',
 export const PRODUCT_OUTPUT_MODES: readonly ProductOutputMode[] = ['single-pdf', 'sheet-map'];
 export const PRODUCT_OUTPUT_SHEET_FILES: readonly ProductOutputSheetFiles[] = ['per-sheet', 'merged-duplex'];
 export const CALENDAR_LAYOUTS: readonly CalendarLayout[] = ['desk', 'wall-1', 'wall-2'];
+export const CALENDAR_YEAR_SPANS: readonly CalendarYearSpan[] = ['calendar-year', 'start-span'];
+/**
+ * 기본 규칙의 기준값(오너 답 Q1, 2026-10-24): 기본은 기준 연도 1~12월. 고객이 시작연월을 1월이 아닌 달로 바꾸면
+ * 그 달부터의 기간('start-span')으로 바뀐다. 정책 `yearPolicy.span` 을 명시하면 그 값이 그대로 쓰인다.
+ */
+export const DEFAULT_CALENDAR_YEAR_SPAN: CalendarYearSpan = 'calendar-year';
+/** 연달력 한 개가 담는 개월 수. 연도 이동(yearDelta) 1 = 이 개월 수만큼 이동. 16·24·26개월 상품 확장 시에도 연달력 단위는 이 값 */
+export const CALENDAR_YEAR_MONTH_COUNT = 12;
+/** 연도 이동 허용 절대값 상한(검증용) */
+export const CALENDAR_YEAR_DELTA_LIMIT = 2;
 
 // ─── 사진인화 어휘(P2-d, 설계 §2.2) ─────────────────────────────────────────
 
@@ -119,6 +134,11 @@ export interface CalendarDisplayOptions {
    * 기본 false = 법정 공휴일(규정상 공휴일 + 대체공휴일)만 휴일로 표시. 키 없음(기존 저장분)은 false 와 같다.
    */
   temporaryHolidays?: boolean;
+  /**
+   * 연달력(그리드 variant 'year') 연도 제목 표시(v1.26, 오너 답 Q3). 생략 = true(표시).
+   * 템플릿 그리드 `style.showTitle=false` 면 이 값과 무관하게 제목이 없다(제목 자리가 없는 디자인).
+   */
+  yearTitle?: boolean;
 }
 
 export interface CalendarMonthRange {
@@ -126,6 +146,23 @@ export interface CalendarMonthRange {
   from: string;
   /** 'YYYY-MM' */
   to: string;
+}
+
+/** 고객 연도 선택 허용 폭 — 시작연도 기준 상대 연도(정수) */
+export interface CalendarYearSelectRange {
+  minDelta: number;
+  maxDelta: number;
+}
+
+/**
+ * 연달력(그리드 variant 'year', 설계 C8, D2 2026-10-24) 정책(v1.26 additive).
+ * 블록 생략 = 기본 규칙(`resolveCalendarYearSpan`)·고객 연도 선택 없음(그리드 extension.yearDelta 그대로).
+ */
+export interface CalendarYearPolicy {
+  /** 'calendar-year' = 기준 연도 1~12월 고정 / 'start-span' = 시작연월부터. 생략 = 기본 규칙(1월 시작이면 calendar-year, 아니면 start-span) */
+  span?: CalendarYearSpan;
+  /** 생략 = 고객이 연도를 바꿀 수 없음 */
+  select?: CalendarYearSelectRange;
 }
 
 export interface CalendarProfile {
@@ -146,6 +183,8 @@ export interface CalendarProfile {
   show: CalendarDisplayOptions;
   /** 날짜 데이터 버전(CALENDAR_DATA_VERSIONS 키). 세션은 이 값을 고정 저장한다. */
   dataVersion: string;
+  /** 연달력 정책(v1.26 additive). 생략 = 기본 규칙·고객 연도 선택 없음 */
+  yearPolicy?: CalendarYearPolicy;
 }
 
 export interface PhotoPrintSize {
@@ -260,6 +299,12 @@ export interface CalendarAnniversary {
   style?: CalendarAnniversaryStyle;
 }
 
+/** 고객이 고른 표지·에필로그 연달력 연도 이동(시작연도 기준 상대값 — 시작연월을 바꿔도 상대값 유지, 오너 답 Q4) */
+export interface CalendarYearDeltas {
+  cover?: number;
+  epilogue?: number;
+}
+
 export interface CalendarSessionMeta {
   startYear: number;
   /** 1~12 */
@@ -267,6 +312,8 @@ export interface CalendarSessionMeta {
   show: CalendarDisplayOptions;
   anniversaries: CalendarAnniversary[];
   dataVersion: string;
+  /** v1.26 additive. 프로파일 yearPolicy.select 가 있는 세트에서만 편집기가 기록. 생략 = 템플릿 값(extension.yearDelta) */
+  yearDeltas?: CalendarYearDeltas;
 }
 
 // ─── 세션 메타(edit_sessions.metadata.items) — 사진인화 항목 ─────────────────
@@ -478,6 +525,11 @@ export function validateProductProfile(input: unknown): string[] {
           }
         }
       }
+      // v1.26 연달력 — 기존 메시지 순서를 바꾸지 않도록 calendar 블록 맨 끝에서 검사한다(키 생략 = 검사·메시지 0).
+      if (isRecord(show) && show.yearTitle !== undefined && !isBool(show.yearTitle)) {
+        errors.push('calendar.show.yearTitle 은 생략하거나 boolean 이어야 합니다');
+      }
+      if (cal.yearPolicy !== undefined) validateCalendarYearPolicy(cal.yearPolicy, range, cal.dataVersion, errors);
     }
   } else if (cal !== undefined) {
     errors.push("calendar 프로파일은 kind='calendar' 에서만 지정합니다");
@@ -524,6 +576,47 @@ export function validateProductProfile(input: unknown): string[] {
   }
 
   return errors;
+}
+
+/**
+ * calendar.yearPolicy(v1.26). 데이터 범위 검사: 허용 시작연월 전체(allowedRange)·허용 연도 폭(select) 전체의
+ * 연달력 기간이 날짜 데이터 범위 안이어야 한다(기간은 시작연월에 대해 단조 증가 — 양 끝만 보면 된다).
+ */
+function validateCalendarYearPolicy(policy: unknown, range: unknown, dataVersion: unknown, errors: string[]): void {
+  if (!isRecord(policy)) {
+    errors.push('calendar.yearPolicy 는 객체여야 합니다');
+    return;
+  }
+  const spanOk = policy.span === undefined || oneOf(policy.span, CALENDAR_YEAR_SPANS);
+  if (!spanOk) errors.push(`calendar.yearPolicy.span 은 생략하거나 ${CALENDAR_YEAR_SPANS.join('|')} 중 하나여야 합니다`);
+  const select = policy.select;
+  if (select === undefined) return;
+  if (!isRecord(select)) {
+    errors.push('calendar.yearPolicy.select 는 객체여야 합니다');
+    return;
+  }
+  const lim = CALENDAR_YEAR_DELTA_LIMIT;
+  const inLimit = (v: unknown): v is number => isInt(v, -lim) && v <= lim;
+  if (!inLimit(select.minDelta) || !inLimit(select.maxDelta)) {
+    errors.push(`calendar.yearPolicy.select.minDelta/maxDelta 는 -${lim}~${lim} 정수여야 합니다`);
+    return;
+  }
+  if (select.minDelta > select.maxDelta) {
+    errors.push('calendar.yearPolicy.select.minDelta 는 maxDelta 이하여야 합니다');
+    return;
+  }
+  if (!spanOk || !isRecord(range) || typeof range.from !== 'string' || typeof range.to !== 'string') return;
+  const from = parseMonthKey(range.from);
+  const to = parseMonthKey(range.to);
+  if (!from || !to || compareMonth(range.from, range.to) > 0) return;
+  if (typeof dataVersion !== 'string' || !CALENDAR_DATA_VERSIONS[dataVersion]) return;
+  const data = CALENDAR_DATA_VERSIONS[dataVersion].range;
+  const span = policy.span as CalendarYearSpan | undefined;
+  const a = formatMonthKey(resolveCalendarYearStart(span, from, select.minDelta));
+  const b = formatMonthKey(addMonths(resolveCalendarYearStart(span, to, select.maxDelta), CALENDAR_YEAR_MONTH_COUNT - 1));
+  if (compareMonth(a, data.from) < 0 || compareMonth(b, data.to) > 0) {
+    errors.push(`calendar.yearPolicy.select 연달력 범위(${a}~${b})는 데이터 범위 ${data.from}~${data.to} 안이어야 합니다`);
+  }
 }
 
 const PHOTO_SIZE_CODE_RE = /^[A-Za-z0-9_-]{1,32}$/;
@@ -731,6 +824,32 @@ export function parseMonthKey(key: string): YearMonth | null {
 
 export function formatMonthKey(ym: YearMonth): string {
   return `${String(ym.year).padStart(4, '0')}-${String(ym.month).padStart(2, '0')}`;
+}
+
+/**
+ * 연달력 기간 기준 결정(오너 답 Q1, 2026-10-24). 정책 값이 있으면 그 값, 없으면 기본 규칙:
+ * 시작연월이 1월이면 DEFAULT_CALENDAR_YEAR_SPAN('calendar-year' = 기준 연도 1~12월), 1월이 아니면 'start-span'(선택한 월부터).
+ */
+export function resolveCalendarYearSpan(span: CalendarYearSpan | undefined, start: YearMonth): CalendarYearSpan {
+  if (span !== undefined) return span;
+  return start.month === 1 ? DEFAULT_CALENDAR_YEAR_SPAN : 'start-span';
+}
+
+/**
+ * 연달력 첫 달. 기간 기준은 `resolveCalendarYearSpan(span, start)`.
+ * calendar-year → {start.year + d, 1}, start-span → addMonths(start, CALENDAR_YEAR_MONTH_COUNT·d). d 가 정수가 아니면 0.
+ */
+export function resolveCalendarYearStart(span: CalendarYearSpan | undefined, start: YearMonth, yearDelta: number): YearMonth {
+  const d = Number.isInteger(yearDelta) ? yearDelta : 0;
+  if (resolveCalendarYearSpan(span, start) === 'calendar-year') return { year: start.year + d, month: 1 };
+  return addMonths(start, CALENDAR_YEAR_MONTH_COUNT * d);
+}
+
+/** 고객 선택값이 정책 허용 폭 안인지(정책·select 없으면 false, 비정수 false). T3b 판독·패널 클램프용 */
+export function isCalendarYearDeltaAllowed(policy: CalendarYearPolicy | undefined, delta: unknown): delta is number {
+  const select = policy?.select;
+  if (!select || !isInt(delta)) return false;
+  return delta >= select.minDelta && delta <= select.maxDelta;
 }
 
 function addMonthsToKey(key: string, offset: number): string {

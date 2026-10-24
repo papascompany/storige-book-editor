@@ -4,12 +4,17 @@
  */
 import {
   addMonths,
+  CALENDAR_YEAR_MONTH_COUNT,
+  DEFAULT_CALENDAR_YEAR_SPAN,
   formatCalendarPageLabel,
   formatPhotoPageLabel,
+  isCalendarYearDeltaAllowed,
   isStartMonthAllowed,
   readPhotoItems,
   resolveCalendarCanvasCount,
   resolveCalendarCanvasSlot,
+  resolveCalendarYearSpan,
+  resolveCalendarYearStart,
   resolvePhotoFitMode,
   resolvePhotoFrameInsetMm,
   resolvePhotoItemCanvasIndex,
@@ -536,5 +541,185 @@ describe('캘린더 캔버스 매핑(순수 함수)', () => {
       sheetCount: 5,
       faces: 1,
     });
+  });
+});
+
+// ── T3a 연달력(설계 C8, v1.26) — calendar.yearPolicy·show.yearTitle 검증과 기간 결정 순수 함수 ────────────
+describe('validateProductProfile — 연달력 yearPolicy (T3a, v1.26)', () => {
+  // 7종 (editorType, layout) — apps/admin calendarProfilePresets.ts · scripts/register-calendar-samples.mjs 값을 명시 복제(교차 앱 import 금지)
+  const PRESET_PAIRS: Array<[string, 'desk' | 'wall-1' | 'wall-2']> = [
+    ['calendar_desk_large', 'desk'],
+    ['calendar_desk_basic', 'desk'],
+    ['calendar_desk_tiny', 'desk'],
+    ['calendar_desk_mini', 'desk'],
+    ['calendar_wall1_a3', 'wall-1'],
+    ['calendar_wall2_a4', 'wall-2'],
+    ['calendar_wall2_a3', 'wall-2'],
+  ];
+  /** admin calendarProfile(editorType, layout) 와 같은 키 순서 */
+  const adminPreset = (editorType: string, layout: 'desk' | 'wall-1' | 'wall-2'): ProductProfile => ({
+    version: 1,
+    kind: 'calendar',
+    editorType,
+    pages: { kind: 'fixed', count: 26, step: 2, protectedIndices: [0, 25], labelRule: 'month' },
+    sheet: { faces: 2, canvasLayout: 'canvas-pair', binding: 'top-ring', pairing: 'offset-next', backRotation: 0, duplexFlip: 'short-edge' },
+    calendar: {
+      layout,
+      monthCount: 12,
+      coverCanvases: 1,
+      canvasesPerMonth: 2,
+      epilogueCanvases: 1,
+      allowedRange: { from: '2026-01', to: '2027-12' },
+      weekStart: 0,
+      show: { holidays: true, lunar: true, solarTerms: true },
+      dataVersion: 'kr-2025-2035-v1',
+    },
+    output: { mode: 'single-pdf' },
+  });
+  /** 샘플 스크립트 profileFor(p) = { ...BASE_PROFILE, editorType, calendar: { ...BASE.calendar, layout } } 와 같은 키 순서 */
+  const sampleProfile = (editorType: string, layout: 'desk' | 'wall-1' | 'wall-2'): unknown => {
+    const BASE = {
+      version: 1,
+      kind: 'calendar',
+      pages: { kind: 'fixed', count: 26, step: 2, protectedIndices: [0, 25], labelRule: 'month' },
+      sheet: { faces: 2, canvasLayout: 'canvas-pair', binding: 'top-ring', pairing: 'offset-next', backRotation: 0, duplexFlip: 'short-edge' },
+      calendar: {
+        monthCount: 12, coverCanvases: 1, canvasesPerMonth: 2, epilogueCanvases: 1,
+        allowedRange: { from: '2026-01', to: '2027-12' }, weekStart: 0,
+        show: { holidays: true, lunar: true, solarTerms: true }, dataVersion: 'kr-2025-2035-v1',
+      },
+      output: { mode: 'single-pdf' },
+    };
+    return { ...BASE, editorType, calendar: { ...BASE.calendar, layout } };
+  };
+  const withYear = (patch: (p: Record<string, any>) => void) => withPatch(deskLarge, patch);
+
+  it('T3a 픽스처 — 프리셋 7종·샘플 프로파일: validate 결과 [] 이고 JSON.stringify 가 입력과 같다(yearPolicy 키 없음)', () => {
+    const warn = jest.fn();
+    for (const [editorType, layout] of PRESET_PAIRS) {
+      for (const profile of [adminPreset(editorType, layout), sampleProfile(editorType, layout)]) {
+        const before = JSON.stringify(profile);
+        expect(validateProductProfile(profile)).toEqual([]);
+        const resolved = resolveProductProfile({ productProfile: profile as ProductProfile }, warn);
+        expect(resolved).toBe(profile);
+        expect(JSON.stringify(resolved)).toBe(before);
+        expect(before).not.toContain('yearPolicy');
+        expect(before).not.toContain('yearTitle');
+      }
+    }
+    expect(warn).not.toHaveBeenCalled();
+  });
+
+  it("span 'calendar-year'|'start-span'|생략 통과, 미등재·null·배열 yearPolicy → 문구", () => {
+    expect(validateProductProfile(withYear((p) => { p.calendar.yearPolicy = { span: 'calendar-year' }; }))).toEqual([]);
+    expect(validateProductProfile(withYear((p) => { p.calendar.yearPolicy = { span: 'start-span' }; }))).toEqual([]);
+    expect(validateProductProfile(withYear((p) => { p.calendar.yearPolicy = {}; }))).toEqual([]);
+    expect(validateProductProfile(withYear((p) => { p.calendar.yearPolicy = { span: 'fiscal' }; })))
+      .toEqual(['calendar.yearPolicy.span 은 생략하거나 calendar-year|start-span 중 하나여야 합니다']);
+    expect(validateProductProfile(withYear((p) => { p.calendar.yearPolicy = null; })))
+      .toEqual(['calendar.yearPolicy 는 객체여야 합니다']);
+    expect(validateProductProfile(withYear((p) => { p.calendar.yearPolicy = ['calendar-year']; })))
+      .toEqual(['calendar.yearPolicy 는 객체여야 합니다']);
+  });
+
+  it('select: -2~2 정수·min ≤ max, 위반 각각 문구', () => {
+    const sel = (select: unknown) => validateProductProfile(withYear((p) => { p.calendar.yearPolicy = { span: 'calendar-year', select }; }));
+    expect(sel({ minDelta: 0, maxDelta: 1 })).toEqual([]);
+    expect(sel({ minDelta: -1, maxDelta: 1 })).toEqual([]);
+    const range = 'calendar.yearPolicy.select.minDelta/maxDelta 는 -2~2 정수여야 합니다';
+    expect(sel({ minDelta: 0, maxDelta: 3 })).toEqual([range]);
+    expect(sel({ minDelta: -3, maxDelta: 0 })).toEqual([range]);
+    expect(sel({ minDelta: 0.5, maxDelta: 1 })).toEqual([range]);
+    expect(sel({ minDelta: '0', maxDelta: 1 })).toEqual([range]);
+    expect(sel({ maxDelta: 1 })).toEqual([range]);
+    expect(sel({ minDelta: 1, maxDelta: 0 })).toEqual(['calendar.yearPolicy.select.minDelta 는 maxDelta 이하여야 합니다']);
+    expect(sel(null)).toEqual(['calendar.yearPolicy.select 는 객체여야 합니다']);
+    expect(sel([0, 1])).toEqual(['calendar.yearPolicy.select 는 객체여야 합니다']);
+  });
+
+  it('select 데이터 범위: 2026-01~2027-12 에서 calendar-year {-1,1} 통과, {-2,0} 오류; start-span·기본 규칙 경계', () => {
+    const sel = (span: string | undefined, minDelta: number, maxDelta: number, allowedRange = { from: '2026-01', to: '2027-12' }) =>
+      validateProductProfile(withYear((p) => {
+        p.calendar.allowedRange = allowedRange;
+        p.calendar.yearPolicy = span === undefined ? { select: { minDelta, maxDelta } } : { span, select: { minDelta, maxDelta } };
+      }));
+    // calendar-year: 2025-01 ~ 2028-12
+    expect(sel('calendar-year', -1, 1)).toEqual([]);
+    expect(sel('calendar-year', -2, 0)).toEqual(['calendar.yearPolicy.select 연달력 범위(2024-01~2027-12)는 데이터 범위 2025-01~2035-12 안이어야 합니다']);
+    // start-span: to 2027-12 + 12×2 = 2029-12 → +11 = 2030-11
+    expect(sel('start-span', -1, 2)).toEqual([]);
+    expect(sel('start-span', -2, 0)).toEqual(['calendar.yearPolicy.select 연달력 범위(2024-01~2028-11)는 데이터 범위 2025-01~2035-12 안이어야 합니다']);
+    // 끝 경계: allowedRange to 2033-12(+11 = 2034-11 은 기존 검사 통과) — calendar-year +2 → 2035-12 포함 통과, start-span +2 → 2036-11 오류
+    const late = { from: '2033-01', to: '2033-12' };
+    expect(sel('calendar-year', 0, 2, late)).toEqual([]);
+    expect(sel('start-span', 0, 2, late)).toEqual(['calendar.yearPolicy.select 연달력 범위(2033-01~2036-11)는 데이터 범위 2025-01~2035-12 안이어야 합니다']);
+    // 기본 규칙(span 생략)은 1월 시작 = calendar-year, 그 밖 = start-span 이라 양 끝 계산이 start-span 과 같다
+    expect(sel(undefined, 0, 2, late)).toEqual(['calendar.yearPolicy.select 연달력 범위(2033-01~2036-11)는 데이터 범위 2025-01~2035-12 안이어야 합니다']);
+    expect(sel(undefined, -1, 1)).toEqual([]);
+  });
+
+  it('yearPolicy·show.yearTitle 오류는 기존 calendar 메시지 뒤에 붙는다(순서 불변)', () => {
+    const errs = validateProductProfile(withYear((p) => {
+      p.calendar.weekStart = 2;
+      p.pages.count = 25;
+      p.calendar.show.yearTitle = 'yes';
+      p.calendar.yearPolicy = { span: 'fiscal' };
+    }));
+    // pages 절 → sheet 절 → calendar 절 순, calendar 절 안에서는 기존 문구 → v1.26 문구 순
+    expect(errs).toEqual([
+      'pages.protectedIndices 는 pages.count 미만이어야 합니다',
+      'sheet.faces=2 이면 pages.count 는 짝수여야 합니다',
+      'calendar.weekStart 는 0|1 이어야 합니다',
+      'pages.count(25)는 coverCanvases + 12×canvasesPerMonth + epilogueCanvases = 26 여야 합니다',
+      'calendar.show.yearTitle 은 생략하거나 boolean 이어야 합니다',
+      'calendar.yearPolicy.span 은 생략하거나 calendar-year|start-span 중 하나여야 합니다',
+    ]);
+  });
+
+  it('show.yearTitle: 생략·boolean 통과, 비불리언 문구', () => {
+    expect(validateProductProfile(withYear((p) => { p.calendar.show.yearTitle = false; }))).toEqual([]);
+    expect(validateProductProfile(withYear((p) => { p.calendar.show.yearTitle = true; }))).toEqual([]);
+    expect(validateProductProfile(withYear((p) => { p.calendar.show.yearTitle = 1; })))
+      .toEqual(['calendar.show.yearTitle 은 생략하거나 boolean 이어야 합니다']);
+  });
+
+  it('resolveCalendarYearStart: calendar-year (2027-03,+1) → 2028-01; start-span (2027-03,0) → 2027-03, (2027-03,+1) → 2028-03; 비정수 delta → 0', () => {
+    const mar = { year: 2027, month: 3 };
+    expect(resolveCalendarYearStart('calendar-year', mar, 1)).toEqual({ year: 2028, month: 1 });
+    expect(resolveCalendarYearStart('calendar-year', mar, 0)).toEqual({ year: 2027, month: 1 });
+    expect(resolveCalendarYearStart('calendar-year', mar, -1)).toEqual({ year: 2026, month: 1 });
+    expect(resolveCalendarYearStart('start-span', mar, 0)).toEqual({ year: 2027, month: 3 });
+    expect(resolveCalendarYearStart('start-span', mar, 1)).toEqual({ year: 2028, month: 3 });
+    expect(resolveCalendarYearStart('start-span', mar, -1)).toEqual({ year: 2026, month: 3 });
+    expect(resolveCalendarYearStart('start-span', mar, 0.5)).toEqual({ year: 2027, month: 3 });
+    expect(resolveCalendarYearStart('calendar-year', mar, Number.NaN)).toEqual({ year: 2027, month: 1 });
+    expect(CALENDAR_YEAR_MONTH_COUNT).toBe(12);
+  });
+
+  it('기본 규칙(오너 답 Q1): span 생략 시 1월 시작 = 기준 연도 1~12월, 시작연월을 바꾸면 그 달부터; 명시 span 은 그대로', () => {
+    expect(DEFAULT_CALENDAR_YEAR_SPAN).toBe('calendar-year');
+    expect(resolveCalendarYearSpan(undefined, { year: 2027, month: 1 })).toBe('calendar-year');
+    expect(resolveCalendarYearSpan(undefined, { year: 2027, month: 3 })).toBe('start-span');
+    expect(resolveCalendarYearSpan('calendar-year', { year: 2027, month: 3 })).toBe('calendar-year');
+    expect(resolveCalendarYearSpan('start-span', { year: 2027, month: 1 })).toBe('start-span');
+    expect(resolveCalendarYearStart(undefined, { year: 2027, month: 1 }, 0)).toEqual({ year: 2027, month: 1 });
+    expect(resolveCalendarYearStart(undefined, { year: 2027, month: 1 }, 1)).toEqual({ year: 2028, month: 1 });
+    expect(resolveCalendarYearStart(undefined, { year: 2027, month: 3 }, 0)).toEqual({ year: 2027, month: 3 });
+    // Q4 상대값 유지: 시작연월을 2027-03 → 2028-03 으로 바꾸면 같은 +1 이 2029-03 으로 이동
+    expect(resolveCalendarYearStart(undefined, { year: 2028, month: 3 }, 1)).toEqual({ year: 2029, month: 3 });
+  });
+
+  it('isCalendarYearDeltaAllowed: 정책·select 없음 false, 범위 경계 포함, 비정수 false', () => {
+    expect(isCalendarYearDeltaAllowed(undefined, 0)).toBe(false);
+    expect(isCalendarYearDeltaAllowed({ span: 'calendar-year' }, 0)).toBe(false);
+    const policy = { select: { minDelta: -1, maxDelta: 1 } };
+    expect(isCalendarYearDeltaAllowed(policy, -1)).toBe(true);
+    expect(isCalendarYearDeltaAllowed(policy, 0)).toBe(true);
+    expect(isCalendarYearDeltaAllowed(policy, 1)).toBe(true);
+    expect(isCalendarYearDeltaAllowed(policy, 2)).toBe(false);
+    expect(isCalendarYearDeltaAllowed(policy, -2)).toBe(false);
+    expect(isCalendarYearDeltaAllowed(policy, 0.5)).toBe(false);
+    expect(isCalendarYearDeltaAllowed(policy, '1')).toBe(false);
+    expect(isCalendarYearDeltaAllowed(policy, null)).toBe(false);
   });
 });
