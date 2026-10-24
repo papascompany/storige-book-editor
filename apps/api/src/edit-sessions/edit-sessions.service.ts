@@ -281,7 +281,8 @@ export class EditSessionsService {
    *  - templateSetId 없음 → 키 제거(클라이언트가 보낸 값은 버린다).
    *  - 템플릿셋 프로파일 있음 → 그 값으로 덮어쓴다(기존 키 위치 유지).
    *  - 템플릿셋 프로파일 NULL → 키 제거(세트를 NULL 로 되돌리면 진행 중 세션도 현행 동작으로 복귀 — 롤백 약속).
-   *  - 템플릿셋 조회 실패 → 기존(서버 기록) 값 유지 + warn(완료·저장은 계속).
+   *  - 템플릿셋 없음(NotFoundException) → 키 제거(NULL 세트와 같은 처리).
+   *  - 그 밖의 템플릿셋 조회 실패(일시 오류) → 기존(서버 기록) 값 유지 + warn(완료·저장은 계속).
    * 바꿀 것이 없으면 입력 객체를 그대로(참조 동일) 돌려준다 — NULL 세트·키 없음 경로는 바이트 동일.
    */
   private async stampProductProfileSnapshot(
@@ -303,6 +304,11 @@ export class EditSessionsService {
       const templateSet = await this.templateSetsService.findOne(templateSetId);
       profile = templateSet?.productProfile ?? null;
     } catch (e) {
+      // 템플릿셋이 없으면(삭제·잘못된 id) 프로파일 스냅샷 키를 두지 않는다 — NULL 세트와 같은 처리.
+      if (e instanceof NotFoundException) {
+        this.logger.warn(`[productProfile] ${context}: TemplateSet ${templateSetId} 없음 → 스냅샷 키 제거`);
+        return dropKey();
+      }
       this.logger.warn(
         `[productProfile] ${context}: TemplateSet ${templateSetId} 조회 실패 → 기존 스냅샷 유지: ${(e as Error).message}`,
       );

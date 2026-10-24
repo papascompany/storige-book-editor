@@ -1752,6 +1752,10 @@ STORIGE_API_URL=https://api.papascompany.co.kr/api node scripts/register-photo-p
 
 **롤백**: 편집기만 — Vercel `storige-editor` 직전 Ready Production 배포 promote, 또는 `git revert c040b68e 680c8322 a087316c` → master push. api/worker 무관.
 
+### 세션 생성 metadata 정리 (2026-10-24 준비, api 전용 — 적용 시점 = api 배포)
+
+- `POST /edit-sessions`·`POST /edit-sessions/guest` 가 update 와 같은 규칙으로 서버 소유 `metadata` 키(`launch`·`revision`·`production`·`productProfile`)를 입력에서 버린 뒤 프로파일 스냅샷을 기록하고, 스냅샷 기록 때 템플릿셋이 없으면(NotFound) `productProfile` 키를 두지 않는다(그 밖의 조회 오류는 종전대로 기존 값 유지 — update·완료 경로도 같음). 파트너 v1 런처 경로·DTO·CONTRACT 무변경, 플래그·스키마·`.env` 변경 없음. 롤백 = api 직전 이미지.
+
 ## 문제 해결
 
 ### 1. 컨테이너가 시작되지 않음

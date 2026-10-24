@@ -25,7 +25,7 @@ import {
   getSchemaPath,
 } from '@nestjs/swagger';
 import * as Sentry from '@sentry/node';
-import { EditSessionsService, memberSeqnoOf, type TenantCaller } from './edit-sessions.service';
+import { EditSessionsService, memberSeqnoOf, mergeSessionMetadata, type TenantCaller } from './edit-sessions.service';
 import { CreateEditSessionDto } from './dto/create-edit-session.dto';
 import { UpdateEditSessionDto } from './dto/update-edit-session.dto';
 import {
@@ -140,7 +140,8 @@ export class EditSessionsController {
       ...dto,
       memberSeqno,
       siteId: user?.siteId,
-      metadata: { ...(dto.metadata || {}), ...memberSnapshot },
+      // 서버 소유 metadata 키(launch·revision·production·productProfile)는 update 와 같은 규칙으로 버린다.
+      metadata: { ...mergeSessionMetadata(null, dto.metadata), ...memberSnapshot },
     });
 
     return this.editSessionsService.toResponseDto(session);
@@ -226,6 +227,8 @@ export class EditSessionsController {
       orderSeqno: dto.orderSeqno ?? 0,
       // ⚠️ 위치 고정 — `...dto` **뒤**에 놓아야 클라이언트 값이 구조적으로 이길 수 없다.
       siteId: derivedSiteId,
+      // 서버 소유 metadata 키는 update 와 같은 규칙으로 버린다(metadata 를 보내지 않으면 종전대로 없음).
+      metadata: dto.metadata ? mergeSessionMetadata(null, dto.metadata) : dto.metadata,
     });
     // 생성 응답 DTO 에 guestToken 을 포함한다 (클라이언트가 보관)
     return this.editSessionsService.toResponseDto(session);
