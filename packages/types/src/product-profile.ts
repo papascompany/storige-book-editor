@@ -139,6 +139,11 @@ export interface CalendarDisplayOptions {
    * 템플릿 그리드 `style.showTitle=false` 면 이 값과 무관하게 제목이 없다(제목 자리가 없는 디자인).
    */
   yearTitle?: boolean;
+  /**
+   * 잡절(삼복 — 초복·중복·말복) 날짜 칸 문구 표시(v1.27, T4 — 오너 결정 D4 2026-10-24). 생략 = false(표시 안 함).
+   * 날짜 데이터 `minorTerms` 를 쓰며, 월 그리드(variant 'month') 칸 문구에만 나온다('mini'·'year' 는 칸 문구 없음).
+   */
+  minorTerms?: boolean;
 }
 
 export interface CalendarMonthRange {
@@ -528,6 +533,10 @@ export function validateProductProfile(input: unknown): string[] {
       // v1.26 연달력 — 기존 메시지 순서를 바꾸지 않도록 calendar 블록 맨 끝에서 검사한다(키 생략 = 검사·메시지 0).
       if (isRecord(show) && show.yearTitle !== undefined && !isBool(show.yearTitle)) {
         errors.push('calendar.show.yearTitle 은 생략하거나 boolean 이어야 합니다');
+      }
+      // v1.27 잡절 — 같은 이유로 v1.26 검사 뒤(키 생략 = 검사·메시지 0)
+      if (isRecord(show) && show.minorTerms !== undefined && !isBool(show.minorTerms)) {
+        errors.push('calendar.show.minorTerms 는 생략하거나 boolean 이어야 합니다');
       }
       if (cal.yearPolicy !== undefined) validateCalendarYearPolicy(cal.yearPolicy, range, cal.dataVersion, errors);
     }

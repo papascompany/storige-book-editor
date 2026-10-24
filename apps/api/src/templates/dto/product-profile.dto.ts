@@ -233,6 +233,12 @@ export class CalendarDisplayOptionsDto implements CalendarDisplayOptions {
   @IsOptional()
   @IsBoolean()
   yearTitle?: boolean;
+
+  /** v1.27(T4, 오너 결정 D4 2026-10-24): 잡절(삼복 — 초복·중복·말복) 날짜 칸 문구 표시. 생략 = false. */
+  @ApiPropertyOptional({ example: false, description: "잡절(초복·중복·말복) 표기(v1.27) — 생략/false 는 표시 안 함. 월 그리드 칸 문구에만" })
+  @IsOptional()
+  @IsBoolean()
+  minorTerms?: boolean;
 }
 
 export class CalendarYearSelectRangeDto implements CalendarYearSelectRange {

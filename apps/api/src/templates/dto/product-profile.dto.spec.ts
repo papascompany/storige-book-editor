@@ -388,6 +388,26 @@ describe('ProductProfileDto (P1 캘린더 프로파일 파이프)', () => {
     });
   });
 
+  // ── T4 잡절(v1.27): calendar.show.minorTerms — whitelist 등재(미등재면 forbidNonWhitelisted 로 admin 저장 400) ──
+  it('calendar.show.minorTerms — 생략은 직렬화에 키 없음, boolean 은 Create·Update 통과·보존, 비불리언 400 (T4, v1.27)', async () => {
+    const plain = await pipe.transform({ ...base, productProfile: deskLargeProfile }, { type: 'body', metatype: CreateTemplateSetDto });
+    expect(JSON.stringify(plain.productProfile)).toBe(JSON.stringify(deskLargeProfile));
+    expect(Object.keys(JSON.parse(JSON.stringify(plain.productProfile)).calendar.show)).not.toContain('minorTerms');
+
+    const profile = { ...deskLargeProfile, calendar: { ...deskLargeProfile.calendar, show: { ...deskLargeProfile.calendar.show, minorTerms: true } } };
+    const created = await pipe.transform({ ...base, productProfile: profile }, { type: 'body', metatype: CreateTemplateSetDto });
+    expect(created.productProfile.calendar.show.minorTerms).toBe(true);
+    expect(JSON.parse(JSON.stringify(created.productProfile))).toEqual(profile);
+    const updated = await pipe.transform({ productProfile: profile }, { type: 'body', metatype: UpdateTemplateSetDto });
+    expect(updated.productProfile.calendar.show.minorTerms).toBe(true);
+
+    const msgs = await expect400({
+      ...base,
+      productProfile: { ...deskLargeProfile, calendar: { ...deskLargeProfile.calendar, show: { ...deskLargeProfile.calendar.show, minorTerms: 'on' } } },
+    });
+    expect(msgs.join('\n')).toMatch(/minorTerms/);
+  });
+
   it('faceLabels 1개 → 400', async () => {
     const messages = await expect400({
       ...base,

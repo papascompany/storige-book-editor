@@ -723,3 +723,32 @@ describe('validateProductProfile — 연달력 yearPolicy (T3a, v1.26)', () => {
     expect(isCalendarYearDeltaAllowed(policy, null)).toBe(false);
   });
 });
+
+// ── T4 잡절(v1.27) — calendar.show.minorTerms 검증(키 생략 = 현행 바이트·메시지 동일) ────────────────────
+describe('validateProductProfile — 잡절 show.minorTerms (T4, v1.27)', () => {
+  it('생략: 검증 [] · resolveProductProfile 결과 JSON 이 입력과 같다(minorTerms 키 없음)', () => {
+    const warn = jest.fn();
+    const profile = withPatch(deskLarge, () => {});
+    const before = JSON.stringify(profile);
+    expect(before).not.toContain('minorTerms');
+    expect(validateProductProfile(profile)).toEqual([]);
+    expect(JSON.stringify(resolveProductProfile({ productProfile: profile as ProductProfile }, warn))).toBe(before);
+    expect(warn).not.toHaveBeenCalled();
+  });
+
+  it('boolean 통과, 비불리언 문구 — v1.26 yearTitle 문구 뒤에 붙는다(기존 순서 불변)', () => {
+    expect(validateProductProfile(withPatch(deskLarge, (p) => { p.calendar.show.minorTerms = true; }))).toEqual([]);
+    expect(validateProductProfile(withPatch(deskLarge, (p) => { p.calendar.show.minorTerms = false; }))).toEqual([]);
+    expect(validateProductProfile(withPatch(deskLarge, (p) => { p.calendar.show.minorTerms = 'yes'; })))
+      .toEqual(['calendar.show.minorTerms 는 생략하거나 boolean 이어야 합니다']);
+    expect(validateProductProfile(withPatch(deskLarge, (p) => {
+      p.calendar.weekStart = 2;
+      p.calendar.show.yearTitle = 1;
+      p.calendar.show.minorTerms = null;
+    }))).toEqual([
+      'calendar.weekStart 는 0|1 이어야 합니다',
+      'calendar.show.yearTitle 은 생략하거나 boolean 이어야 합니다',
+      'calendar.show.minorTerms 는 생략하거나 boolean 이어야 합니다',
+    ]);
+  });
+});
