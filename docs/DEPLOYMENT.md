@@ -1760,7 +1760,7 @@ STORIGE_API_URL=https://api.papascompany.co.kr/api node scripts/register-photo-p
 ### 완료 검증 기본 도련 — 재단선 세트 도련값 (2026-10-25 준비, api 전용 — 적용 시점 = api 배포)
 
 - 동작: 편집 완료 검증 잡의 `orderOptions.bleed` 기본값(세션 `metadata.bleed` 가 없을 때)이 재단선 세트(`cropMarkEnabled` true, `bleedMm` 0 초과)에서는 종전 고정 3 대신 **세트 `bleedMm`** 이다. 호스트가 `metadata.bleed` 를 주면 종전대로 그 값이 우선한다. 재단선 없는 세트·프로파일 NULL 세트·`bleedMm` 3 세트는 검증 잡 옵션이 종전과 같다(프로파일 세트의 도련 없음 = 0 규칙도 그대로). 워커·DB·DTO 변경 없음. 계약 `docs/CONTRACT_FREEZE.md` v1.28.
-- 영향(2026-10-25 운영 집계, 읽기 전용): 재단선 세트 10개 중 `bleedMm`≠3 은 1개 — **영향 세트 1·세션 2**(파트너 상품 매핑 0). 이 세트만 검증 기대 도련이 3→1mm 로 바뀌고, 크기 판정은 종전대로 작업 크기 기준이다.
+- 영향(2026-10-25 운영 집계, 읽기 전용): 재단선 세트 10개 중 `bleedMm`≠3 은 1개 — **영향 세트 1·세션 2**(파트너 상품 매핑 0). 이 세트만 검증 기대 도련이 3→1mm 로 바뀐다 — 편집기 PDF(재단+2mm)는 그대로 통과, 재단+6mm 첨부 PDF·무선 표지 책등 +6mm 는 이제 `SIZE_MISMATCH`·`SPINE_SIZE_MISMATCH`, TrimBox 판정의 목표 도련은 3→1mm 로 완화.
 - 킬스위치 `VALIDATION_BLEED_FROM_TEMPLATE_SET`: 기본 on(재단선 세트는 세트 도련값으로 검증). 정확히 `off` 로 전환하면 종전 3mm 기본값으로 돌아간다. `docker-compose.yml` api environment 에 `VALIDATION_BLEED_FROM_TEMPLATE_SET=${VALIDATION_BLEED_FROM_TEMPLATE_SET:-on}` 매핑이 추가됐다 — `.env` 에 키가 없으면 on 이다. `[FLAGS] api` 줄 키가 17 → **18** 개가 된다(18번째 = 이 키).
 
 ```bash
@@ -1775,7 +1775,7 @@ docker compose build api && docker compose up -d api && docker compose restart n
 docker logs storige-api 2>&1 | grep -E "\[FLAGS\] api |\[FLAGS-CHECK\]" | tail -2
 ```
 
-**롤백**: ⓐ 동작만 되돌리기 — `.env` 에 `VALIDATION_BLEED_FROM_TEMPLATE_SET=off` → `docker compose up -d api` → nginx 재시작(재단선 세트도 종전 3mm). 이때 `FLAGS_EXPECTED_API` 의 토큰을 `VALIDATION_BLEED_FROM_TEMPLATE_SET=false` 로 바꿔야 `[FLAGS-CHECK] api ok n=18` 이 유지된다. ⓑ 코드 롤백 — api 직전 이미지(`rollback-pre-validation-bleed-20261025`)로 되돌리고 `FLAGS_EXPECTED_API` 를 **17 토큰으로 복원**(이 키 제거) → `[FLAGS-CHECK] api ok n=17` 확인.
+**롤백**: ⓐ 동작만 되돌리기 — `.env` 에 `VALIDATION_BLEED_FROM_TEMPLATE_SET=off` → `docker compose up -d api` → nginx 재시작(재단선 세트도 종전 3mm). 이때 `FLAGS_EXPECTED_API` 의 토큰을 `VALIDATION_BLEED_FROM_TEMPLATE_SET=false` 로 바꿔야 `[FLAGS-CHECK] api ok n=18` 이 유지된다. ⓑ 코드 롤백 — `cd ~/storige && docker tag storige-api:rollback-pre-validation-bleed-20261025 storige-api:latest` → `.env` 의 `FLAGS_EXPECTED_API` 를 **17 토큰으로 복원**(이 키 제거) → `docker compose up -d --no-build api` → `docker compose restart nginx` → `[FLAGS-CHECK] api ok n=17` 확인(배포 0단계에서 `docker tag storige-api:latest storige-api:rollback-pre-validation-bleed-20261025` 로 보존해 둔 이미지).
 
 ### 캘린더 날짜 데이터 갱신·릴리스 절차 (T4, 2026-10-24 준비 — 계획 B4·오너 결정 D4)
 
