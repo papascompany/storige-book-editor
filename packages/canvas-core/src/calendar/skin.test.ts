@@ -1,6 +1,6 @@
 /**
  * calendar/skin.test.ts — 캘린더 스킨 병합 순수 함수(설계 C10 §3.3 · §7.1, T7a)
- * + §9 R1 특성 테스트(기존 교체 경로의 속성 손실·예외를 고정 — 스킨 경로는 그 함수를 쓰지 않음).
+ * + §9 R1 특성 테스트(기존 교체 경로의 clone 속성 손실 확인, 교체 경로 수정 뒤 사용자 요소 보존 확인 — 스킨 경로는 그 함수를 쓰지 않음).
  */
 import { describe, it, expect } from 'vitest'
 import { readFileSync } from 'fs'
@@ -582,12 +582,16 @@ describe('R1 특성 — fabric clone 속성 손실·TemplatePlugin.preserveUserE
     for (const [key, value] of Object.entries(customProps)) expect((kept as unknown as Obj)[key]).toEqual(value)
   })
 
-  it('preserveUserElements: 사용자 요소가 1개 이상이면 TypeError(세미콜론 없는 줄 다음 괄호 식이 호출로 이어짐)', async () => {
+  it('preserveUserElements: 사용자 요소를 예외 없이 1벌 복제하고 커스텀 속성을 유지한다', async () => {
     const rect = new fabric.Rect({ width: 10, height: 10 })
+    rect.set(customProps as unknown as Partial<fabric.Rect>)
     ;(rect as unknown as Obj).isUserAdded = true
     const plugin = Object.create(TemplatePlugin.prototype) as { _canvas: unknown; preserveUserElements: () => Promise<unknown[]> }
     plugin._canvas = { getObjects: () => [rect] }
-    await expect(plugin.preserveUserElements()).rejects.toThrow(TypeError)
+    const preserved = await plugin.preserveUserElements()
+    expect(preserved).toHaveLength(1)
+    for (const [key, value] of Object.entries(customProps)) expect((preserved[0] as Obj)[key]).toEqual(value)
+    expect((preserved[0] as Obj).isUserAdded).toBe(true)
     plugin._canvas = { getObjects: () => [] }
     await expect(plugin.preserveUserElements()).resolves.toEqual([])
   })
