@@ -38,7 +38,7 @@ jobs:
       # 저장소 루트 기준 상대 경로. 로컬 대조 실험에서 저장소 안의 사본 디렉터리로 바꿔 돌릴 수 있게 둔다
       LOKI_DIR: docker/loki
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           # 이 잡은 checkout 뒤 git 자격증명을 쓰지 않는다
           persist-credentials: false

@@ -66,12 +66,16 @@ jobs:
       # 액션 메이저는 Node 24 런타임판이다(Node 20 런타임 폐기 경고 해소). pnpm/action-setup 은 v6 이
       # 아니라 v5 다 — v6 은 pnpm 11 로 부트스트랩한 뒤 self-update 하는 구조로 바뀌었고, packageManager
       # 지정 버전을 따르지 않는 미해결 이슈(pnpm/action-setup#225·#227)가 있다. 아래 버전 확인 스텝이 지킨다.
-      - uses: actions/checkout@v7
+      # 액션은 커밋 SHA 로 고정한다(태그는 옮겨질 수 있다). 갱신 시 같은 메이저의 릴리스 태그 SHA 와 주석을 함께 바꾼다.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # 이 잡은 checkout 뒤 git 자격증명을 쓰지 않는다(vercel-ignore-build self-test 도 로컬 clone 만 쓴다)
+          persist-credentials: false
 
-      - uses: pnpm/action-setup@v5
+      - uses: pnpm/action-setup@fc06bc1257f339d1d5d8b3a19a8cae5388b55320 # v5.0.0
         # 버전은 package.json packageManager(pnpm@9.15.0) 에서 자동 해석
 
-      - uses: actions/setup-node@v7
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: 24
           cache: pnpm
@@ -142,7 +146,7 @@ jobs:
         run: pnpm --filter @storige/api openapi:partner
 
       - name: Partner API v1 OpenAPI 아티팩트 업로드
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: openapi-partner
           path: apps/api/openapi-partner.json
@@ -343,7 +347,7 @@ jobs:
         # ⚠️ 이 아티팩트는 **색인 차단본 하나뿐**이다(위 스텝의 env + 순서 고정). 공개 모드
         #    빌드는 검증만 하고 덮어써서 버린다 — 두 벌을 올리면 오너가 어느 쪽이 실릴지
         #    분간할 수 없다.
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: docs-portal-site
           path: apps/docs/site
@@ -357,12 +361,15 @@ jobs:
     runs-on: ${{ inputs.runner || 'ubuntu-24.04' }}
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # 이 잡은 checkout 뒤 git 자격증명을 쓰지 않는다
+          persist-credentials: false
 
-      - uses: pnpm/action-setup@v5
+      - uses: pnpm/action-setup@fc06bc1257f339d1d5d8b3a19a8cae5388b55320 # v5.0.0
         # 버전은 package.json packageManager 에서 자동 해석(v6 을 쓰지 않는 이유는 test 잡 주석)
 
-      - uses: actions/setup-node@v7
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: 24
           cache: pnpm
@@ -396,7 +403,7 @@ jobs:
       - name: Playwright 리포트 업로드
         # 실패 시 진단이 목적이라 성공·실패와 무관하게 남긴다(취소 시만 제외).
         if: ${{ !cancelled() }}
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: embed-e2e-playwright-report
           path: |
@@ -415,15 +422,15 @@ jobs:
     runs-on: ${{ inputs.runner || 'ubuntu-24.04' }}
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           # 이 잡은 checkout 뒤 git 자격증명을 쓰지 않는다
           persist-credentials: false
 
-      - uses: pnpm/action-setup@v5
+      - uses: pnpm/action-setup@fc06bc1257f339d1d5d8b3a19a8cae5388b55320 # v5.0.0
         # 버전은 package.json packageManager 에서 자동 해석(v6 을 쓰지 않는 이유는 test 잡 주석)
 
-      - uses: actions/setup-node@v7
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: 24
           cache: pnpm
