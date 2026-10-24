@@ -72,6 +72,8 @@ describe('TemplateSetsService', () => {
             create: jest.fn().mockReturnValue(mockTemplateSet),
             save: jest.fn().mockResolvedValue(mockTemplateSet),
             findOne: jest.fn().mockResolvedValue(mockTemplateSet),
+            // v1.29 캘린더 스킨 참조 세트 조회(assertCalendarSkinSets)
+            find: jest.fn().mockResolvedValue([]),
             createQueryBuilder: jest.fn().mockReturnValue(mockQueryBuilder),
             manager: {
               createQueryBuilder: jest.fn().mockReturnValue({
@@ -798,6 +800,125 @@ describe('TemplateSetsService', () => {
         'ts.type = :type',
         { type: 'book' }
       );
+    });
+  });
+
+  // ── v1.29 캘린더 스킨(설계 C10): 저장 시 calendar.skins[].templateSetId 참조 세트 사이트 검사 ──
+  describe('캘린더 스킨 참조 세트 사이트 검사 (T7a, v1.29)', () => {
+    const SKIN_SET_MSG = 'calendar.skins[0].templateSetId 는 같은 사이트 또는 공유(사이트 없음) 템플릿셋을 가리켜야 합니다';
+    const calendarProfile = (skins?: Array<Record<string, unknown>>) => ({
+      version: 1,
+      kind: 'calendar',
+      editorType: 'calendar_desk_large',
+      pages: { kind: 'fixed', count: 26, step: 2, protectedIndices: [0, 25], labelRule: 'month' },
+      sheet: { faces: 2, canvasLayout: 'canvas-pair', binding: 'top-ring', pairing: 'offset-next', backRotation: 0, duplexFlip: 'short-edge' },
+      calendar: {
+        layout: 'desk', monthCount: 12, coverCanvases: 1, canvasesPerMonth: 2, epilogueCanvases: 1,
+        allowedRange: { from: '2026-01', to: '2027-12' }, weekStart: 0,
+        show: { holidays: true, lunar: true, solarTerms: true }, dataVersion: 'kr-2025-2035-v1',
+        ...(skins ? { skins } : {}),
+      },
+      output: { mode: 'single-pdf' },
+    }) as any;
+    const skinRef = { key: 'spring', label: '봄', templateSetId: 'skin-set-1' };
+    const createDto = (productProfile: unknown) => ({
+      name: '탁상 캘린더', type: TemplateSetType.LEAFLET, width: 265, height: 190, siteId: 'site-a', productProfile,
+    }) as any;
+    const freshSet = (patch: Partial<TemplateSet> = {}) =>
+      ({ ...mockTemplateSet, id: 'base-set', siteId: 'site-a', productProfile: null, ...patch }) as TemplateSet;
+
+    it('create: 같은 사이트 스킨 세트 → 통과, 소프트 삭제 제외·id/siteId 만 조회', async () => {
+      templateSetRepository.find.mockResolvedValueOnce([{ id: 'skin-set-1', siteId: 'site-a' } as TemplateSet]);
+      await service.create(createDto(calendarProfile([skinRef])));
+      expect(templateSetRepository.find).toHaveBeenCalledTimes(1);
+      const arg = templateSetRepository.find.mock.calls[0][0] as any;
+      expect(arg.where.isDeleted).toBe(false);
+      expect(arg.where.id.value).toEqual(['skin-set-1']);
+      expect(arg.select).toEqual({ id: true, siteId: true });
+      expect(templateSetRepository.save).toHaveBeenCalled();
+    });
+
+    it('create: 공유(siteId null) 스킨 세트 → 통과', async () => {
+      templateSetRepository.find.mockResolvedValueOnce([{ id: 'skin-set-1', siteId: null } as TemplateSet]);
+      await expect(service.create(createDto(calendarProfile([skinRef])))).resolves.toBeDefined();
+      expect(templateSetRepository.save).toHaveBeenCalled();
+    });
+
+    it('create: 다른 사이트 스킨 세트 → 400, 저장 안 함', async () => {
+      templateSetRepository.find.mockResolvedValueOnce([{ id: 'skin-set-1', siteId: 'site-b' } as TemplateSet]);
+      await expect(service.create(createDto(calendarProfile([skinRef])))).rejects.toThrow(new BadRequestException(SKIN_SET_MSG));
+      expect(templateSetRepository.save).not.toHaveBeenCalled();
+    });
+
+    it('create: 없는(또는 삭제된) 스킨 세트 → 같은 문구 400, 저장 안 함', async () => {
+      templateSetRepository.find.mockResolvedValueOnce([]);
+      await expect(service.create(createDto(calendarProfile([skinRef])))).rejects.toThrow(new BadRequestException(SKIN_SET_MSG));
+      expect(templateSetRepository.save).not.toHaveBeenCalled();
+    });
+
+    it('create: 공유 기준 세트(siteId null)는 공유 스킨만 — 사이트 소속 스킨 400', async () => {
+      templateSetRepository.find.mockResolvedValueOnce([{ id: 'skin-set-1', siteId: 'site-a' } as TemplateSet]);
+      await expect(service.create({ ...createDto(calendarProfile([skinRef])), siteId: undefined }))
+        .rejects.toThrow(new BadRequestException(SKIN_SET_MSG));
+    });
+
+    it('create: 두 번째 스킨만 위반 → 그 인덱스 문구', async () => {
+      templateSetRepository.find.mockResolvedValueOnce([
+        { id: 'skin-set-1', siteId: 'site-a' } as TemplateSet,
+        { id: 'skin-set-2', siteId: 'site-b' } as TemplateSet,
+      ]);
+      const profile = calendarProfile([skinRef, { key: 'mono', label: '모노', templateSetId: 'skin-set-2' }]);
+      await expect(service.create(createDto(profile))).rejects.toThrow(
+        new BadRequestException('calendar.skins[1].templateSetId 는 같은 사이트 또는 공유(사이트 없음) 템플릿셋을 가리켜야 합니다'),
+      );
+    });
+
+    it('create: skins 없는 프로파일·프로파일 없음·null → 조회 없음(종전 경로)', async () => {
+      await service.create(createDto(calendarProfile()));
+      await service.create(createDto(undefined));
+      await service.create(createDto(null));
+      expect(templateSetRepository.find).not.toHaveBeenCalled();
+      expect(templateSetRepository.save).toHaveBeenCalledTimes(3);
+    });
+
+    it('update: 프로파일에 다른 사이트 스킨 → 400, 저장 안 함 / 같은 사이트 → 통과', async () => {
+      templateSetRepository.findOne.mockResolvedValueOnce(freshSet());
+      templateSetRepository.find.mockResolvedValueOnce([{ id: 'skin-set-1', siteId: 'site-b' } as TemplateSet]);
+      await expect(service.update('base-set', { productProfile: calendarProfile([skinRef]) } as any))
+        .rejects.toThrow(new BadRequestException(SKIN_SET_MSG));
+      expect(templateSetRepository.save).not.toHaveBeenCalled();
+
+      templateSetRepository.findOne.mockResolvedValueOnce(freshSet());
+      templateSetRepository.find.mockResolvedValueOnce([{ id: 'skin-set-1', siteId: 'site-a' } as TemplateSet]);
+      await service.update('base-set', { productProfile: calendarProfile([skinRef]) } as any);
+      expect(templateSetRepository.save).toHaveBeenCalledTimes(1);
+    });
+
+    it('update: 프로파일과 함께 사이트를 바꾸면 새 사이트 기준으로 검사', async () => {
+      templateSetRepository.findOne.mockResolvedValueOnce(freshSet());
+      templateSetRepository.find.mockResolvedValueOnce([{ id: 'skin-set-1', siteId: 'site-a' } as TemplateSet]);
+      await expect(service.update('base-set', { siteId: 'site-b', productProfile: calendarProfile([skinRef]) } as any))
+        .rejects.toThrow(new BadRequestException(SKIN_SET_MSG));
+    });
+
+    it('update: 프로파일 없이 사이트만 바꾸면 기존 프로파일의 스킨을 새 사이트 기준으로 검사', async () => {
+      templateSetRepository.findOne.mockResolvedValueOnce(freshSet({ productProfile: calendarProfile([skinRef]) }));
+      templateSetRepository.find.mockResolvedValueOnce([{ id: 'skin-set-1', siteId: 'site-a' } as TemplateSet]);
+      await expect(service.update('base-set', { siteId: 'site-b' } as any)).rejects.toThrow(new BadRequestException(SKIN_SET_MSG));
+      expect(templateSetRepository.save).not.toHaveBeenCalled();
+    });
+
+    it('update: skins 없는 저장·프로파일/사이트를 바꾸지 않는 저장 → 조회 없음(종전 경로)', async () => {
+      templateSetRepository.findOne.mockResolvedValueOnce(freshSet({ productProfile: calendarProfile([skinRef]) }));
+      await service.update('base-set', { name: '이름만 변경' } as any);
+      templateSetRepository.findOne.mockResolvedValueOnce(freshSet({ productProfile: calendarProfile([skinRef]) }));
+      await service.update('base-set', { siteId: 'site-a' } as any);
+      templateSetRepository.findOne.mockResolvedValueOnce(freshSet());
+      await service.update('base-set', { productProfile: calendarProfile() } as any);
+      templateSetRepository.findOne.mockResolvedValueOnce(freshSet());
+      await service.update('base-set', { productProfile: null } as any);
+      expect(templateSetRepository.find).not.toHaveBeenCalled();
+      expect(templateSetRepository.save).toHaveBeenCalledTimes(4);
     });
   });
 });

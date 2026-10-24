@@ -6,7 +6,7 @@ import {
   ConflictException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { In, Repository } from 'typeorm';
 import { v4 as uuidv4 } from 'uuid';
 import { TemplateSet, TemplateSetItem } from './entities/template-set.entity';
 import { TemplateSetLibraryCategory } from './entities/template-set-library-category.entity';
@@ -20,7 +20,7 @@ import {
   ReorderTemplatesDto,
 } from './dto/template-set.dto';
 import { EditorMode, validatePrintTemplateAssembly } from '@storige/types';
-import type { TemplateRef, PaginatedResponse } from '@storige/types';
+import type { TemplateRef, PaginatedResponse, ProductProfile } from '@storige/types';
 import {
   applySiteScope,
   assertSiteInScope,
@@ -87,6 +87,9 @@ export class TemplateSetsService {
     const editorMode = dto.editorMode ?? EditorMode.SINGLE;
     // P3b — 사이트 운영자는 자기 site 소유로 강제(시스템 공유 NULL 생성 불가).
     const siteId = scope ? resolveScopedSiteId(scope, dto.siteId) : (dto.siteId ?? null);
+
+    // v1.29 캘린더 스킨 — 참조 세트 사이트 검사(skins 없으면 조회 없음)
+    await this.assertCalendarSkinSets(dto.productProfile, siteId);
 
     // 템플릿 유효성 검사
     if (dto.templates && dto.templates.length > 0) {
@@ -293,6 +296,15 @@ export class TemplateSetsService {
       if (dto.siteId !== undefined) assertSiteInScope(scope, dto.siteId);
     }
 
+    // v1.29 캘린더 스킨 — 프로파일을 바꾸면 새 프로파일을, 사이트만 바꾸면 기존 프로파일을 새 사이트 기준으로 검사
+    // (skins 없으면 조회 없음 — 종전 저장 경로 그대로)
+    const nextSiteId = dto.siteId !== undefined ? (dto.siteId ?? null) : templateSet.siteId;
+    if (dto.productProfile !== undefined) {
+      await this.assertCalendarSkinSets(dto.productProfile, nextSiteId);
+    } else if (nextSiteId !== templateSet.siteId) {
+      await this.assertCalendarSkinSets(templateSet.productProfile, nextSiteId);
+    }
+
     const editorMode = dto.editorMode ?? templateSet.editorMode;
 
     // 템플릿 유효성 검사
@@ -322,6 +334,36 @@ export class TemplateSetsService {
     }
     saved.libraryCategoryIds = await this.loadLibraryCategoryIds(saved.id);
     return saved;
+  }
+
+  /**
+   * 캘린더 스킨(v1.29, 설계 C10) 참조 세트 사이트 검사 — 프로파일 `calendar.skins[].templateSetId` 가 가리키는 세트가
+   * 있고(소프트 삭제 제외) 그 siteId 가 기준 세트와 같거나 null(공유)이어야 한다. 아니면 400.
+   * 없는 세트와 다른 사이트 세트는 같은 문구로 거부한다(세트 존재 여부를 드러내지 않음).
+   * skins 가 없으면 조회하지 않는다. 구조 호환(레이아웃·판형·사진틀 수 등)은 admin·편집기의
+   * `checkCalendarSkinCompatibility` 가 맡는다.
+   */
+  private async assertCalendarSkinSets(
+    profile: ProductProfile | null | undefined,
+    baseSiteId: string | null,
+  ): Promise<void> {
+    const skins = profile?.calendar?.skins;
+    if (!Array.isArray(skins) || skins.length === 0) return;
+    const ids = [...new Set(skins.map((skin) => skin.templateSetId))];
+    const rows = await this.templateSetRepository.find({
+      where: { id: In(ids), isDeleted: false },
+      select: { id: true, siteId: true },
+    });
+    const siteById = new Map<string, string | null>(rows.map((row) => [row.id, row.siteId ?? null]));
+    skins.forEach((skin, i) => {
+      const found = siteById.has(skin.templateSetId);
+      const skinSiteId = siteById.get(skin.templateSetId) ?? null;
+      if (!found || (skinSiteId !== null && skinSiteId !== baseSiteId)) {
+        throw new BadRequestException(
+          `calendar.skins[${i}].templateSetId 는 같은 사이트 또는 공유(사이트 없음) 템플릿셋을 가리켜야 합니다`,
+        );
+      }
+    });
   }
 
   /**
