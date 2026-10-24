@@ -8,6 +8,7 @@ export * from './spine-calc';
 export * from './print-template';
 // 상품별 편집 모드 프로파일 (P1 캘린더, 2026-10-17) — 템플릿셋 product_profile 판정·검증·캔버스 매핑
 export * from './product-profile';
+export * from './print-geometry';
 import type { ProductProfile } from './product-profile';
 
 // ============================================================================
