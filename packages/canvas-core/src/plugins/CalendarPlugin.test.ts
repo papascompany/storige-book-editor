@@ -327,25 +327,59 @@ describe('CalendarPlugin — 임시공휴일·선거일 옵션(show.temporaryHol
   })
 })
 
-/** T3a 'year' variant 추가 전(origin/master 12de30af CalendarPlugin)에서 캡처한 값 — month/mini 렌더 코드가 바뀌면 깨진다 */
+/**
+ * T3a 'year' variant 추가 전(origin/master 12de30af CalendarPlugin)에서 같은 정규화로 캡처한 값 — month/mini 렌더 구조가 바뀌면 깨진다.
+ * 플랫폼 독립: 폰트 메트릭에서 오는 값(텍스트·그룹의 width/height/left/top/scale)은 넣지 않는다(로컬 macOS 와 CI ubuntu 가 같은 값).
+ */
 const BASELINE_SHA256 = {
-  month: '0cd55e2b27731cd218291e3ff8d419e8fa0f177556035da2af72228b5dbad472',
-  monthStyled: 'feabefbaaa84a137ae75a25bb12397a8c642e0cb7f7aaedf0c7347e76e2d67a1',
-  mini: '8b66eefc6cae2c801de338632ab44ebf37185f20b806ca997dbe1da1d0fe07ad',
-  miniNoTitle: 'a17145684fc45e4de48dc77d1323968c5f6144bbda6d6c246af64f80718e9724',
+  month: 'd2eb8d2eb09694e3ce155a7cc93768518b201670d72d41fa4ae93c576c9970c8',
+  monthStyled: '473aae22ffc088c2d155e55be5a15ee9699078fa9566cbfb8237ca106d208938',
+  mini: 'fd23f43f08512b9f05359c80e0f0af3d214b1f53b1d152ee2e65bac051290cb7',
+  miniNoTitle: '0c1fa387edf61f16c65dce9e46db319dc73ac6539d6782328f07e4e330cc0e8f',
 }
 
-describe("CalendarPlugin — 'month'/'mini' 렌더 바이트 고정(T3a 'year' 추가 전 기준값)", () => {
-  /** 고정 ctx·박스로 만든 그리드의 toObject(EXTEND) JSON(무작위 uuid → 'GRID') sha256 */
+/** 숫자는 소수 3자리 반올림(-0 → 0) */
+const r3 = (v: unknown): unknown => (typeof v === 'number' ? Math.round(v * 1000) / 1000 + 0 : v)
+
+type Plain = Record<string, unknown>
+
+/**
+ * 그리드 toObject JSON 을 플랫폼 독립 구조로 정규화한다.
+ * - 공통: type·id·fill·stroke·strokeWidth·opacity·visible 와 extensionType/extension(그룹).
+ * - 텍스트: 내용·fontSize·fontFamily·fontWeight·fontStyle·originX/originY(위치·크기는 폰트 메트릭 의존이라 제외).
+ * - 사각형·선: 격자 분할로 정해지는 left/top/width/height/x1/y1/x2/y2(소수 3자리).
+ * - 그룹: 크기·위치는 자식 경계(텍스트 폭 포함)로 정해지므로 제외하고 자식만 재귀.
+ */
+function normalizeGrid(o: Plain): Plain {
+  const pick = (keys: string[]) => Object.fromEntries(keys.filter((k) => o[k] !== undefined).map((k) => [k, r3(o[k])]))
+  const base = pick(['type', 'id', 'fill', 'stroke', 'strokeWidth', 'opacity', 'visible'])
+  const type = o.type as string
+  if (type === 'group') {
+    return {
+      ...base,
+      ...(o.extensionType !== undefined ? { extensionType: o.extensionType } : {}),
+      ...(o.extension !== undefined ? { extension: o.extension } : {}),
+      objects: ((o.objects as Plain[] | undefined) ?? []).map(normalizeGrid),
+    }
+  }
+  if (type === 'text' || type === 'i-text' || type === 'textbox') {
+    return { ...base, ...pick(['text', 'fontSize', 'fontFamily', 'fontWeight', 'fontStyle', 'originX', 'originY']) }
+  }
+  return { ...base, ...pick(['left', 'top', 'width', 'height', 'x1', 'y1', 'x2', 'y2', 'originX', 'originY']) }
+}
+
+describe("CalendarPlugin — 'month'/'mini' 렌더 구조 고정(플랫폼 독립, T3a 'year' 추가 전 기준값)", () => {
+  /** 고정 ctx·박스로 만든 그리드의 toObject(EXTEND) 를 정규화(무작위 uuid → 'GRID')한 JSON sha256 */
   async function digest(ext: Parameters<CalendarPlugin['createGrid']>[0], over: Partial<CalendarRenderContext> = {}): Promise<string> {
     const plugin = makePlugin(makeCanvas())
     const g = await plugin.createGrid(ext, ctx(over), { left: 10, top: 20, width: 700, height: 520 })
     const id = (g as fabric.Group & { id?: string }).id as string
-    const json = JSON.stringify(g.toObject(core.extendFabricOption as string[])).split(id).join('GRID')
+    const raw = JSON.stringify(g.toObject(core.extendFabricOption as string[])).split(id).join('GRID')
+    const json = JSON.stringify(normalizeGrid(JSON.parse(raw) as Plain))
     return createHash('sha256').update(json).digest('hex')
   }
 
-  it("'month'/'mini' 렌더 바이트 불변 — 고정 ctx·박스의 toObject(EXTEND) JSON(id 치환) sha256 이 변경 전 기준값과 같다", async () => {
+  it("'month'/'mini' 렌더 구조 불변 — 고정 ctx·박스의 정규화 JSON(id 치환) sha256 이 변경 전 기준값과 같다", async () => {
     const got = {
       month: await digest({ variant: 'month' }),
       monthStyled: await digest({ variant: 'month', weekStart: 1, style: { headerLang: 'ko', rows: 'used', fillAdjacent: true, showLines: false, fontSize: 14, colors: { holiday: '#ff0000' } } }, { startMonth: 3, canvasMonthOffset: 4 }),
