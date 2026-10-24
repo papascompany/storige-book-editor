@@ -101,3 +101,15 @@ export interface MonthMatrix {
   /** 실제 날짜가 있는 행 수(4~6) */
   usedRows: number;
 }
+
+/** 연달력(그리드 variant 'year', 설계 C8, v1.26) — 첫 달부터 연속 개월의 월 행렬 */
+export interface YearMatrix {
+  /** 첫 달 */
+  year: number;
+  /** 1~12 */
+  month: number;
+  weekStart: 0 | 1;
+  weekdayOrder: number[];
+  /** 첫 달부터 연속 monthCount(기본 12)개월, 각 원소는 buildMonthMatrix 결과 그대로 */
+  months: MonthMatrix[];
+}

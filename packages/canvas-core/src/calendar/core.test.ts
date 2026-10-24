@@ -5,6 +5,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   buildMonthMatrix,
+  buildYearMatrix,
   daysInMonth,
   formatDateKey,
   getHolidaysForMonth,
@@ -283,6 +284,75 @@ describe('calendar/core — buildMonthMatrix', () => {
     const may = buildMonthMatrix(2025, 5, { weekStart: 0, data });
     expect(byDate(may, '2025-06-03')).toMatchObject({ inMonth: false, isHoliday: false });
     expect(byDate(buildMonthMatrix(2025, 5, { weekStart: 0, data, includeTemporaryHolidays: true }), '2025-06-03')).toMatchObject({ inMonth: false, isHoliday: true, holidayNames: ['대통령선거일'] });
+  });
+});
+
+describe('calendar/core — buildYearMatrix', () => {
+  const ym = (m: { year: number; month: number }) => `${m.year}-${String(m.month).padStart(2, '0')}`;
+  const inMonthCount = (m: ReturnType<typeof buildMonthMatrix>) => m.rows.flat().filter((c) => c.inMonth).length;
+
+  it('(2027,1) → 2027-01~2027-12 연속 12개월, 각 월은 buildMonthMatrix 결과와 같다', () => {
+    const y = buildYearMatrix(2027, 1, { weekStart: 0, data });
+    expect(y).toMatchObject({ year: 2027, month: 1, weekStart: 0, weekdayOrder: [0, 1, 2, 3, 4, 5, 6] });
+    expect(y.months).toHaveLength(12);
+    expect(y.months.map(ym)).toEqual(Array.from({ length: 12 }, (_, i) => `2027-${String(i + 1).padStart(2, '0')}`));
+    y.months.forEach((m, i) => expect(m).toEqual(buildMonthMatrix(2027, i + 1, { weekStart: 0, data })));
+  });
+
+  it('(2027,3) → 2027-03~2028-02 — 연도 경계를 넘긴다', () => {
+    const y = buildYearMatrix(2027, 3, { weekStart: 0, data });
+    expect(y.year).toBe(2027);
+    expect(y.month).toBe(3);
+    expect(y.months.map(ym)).toEqual([
+      '2027-03', '2027-04', '2027-05', '2027-06', '2027-07', '2027-08', '2027-09', '2027-10', '2027-11', '2027-12', '2028-01', '2028-02',
+    ]);
+    expect(y.months[11]).toEqual(buildMonthMatrix(2028, 2, { weekStart: 0, data }));
+  });
+
+  it('윤년 2028: 2월 inMonth 29일, 2027 은 28일; 2028 연간 inMonth 합 366', () => {
+    const y2028 = buildYearMatrix(2028, 1, { weekStart: 0, data });
+    expect(inMonthCount(y2028.months[1])).toBe(29);
+    expect(y2028.months.reduce((n, m) => n + inMonthCount(m), 0)).toBe(366);
+    const y2027 = buildYearMatrix(2027, 1, { weekStart: 0, data });
+    expect(inMonthCount(y2027.months[1])).toBe(28);
+    expect(y2027.months.reduce((n, m) => n + inMonthCount(m), 0)).toBe(365);
+  });
+
+  it('weekStart 0/1: 12개월 모두 weekdayOrder·첫 칸이 weekStart 를 따른다', () => {
+    for (const weekStart of [0, 1] as const) {
+      const y = buildYearMatrix(2027, 1, { weekStart, data });
+      expect(y.weekStart).toBe(weekStart);
+      expect(y.weekdayOrder).toEqual(weekStart === 1 ? [1, 2, 3, 4, 5, 6, 0] : [0, 1, 2, 3, 4, 5, 6]);
+      for (const m of y.months) {
+        expect(m.weekStart).toBe(weekStart);
+        expect(m.weekdayOrder).toEqual(y.weekdayOrder);
+        expect(weekdayOf(m.rows[0][0].date)).toBe(weekStart);
+      }
+    }
+  });
+
+  it('includeTemporaryHolidays 재사용: 2026-06-03 기본 미표시, true 면 휴일', () => {
+    const cell = (y: ReturnType<typeof buildYearMatrix>) => y.months[5].rows.flat().find((c) => c.date === '2026-06-03')!;
+    expect(cell(buildYearMatrix(2026, 1, { weekStart: 0, data })).isHoliday).toBe(false);
+    expect(cell(buildYearMatrix(2026, 1, { weekStart: 0, data, includeTemporaryHolidays: true }))).toMatchObject({ isHoliday: true, holidayNames: ['지방선거일'] });
+  });
+
+  it('데이터 밖 연도(2036) → throw 없이 칸을 채우고 holiday 없음·lunar null', () => {
+    const y = buildYearMatrix(2036, 1, { weekStart: 0, data });
+    expect(y.months).toHaveLength(12);
+    const inMonth = y.months.flatMap((m) => m.rows.flat().filter((c) => c.inMonth));
+    expect(inMonth).toHaveLength(366); // 2036 윤년
+    for (const c of inMonth) {
+      expect(c.isHoliday).toBe(false);
+      expect(c.solarTerm).toBeNull();
+    }
+    expect(inMonth.filter((c) => c.date >= '2036-03-01').every((c) => c.lunar === null)).toBe(true);
+  });
+
+  it('monthCount 인자(확장용, 기본 12): 16·24개월도 연속으로 만든다', () => {
+    expect(buildYearMatrix(2027, 1, { weekStart: 0, data }, 16).months.map(ym).at(-1)).toBe('2028-04');
+    expect(buildYearMatrix(2027, 3, { weekStart: 0, data }, 24).months.map(ym).at(-1)).toBe('2029-02');
+    expect(buildYearMatrix(2027, 1, { weekStart: 0, data }, 0).months).toHaveLength(12);
   });
 });
 

@@ -11,6 +11,7 @@
 //  (3) rehydrate: 같은 id·중심·scale·angle·z-order·잠금 속성(lockInfo 포함)을 유지한 채 새 시작연월로 다시 그린다
 //  (4) toJSON(extendFabricOption) → loadFromJSON 왕복 뒤에도 그룹의 extensionType/extension 이 남고 rehydrate 가 동작한다
 //  (5) hitTestDate: 날짜 칸 중심 → 'YYYY-MM-DD', 제목 영역 → null
+import { createHash } from 'node:crypto'
 import { describe, it, expect, vi } from 'vitest'
 import { fabric } from 'fabric'
 import { core } from '../utils/canvas'
@@ -18,11 +19,24 @@ import CalendarPlugin, { CALENDAR_GRID_EXTENSION_TYPE, type CalendarRenderContex
 import type Editor from '../Editor'
 import type { CalendarData, MonthCell, MonthMatrix } from '../calendar/types'
 
-const { buildCalls } = vi.hoisted(() => ({ buildCalls: [] as Array<{ year: number; month: number; includeTemporaryHolidays?: boolean }> }))
+const { buildCalls, yearCalls } = vi.hoisted(() => ({
+  buildCalls: [] as Array<{ year: number; month: number; includeTemporaryHolidays?: boolean }>,
+  yearCalls: [] as Array<{ year: number; month: number; weekStart: 0 | 1; monthCount?: number; includeTemporaryHolidays?: boolean; anniversaries?: unknown[] }>,
+}))
 vi.mock('../calendar/core', () => ({
   buildMonthMatrix: (year: number, month: number, opts: { weekStart: 0 | 1; includeTemporaryHolidays?: boolean }) => {
     buildCalls.push({ year, month, includeTemporaryHolidays: opts.includeTemporaryHolidays })
     return synthMatrix(year, month, opts.weekStart)
+  },
+  // 연달력: 실제 buildYearMatrix 와 같은 형태(연속 월의 synthMatrix) — 데이터 정확성은 core.test.ts 가 담당
+  buildYearMatrix: (year: number, month: number, opts: { weekStart: 0 | 1; includeTemporaryHolidays?: boolean; anniversaries?: unknown[] }, monthCount = 12) => {
+    yearCalls.push({ year, month, weekStart: opts.weekStart, monthCount, includeTemporaryHolidays: opts.includeTemporaryHolidays, anniversaries: opts.anniversaries })
+    const months: MonthMatrix[] = []
+    for (let k = 0; k < monthCount; k += 1) {
+      const idx = year * 12 + (month - 1) + k
+      months.push(synthMatrix(Math.floor(idx / 12), (idx % 12) + 1, opts.weekStart))
+    }
+    return { year, month, weekStart: opts.weekStart, weekdayOrder: months[0].weekdayOrder, months }
   },
 }))
 
@@ -310,5 +324,270 @@ describe('CalendarPlugin — 임시공휴일·선거일 옵션(show.temporaryHol
     buildCalls.length = 0
     expect(await plugin.rehydrate(ctx())).toBe(1)
     expect(buildCalls).toEqual([{ year: 2027, month: 1, includeTemporaryHolidays: false }])
+  })
+})
+
+/** T3a 'year' variant 추가 전(origin/master 12de30af CalendarPlugin)에서 캡처한 값 — month/mini 렌더 코드가 바뀌면 깨진다 */
+const BASELINE_SHA256 = {
+  month: '0cd55e2b27731cd218291e3ff8d419e8fa0f177556035da2af72228b5dbad472',
+  monthStyled: 'feabefbaaa84a137ae75a25bb12397a8c642e0cb7f7aaedf0c7347e76e2d67a1',
+  mini: '8b66eefc6cae2c801de338632ab44ebf37185f20b806ca997dbe1da1d0fe07ad',
+  miniNoTitle: 'a17145684fc45e4de48dc77d1323968c5f6144bbda6d6c246af64f80718e9724',
+}
+
+describe("CalendarPlugin — 'month'/'mini' 렌더 바이트 고정(T3a 'year' 추가 전 기준값)", () => {
+  /** 고정 ctx·박스로 만든 그리드의 toObject(EXTEND) JSON(무작위 uuid → 'GRID') sha256 */
+  async function digest(ext: Parameters<CalendarPlugin['createGrid']>[0], over: Partial<CalendarRenderContext> = {}): Promise<string> {
+    const plugin = makePlugin(makeCanvas())
+    const g = await plugin.createGrid(ext, ctx(over), { left: 10, top: 20, width: 700, height: 520 })
+    const id = (g as fabric.Group & { id?: string }).id as string
+    const json = JSON.stringify(g.toObject(core.extendFabricOption as string[])).split(id).join('GRID')
+    return createHash('sha256').update(json).digest('hex')
+  }
+
+  it("'month'/'mini' 렌더 바이트 불변 — 고정 ctx·박스의 toObject(EXTEND) JSON(id 치환) sha256 이 변경 전 기준값과 같다", async () => {
+    const got = {
+      month: await digest({ variant: 'month' }),
+      monthStyled: await digest({ variant: 'month', weekStart: 1, style: { headerLang: 'ko', rows: 'used', fillAdjacent: true, showLines: false, fontSize: 14, colors: { holiday: '#ff0000' } } }, { startMonth: 3, canvasMonthOffset: 4 }),
+      mini: await digest({ variant: 'mini', monthDelta: -1 }),
+      miniNoTitle: await digest({ variant: 'mini', monthDelta: 1, style: { showTitle: false, showLines: true } }, { canvasMonthOffset: null }),
+    }
+    expect(got).toEqual(BASELINE_SHA256)
+  })
+})
+
+describe("CalendarPlugin — 연달력 variant 'year' (T3a)", () => {
+  type Obj = fabric.Object & { id?: string }
+  const box = { left: 0, top: 0, width: 1200, height: 900 }
+  const idOf = (g: fabric.Object) => (g as Obj).id as string
+  const childIds = (g: fabric.Group) => g.getObjects().map((o) => (o as Obj).id ?? '')
+  const child = (g: fabric.Group, suffix: string) => g.getObjects().find((o) => (o as Obj).id === `${idOf(g)}${suffix}`) as fabric.Text | undefined
+  /** '-m{k}-title' 소제목 텍스트 12개 */
+  const monthTitles = (g: fabric.Group) => Array.from({ length: 12 }, (_, k) => child(g, `-m${k}-title`)?.text)
+  /** 날짜 자식 id 의 'YYYY-MM-DD' 목록 */
+  const dates = (g: fabric.Group) => childIds(g).map((i) => /-m\d+-d-(\d{4}-\d{2}-\d{2})$/.exec(i)?.[1]).filter((d): d is string => !!d)
+
+  it("createGrid({variant:'year'}) — 월 소제목 12개·inMonth 날짜 365(2027)·기본 잠금·extension 보존", async () => {
+    const plugin = makePlugin(makeCanvas())
+    const ext = { variant: 'year' as const, yearDelta: 0, style: { fontFamily: 'Pretendard', headerLang: 'en' as const, showTitle: true, showLines: false } }
+    const g = await plugin.createGrid(ext, ctx(), box)
+    const gg = g as fabric.Group & Record<string, unknown>
+    expect(gg.extensionType).toBe(CALENDAR_GRID_EXTENSION_TYPE)
+    expect(gg.extension).toEqual(ext)
+    expect(g.width).toBeCloseTo(1200, 3)
+    expect(g.height).toBeCloseTo(900, 3)
+    expect(monthTitles(g)).toEqual(['1', '2', '3', '4', '5', '6', '7', '8', '9', '10', '11', '12'])
+    const d = dates(g)
+    expect(d).toHaveLength(365)
+    expect(new Set(d).size).toBe(365)
+    expect(d[0]).toBe('2027-01-01')
+    expect(d.at(-1)).toBe('2027-12-31')
+    expect(child(g, '-title')?.text).toBe('2027')
+    expect(child(g, '-bounds')?.fill).toBe('')
+    // 요일 헤더 12×7(en 1글자), 공휴일명·음력·절기 문구 없음
+    expect(childIds(g).filter((i) => /-m\d+-wd-\d$/.test(i))).toHaveLength(84)
+    expect(child(g, '-m0-wd-0')?.text).toBe('S')
+    expect(texts(g)).not.toContain('테스트휴일')
+    expect(childIds(g).some((i) => i.includes('-n-'))).toBe(false)
+    expect(gg.movable).toBe(false)
+    expect(gg.deleteable).toBe(false)
+    expect(gg.contentEditable).toBe(false)
+    expect(g.lockMovementX).toBe(true)
+    // 기념일은 넘기지 않는다
+    expect(yearCalls.at(-1)?.anniversaries).toEqual([])
+    expect(yearCalls.at(-1)?.monthCount).toBe(12)
+  })
+
+  it("span: ctx.yearSpan 생략 = DEFAULT, 'calendar-year' 는 1~12월, 'start-span' 은 시작연월부터(2027-03 → 2028-02)", async () => {
+    const plugin = makePlugin(makeCanvas())
+    const ext = { variant: 'year' as const }
+    // 생략 + 1월 시작 = 기준 연도(DEFAULT_CALENDAR_YEAR_SPAN 'calendar-year')
+    const defJan = await plugin.createGrid(ext, ctx(), box)
+    expect(dates(defJan)[0]).toBe('2027-01-01')
+    expect(child(defJan, '-title')?.text).toBe('2027')
+    // 생략 + 시작연월 변경(3월) = 선택한 월부터 12개월(오너 답 Q1)
+    const defMar = await plugin.createGrid(ext, ctx({ startMonth: 3 }), box)
+    expect(dates(defMar)[0]).toBe('2027-03-01')
+    expect(dates(defMar).at(-1)).toBe('2028-02-29')
+    expect(child(defMar, '-title')?.text).toBe('2027.3 – 2028.2')
+    // 명시 calendar-year 는 시작연월과 무관하게 1~12월
+    const cy = await plugin.createGrid(ext, ctx({ startMonth: 3, yearSpan: 'calendar-year' }), box)
+    expect(dates(cy)[0]).toBe('2027-01-01')
+    expect(dates(cy).at(-1)).toBe('2027-12-31')
+    expect(child(cy, '-title')?.text).toBe('2027')
+    // 명시 start-span
+    const ss = await plugin.createGrid(ext, ctx({ startMonth: 3, yearSpan: 'start-span' }), box)
+    expect(monthTitles(ss)).toEqual(['3', '4', '5', '6', '7', '8', '9', '10', '11', '12', '1', '2'])
+    expect(dates(ss)[0]).toBe('2027-03-01')
+    expect(dates(ss).at(-1)).toBe('2028-02-29')
+  })
+
+  it('yearDelta: ext 1 → 다음 해, ctx.yearDelta 가 ext 보다 우선, 비정수는 0; monthOffset·monthDelta·canvasMonthOffset 무시', async () => {
+    const plugin = makePlugin(makeCanvas())
+    const first = async (ext: Parameters<CalendarPlugin['createGrid']>[0], over: Partial<CalendarRenderContext> = {}) =>
+      dates(await plugin.createGrid(ext, ctx(over), box))[0]
+    expect(await first({ variant: 'year', yearDelta: 1 })).toBe('2028-01-01')
+    expect(await first({ variant: 'year', yearDelta: 1 }, { yearDelta: -1 })).toBe('2026-01-01')
+    expect(await first({ variant: 'year', yearDelta: 1 }, { yearDelta: 0 })).toBe('2027-01-01')
+    expect(await first({ variant: 'year', yearDelta: 1 }, { yearDelta: 0.5 })).toBe('2028-01-01') // ctx 비정수 → ext
+    expect(await first({ variant: 'year', yearDelta: 1.5 })).toBe('2027-01-01') // ext 비정수 → 0
+    expect(await first({ variant: 'year', yearDelta: 1 }, { startMonth: 3 })).toBe('2028-03-01') // 기본 규칙 start-span +12개월
+    expect(await first({ variant: 'year', monthOffset: 5, monthDelta: 2 }, { canvasMonthOffset: 7 })).toBe('2027-01-01')
+  })
+
+  it("윤년: calendar-year 2028 은 '-d-2028-02-29' 자식이 있고 2027 은 없다", async () => {
+    const plugin = makePlugin(makeCanvas())
+    const y2028 = await plugin.createGrid({ variant: 'year', yearDelta: 1 }, ctx(), box)
+    expect(childIds(y2028)).toContain(`${idOf(y2028)}-m1-d-2028-02-29`)
+    expect(dates(y2028)).toHaveLength(366)
+    const y2027 = await plugin.createGrid({ variant: 'year' }, ctx(), box)
+    expect(dates(y2027).some((d) => d === '2027-02-29' || d.startsWith('2028-02-29'))).toBe(false)
+    expect(dates(y2027).filter((d) => d.startsWith('2027-02-'))).toHaveLength(28)
+  })
+
+  it('weekStart 1 → 각 월 헤더가 월요일부터, headerLang ko 면 한글', async () => {
+    const plugin = makePlugin(makeCanvas())
+    const g = await plugin.createGrid({ variant: 'year', weekStart: 1, style: { headerLang: 'ko' } }, ctx(), box)
+    for (let k = 0; k < 12; k += 1) {
+      expect(Array.from({ length: 7 }, (_, c) => child(g, `-m${k}-wd-${c}`)?.text)).toEqual(['월', '화', '수', '목', '금', '토', '일'])
+    }
+    expect(yearCalls.at(-1)?.weekStart).toBe(1)
+    const en = await plugin.createGrid({ variant: 'year' }, ctx({ weekStart: 1 }), box)
+    expect(Array.from({ length: 7 }, (_, c) => child(en, `-m0-wd-${c}`)?.text)).toEqual(['M', 'T', 'W', 'T', 'F', 'S', 'S'])
+  })
+
+  it('style 재사용: showTitle false 면 제목 없음, showLines 기본 false·true 면 선 생성, 공휴일 색 = colors.holiday', async () => {
+    const plugin = makePlugin(makeCanvas())
+    const plain = await plugin.createGrid({ variant: 'year' }, ctx(), box)
+    expect(childIds(plain).some((i) => i.includes('-yl-'))).toBe(false)
+    const noTitle = await plugin.createGrid({ variant: 'year', style: { showTitle: false } }, ctx(), box)
+    expect(child(noTitle, '-title')).toBeUndefined()
+    // 고객 연도 제목 옵션(show.yearTitle, v1.26): false 면 숨김, 템플릿 showTitle=false 면 true 여도 숨김
+    const custOff = await plugin.createGrid({ variant: 'year' }, ctx({ show: { holidays: true, lunar: true, solarTerms: true, yearTitle: false } }), box)
+    expect(child(custOff, '-title')).toBeUndefined()
+    const custOn = await plugin.createGrid({ variant: 'year', style: { showTitle: false } }, ctx({ show: { holidays: true, lunar: true, solarTerms: true, yearTitle: true } }), box)
+    expect(child(custOn, '-title')).toBeUndefined()
+    const extOn = await plugin.createGrid({ variant: 'year', show: { yearTitle: true } }, ctx({ show: { holidays: true, lunar: true, solarTerms: true, yearTitle: false } }), box)
+    expect(child(extOn, '-title')?.text).toBe('2027')
+    // 선: 박스 안(클램프)
+    const lined = await plugin.createGrid({ variant: 'year', style: { showLines: true, colors: { holiday: '#ff00aa', line: '#123456' } } }, ctx(), box)
+    const lines = lined.getObjects().filter((o) => ((o as Obj).id ?? '').includes('-yl-'))
+    expect(lines.length).toBe(12 * (7 + 8))
+    expect(lined.width).toBeCloseTo(1200, 3)
+    expect(lined.height).toBeCloseTo(900, 3)
+    // synthMatrix 는 매월 1일이 휴일 — 2027-01-01(금) 은 holiday 색, 2027-01-03(일) 은 sunday 색
+    expect(child(lined, '-m0-d-2027-01-01')?.fill).toBe('#ff00aa')
+    expect(child(lined, '-m0-d-2027-01-03')?.fill).toBe('#d93025')
+    expect(child(lined, '-m0-d-2027-01-02')?.fill).toBe('#1a56db')
+    // show.holidays false 면 휴일 색 없음
+    const noHol = await plugin.createGrid({ variant: 'year', show: { holidays: false } }, ctx(), box)
+    expect(child(noHol, '-m0-d-2027-01-01')?.fill).toBe('#222222')
+    // 임시공휴일 옵션은 buildYearMatrix 로 전달
+    await plugin.createGrid({ variant: 'year' }, ctx({ show: { holidays: true, lunar: true, solarTerms: true, temporaryHolidays: true } }), box)
+    expect(yearCalls.at(-1)?.includeTemporaryHolidays).toBe(true)
+    // rows 'used' — 12개월 중 최대 usedRows 만큼(2027 은 6행 달 있음) / fillAdjacent 면 인접 월 날짜도 채운다
+    const adj = await plugin.createGrid({ variant: 'year', style: { fillAdjacent: true } }, ctx(), box)
+    expect(dates(adj).length).toBe(12 * 42)
+  })
+
+  it('배열: 박스 비율에 따라 6×2·4×3·3×4·2×6 — 월 소제목 위치로 확인', async () => {
+    const plugin = makePlugin(makeCanvas())
+    const colsOf = async (width: number, height: number) => {
+      const g = await plugin.createGrid({ variant: 'year' }, ctx(), { left: 0, top: 0, width, height })
+      const tops = monthTitles(g).map((_, k) => Math.round((child(g, `-m${k}-title`)?.top ?? 0) * 1000))
+      return tops.filter((t) => t === tops[0]).length
+    }
+    expect(await colsOf(1200, 500)).toBe(6)
+    expect(await colsOf(1000, 900)).toBe(4)
+    expect(await colsOf(600, 1000)).toBe(3)
+    expect(await colsOf(400, 1000)).toBe(2)
+  })
+
+  it("hitTestDate 는 'year' 그리드에서 항상 null(기념일 폼 대상 아님)", async () => {
+    const canvas = makeCanvas()
+    const plugin = makePlugin(canvas)
+    const g = await plugin.createGrid({ variant: 'year' }, ctx(), box)
+    canvas.add(g)
+    const day = child(g, '-m0-d-2027-01-15') as fabric.Text
+    const p = fabric.util.transformPoint(new fabric.Point(day.left ?? 0, day.top ?? 0), g.calcTransformMatrix())
+    expect(plugin.hitTestDate(g, p)).toBeNull()
+    expect(plugin.hitTestDate(g, { x: 600, y: 450 })).toBeNull()
+    // 같은 id 가 month 였다가 'year' 로 다시 그려져도 남은 레이아웃이 없다
+    const m = await plugin.createGrid({ variant: 'month' }, ctx(), { left: 0, top: 0, width: 700, height: 600 })
+    canvas.add(m)
+    ;(m as fabric.Group & { extension: unknown }).extension = { variant: 'year' }
+    expect(await plugin.rehydrate(ctx())).toBe(2)
+    const redrawn = canvas.getObjects().find((o) => (o as Obj).id === idOf(m)) as fabric.Group
+    expect(plugin.hitTestDate(redrawn, { x: 550, y: 187.5 })).toBeNull()
+  })
+
+  it("rehydrate: 'year' 그리드도 같은 id·중심·잠금·z-order 로 새 시작연도에 맞춰 다시 그린다", async () => {
+    const canvas = makeCanvas()
+    const plugin = makePlugin(canvas)
+    const photo = new fabric.Rect({ left: 0, top: 0, width: 50, height: 50, id: 'photo' } as fabric.IRectOptions)
+    const g = await plugin.createGrid({ variant: 'year', yearDelta: 1 }, ctx(), { left: 100, top: 100, width: 800, height: 600 })
+    const gg = g as fabric.Group & Record<string, unknown>
+    gg.lockInfo = { isLocked: true, lockLevel: 'position' }
+    const after = new fabric.Rect({ left: 0, top: 0, width: 10, height: 10, id: 'after' } as fabric.IRectOptions)
+    canvas.add(photo, g, after)
+    const centerBefore = g.getCenterPoint()
+    const id = idOf(g)
+    expect(await plugin.rehydrate(ctx({ startYear: 2030, startMonth: 1 }))).toBe(1)
+    const objs = canvas.getObjects()
+    expect(objs.map((o) => (o as Obj).id)).toEqual(['photo', id, 'after'])
+    const next = objs[1] as fabric.Group & Record<string, unknown>
+    expect(next).not.toBe(g)
+    expect(next.lockInfo).toEqual({ isLocked: true, lockLevel: 'position' })
+    expect(next.movable).toBe(false)
+    expect(next.getCenterPoint().x).toBeCloseTo(centerBefore.x, 3)
+    expect(next.getCenterPoint().y).toBeCloseTo(centerBefore.y, 3)
+    expect(next.width).toBeCloseTo(800, 3)
+    expect(next.height).toBeCloseTo(600, 3)
+    expect(dates(next)[0]).toBe('2031-01-01') // 2030 + yearDelta 1
+    expect(child(next, '-title')?.text).toBe('2031')
+    // 고객 선택(ctx.yearDelta)·기간 정책(ctx.yearSpan)으로 다시 그리기
+    expect(await plugin.rehydrate(ctx({ startYear: 2030, startMonth: 4, yearDelta: 0, yearSpan: 'start-span' }))).toBe(1)
+    const again = canvas.getObjects()[1] as fabric.Group
+    expect(dates(again)[0]).toBe('2030-04-01')
+    expect(next.width).toBeCloseTo(800, 3)
+  })
+
+  it("직렬화 왕복: toJSON(extendFabricOption) → loadFromJSON 뒤 extension {variant:'year', yearDelta} 유지 + rehydrate 동작", async () => {
+    const c1 = makeCanvas()
+    const plugin1 = makePlugin(c1)
+    const ext = { variant: 'year' as const, yearDelta: 1, style: { fontFamily: 'Pretendard', showLines: false } }
+    c1.add(await plugin1.createGrid(ext, ctx(), { left: 20, top: 30, width: 900, height: 600 }))
+    const wire = JSON.parse(JSON.stringify(c1.toJSON(core.extendFabricOption as string[])))
+    const c2 = makeCanvas()
+    await core.loadFromJSON(c2, wire)
+    const restored = c2.getObjects()[0] as fabric.Group & Record<string, unknown>
+    expect(restored.extensionType).toBe(CALENDAR_GRID_EXTENSION_TYPE)
+    expect(restored.extension).toEqual(ext)
+    expect(restored.deleteable).toBe(false)
+    const plugin2 = makePlugin(c2)
+    expect(await plugin2.rehydrate(ctx({ startYear: 2029, startMonth: 1 }))).toBe(1)
+    const next = c2.getObjects()[0] as fabric.Group & Record<string, unknown>
+    expect(next.id).toBe(restored.id)
+    expect(next.extension).toEqual(ext)
+    expect(dates(next)[0]).toBe('2030-01-01')
+    expect(next.width).toBeCloseTo(900, 3)
+  })
+
+  it("미지 variant('decade')·extension 없음은 rehydrate 가 건너뛰고 크래시 없음 — 객체·자식 그대로, 반환 수에 미포함", async () => {
+    const canvas = makeCanvas()
+    const plugin = makePlugin(canvas)
+    const known = await plugin.createGrid({ variant: 'month' }, ctx(), { left: 0, top: 0, width: 400, height: 300 })
+    const unknown = await plugin.createGrid({ variant: 'month' }, ctx(), { left: 0, top: 0, width: 400, height: 300 })
+    ;(unknown as fabric.Group & { extension: unknown }).extension = { variant: 'decade', yearDelta: 0 }
+    const bare = await plugin.createGrid({ variant: 'month' }, ctx(), { left: 0, top: 0, width: 400, height: 300 })
+    delete (bare as fabric.Group & { extension?: unknown }).extension
+    canvas.add(known, unknown, bare)
+    const unknownChildren = unknown.getObjects().length
+    expect(await plugin.rehydrate(ctx({ startYear: 2028 }))).toBe(1)
+    const objs = canvas.getObjects()
+    expect(objs[1]).toBe(unknown)
+    expect(objs[2]).toBe(bare)
+    expect(unknown.getObjects().length).toBe(unknownChildren)
+    expect((unknown as fabric.Group & { extension: unknown }).extension).toEqual({ variant: 'decade', yearDelta: 0 })
   })
 })

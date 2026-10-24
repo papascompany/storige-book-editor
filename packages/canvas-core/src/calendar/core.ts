@@ -17,7 +17,9 @@ import type {
   LunarMonthInfo,
   MonthCell,
   MonthMatrix,
+  YearMatrix,
 } from './types';
+import { CALENDAR_YEAR_MONTH_COUNT } from '@storige/types';
 
 const DATE_KEY_RE = /^(\d{4})-(\d{2})-(\d{2})$/;
 const MS_PER_DAY = 86400000;
@@ -283,4 +285,26 @@ export function buildMonthMatrix(year: number, month: number, opts: BuildMonthMa
   }
 
   return { year, month, weekStart, weekdayOrder, rows, usedRows };
+}
+
+/**
+ * (year, month) 부터 연속 `monthCount`(기본 CALENDAR_YEAR_MONTH_COUNT=12)개월. 연도 경계는 월 인덱스 산술로 넘긴다.
+ * 윤년·weekStart·공휴일(temporary 옵션)·음력·기념일은 buildMonthMatrix 재사용 — 데이터 밖 연도도 throw 없이 칸을 채운다.
+ */
+export function buildYearMatrix(
+  year: number,
+  month: number,
+  opts: BuildMonthMatrixOptions,
+  monthCount: number = CALENDAR_YEAR_MONTH_COUNT,
+): YearMatrix {
+  const weekStart: 0 | 1 = opts.weekStart === 1 ? 1 : 0;
+  const count = Number.isInteger(monthCount) && monthCount > 0 ? monthCount : CALENDAR_YEAR_MONTH_COUNT;
+  const base = year * 12 + (month - 1);
+  const months: MonthMatrix[] = [];
+  for (let k = 0; k < count; k++) {
+    const idx = base + k;
+    months.push(buildMonthMatrix(Math.floor(idx / 12), (idx % 12 + 12) % 12 + 1, { ...opts, weekStart }));
+  }
+  const first = months[0];
+  return { year: first.year, month: first.month, weekStart, weekdayOrder: [...first.weekdayOrder], months };
 }
