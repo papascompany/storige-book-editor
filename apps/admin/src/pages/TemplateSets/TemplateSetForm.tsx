@@ -890,10 +890,10 @@ export const TemplateSetForm = () => {
   );
   const bleedOn = specWatch?.cropMarkEnabled === true;
   // 불러온 저장값(폼 로드와 같은 기본값 규칙) — 범위 밖이어도 그대로면 저장 전 검사를 통과한다.
-  const loadedBleedMm: number | undefined = templateSet ? ((templateSet as any).bleedMm ?? 3) : undefined;
-  const loadedSizeToleranceMm: number | undefined = templateSet
-    ? ((templateSet as any).sizeToleranceMm ?? 0.2)
-    : undefined;
+  // 공유 TemplateSet 타입에 아직 없는 규격 필드(api 엔티티에만 존재)를 좁은 부분형으로 읽는다.
+  const loadedSpec = templateSet as { bleedMm?: number | null; sizeToleranceMm?: number | null } | undefined;
+  const loadedBleedMm: number | undefined = loadedSpec ? (loadedSpec.bleedMm ?? 3) : undefined;
+  const loadedSizeToleranceMm: number | undefined = loadedSpec ? (loadedSpec.sizeToleranceMm ?? 0.2) : undefined;
   // 「있음 → 없음」으로 바꿀 때의 도련 값 — 다시 「있음」으로 돌아오면 이 값을 쓴다.
   const rememberedBleedMmRef = useRef<number | undefined>(undefined);
   const templateDetails = useMemo(() => templates.map((t) => t.template), [templates]);
