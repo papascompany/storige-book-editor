@@ -287,12 +287,13 @@ describe('EmbeddedEditor — editor.complete product (P1-d 캘린더)', () => {
       canvasData: canvasDataOf(26),
       metadata: { productProfile: calendarProfile, calendar: expectedCalendarMeta },
     })
-    // 프로파일 세트 전용 PDF export 옵션(2026-10-17): 8번째 인자로 세 옵션 true, 7번째(onProgress) 는 종전대로 미전달
+    // 프로파일 세트 전용 PDF export 옵션(2026-10-17): 8번째 인자로 세 옵션 true.
+    // 7번째(onProgress)는 B10(2026-10-25)부터 편집완료 진행 표시용 콜백(출력 무영향, 진행 보고 전용)
     expect(saveMultiPagePDFAsBlob).toHaveBeenCalledTimes(1)
     const pdfArgs = saveMultiPagePDFAsBlob.mock.calls[0] as unknown[]
     expect(pdfArgs[4]).toBeUndefined()
     expect(pdfArgs[5]).toBe(300)
-    expect(pdfArgs[6]).toBeUndefined()
+    expect(typeof pdfArgs[6]).toBe('function')
     expect(pdfArgs[7]).toEqual({ omitUnusedFonts: true, excludeWorkspaceFromExport: true, neutralizeTransparentFills: true })
   })
 

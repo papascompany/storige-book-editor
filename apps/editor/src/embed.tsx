@@ -91,6 +91,7 @@ import { WorkspaceModal } from './components/modals'
 import { RestoreBackupBanner } from './components/RestoreBackupBanner'
 import ObjectDeleteConfirm from './components/editor/ObjectDeleteConfirm'
 import { EditorWorkflowControls } from './components/editor/EditorWorkflowControls'
+import FinishProgressOverlay, { useFinishLeaveGuard, type FinishProgress } from './components/FinishProgressOverlay'
 import { Sentry } from './lib/sentry'
 import { ensureSeatExistingContentPdf, UNDERLAY_MAX_PAGES } from './utils/contentPdfGuide'
 import {
@@ -801,6 +802,11 @@ function EmbeddedEditor({
   const [screenMode, setScreenMode] = useState<'mobile' | 'tablet' | 'desktop'>('desktop')
   const [isLoading, setIsLoading] = useState(true)
   const [loadingMessage, setLoadingMessage] = useState('에디터를 초기화하는 중...')
+  // B10 (2026-10-25): 편집완료 진행 단계·캔버스 진행 수. null = 편집완료 진행 중 아님(finally 에서 null).
+  const [finishProgress, setFinishProgress] = useState<FinishProgress | null>(null)
+  // B10: 편집완료 진행 중 beforeunload 경고 — 시작 시 등록, editor.complete / editor.error 발신 직전 해제
+  // (완료 이벤트를 받은 호스트의 즉시 이동에 경고가 뜨지 않게 동기 해제), finally·언마운트에서도 해제.
+  const finishLeaveGuard = useFinishLeaveGuard()
   const [error, setError] = useState<string | null>(null)
   /** 오류 화면 분기용 코드 — SESSION_NOT_FOUND 는 전용 중단 화면(돌아가기)을 쓴다. null = 기존 화면 */
   const [errorCode, setErrorCode] = useState<EditorError['code'] | null>(null)
@@ -2688,6 +2694,8 @@ function EmbeddedEditor({
       orderSeqno ?? (currentSession?.orderSeqno != null ? Number(currentSession.orderSeqno) : undefined)
 
     setIsLoading(true)
+    setFinishProgress({ stage: 'save' })
+    finishLeaveGuard.arm()
     try {
       setLoadingMessage('작업을 저장하는 중...')
 
@@ -2723,6 +2731,7 @@ function EmbeddedEditor({
           files: {},
           savedAt: new Date().toISOString(),
         }
+        finishLeaveGuard.disarm()
         onComplete?.(guestResult)
         postToParent(parentOrigin, 'editor.complete', guestResult)
         // 하위호환: editor.needAuth도 유지
@@ -2752,6 +2761,7 @@ function EmbeddedEditor({
       // Generate PDF
       try {
         setLoadingMessage('PDF를 생성하는 중...')
+        setFinishProgress({ stage: 'generate' })
         const bleed = options?.bleed ?? 3
 
         // P3 (2026-06-10): 작업사이즈(재단+블리드)+코너마커+TrimBox 출력 게이팅.
@@ -2776,6 +2786,9 @@ function EmbeddedEditor({
           const isInnerOnlySpread = spreadCfg?.regionScope === 'inner'
           const { innerCanvases } = splitSpreadOutputCanvases(allCanvas, spreadCfg)
           const { innerCanvases: innerEditors } = splitSpreadOutputCanvases(allEditors, spreadCfg)
+          // B10: 진행 수 = 표지(표지 있는 세트만 1장) + 내지 캔버스 — ServicePlugin onProgress 로 갱신
+          const spreadCoverCount = isInnerOnlySpread ? 0 : 1
+          const spreadGenTotal = spreadCoverCount + innerCanvases.length
           // ⚠️ 스프레드 내지 페이지 에디터는 addInnerPage 에서 WorkspacePlugin 만 등록되어
           //   ServicePlugin 이 없다. saveMultiPagePDFAsBlob 은 this._editor(=표지) 의 FontPlugin 을
           //   쓰고 전달된 canvases 를 순회하므로, 표지 ServicePlugin 으로 내지 PDF 도 생성한다.
@@ -2828,6 +2841,7 @@ function EmbeddedEditor({
                     [allCanvas[0]] as any, [allEditors[0]], `cover-${currentSessionId}`,
                     coverPdfSizeOpt,
                     undefined, 300,
+                    (page) => setFinishProgress({ stage: 'generate', current: page, total: spreadGenTotal }),
                   )),
                   120000, 'spread-cover-gen',
                 )
@@ -2858,11 +2872,15 @@ function EmbeddedEditor({
                   innerCanvases as any, innerEditors, `content-${currentSessionId}`,
                   { width: innerW, height: innerH, cutSize: bleed, ...markOpt },
                   undefined, 300,
-                  (page, total) => setLoadingMessage(`내지 PDF 생성 중 (${page}/${total})...`),
+                  (page, total) => {
+                    setLoadingMessage(`내지 PDF 생성 중 (${page}/${total})...`)
+                    setFinishProgress({ stage: 'generate', current: spreadCoverCount + page, total: spreadGenTotal })
+                  },
                 )),
                 contentWatchdogMs, 'spread-content-gen',
               )
               await finishMark('spread:content:gen:done', { bytes: contentBlob.size })
+              setFinishProgress({ stage: 'upload' })
               const contentUpload = await filesApi.upload({
                 file: contentBlob, type: 'content', orderSeqno: effectiveOrderSeqno,
                 metadata: { generatedBy: 'editor', editSessionId: currentSessionId, mode: 'spread', pageCount: innerCanvases.length },
@@ -2959,13 +2977,17 @@ function EmbeddedEditor({
               runWithAutosaveSuspended(() => servicePlugin.saveMultiPagePDFAsBlob(
                 pdfSel.canvases, pdfSel.editors, `session-${currentSessionId}`,
                 { width: singlePdfSize.width, height: singlePdfSize.height, cutSize: bleed, ...markOpt },
-                undefined, 300, undefined, profilePdfExportOptions,
+                undefined, 300,
+                // B10: 캔버스 진행 수(ServicePlugin onProgress — 출력 무영향, 진행 보고 전용)
+                (page, total) => setFinishProgress({ stage: 'generate', current: page, total }),
+                profilePdfExportOptions,
               )),
               Math.max(120000, 15000 * pdfSel.canvases.length), 'single-gen',
             )
             await finishMark('single:gen:done', { bytes: pdfBlob?.size })
             if (pdfBlob) {
               setLoadingMessage('PDF를 업로드하는 중...')
+              setFinishProgress({ stage: 'upload' })
               const fileType: 'cover' | 'content' | 'template' | 'other' =
                 effectiveMode === 'cover' ? 'cover'
                 : effectiveMode === 'content' ? 'content'
@@ -3001,6 +3023,7 @@ function EmbeddedEditor({
       // Mark session as completed
       await finishMark('complete:start')
       setLoadingMessage('편집을 완료하는 중...')
+      setFinishProgress({ stage: 'complete' })
       const completedSession = await editSessionsApi.complete(currentSessionId)
       await finishMark('complete:done', { coverFileId: completedSession.coverFileId, contentFileId: completedSession.contentFileId })
       setCurrentSession(completedSession)
@@ -3060,10 +3083,12 @@ function EmbeddedEditor({
       }
 
       console.log('[EmbeddedEditor] Complete success:', result.sessionId)
+      finishLeaveGuard.disarm()
       onComplete?.(result)
       postToParent(parentOrigin, 'editor.complete', result)
       return 'completed'
     } catch (err) {
+      finishLeaveGuard.disarm()
       console.error('[EmbeddedEditor] Complete failed:', describeError(err))
       const errPayload = {
         code: 'SAVE_FAILED' as const,
@@ -3075,8 +3100,10 @@ function EmbeddedEditor({
       throw err
     } finally {
       setIsLoading(false)
+      setFinishProgress(null)
+      finishLeaveGuard.disarm()
     }
-  }, [canvas, editor, sessionId, currentSession, options, mode, orderSeqno, onComplete, onError, parentOrigin, markClean, deleteLocalBackup, markServerSynced])
+  }, [canvas, editor, sessionId, currentSession, options, mode, orderSeqno, onComplete, onError, parentOrigin, markClean, deleteLocalBackup, markServerSynced, finishLeaveGuard])
 
   // 내 작업에 저장 핸들러 - EditorHeader에서 호출됨
   const handleSaveWork = useCallback(async () => {
@@ -3266,7 +3293,9 @@ function EmbeddedEditor({
         </div>
       </div>
 
-      {isLoading && (
+      {/* B10: 편집완료 진행 중에는 단계·캔버스 진행 수 오버레이로 대체(같은 위치·z-index) */}
+      <FinishProgressOverlay progress={finishProgress} detail={loadingMessage} />
+      {isLoading && !finishProgress && (
         <div className="absolute inset-0 z-[200] flex items-center justify-center bg-black/50">
           <div className="bg-white rounded-lg p-6 flex flex-col items-center gap-4">
             <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-editor-accent" />
