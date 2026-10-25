@@ -288,3 +288,52 @@ describe('useCalendarStore — 연달력 연도 선택 yearDeltas (T3b)', () => 
     expect(useCalendarStore.getState().meta?.show.yearTitle).toBe(false)
   })
 })
+
+describe('useCalendarStore — 캘린더 디자인(스킨) key', () => {
+  it('setSkinKey: 설정하면 키가 생기고, undefined·빈 문자열이면 키를 지운다(다른 키 불변)', () => {
+    useCalendarStore.getState().setFromProfile(calendarProfile())
+    const before = useCalendarStore.getState().meta
+    useCalendarStore.getState().setSkinKey('spring')
+    expect(useCalendarStore.getState().meta).toEqual({ ...before, skinKey: 'spring' })
+    useCalendarStore.getState().setSkinKey(undefined)
+    expect(useCalendarStore.getState().meta).toEqual(before)
+    expect(Object.keys(useCalendarStore.getState().meta ?? {})).not.toContain('skinKey')
+    useCalendarStore.getState().setSkinKey('spring')
+    useCalendarStore.getState().setSkinKey('')
+    expect(Object.keys(useCalendarStore.getState().meta ?? {})).not.toContain('skinKey')
+  })
+
+  it('setSkinKey: meta 가 없으면(legacy) 아무것도 하지 않는다', () => {
+    useCalendarStore.getState().setSkinKey('spring')
+    expect(useCalendarStore.getState().meta).toBeNull()
+  })
+
+  it('restore 왕복에서 skinKey 를 보존하고, 다른 setter 뒤에도 남는다', () => {
+    useCalendarStore.getState().setFromProfile(calendarProfile())
+    const saved = {
+      startYear: 2027,
+      startMonth: 3,
+      show: { holidays: true, lunar: false, solarTerms: true },
+      anniversaries: [],
+      dataVersion: 'kr-2025-2035-v1',
+      skinKey: 'winter_02',
+    }
+    useCalendarStore.getState().restore(saved)
+    expect(useCalendarStore.getState().meta).toEqual(saved)
+    useCalendarStore.getState().setShow({ lunar: true })
+    expect(useCalendarStore.getState().meta?.skinKey).toBe('winter_02')
+  })
+
+  it('스킨을 고르지 않은 메타는 restore 뒤에도 키 집합이 그대로다(skinKey 키 없음)', () => {
+    useCalendarStore.getState().setFromProfile(calendarProfile())
+    const saved = {
+      startYear: 2027,
+      startMonth: 1,
+      show: { holidays: true, lunar: false, solarTerms: true },
+      anniversaries: [],
+      dataVersion: 'kr-2025-2035-v1',
+    }
+    useCalendarStore.getState().restore(saved)
+    expect(Object.keys(useCalendarStore.getState().meta ?? {}).sort()).toEqual(Object.keys(saved).sort())
+  })
+})

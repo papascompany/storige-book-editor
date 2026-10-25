@@ -58,6 +58,11 @@ export interface CalendarStoreState {
   /** @returns 갱신했으면 true. meta 없음·해당 id 없음·갱신 결과가 다른 기념일과 같은 날짜면 false(변경 없음) */
   updateAnniversary: (id: string, patch: Partial<Omit<CalendarAnniversary, 'id'>>) => boolean
   removeAnniversary: (id: string) => void
+  /**
+   * 적용한 캘린더 디자인(스킨) key 기록. undefined = 기본 디자인(키 제거). 형식 검사는 판독기(readCalendarSessionMeta)와
+   * 적용 경로가 맡는다. meta 없음(legacy)이면 아무것도 하지 않는다.
+   */
+  setSkinKey: (key?: string) => void
   /** 날짜칸 더블클릭으로 열 날짜('YYYY-MM-DD') — FeatureSidebar 가 세팅, CalendarPanel 이 소비 후 null */
   pendingDate: string | null
   setPendingDate: (date: string | null) => void
@@ -74,6 +79,8 @@ function cloneMeta(meta: CalendarSessionMeta): CalendarSessionMeta {
   }
   // yearDeltas 는 있을 때만 복사(없는 세션의 키 집합 불변). 정책 필터는 판독기(readCalendarSessionMeta)가 맡는다
   if (meta.yearDeltas && Object.keys(meta.yearDeltas).length > 0) out.yearDeltas = { ...meta.yearDeltas }
+  // skinKey 도 있을 때만(스킨을 고르지 않은 세션의 키 집합 불변)
+  if (typeof meta.skinKey === 'string' && meta.skinKey.length > 0) out.skinKey = meta.skinKey
   return out
 }
 
@@ -189,6 +196,15 @@ export const useCalendarStore = create<CalendarStoreState>((set, get) => ({
     const { meta } = get()
     if (!meta) return
     set({ meta: { ...meta, anniversaries: meta.anniversaries.filter((a) => a.id !== id) } })
+  },
+
+  setSkinKey: (key) => {
+    const { meta } = get()
+    if (!meta) return
+    const updated: CalendarSessionMeta = { ...meta }
+    if (typeof key === 'string' && key.length > 0) updated.skinKey = key
+    else delete updated.skinKey
+    set({ meta: updated })
   },
 
   reset: () => set({ meta: null, allowedRange: null, yearPolicy: null, pendingDate: null }),

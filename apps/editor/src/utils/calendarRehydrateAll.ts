@@ -1,4 +1,5 @@
 import {
+  isCalendarSkinKey,
   isCalendarYearDeltaAllowed,
   type CalendarAnniversary,
   type CalendarDisplayOptions,
@@ -141,6 +142,9 @@ export function readCalendarSessionMeta(
   }
   const yearDeltas = readYearDeltas(cal.yearDeltas, yearPolicy)
   if (yearDeltas) meta.yearDeltas = yearDeltas
+  // 캘린더 디자인(스킨) key(v1.29): 형식이 맞으면 보존한다. 프로파일 skins 에 없는 key 도 버리지 않는다
+  // (편집기가 '목록에 없는 디자인'을 표시하고 다음 적용의 기준을 '알 수 없음'으로 잡는 데 쓴다). 플래그와 무관하게 통과.
+  if (isCalendarSkinKey(cal.skinKey)) meta.skinKey = cal.skinKey
   return meta
 }
 

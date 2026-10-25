@@ -344,3 +344,35 @@ describe('readCalendarSessionMeta — 잡절 show.minorTerms 재오픈 보존 (T
     expect(readCalendarSessionMeta({ calendar: { ...savedMeta, show } }, null)?.show).not.toHaveProperty('minorTerms')
   })
 })
+
+/** 캘린더 디자인(스킨) key(v1.29) 판독·동봉 — 플래그와 무관하게 통과, 형식 위반만 버린다 */
+describe('readCalendarSessionMeta / calendarSessionMetadataFields — skinKey', () => {
+  const fallback: CalendarSessionMeta = { ...savedMeta, anniversaries: [] }
+
+  it('형식이 맞는 skinKey 는 보존한다(프로파일 skins 에 없어도 버리지 않음)', () => {
+    expect(readCalendarSessionMeta({ calendar: { ...savedMeta, skinKey: 'spring' } }, fallback)?.skinKey).toBe('spring')
+    expect(readCalendarSessionMeta({ calendar: { ...savedMeta, skinKey: 'not-in-profile_9' } }, fallback)?.skinKey).toBe('not-in-profile_9')
+  })
+
+  it("형식 위반·'default'·비문자열·길이 초과는 버리고 키를 두지 않는다", () => {
+    for (const bad of ['Spring', 'default', '', '-x', 7, null, { k: 1 }, 'a'.repeat(33)]) {
+      const meta = readCalendarSessionMeta({ calendar: { ...savedMeta, skinKey: bad } }, fallback)
+      expect(meta).not.toBeNull()
+      expect(Object.keys(meta ?? {})).not.toContain('skinKey')
+    }
+  })
+
+  it('skinKey 가 없는 저장분은 키 집합이 종전과 같다', () => {
+    expect(Object.keys(readCalendarSessionMeta({ calendar: savedMeta }, fallback) ?? {}).sort()).toEqual(Object.keys(savedMeta).sort())
+  })
+
+  it('fields: skinKey 는 있을 때만 metadata.calendar 에 실리고, NULL 세트는 {}', () => {
+    expect(calendarSessionMetadataFields()).toEqual({})
+    const profile = calendarProfile()
+    useSettingsStore.getState().setProductProfile(profile)
+    useCalendarStore.getState().setFromProfile(profile)
+    expect(Object.keys(calendarSessionMetadataFields().metadata?.calendar ?? {})).not.toContain('skinKey')
+    expect(restoreCalendarSessionMeta({ calendar: { ...savedMeta, skinKey: 'winter' } })).toBe(true)
+    expect(calendarSessionMetadataFields().metadata?.calendar.skinKey).toBe('winter')
+  })
+})
