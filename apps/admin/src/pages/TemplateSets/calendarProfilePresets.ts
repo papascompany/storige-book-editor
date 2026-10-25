@@ -1,7 +1,8 @@
 /**
  * 캘린더 상품 프리셋 7종 (오너 확정 2026-10-17, P1) — 템플릿셋 폼 "캘린더 프리셋 적용" 용.
  *
- * 모든 프리셋은 캔버스 26장(표지 1 + 12개월 × 2면 + 에필로그 1 = 13장 양면), 단일 PDF 26쪽.
+ * 탁상형 4종·벽걸이 2단 2종은 캔버스 26장(표지 1 + 12개월 × 2면 + 에필로그 1 = 13장 양면, offset-next), 단일 PDF 26쪽.
+ * 벽걸이 1단(wall-1)은 단면 14장(표지 1 + 12개월 × 1면 + 에필로그 1, 월 한 장에 사진·날짜 그리드), 단일 PDF 14쪽(오너 확정 2026-10-24).
  * 프리셋은 폼 필드 값을 채우는 출발점이며, 운영자는 적용 후 JSON 을 손으로 고칠 수 있다.
  * 동작 분기는 editorType 이 아니라 프로파일 필드(pages·sheet·calendar)로만 한다.
  *
@@ -31,11 +32,26 @@ export interface CalendarProfilePreset {
 /** 탁상형 프리셋의 연달력 정책 예시 — 고객 연도 선택 기준 연도(0)~다음 해(+1) */
 export const DESK_CALENDAR_YEAR_POLICY: Readonly<CalendarYearPolicy> = { select: { minDelta: 0, maxDelta: 1 } };
 
-function calendarProfile(editorType: string, layout: CalendarLayout, yearPolicy?: CalendarYearPolicy): ProductProfile {
+/**
+ * layout 별 쪽 구성. 벽걸이 1단만 단면(faces 1·canvas-per-sheet·월 1캔버스) 14쪽이고, 나머지는 양면 offset-next 26쪽이다.
+ * 단면은 짝이 없으므로 pairing 키를 두지 않고(검증: canvas-pair 에서만 지정) 증감 단위 step 1 을 쓴다.
+ * duplexFlip 은 검증상 필수라 다른 프리셋과 같은 값을 둔다(단면 인쇄에서는 의미 없음).
+ */
+function calendarStructure(layout: CalendarLayout): Pick<ProductProfile, 'pages' | 'sheet'> & { canvasesPerMonth: 1 | 2 } {
+  if (layout === 'wall-1') {
+    return {
+      pages: { kind: 'fixed', count: 14, step: 1, protectedIndices: [0, 13], labelRule: 'month' },
+      sheet: {
+        faces: 1,
+        canvasLayout: 'canvas-per-sheet',
+        binding: 'top-ring',
+        backRotation: 0,
+        duplexFlip: 'short-edge',
+      },
+      canvasesPerMonth: 1,
+    };
+  }
   return {
-    version: 1,
-    kind: 'calendar',
-    editorType,
     pages: { kind: 'fixed', count: 26, step: 2, protectedIndices: [0, 25], labelRule: 'month' },
     sheet: {
       faces: 2,
@@ -45,11 +61,23 @@ function calendarProfile(editorType: string, layout: CalendarLayout, yearPolicy?
       backRotation: 0,
       duplexFlip: 'short-edge',
     },
+    canvasesPerMonth: 2,
+  };
+}
+
+function calendarProfile(editorType: string, layout: CalendarLayout, yearPolicy?: CalendarYearPolicy): ProductProfile {
+  const { pages, sheet, canvasesPerMonth } = calendarStructure(layout);
+  return {
+    version: 1,
+    kind: 'calendar',
+    editorType,
+    pages,
+    sheet,
     calendar: {
       layout,
       monthCount: 12,
       coverCanvases: 1,
-      canvasesPerMonth: 2,
+      canvasesPerMonth,
       epilogueCanvases: 1,
       allowedRange: { from: '2026-01', to: '2027-12' },
       weekStart: 0,
@@ -78,7 +106,8 @@ export function findCalendarProfilePreset(key: string | undefined): CalendarProf
 
 /**
  * 프리셋 적용 시 채울 템플릿셋 폼 필드 값(TemplateSetForm 의 Form 필드명 기준).
- * - 단일 모드·양면 원파일·내지 추가 불가·페이지 범위 [26,26]·증감 단위 없음·JSON textarea.
+ * - 단일 모드·pdfOutputMode 'duplex-merged'(편집기 산출 PDF 그대로 — 단면 wall-1 도 같은 경로)·내지 추가 불가·
+ *   페이지 범위 [count,count](26, 벽걸이 1단 14)·증감 단위 없음·JSON textarea.
  * 순수 함수 — 폼 컴포넌트 테스트 없이 값 계약을 고정한다.
  */
 export interface CalendarPresetFormValues {

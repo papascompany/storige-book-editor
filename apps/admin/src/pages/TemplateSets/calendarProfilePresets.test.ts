@@ -1,5 +1,12 @@
 import { describe, it, expect } from 'vitest';
-import { EditorMode, resolveCalendarCanvasCount, validateProductProfile, type CalendarProfile } from '@storige/types';
+import {
+  EditorMode,
+  formatCalendarPageLabel,
+  resolveCalendarCanvasCount,
+  resolveCalendarCanvasSlot,
+  validateProductProfile,
+  type CalendarProfile,
+} from '@storige/types';
 import {
   CALENDAR_PROFILE_PRESETS,
   DESK_CALENDAR_YEAR_POLICY,
@@ -8,6 +15,12 @@ import {
   findCalendarProfilePreset,
 } from './calendarProfilePresets';
 import { parseProductProfileJson, stringifyProductProfile } from './productProfileJson';
+// 벽걸이 1단 단면 전환(2026-10-25) 직전 커밋의 프리셋 6종 profile 산출물(JSON.stringify 결과 그대로) — 바이트 diff 기준
+import BASELINE_PROFILES from './calendarProfilePresets.baseline.json';
+
+/** 벽걸이 1단은 단면 14캔버스, 나머지는 양면 26캔버스 */
+const expectedCanvasCount = (key: string): number => (key === 'calendar_wall1_a3' ? 14 : 26);
+const NON_WALL1_PRESETS = CALENDAR_PROFILE_PRESETS.filter((p) => p.key !== 'calendar_wall1_a3');
 
 describe('CALENDAR_PROFILE_PRESETS — 오너 확정 7종', () => {
   it('키 7종이 순서대로 있고 중복이 없다', () => {
@@ -22,11 +35,11 @@ describe('CALENDAR_PROFILE_PRESETS — 오너 확정 7종', () => {
     ]);
   });
 
-  it.each(CALENDAR_PROFILE_PRESETS.map((p) => [p.key, p] as const))('%s 는 validateProductProfile 오류 0, 캔버스 26', (_key, preset) => {
+  it.each(CALENDAR_PROFILE_PRESETS.map((p) => [p.key, p] as const))('%s 는 validateProductProfile 오류 0, 캔버스 26(벽걸이 1단 14)', (key, preset) => {
     expect(validateProductProfile(preset.profile)).toEqual([]);
     expect(preset.profile.editorType).toBe(preset.key);
-    expect(preset.profile.pages.count).toBe(26);
-    expect(resolveCalendarCanvasCount(preset.profile.calendar as CalendarProfile)).toBe(26);
+    expect(preset.profile.pages.count).toBe(expectedCanvasCount(key));
+    expect(resolveCalendarCanvasCount(preset.profile.calendar as CalendarProfile)).toBe(expectedCanvasCount(key));
     expect(preset.width).toBeGreaterThan(0);
     expect(preset.height).toBeGreaterThan(0);
   });
@@ -143,7 +156,7 @@ describe('연달력 yearPolicy 예시 (T3b, 2026-10-24)', () => {
     expect(desk.every((y) => y !== DESK_CALENDAR_YEAR_POLICY)).toBe(true);
   });
 
-  it.each(CALENDAR_PROFILE_PRESETS.map((p) => [p.key, p] as const))(
+  it.each(NON_WALL1_PRESETS.map((p) => [p.key, p] as const))(
     '%s — yearPolicy 를 뺀 JSON 이 T3b 이전과 바이트 동일(yearPolicy 는 calendar 블록 끝)',
     (_key, preset) => {
       const legacy = legacyProfile(preset.key, preset.profile.calendar?.layout ?? '');
@@ -170,5 +183,89 @@ describe('연달력 yearPolicy 예시 (T3b, 2026-10-24)', () => {
       expect(p.profile.calendar?.show).not.toHaveProperty('yearTitle');
       expect(validateProductProfile(p.profile)).toEqual([]);
     }
+  });
+});
+
+describe('벽걸이 1단 단면 14쪽 전환(오너 확정 2026-10-24) — 나머지 6종 불변', () => {
+  const wall1 = findCalendarProfilePreset('calendar_wall1_a3');
+
+  it('기준 픽스처는 6종(벽걸이 1단 제외)이고 프리셋 6종의 profile JSON 이 픽스처와 바이트 동일·검증 오류 0', () => {
+    const baseline = BASELINE_PROFILES as Record<string, unknown>;
+    expect(Object.keys(baseline)).toEqual(NON_WALL1_PRESETS.map((p) => p.key));
+    for (const preset of NON_WALL1_PRESETS) {
+      expect(JSON.stringify(preset.profile, null, 2)).toBe(JSON.stringify(baseline[preset.key], null, 2));
+      expect(validateProductProfile(baseline[preset.key])).toEqual([]);
+      expect(validateProductProfile(preset.profile)).toEqual([]);
+      // 폼 textarea 값도 같은 문자열(같은 JSON.stringify 경로)
+      expect(calendarPresetFormValues(preset).productProfileJson).toBe(JSON.stringify(baseline[preset.key], null, 2));
+      expect(calendarPresetFormValues(preset)).toMatchObject({ pageCountMin: 26, pageCountMax: 26, pdfOutputMode: 'duplex-merged' });
+    }
+  });
+
+  it('벽걸이 1단 profile = 단면(faces 1·canvas-per-sheet·pairing 없음)·월 1캔버스·14쪽·protectedIndices [0,13], 판형 297×415 유지', () => {
+    expect(wall1).toBeDefined();
+    if (!wall1) return;
+    expect([wall1.width, wall1.height]).toEqual([297, 415]);
+    expect(JSON.stringify(wall1.profile)).toBe(
+      JSON.stringify({
+        version: 1,
+        kind: 'calendar',
+        editorType: 'calendar_wall1_a3',
+        pages: { kind: 'fixed', count: 14, step: 1, protectedIndices: [0, 13], labelRule: 'month' },
+        sheet: { faces: 1, canvasLayout: 'canvas-per-sheet', binding: 'top-ring', backRotation: 0, duplexFlip: 'short-edge' },
+        calendar: {
+          layout: 'wall-1',
+          monthCount: 12,
+          coverCanvases: 1,
+          canvasesPerMonth: 1,
+          epilogueCanvases: 1,
+          allowedRange: { from: '2026-01', to: '2027-12' },
+          weekStart: 0,
+          show: { holidays: true, lunar: true, solarTerms: true },
+          dataVersion: 'kr-2025-2035-v1',
+        },
+        output: { mode: 'single-pdf' },
+      }),
+    );
+    expect(validateProductProfile(wall1.profile)).toEqual([]);
+    expect(wall1.profile.sheet).not.toHaveProperty('pairing');
+  });
+
+  it('벽걸이 1단 폼 값 [14,14]·pageStep 없음, JSON textarea 왕복 검증 오류 0', () => {
+    if (!wall1) throw new Error('wall1 preset missing');
+    const values = calendarPresetFormValues(wall1);
+    expect(values).toMatchObject({
+      width: 297,
+      height: 415,
+      editorMode: EditorMode.SINGLE,
+      pdfOutputMode: 'duplex-merged',
+      canAddPage: false,
+      pageCountMin: 14,
+      pageCountMax: 14,
+      pageStep: undefined,
+      cropMarkEnabled: true,
+      bleedMm: 3,
+    });
+    const parsed = parseProductProfileJson(values.productProfileJson);
+    expect(parsed.errors).toEqual([]);
+    expect(parsed.value).toEqual(wall1.profile);
+  });
+
+  it('벽걸이 1단 캔버스 역할·라벨: 0 표지 → 1~12 월(면 없음) → 13 에필로그, refs 14개(월 템플릿 1장 반복)', () => {
+    if (!wall1) throw new Error('wall1 preset missing');
+    const cal = wall1.profile.calendar as CalendarProfile;
+    const start = { year: 2027, month: 1 };
+    const labels = Array.from({ length: 14 }, (_, i) => formatCalendarPageLabel(cal, start, i));
+    expect(labels[0]).toBe('표지');
+    expect(labels[1]).toBe('2027년 1월');
+    expect(labels[12]).toBe('2027년 12월');
+    expect(labels[13]).toBe('에필로그');
+    expect(formatCalendarPageLabel(cal, start, 14)).toBeNull();
+    expect(resolveCalendarCanvasSlot(cal, 5)).toEqual({ role: 'month', monthOffset: 4 });
+    expect(wall1.profile.pages.protectedIndices?.map((i) => resolveCalendarCanvasSlot(cal, i)?.role)).toEqual(['cover', 'epilogue']);
+
+    const refs = buildCalendarTemplateRefs({ cover: ['c'], monthFaces: ['m'], epilogue: ['e'] }, cal);
+    expect(refs.map((r) => r.templateId)).toEqual(['c', ...Array<string>(12).fill('m'), 'e']);
+    expect(() => buildCalendarTemplateRefs({ cover: ['c'], monthFaces: ['f', 'b'], epilogue: ['e'] }, cal)).toThrow('월 면 템플릿 1개');
   });
 });

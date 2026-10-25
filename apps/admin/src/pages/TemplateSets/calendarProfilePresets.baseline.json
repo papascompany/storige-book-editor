@@ -1,0 +1,290 @@
+{
+  "calendar_desk_large": {
+    "version": 1,
+    "kind": "calendar",
+    "editorType": "calendar_desk_large",
+    "pages": {
+      "kind": "fixed",
+      "count": 26,
+      "step": 2,
+      "protectedIndices": [
+        0,
+        25
+      ],
+      "labelRule": "month"
+    },
+    "sheet": {
+      "faces": 2,
+      "canvasLayout": "canvas-pair",
+      "binding": "top-ring",
+      "pairing": "offset-next",
+      "backRotation": 0,
+      "duplexFlip": "short-edge"
+    },
+    "calendar": {
+      "layout": "desk",
+      "monthCount": 12,
+      "coverCanvases": 1,
+      "canvasesPerMonth": 2,
+      "epilogueCanvases": 1,
+      "allowedRange": {
+        "from": "2026-01",
+        "to": "2027-12"
+      },
+      "weekStart": 0,
+      "show": {
+        "holidays": true,
+        "lunar": true,
+        "solarTerms": true
+      },
+      "dataVersion": "kr-2025-2035-v1",
+      "yearPolicy": {
+        "select": {
+          "minDelta": 0,
+          "maxDelta": 1
+        }
+      }
+    },
+    "output": {
+      "mode": "single-pdf"
+    }
+  },
+  "calendar_desk_basic": {
+    "version": 1,
+    "kind": "calendar",
+    "editorType": "calendar_desk_basic",
+    "pages": {
+      "kind": "fixed",
+      "count": 26,
+      "step": 2,
+      "protectedIndices": [
+        0,
+        25
+      ],
+      "labelRule": "month"
+    },
+    "sheet": {
+      "faces": 2,
+      "canvasLayout": "canvas-pair",
+      "binding": "top-ring",
+      "pairing": "offset-next",
+      "backRotation": 0,
+      "duplexFlip": "short-edge"
+    },
+    "calendar": {
+      "layout": "desk",
+      "monthCount": 12,
+      "coverCanvases": 1,
+      "canvasesPerMonth": 2,
+      "epilogueCanvases": 1,
+      "allowedRange": {
+        "from": "2026-01",
+        "to": "2027-12"
+      },
+      "weekStart": 0,
+      "show": {
+        "holidays": true,
+        "lunar": true,
+        "solarTerms": true
+      },
+      "dataVersion": "kr-2025-2035-v1",
+      "yearPolicy": {
+        "select": {
+          "minDelta": 0,
+          "maxDelta": 1
+        }
+      }
+    },
+    "output": {
+      "mode": "single-pdf"
+    }
+  },
+  "calendar_desk_tiny": {
+    "version": 1,
+    "kind": "calendar",
+    "editorType": "calendar_desk_tiny",
+    "pages": {
+      "kind": "fixed",
+      "count": 26,
+      "step": 2,
+      "protectedIndices": [
+        0,
+        25
+      ],
+      "labelRule": "month"
+    },
+    "sheet": {
+      "faces": 2,
+      "canvasLayout": "canvas-pair",
+      "binding": "top-ring",
+      "pairing": "offset-next",
+      "backRotation": 0,
+      "duplexFlip": "short-edge"
+    },
+    "calendar": {
+      "layout": "desk",
+      "monthCount": 12,
+      "coverCanvases": 1,
+      "canvasesPerMonth": 2,
+      "epilogueCanvases": 1,
+      "allowedRange": {
+        "from": "2026-01",
+        "to": "2027-12"
+      },
+      "weekStart": 0,
+      "show": {
+        "holidays": true,
+        "lunar": true,
+        "solarTerms": true
+      },
+      "dataVersion": "kr-2025-2035-v1",
+      "yearPolicy": {
+        "select": {
+          "minDelta": 0,
+          "maxDelta": 1
+        }
+      }
+    },
+    "output": {
+      "mode": "single-pdf"
+    }
+  },
+  "calendar_desk_mini": {
+    "version": 1,
+    "kind": "calendar",
+    "editorType": "calendar_desk_mini",
+    "pages": {
+      "kind": "fixed",
+      "count": 26,
+      "step": 2,
+      "protectedIndices": [
+        0,
+        25
+      ],
+      "labelRule": "month"
+    },
+    "sheet": {
+      "faces": 2,
+      "canvasLayout": "canvas-pair",
+      "binding": "top-ring",
+      "pairing": "offset-next",
+      "backRotation": 0,
+      "duplexFlip": "short-edge"
+    },
+    "calendar": {
+      "layout": "desk",
+      "monthCount": 12,
+      "coverCanvases": 1,
+      "canvasesPerMonth": 2,
+      "epilogueCanvases": 1,
+      "allowedRange": {
+        "from": "2026-01",
+        "to": "2027-12"
+      },
+      "weekStart": 0,
+      "show": {
+        "holidays": true,
+        "lunar": true,
+        "solarTerms": true
+      },
+      "dataVersion": "kr-2025-2035-v1",
+      "yearPolicy": {
+        "select": {
+          "minDelta": 0,
+          "maxDelta": 1
+        }
+      }
+    },
+    "output": {
+      "mode": "single-pdf"
+    }
+  },
+  "calendar_wall2_a4": {
+    "version": 1,
+    "kind": "calendar",
+    "editorType": "calendar_wall2_a4",
+    "pages": {
+      "kind": "fixed",
+      "count": 26,
+      "step": 2,
+      "protectedIndices": [
+        0,
+        25
+      ],
+      "labelRule": "month"
+    },
+    "sheet": {
+      "faces": 2,
+      "canvasLayout": "canvas-pair",
+      "binding": "top-ring",
+      "pairing": "offset-next",
+      "backRotation": 0,
+      "duplexFlip": "short-edge"
+    },
+    "calendar": {
+      "layout": "wall-2",
+      "monthCount": 12,
+      "coverCanvases": 1,
+      "canvasesPerMonth": 2,
+      "epilogueCanvases": 1,
+      "allowedRange": {
+        "from": "2026-01",
+        "to": "2027-12"
+      },
+      "weekStart": 0,
+      "show": {
+        "holidays": true,
+        "lunar": true,
+        "solarTerms": true
+      },
+      "dataVersion": "kr-2025-2035-v1"
+    },
+    "output": {
+      "mode": "single-pdf"
+    }
+  },
+  "calendar_wall2_a3": {
+    "version": 1,
+    "kind": "calendar",
+    "editorType": "calendar_wall2_a3",
+    "pages": {
+      "kind": "fixed",
+      "count": 26,
+      "step": 2,
+      "protectedIndices": [
+        0,
+        25
+      ],
+      "labelRule": "month"
+    },
+    "sheet": {
+      "faces": 2,
+      "canvasLayout": "canvas-pair",
+      "binding": "top-ring",
+      "pairing": "offset-next",
+      "backRotation": 0,
+      "duplexFlip": "short-edge"
+    },
+    "calendar": {
+      "layout": "wall-2",
+      "monthCount": 12,
+      "coverCanvases": 1,
+      "canvasesPerMonth": 2,
+      "epilogueCanvases": 1,
+      "allowedRange": {
+        "from": "2026-01",
+        "to": "2027-12"
+      },
+      "weekStart": 0,
+      "show": {
+        "holidays": true,
+        "lunar": true,
+        "solarTerms": true
+      },
+      "dataVersion": "kr-2025-2035-v1"
+    },
+    "output": {
+      "mode": "single-pdf"
+    }
+  }
+}

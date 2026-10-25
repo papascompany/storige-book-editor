@@ -216,15 +216,16 @@ describe('productProfileSectionHint — 상품 프로파일 섹션 안내(D7, ki
 });
 
 describe('캘린더 프리셋 불변(사진인화 추가가 캘린더 값에 영향 없음)', () => {
-  it('캘린더 7종은 여전히 validate 오류 0·[26,26]·pageStep 없음·canAddPage false', () => {
+  it('캘린더 7종은 여전히 validate 오류 0·[26,26](벽걸이 1단 단면 [14,14])·pageStep 없음·canAddPage false', () => {
     expect(CALENDAR_PROFILE_PRESETS).toHaveLength(7);
     for (const preset of CALENDAR_PROFILE_PRESETS) {
       expect(validateProductProfile(preset.profile)).toEqual([]);
       expect(preset.profile.kind).toBe('calendar');
+      const count = preset.key === 'calendar_wall1_a3' ? 14 : 26;
       expect(calendarPresetFormValues(preset)).toMatchObject({
         canAddPage: false,
-        pageCountMin: 26,
-        pageCountMax: 26,
+        pageCountMin: count,
+        pageCountMax: count,
         pageStep: undefined,
         cropMarkEnabled: true,
         bleedMm: 3,

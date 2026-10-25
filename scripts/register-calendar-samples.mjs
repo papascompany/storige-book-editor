@@ -2,8 +2,10 @@
 /**
  * 캘린더 샘플 템플릿·템플릿셋 등록 (P1 캘린더, 2026-10-17)
  *
- * 오너 확정 7종 상품(탁상 4·벽걸이 1단·2단 2)마다 템플릿 4개(표지·월 앞면·월 뒷면·에필로그)와
- * 26캔버스 템플릿셋(표지 1 + 12개월×2면 + 에필로그 1, productProfile 포함)을 관리자 API 로 등록한다.
+ * 오너 확정 7종 상품(탁상 4·벽걸이 1단·2단 2)의 샘플 템플릿과 템플릿셋(productProfile 포함)을 관리자 API 로 등록한다.
+ *   - 탁상 4·벽걸이 2단 2: 템플릿 4개(표지·월 앞면/상단·월 뒷면/하단·에필로그), 26캔버스(표지 1 + 12개월×2면 + 에필로그 1, 양면)
+ *   - 벽걸이 1단(2026-10-24 오너 확정): 템플릿 3개(표지·월·에필로그), 단면 14캔버스(표지 1 + 12개월×1면 + 에필로그 1) —
+ *     월 템플릿 1장에 사진틀과 날짜 그리드를 함께 둔다. 이전 등록본의 '월 앞면/뒷면' 템플릿은 참조만 끊기고 남는다(삭제하지 않음).
  * 같은 이름이 있으면 재사용/갱신(멱등). 운영 등록도 같은 스크립트로 하되 오너 승인 뒤에만 실행한다.
  *
  * 사용:
@@ -67,11 +69,19 @@ const PRESETS = [
 ];
 /** 탁상형 연달력 정책(apps/admin calendarProfilePresets.ts DESK_CALENDAR_YEAR_POLICY 와 같은 값) — calendar 블록 끝에 붙인다 */
 const DESK_YEAR_POLICY = { select: { minDelta: 0, maxDelta: 1 } };
+/** 벽걸이 1단 단면 구조(admin 프리셋 wall-1 분기와 같은 값) — 짝이 없으므로 pairing 없음, step 1 */
+const WALL1_SINGLE = {
+  pages: { kind: 'fixed', count: 14, step: 1, protectedIndices: [0, 13], labelRule: 'month' },
+  sheet: { faces: 1, canvasLayout: 'canvas-per-sheet', binding: 'top-ring', backRotation: 0, duplexFlip: 'short-edge' },
+  canvasesPerMonth: 1,
+};
 export const profileFor = (p) => ({
   ...BASE_PROFILE,
+  ...(p.layout === 'wall-1' ? { pages: { ...WALL1_SINGLE.pages }, sheet: { ...WALL1_SINGLE.sheet } } : {}),
   editorType: p.key,
   calendar: {
     ...BASE_PROFILE.calendar,
+    ...(p.layout === 'wall-1' ? { canvasesPerMonth: WALL1_SINGLE.canvasesPerMonth } : {}),
     layout: p.layout,
     ...(p.layout === 'desk' ? { yearPolicy: { select: { ...DESK_YEAR_POLICY.select } } } : {}),
   },
@@ -156,7 +166,7 @@ function canvasData(W, H, objects) {
   return { version: '5.5.2', width: W, height: H, background: '#ffffff', objects: [workspace, ...shifted] };
 }
 
-/** 상품별 4개 템플릿의 canvasData. 좌표는 px. */
+/** 상품별 템플릿 canvasData(벽걸이 1단 3개, 그 밖 4개). 좌표는 px. */
 export function buildTemplates(p) {
   const W = px(p.width), H = px(p.height);
   const m = px(6);                    // 여백 6mm
@@ -176,20 +186,30 @@ export function buildTemplates(p) {
     { ...calendarGrid({ left: m, top: coverBodyTop + coverPhotoH + m, width: W - 2 * m, height: coverBodyH - coverPhotoH - m }, { variant: 'year', yearDelta: 0, style: yearGridStyle }), name: '연달력' },
   ]);
   const gridStyle = { fontFamily: FONT, headerLang: 'en', showTitle: true, showLines: true };
+  const epilogue = canvasData(W, H, [
+    ...(band ? [ringOverlay(W, band)] : []),
+    frame({ left: m, top: topY, width: W - 2 * m, height: (H - topY - m) * 0.6 }),
+    title('Thank you', topY + (H - topY - m) * 0.7, Math.round(H * 0.06)),
+  ]);
+  if (p.layout === 'wall-1') {
+    // 벽걸이 1단(단면): 월 한 장 = 사진(위) + 날짜 그리드(아래). 같은 월 템플릿을 12개월에 반복 참조한다(그리드 월은 캔버스 위치로 정해짐).
+    const photoH = (H - topY - m) * 0.5;
+    const month = canvasData(W, H, [
+      ringOverlay(W, band),
+      frame({ left: m, top: topY, width: W - 2 * m, height: photoH }),
+      calendarGrid({ left: m, top: topY + photoH + m, width: W - 2 * m, height: H - topY - photoH - 2 * m }, { variant: 'month', style: gridStyle }),
+    ]);
+    return [
+      { slot: 'cover', name: `[캘린더 샘플] ${p.label} — 표지`, canvasData: cover },
+      { slot: 'month', name: `[캘린더 샘플] ${p.label} — 월`, canvasData: month },
+      { slot: 'epilogue', name: `[캘린더 샘플] ${p.label} — 에필로그`, canvasData: epilogue },
+    ];
+  }
   let monthA, monthB;
   if (p.layout === 'wall-2') {
     // 상단(사진) / 하단(달력) — 링은 두 면 사이(캔버스 밖)
     monthA = canvasData(W, H, [frame({ left: m, top: m, width: W - 2 * m, height: H - 2 * m })]);
     monthB = canvasData(W, H, [calendarGrid({ left: m, top: m, width: W - 2 * m, height: H - 2 * m }, { variant: 'month', style: gridStyle })]);
-  } else if (p.layout === 'wall-1') {
-    // 원피스: 앞면 = 사진 + 달력(세로), 뒷면 = 사진
-    const photoH = (H - topY - m) * 0.5;
-    monthA = canvasData(W, H, [
-      ringOverlay(W, band),
-      frame({ left: m, top: topY, width: W - 2 * m, height: photoH }),
-      calendarGrid({ left: m, top: topY + photoH + m, width: W - 2 * m, height: H - topY - photoH - 2 * m }, { variant: 'month', style: gridStyle }),
-    ]);
-    monthB = canvasData(W, H, [ringOverlay(W, band), frame({ left: m, top: topY, width: W - 2 * m, height: H - topY - m })]);
   } else {
     // 탁상: 앞면 = 사진(좌) + 달력(우), 뒷면 = 사진 + 전월/익월 미니
     const half = (W - 3 * m) / 2;
@@ -206,11 +226,6 @@ export function buildTemplates(p) {
       calendarGrid({ left: 2 * m + miniW, top: H - m - miniH, width: miniW, height: miniH }, { variant: 'mini', monthDelta: 1, style: { fontFamily: FONT } }),
     ]);
   }
-  const epilogue = canvasData(W, H, [
-    ...(band ? [ringOverlay(W, band)] : []),
-    frame({ left: m, top: topY, width: W - 2 * m, height: (H - topY - m) * 0.6 }),
-    title('Thank you', topY + (H - topY - m) * 0.7, Math.round(H * 0.06)),
-  ]);
   return [
     { slot: 'cover', name: `[캘린더 샘플] ${p.label} — 표지`, canvasData: cover },
     { slot: 'monthA', name: `[캘린더 샘플] ${p.label} — 월 ${p.layout === 'wall-2' ? '상단' : '앞면'}`, canvasData: monthA },
@@ -219,9 +234,11 @@ export function buildTemplates(p) {
   ];
 }
 
-function buildRefs(ids) {
+/** 프로파일 캔버스 순서(표지 → 12개월 × 면 → 에필로그)대로 refs. 벽걸이 1단은 월 1면(ids.month), 그 밖은 월 2면(monthA, monthB). */
+export function buildRefs(ids, p) {
+  const monthSlots = p.layout === 'wall-1' ? [ids.month] : [ids.monthA, ids.monthB];
   const refs = [{ templateId: ids.cover, required: true }];
-  for (let i = 0; i < 12; i += 1) refs.push({ templateId: ids.monthA, required: true }, { templateId: ids.monthB, required: true });
+  for (let i = 0; i < 12; i += 1) for (const templateId of monthSlots) refs.push({ templateId, required: true });
   refs.push({ templateId: ids.epilogue, required: true });
   return refs;
 }
@@ -261,10 +278,13 @@ async function main() {
       }
     }
     const setName = `[캘린더 샘플] ${p.label}`;
+    const profile = profileFor(p);
+    const templates = buildRefs(ids, p);
+    if (templates.length !== profile.pages.count) throw new Error(`${p.key}: refs ${templates.length} ≠ pages.count ${profile.pages.count}`);
     const setBody = {
       name: setName, type: 'leaflet', editorMode: 'single', width: p.width, height: p.height,
-      canAddPage: false, pageCountRange: [26, 26], pageStep: null, templates: buildRefs(ids),
-      productProfile: profileFor(p), pdfOutputMode: 'duplex-merged', colorMode: 'rgb', enabledMenus: null,
+      canAddPage: false, pageCountRange: [profile.pages.count, profile.pages.count], pageStep: null, templates,
+      productProfile: profile, pdfOutputMode: 'duplex-merged', colorMode: 'rgb', enabledMenus: null,
       // 도련 정책(오너 결정 A, 2026-10-17): 판형은 재단 그대로, 세트에 cropMarkEnabled·bleedMm 3 — 편집기 PDF 는 재단+6mm 에
       // TrimBox·코너 마커를 넣고(책자와 같은 게이트), 워커는 workSize 매칭·hasBleed=true 로 BLEED_MISSING 없이 통과한다.
       cropMarkEnabled: true, bleedMm: 3,
@@ -274,8 +294,8 @@ async function main() {
     if (DRY) setId = foundSet?.id ?? '(dry)';
     else if (foundSet) { await call('PUT', `/template-sets/${foundSet.id}`, setBody); setId = foundSet.id; }
     else { const created = await call('POST', '/template-sets', setBody); setId = created.id; existingSets.push(created); }
-    results.push({ key: p.key, label: p.label, size: `${p.width}×${p.height}`, templateSetId: setId, templates: ids });
-    console.log(`✓ ${p.label} (${p.width}×${p.height}) → templateSetId=${setId}`);
+    results.push({ key: p.key, label: p.label, size: `${p.width}×${p.height}`, canvases: templates.length, templateSetId: setId, templates: ids });
+    console.log(`✓ ${p.label} (${p.width}×${p.height}, ${templates.length}캔버스) → templateSetId=${setId}`);
   }
 
   let embedToken = '';
@@ -298,7 +318,7 @@ async function main() {
 
   console.log('\n=== 결과 ===');
   for (const r of results) {
-    console.log(`${r.key}\t${r.size}\tset=${r.templateSetId}\tcover=${r.templates.cover} monthA=${r.templates.monthA} monthB=${r.templates.monthB} epilogue=${r.templates.epilogue}`);
+    console.log(`${r.key}\t${r.size}\t${r.canvases}캔버스\tset=${r.templateSetId}\t${Object.entries(r.templates).map(([slot, id]) => `${slot}=${id}`).join(' ')}`);
     if (embedToken) console.log(`  embed: ${EDITOR}/embed?templateSetId=${r.templateSetId}&orderSeqno=<주문번호>&mode=both&token=${PRINT_TOKEN ? embedToken : '<결과 파일의 embedTokenValue>'}&parentOrigin=${encodeURIComponent(EDITOR)}`);
   }
   // 토큰이 들어갈 수 있으므로 저장소 밖에 쓴다(STORIGE_SAMPLES_OUT 로 변경 가능)
