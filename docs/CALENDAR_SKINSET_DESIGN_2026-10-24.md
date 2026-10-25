@@ -181,7 +181,7 @@ export interface CalendarSessionMeta {
 - **차단**(2026-10-25 개정): **출처 불명** AND **'고객 추가' 중 템플릿 표지 1개 이상**이면 판정이 어긋난 것으로 보고 적용을 막는다(`isSkinMergeSuspect`).
   - 출처 불명 = `from` 이 null 인데 직전 `skinKey` 가 있었다(`prevSkinKey` 옵션), 또는 판정 집합 밖 top-level 객체 중 보조 판정으로 템플릿 유래가 된 것이 있다(workspace·가이드·재단선·`excludeFromExport` 등 시스템 객체 제외). 고객 분류(고객 추가·고객 배경·채움 사진)는 원래 판정 집합 밖이라 이 신호에 세지 않는다.
   - 템플릿 표지 = 템플릿 잠금(`lockInfo.isLocked` + `designer`/`admin`)·`deleteable:false`·`extensionType` `frame`·`background`·`calendar-grid`.
-  - 개수 임계값(하한·비율 상수)은 제거했다. 실측(실 fabric 왕복, 세트 4종 × 스킨 3종 × 시나리오)에서 어떤 상수 조합도 오탐과 미탐을 함께 줄이지 못했고, 판정 집합이 완전하면 템플릿 요소가 고객 추가로 남지 않았다(오분류 0). 그래서 오분류가 생길 수 있는 출처 불명일 때만 표지로 막는다.
+  - 개수 임계값(하한·비율 상수)은 제거했다. 실측(실 fabric 왕복, 세트 4종 × 스킨 3종 × 시나리오)에서 어떤 상수 조합도 오탐과 미탐을 함께 줄이지 못했고, 판정 집합이 완전하면 템플릿 요소가 고객 추가로 남지 않았다(오분류 0). 그래서 오분류가 생길 수 있는 출처 불명일 때만 표지로 막는다. 같은 하네스(1440 세션) 재측정에서 오탐/미탐은 개수 임계값 346/172 → 이 규칙 0/492 이고, 판정 집합이 완전한 정상·완전·복제 시나리오는 0/0 이다. 미탐은 판정 집합이 불완전하거나 직전 스킨을 쓸 수 없는 경우에만 나온다.
 
 | 현재 객체 분류 | 판정 | 처리 |
 |---|---|---|
@@ -287,7 +287,7 @@ export interface CalendarSessionMeta {
 |---|---|
 | `apps/api/src/templates/product-profile.spec.ts` | `skins` 생략 시 기존 결과 동일 · 유효 1·10개 통과 · 11개 거부 · key 형식·중복·`'default'` 거부 · label 빈 값·41자 거부 · `templateSetId` 빈 값·중복 거부 · 미지 하위 키 거부 · `thumbnailUrl` 형식 · `checkCalendarSkinCompatibility`(레이아웃·캔버스 구성·`pages.count`·판형·작업 크기(`resolvePrintGeometry`, 도련·재단선 게이트)·템플릿 수·siteId·자기 참조 각 1) |
 | `apps/api/src/templates/dto/product-profile.dto.spec.ts` | `skins` 포함 프로파일이 whitelist 를 통과(400 아님) · `skins[]` 미지 키는 400 |
-| `packages/canvas-core/src/calendar/skin.test.ts`(신규) | 템플릿만 있는 캔버스 → `to` + 현재 workspace · 같은 id·같은 기하 사진 유지(링크 그대로) · id 가 달라 순서로 짝지은 사진의 `frameRef`/`parentLayerId` 수정 · 기하가 다르면 `refills` 큐 · 대상 틀 없음 → Q2 정책·보고 · 고친 문구는 옮기고 안 고친 문구는 안 옮김 · `from` 알 수 없음이면 문구 안 옮김 · **from 불명·템플릿 개정 후**: 판정 집합(기준 ∪ 모든 스킨 ids)과 보조 판정(`deleteable:false`·`lockInfo`·`extensionType`)으로 옛 디자인 요소를 템플릿 유래로 분류(고객 추가로 남지 않음) · '고객 추가' 개수가 임계 이상이면 차단 보고 · 기하 같고 틀 `type`·`src` 다르면 변환 유지 + clipPath 재생성(또는 `refills`) · 고객 추가 요소 보존 + id 충돌 재발급 · 옛 그리드 제거·새 그리드만 · dryRun 보고 = 실제 보고 · 입력 불변(얕은·깊은 동결) |
+| `packages/canvas-core/src/calendar/skin.test.ts`(신규) | 템플릿만 있는 캔버스 → `to` + 현재 workspace · 같은 id·같은 기하 사진 유지(링크 그대로) · id 가 달라 순서로 짝지은 사진의 `frameRef`/`parentLayerId` 수정 · 기하가 다르면 `refills` 큐 · 대상 틀 없음 → Q2 정책·보고 · 고친 문구는 옮기고 안 고친 문구는 안 옮김 · `from` 알 수 없음이면 문구 안 옮김 · **from 불명·템플릿 개정 후**: 판정 집합(기준 ∪ 모든 스킨 ids)과 보조 판정(`deleteable:false`·`lockInfo`·`extensionType`)으로 옛 디자인 요소를 템플릿 유래로 분류(고객 추가로 남지 않음) · 출처 불명 AND '고객 추가' 중 템플릿 표지 1개 이상이면 차단 보고(출처를 알면 표지가 있어도 차단 안 함, 시스템 객체 제외) · 기하 같고 틀 `type`·`src` 다르면 변환 유지 + clipPath 재생성(또는 `refills`) · 고객 추가 요소 보존 + id 충돌 재발급 · 옛 그리드 제거·새 그리드만 · dryRun 보고 = 실제 보고 · 입력 불변(얕은·깊은 동결) |
 | `packages/canvas-core/src/plugins/TemplatePlugin.test.ts` | (D3/T5 가 `cut-guide` 제거로 결정한 경우만) 템플릿 요소 id 목록 기대값 1건 |
 | 회귀 | 캘린더 프리셋 7종·샘플 프로파일 픽스처 `validateProductProfile` diff 0 · sdk `types-parity` 통과 · canvas-core·api 전체 신규 실패 0 |
 
@@ -325,11 +325,11 @@ export interface CalendarSessionMeta {
 | R1 | `TemplatePlugin.replaceTemplate`/`ungroupItems` 는 `obj.clone(cb)` 를 속성 목록 없이 호출한다(fabric 5.5.2 `clone` = `toObject(propertiesToInclude)`). **2026-10-24 런타임 확인:** ① fabric 5.5.2 `clone()` 은 `id` 를 포함한 커스텀 속성(`extensionType`·`extension`·`lockInfo`·`frameRef`·`parentLayerId`·`requiredEdit`·`movable`·`deleteable`)을 전부 잃는다. `clone(cb, extendFabricOption)` 으로 부르면 보존된다. ② `TemplatePlugin.ts:145` 의 ASI 결함(세미콜론 없는 줄 다음 `(clonedObj as any)…` 가 앞 식의 호출로 이어짐) 때문에 사용자 요소가 1개 이상이면 `TypeError: true is not a function` 이 난다. 첫 요소가 이미지면 예외가 비동기로 나서 promise 가 끝나지 않고 히스토리가 꺼진 채 남는다. ③ 이 예외를 우회해도 결과에 `calendar-grid` 가 0개이고, 새 템플릿 요소의 id 가 uuid 로 바뀌며, 사용자 요소가 중복된다 | 스킨은 이 경로를 쓰지 않는다(§3). T7a 는 위 ①~③ 을 고정하는 특성 테스트를 `skin.test.ts` 옆에 둔다(스킨 경로가 이 함수를 부르지 않음을 함께 확인). 기존 `AppTemplateSwap`·`replaceTemplate` 결함 수정은 **이 설계 범위 밖의 별도 트랙**이다(§1.2) |
 | R2 | 스킨 템플릿을 복제가 아닌 새 제작으로 만들면 id 가 달라 문구를 옮기지 못한다 | 사진틀은 순서로 짝짓는 폴백이 있다. 관리자 UI 에 제작 안내와 미리보기 개수(옮김·제외)를 표시한다 |
 | R3 | `pages.count` 캔버스(현행 최대 26) 다시 싣기 시간·메모리 | §3.4 목표·실측 필수. 순서 적용, 스냅샷 1벌, B11 선행 권고 |
-| R4 | 구 편집기 번들이 저장하면 `skinKey` 가 빠질 수 있다 → 다음 적용 때 `from` 을 기준 세트로 잘못 잡는다. 그러면 스킨 기본 문구를 "고객 수정"으로 옮길 수 있고, `from` id 만으로 판정하면 스킨 디자인 요소가 고객 추가 요소로 오분류돼 새 스킨 위에 남을 수 있다 | 판정 집합(기준 ∪ 모든 스킨 ids)·보조 판정·'고객 추가' 개수 차단으로 완화한다(§3.3). 데이터 노출은 API·editor 반영 뒤에만 한다(§6) |
+| R4 | 구 편집기 번들이 저장하면 `skinKey` 가 빠질 수 있다 → 다음 적용 때 `from` 을 기준 세트로 잘못 잡는다. 그러면 스킨 기본 문구를 "고객 수정"으로 옮길 수 있고, `from` id 만으로 판정하면 스킨 디자인 요소가 고객 추가 요소로 오분류돼 새 스킨 위에 남을 수 있다 | 판정 집합(기준 ∪ 모든 스킨 ids)·보조 판정·출처 불명 + 템플릿 표지 차단으로 완화한다(§3.3). 데이터 노출은 API·editor 반영 뒤에만 한다(§6) |
 | R5 | 공개 with-templates 는 `isDeleted` 만 확인하므로, 관리자가 다른 사이트 세트를 참조할 수 있다 | 편집기·admin 호환 검사에 siteId 일치(또는 공유 null)를 넣는다. 공유 타입 `siteId?` 보강·서버 저장 시 참조 세트 siteId 검사 권고는 §2.1 안 B 보강. R 검토 항목 |
 | R6 | 스킨 세트가 상품 목록·매핑에 일반 세트로 보인다 | 스킨 세트는 그 자체로 정상 캘린더 세트라 오매핑돼도 동작한다. 운영 관례(이름 접두·비활성 저장 가능 — with-templates 는 `isActive` 를 보지 않음)는 admin 안내 문구로만 둔다 |
 | R7 | 적용 중 완료·이탈 | longTask 오버레이로 완료 버튼을 막는다. 이탈 경고는 B10(D9) 범위 |
-| R8 | 기준 정보 불명(스킨 삭제·R4)·판매 중 템플릿 개정 | 문구는 옮기지 않고 대화상자에 표시한다. 이때 `from` id 만으로는 옛 디자인 요소가 고객 요소로 오분류될 위험이 있다(사진틀이 템플릿 유래로 잡히지 않으면 채움 사진 짝짓기도 흔들림). 판정 집합·보조 판정·차단 임계(§3.3)로 완화하고, 운영 원칙은 Q6 |
+| R8 | 기준 정보 불명(스킨 삭제·R4)·판매 중 템플릿 개정 | 문구는 옮기지 않고 대화상자에 표시한다. 이때 `from` id 만으로는 옛 디자인 요소가 고객 요소로 오분류될 위험이 있다(사진틀이 템플릿 유래로 잡히지 않으면 채움 사진 짝짓기도 흔들림). 판정 집합·보조 판정·출처 불명 + 템플릿 표지 차단(§3.3)으로 완화하고, 운영 원칙은 Q6 이다. 템플릿 개정으로 id 가 바뀐 옛 요소 중 표지가 없는 것은 막지 못하고 고객 요소로 남을 수 있다(사진 손실 없음). 판매 중 템플릿은 고치지 않고 새 스킨으로 등록하는 운영 원칙(Q6 (b))이 이 경우를 막는다 |
 | R9 | 판매 중인 기준·스킨 템플릿을 고치면 기존 세션의 `from` 이 실제 캔버스와 어긋나 문구 이동 정확도가 떨어진다 | Q6 권고: 수정 대신 새 스킨 등록, 스킨 key 재사용 금지 |
 
 ---
