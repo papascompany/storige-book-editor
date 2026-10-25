@@ -14,8 +14,6 @@ import { resolveAssetUrl } from '@/utils/resolveAssetUrl'
 
 export const SKIN_UNDO_HISTORY_LINE = '적용하면 지금까지의 실행 취소(Ctrl+Z) 기록이 비워집니다. 적용 직후에는 「적용 취소」로 되돌릴 수 있습니다.'
 export const SKIN_POSITION_RESET_LINE = '디자인 요소의 위치·크기를 바꾼 것은 새 디자인 값으로 돌아갑니다.'
-/** '내 업로드'는 세션 메모리 목록이라 새로고침하면 비워진다 */
-export const SKIN_UPLOADS_SESSION_NOTE = "('내 업로드' 목록은 새로고침하거나 이 화면을 닫으면 비워질 수 있습니다)"
 
 /** 쪽 라벨 목록 — 3개를 넘으면 "외 n쪽" */
 export function formatPageList(indices: readonly number[], labels: readonly string[]): string {
@@ -62,7 +60,6 @@ export function buildSkinBackgroundLine(plan: SkinApplyPlan): string {
       `${formatPageList(b.forcedKeepIndices, plan.pageLabels)}은 내 배경을 다시 넣을 수 없는 형식이라 그대로 둡니다(그 쪽은 새 디자인 배경을 쓰지 않습니다).`,
     )
   }
-  if (registrable > 0) parts.push(SKIN_UPLOADS_SESSION_NOTE)
   return parts.join(' ')
 }
 

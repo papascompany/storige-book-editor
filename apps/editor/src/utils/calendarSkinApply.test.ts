@@ -23,6 +23,8 @@ import {
   runWithAutosaveSuspended,
 } from '@/utils/autosaveSuspend'
 import { __resetSaveNowRegistryForTest } from '@/utils/saveNowRegistry'
+import { keepSkinUploads } from '@/utils/calendarSkinUploads'
+import { calendarSessionMetadataFields } from '@/utils/calendarRehydrateAll'
 import {
   SKIN_LONG_TASK_MESSAGE,
   SKIN_LOAD_TIMEOUT_MS,
@@ -615,6 +617,20 @@ describe('배경 결정(캔버스별 keepCustomerBackground)', () => {
     expect(idsOf(canvases[0])).not.toContain('cbg0')
     expect(idsOf(canvases[1])).toContain('cbg1')
     expect(deps.keepUploads).toHaveBeenCalledWith([`${API}/storage/uploads/bg.jpg`])
+  })
+
+  it('적용 성공 → 빠진 업로드 원본을 세션 메타 calendar.skinUploads 에 기록해 다음 저장 payload 에 싣는다', async () => {
+    setup(sessionObjects([bg('cbg0', `${API}/storage/uploads/bg.jpg`)]))
+    const deps = makeDeps({ keepUploads: (urls) => keepSkinUploads(urls, { loadImage: async (u) => ({ getSrc: () => u }) }) })
+    await executeSkinApply(await confirmPlan('winter', deps), 'skin', deps)
+    expect(useCalendarStore.getState().meta?.skinUploads).toEqual([`${API}/storage/uploads/bg.jpg`])
+    expect(calendarSessionMetadataFields().metadata?.calendar.skinUploads).toEqual([`${API}/storage/uploads/bg.jpg`])
+  })
+
+  it('빠진 업로드가 없으면 skinUploads 키가 생기지 않는다', async () => {
+    const deps = makeDeps({ keepUploads: (urls) => keepSkinUploads(urls, { loadImage: async (u) => ({ getSrc: () => u }) }) })
+    await executeSkinApply(await confirmPlan('winter', deps), 'skin', deps)
+    expect(Object.keys(useCalendarStore.getState().meta ?? {})).not.toContain('skinUploads')
   })
 
   it("'내 배경 유지' → 모든 캔버스 keep=true, 내 업로드 등록 없음", async () => {

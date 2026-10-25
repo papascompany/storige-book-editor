@@ -1,6 +1,7 @@
 import { core } from '@storige/canvas-core'
+import { useCalendarStore } from '@/stores/useCalendarStore'
 import { useImageStore } from '@/stores/useImageStore'
-import { getAssetBaseUrl } from '@/utils/resolveAssetUrl'
+import { getAssetBaseUrl, resolveAssetUrl } from '@/utils/resolveAssetUrl'
 
 /**
  * calendarSkinUploads.ts — 캘린더 디자인(스킨) 적용 때 캔버스에서 빠지는 고객 배경·사진의 원본 판정과 '내 업로드' 등록
@@ -10,8 +11,16 @@ import { getAssetBaseUrl } from '@/utils/resolveAssetUrl'
  *   등록·강제 유지 판단에는 쓰지 않는다. 이 함수가 최종 판정이다.
  * - `registerUploadsFromUrls` 는 '내 업로드'(`useImageStore.uploaded`) 목록에만 넣는다. 배경은 자동편집 입력이 아니므로
  *   `uploadedPhotoMeta`·`uploadedPhotoIdByUrl`·사진 수 한도는 건드리지 않는다.
- * - `keepSkinUploads` 는 적용 경로가 부르는 단일 진입점이다. 지금은 '내 업로드' 등록만 한다(이 편집 화면 동안만 보임).
+ * - `keepSkinUploads` 는 적용 경로가 부르는 단일 진입점이다. 세션 메타 `calendar.skinUploads` 에 기록하고(다시 열 때
+ *   `restoreCalendarSessionMeta` 가 '내 업로드'로 되살림) '내 업로드'에 등록한다.
+ * - `normalizeSkinUploads` 는 기록·판독 공용 정제기다: 같은 API 의 `/storage/uploads/<파일>` 절대 URL 만, 2048자 이하,
+ *   중복 제거(나중 것이 남음), 최대 `SKIN_UPLOADS_MAX` 개(넘치면 오래된 것부터 뺌). 서버는 이 키를 검사하지 않는다.
  */
+
+/** 세션 메타 `calendar.skinUploads` 상한(개) */
+export const SKIN_UPLOADS_MAX = 50
+/** URL 1개 길이 상한(프로파일 thumbnailUrl 과 같은 값) */
+export const SKIN_UPLOAD_URL_MAX = 2048
 
 /**
  * - `data`: data URL — canvas-core 가 이미 캔버스에 남긴다
@@ -138,9 +147,55 @@ export async function registerUploadsFromUrls(
 }
 
 /**
+ * 기록·판독 공용 정제 — 입력 순서 = 오래된 것부터. 같은 API 의 업로드 절대 URL 만 남기고(상대 경로는 API base 로 바꾼 뒤 판정),
+ * 같은 URL 은 나중 것 하나만, 넘치면 앞(오래된 것)부터 뺀다. 남는 것이 없으면 빈 배열.
+ */
+export function normalizeSkinUploads(list: unknown, apiBase: string = getAssetBaseUrl()): string[] {
+  if (!Array.isArray(list)) return []
+  const base = apiBase.replace(/\/$/, '')
+  const ordered: string[] = []
+  for (const v of list) {
+    if (typeof v !== 'string' || v.length === 0 || v.length > SKIN_UPLOAD_URL_MAX) continue
+    const abs = v.startsWith('/') && !v.startsWith('//') ? `${base}${v}` : v
+    if (abs.length > SKIN_UPLOAD_URL_MAX || !/^https?:\/\//i.test(abs)) continue
+    if (classifyBackgroundSrc(abs, base) !== 'upload') continue
+    const at = ordered.indexOf(abs)
+    if (at >= 0) ordered.splice(at, 1)
+    ordered.push(abs)
+  }
+  return ordered.slice(-SKIN_UPLOADS_MAX)
+}
+
+/**
+ * 세션 메타 `calendar.skinUploads` 에 덧붙인다(기존 + 새 것, 정제). 캘린더 메타가 없으면(NULL 세트) 아무것도 하지 않는다.
+ * @returns 기록한 목록(없으면 빈 배열)
+ */
+export function recordSkinUploads(urls: readonly string[]): string[] {
+  const store = useCalendarStore.getState()
+  const meta = store.meta
+  if (!meta) return []
+  const next = normalizeSkinUploads([...(meta.skinUploads ?? []), ...urls])
+  store.setSkinUploads(next)
+  return next
+}
+
+/**
  * 디자인 적용으로 캔버스에서 빠진 업로드 원본을 고객이 다시 쓸 수 있게 남긴다(적용 경로의 단일 진입점).
  * 입력은 `classifyBackgroundSrc === 'upload'` 인 URL 만 넣는다(호출자가 거른다).
+ * 세션 메타 기록은 동기로 먼저 한다 — 적용 경로가 이어서 끝내는 자동저장 보류가 풀릴 때 그 값이 같이 저장된다.
  */
 export async function keepSkinUploads(urls: readonly string[], deps: RegisterUploadsDeps = {}): Promise<RegisterUploadsResult> {
-  return registerUploadsFromUrls(urls, deps)
+  // 상대 경로는 API 기준 절대 URL 로(이미지 로드·다시 열 때 같은 키가 되도록)
+  const absolute = urls.map((u) => resolveAssetUrl(u) ?? u)
+  recordSkinUploads(absolute)
+  return registerUploadsFromUrls(absolute, deps)
+}
+
+/** 다시 연 세션의 `calendar.skinUploads` 를 '내 업로드'에 되살린다(실패는 경고만) */
+export function restoreSkinUploads(urls: readonly string[] | undefined, deps: RegisterUploadsDeps = {}): Promise<RegisterUploadsResult> | null {
+  if (!urls || urls.length === 0) return null
+  return registerUploadsFromUrls(urls, deps).catch((e: unknown) => {
+    console.warn('[calendarSkinUploads] 내 업로드 복원 실패:', e instanceof Error ? e.message : e)
+    return { added: [], skipped: 0, failed: urls.length }
+  })
 }

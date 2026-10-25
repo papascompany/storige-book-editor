@@ -337,3 +337,29 @@ describe('useCalendarStore — 캘린더 디자인(스킨) key', () => {
     expect(Object.keys(useCalendarStore.getState().meta ?? {}).sort()).toEqual(Object.keys(saved).sort())
   })
 })
+
+describe('useCalendarStore — skinUploads', () => {
+  it('setSkinUploads: 설정·빈 목록이면 키 제거, restore 왕복 보존(배열 사본)', () => {
+    useCalendarStore.getState().setFromProfile(calendarProfile())
+    useCalendarStore.getState().setSkinUploads(['u1', 'u2'])
+    expect(useCalendarStore.getState().meta?.skinUploads).toEqual(['u1', 'u2'])
+    useCalendarStore.getState().setSkinUploads([])
+    expect(Object.keys(useCalendarStore.getState().meta ?? {})).not.toContain('skinUploads')
+    const saved = {
+      startYear: 2027,
+      startMonth: 1,
+      show: { holidays: true, lunar: false, solarTerms: true },
+      anniversaries: [],
+      dataVersion: 'kr-2025-2035-v1',
+      skinUploads: ['u3'],
+    }
+    useCalendarStore.getState().restore(saved)
+    expect(useCalendarStore.getState().meta).toEqual(saved)
+    expect(useCalendarStore.getState().meta?.skinUploads).not.toBe(saved.skinUploads)
+  })
+
+  it('setSkinUploads: meta 없음(legacy)이면 무시', () => {
+    useCalendarStore.getState().setSkinUploads(['u1'])
+    expect(useCalendarStore.getState().meta).toBeNull()
+  })
+})

@@ -360,6 +360,11 @@ export interface CalendarSessionMeta {
   yearDeltas?: CalendarYearDeltas;
   /** v1.29 additive. 고객이 적용한 스킨 key(`calendar.skins[].key`). 생략 = 기준 세트 디자인 */
   skinKey?: string;
+  /**
+   * v1.30 additive. 스킨 적용으로 캔버스에서 빠진 고객 업로드 원본 URL(같은 API 의 `/storage/uploads/` 만, 오래된 것부터).
+   * 편집기가 기록하고 다시 열 때 '내 업로드'에 되살린다. 상한·형식 검사는 편집기가 한다. 서버·출력·가격은 쓰지 않는다. 생략 = 없음
+   */
+  skinUploads?: string[];
 }
 
 // ─── 세션 메타(edit_sessions.metadata.items) — 사진인화 항목 ─────────────────

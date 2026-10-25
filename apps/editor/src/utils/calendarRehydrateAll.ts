@@ -16,6 +16,7 @@ import { useSettingsStore } from '@/stores/useSettingsStore'
 import { useCalendarStore } from '@/stores/useCalendarStore'
 import { isCalendarProfile } from '@/utils/productProfile'
 import { rehydrateCalendarGrids } from '@/utils/calendarRehydrate'
+import { normalizeSkinUploads, restoreSkinUploads } from '@/utils/calendarSkinUploads'
 
 /**
  * calendarRehydrateAll.ts — 캘린더 세션 메타의 편집기 측 배선 (P1-d 캘린더, 2026-10-17)
@@ -145,6 +146,9 @@ export function readCalendarSessionMeta(
   // 캘린더 디자인(스킨) key(v1.29): 형식이 맞으면 보존한다. 프로파일 skins 에 없는 key 도 버리지 않는다
   // (편집기가 '목록에 없는 디자인'을 표시하고 다음 적용의 기준을 '알 수 없음'으로 잡는 데 쓴다). 플래그와 무관하게 통과.
   if (isCalendarSkinKey(cal.skinKey)) meta.skinKey = cal.skinKey
+  // 스킨 적용으로 빠진 업로드 원본(v1.30): 같은 API 업로드 URL 만·상한 안으로 정제, 남는 것이 없으면 키 없음
+  const skinUploads = normalizeSkinUploads(cal.skinUploads)
+  if (skinUploads.length > 0) meta.skinUploads = skinUploads
   return meta
 }
 
@@ -178,6 +182,8 @@ export function restoreCalendarSessionMeta(metadata: unknown): boolean {
     console.warn(`[calendar] 복원한 기념일 중 같은 날짜 ${duplicates}건 — 삭제하지 않고 유지(편집 시 추가·수정만 거부)`)
   }
   store.restore(meta)
+  // 스킨 적용으로 빠진 업로드 원본을 '내 업로드'에 되살린다 — 캔버스 복원을 기다리지 않는다(fire-and-forget)
+  void restoreSkinUploads(meta.skinUploads)
   return true
 }
 

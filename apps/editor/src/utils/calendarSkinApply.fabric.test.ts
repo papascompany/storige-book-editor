@@ -207,7 +207,7 @@ describe('불변 — 프로파일 NULL 세트·스킨 없는 캘린더 세트', 
       expect(fetch).not.toHaveBeenCalled()
       expect(JSON.stringify([json(c0), json(c1)])).toBe(before)
       expect(JSON.stringify(calendarSessionMetadataFields())).toBe(fieldsBefore)
-      if (p) expect(Object.keys(calendarSessionMetadataFields().metadata?.calendar ?? {})).not.toContain('skinKey')
+      if (p) for (const k of ['skinKey', 'skinUploads']) expect(Object.keys(calendarSessionMetadataFields().metadata?.calendar ?? {})).not.toContain(k)
       else expect(calendarSessionMetadataFields()).toEqual({})
     })
   }

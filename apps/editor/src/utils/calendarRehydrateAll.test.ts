@@ -6,6 +6,12 @@ vi.mock('@/utils/calendarRehydrate', () => ({
   rehydrateCalendarGrids: (e: unknown, c: unknown, i: number) => rehydrateOne(e, c, i),
 }))
 
+const restoreUploads = vi.hoisted(() => vi.fn())
+vi.mock('@/utils/calendarSkinUploads', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/utils/calendarSkinUploads')>()),
+  restoreSkinUploads: (...a: unknown[]) => restoreUploads(...a),
+}))
+
 import { useAppStore } from '@/stores/useAppStore'
 import { useSaveStore } from '@/stores/useSaveStore'
 import { useSettingsStore } from '@/stores/useSettingsStore'
@@ -374,5 +380,44 @@ describe('readCalendarSessionMeta / calendarSessionMetadataFields — skinKey', 
     expect(Object.keys(calendarSessionMetadataFields().metadata?.calendar ?? {})).not.toContain('skinKey')
     expect(restoreCalendarSessionMeta({ calendar: { ...savedMeta, skinKey: 'winter' } })).toBe(true)
     expect(calendarSessionMetadataFields().metadata?.calendar.skinKey).toBe('winter')
+  })
+})
+
+/** 스킨 적용으로 빠진 업로드 원본(v1.30) — 판독 정제·다시 열 때 '내 업로드' 복원·키 부재 */
+describe('readCalendarSessionMeta / restoreCalendarSessionMeta — skinUploads', () => {
+  const API = 'http://localhost:4000/api'
+  const fallback: CalendarSessionMeta = { ...savedMeta, anniversaries: [] }
+  beforeEach(() => restoreUploads.mockReset())
+
+  it('같은 API 업로드 URL 만 남기고 다른 형식은 버린다(남는 것이 없으면 키 없음)', () => {
+    const meta = readCalendarSessionMeta(
+      { calendar: { ...savedMeta, skinUploads: [`${API}/storage/uploads/a.jpg`, 'https://cdn.other.test/storage/uploads/b.jpg', 3] } },
+      fallback,
+    )
+    expect(meta?.skinUploads).toEqual([`${API}/storage/uploads/a.jpg`])
+    const none = readCalendarSessionMeta({ calendar: { ...savedMeta, skinUploads: ['data:x', `${API}/storage/outputs/x.pdf`] } }, fallback)
+    expect(Object.keys(none ?? {})).not.toContain('skinUploads')
+    expect(Object.keys(readCalendarSessionMeta({ calendar: savedMeta }, fallback) ?? {})).not.toContain('skinUploads')
+  })
+
+  it('다시 열면 skinUploads 를 내 업로드 복원으로 넘기고, 목록이 다음 저장 payload 에 그대로 실린다', () => {
+    const profile = calendarProfile()
+    useSettingsStore.getState().setProductProfile(profile)
+    useCalendarStore.getState().setFromProfile(profile)
+    const urls = [`${API}/storage/uploads/a.jpg`, `${API}/storage/uploads/b.jpg`]
+    expect(restoreCalendarSessionMeta({ calendar: { ...savedMeta, skinKey: 'spring', skinUploads: urls } })).toBe(true)
+    expect(restoreUploads).toHaveBeenCalledWith(urls)
+    expect(calendarSessionMetadataFields().metadata?.calendar.skinUploads).toEqual(urls)
+  })
+
+  it('키 부재: 프로파일 NULL 세트·skinUploads 없는 저장분은 복원 대상이 없고(undefined) payload 바이트가 그대로다', () => {
+    expect(restoreCalendarSessionMeta({ calendar: { ...savedMeta, skinUploads: [`${API}/storage/uploads/a.jpg`] } })).toBe(false)
+    expect(JSON.stringify(calendarSessionMetadataFields())).toBe('{}')
+    const profile = calendarProfile()
+    useSettingsStore.getState().setProductProfile(profile)
+    useCalendarStore.getState().setFromProfile(profile)
+    restoreCalendarSessionMeta({ calendar: savedMeta })
+    expect(restoreUploads).toHaveBeenCalledWith(undefined)
+    expect(JSON.stringify(calendarSessionMetadataFields())).toBe(JSON.stringify({ metadata: { productProfile: profile, calendar: savedMeta } }))
   })
 })

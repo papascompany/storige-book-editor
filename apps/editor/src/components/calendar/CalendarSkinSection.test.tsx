@@ -17,7 +17,7 @@ vi.mock('@/utils/calendarSkinApply', async (importOriginal) => ({
 vi.mock('@/hooks/useEditorContents', () => ({ applyCustomerLocks: vi.fn() }))
 
 import CalendarSkinSection, { SKIN_PREVIEW_DISABLED_MESSAGE, SKIN_UNKNOWN_CURRENT_MESSAGE } from './CalendarSkinSection'
-import { SKIN_POSITION_RESET_LINE, SKIN_UNDO_HISTORY_LINE, SKIN_UPLOADS_SESSION_NOTE } from './CalendarSkinConfirmModal'
+import { SKIN_POSITION_RESET_LINE, SKIN_UNDO_HISTORY_LINE } from './CalendarSkinConfirmModal'
 import { useCalendarSkinStore } from '@/stores/useCalendarSkinStore'
 import { useCalendarStore } from '@/stores/useCalendarStore'
 import { useSaveStore } from '@/stores/useSaveStore'
@@ -238,7 +238,7 @@ describe('CalendarSkinSection — 확인 대화상자', () => {
     expect(text).toContain('내 배경을 넣은 1쪽은 새 디자인 배경으로 바꿉니다.')
     expect(text).toContain("업로드한 배경 1개는 '내 업로드'에 남습니다.")
     expect(text).toContain('1월 앞면, 1월 뒷면, 2월 앞면 외 1쪽은 내 배경을 다시 넣을 수 없는 형식이라 그대로 둡니다')
-    expect(text).toContain(SKIN_UPLOADS_SESSION_NOTE)
+    expect(text).not.toContain('비워질 수 있습니다')
     expect(text).toContain('내 배경 2쪽을 그대로 두고, 그 쪽의 새 디자인 배경 2개는 쓰지 않습니다.')
     const radios = within(group).getAllByRole('radio') as HTMLInputElement[]
     expect(radios[0].checked).toBe(true)
