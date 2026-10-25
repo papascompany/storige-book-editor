@@ -176,6 +176,27 @@ describe('캘린더 디자인 적용 — 실 fabric 캔버스', () => {
     expect(useCalendarStore.getState().meta?.skinKey).toBe('spring')
   })
 
+  it('스킨 틀에 rx·ry 가 없어도(관리자 JSON) 실 fabric 저장본(rx:0·ry:0)과 같은 틀 모양 — 사진 변환 유지, 다시 채우지 않음', async () => {
+    const original = SETS['set-spring']
+    const noRadius = SPRING_T.map((objs) => objs.map((o) => {
+      if (o.extensionType !== 'frame') return o
+      const { rx: _rx, ry: _ry, ...rest } = o
+      return rest
+    }))
+    SETS['set-spring'] = setOf('set-spring', noRadius)
+    try {
+      const [c0] = await openSession(PROFILE)
+      expect(json(c0).objects.find((o) => o.id === 'frame0')).toMatchObject({ rx: 0, ry: 0 })
+      const out = await prepareSkinApply('spring', deps())
+      if (out.kind !== 'confirm') throw new Error(out.kind)
+      expect(out.plan.summarySkin).toMatchObject({ photosKept: 1, photosRefilled: 0 })
+      expect((await executeSkinApply(out.plan, 'skin', deps())).kind).toBe('applied')
+      expect(json(c0).objects.find((o) => o.id === 'frame0_fillImage')).toMatchObject({ frameRef: 'frame0', left: 15, top: 18, scaleX: 0.8, scaleY: 0.8 })
+    } finally {
+      SETS['set-spring'] = original
+    }
+  })
+
   it('「적용 취소」 → toJSON 이 적용 전과 같다(객체 id·순서·속성)', async () => {
     const [c0, c1] = await openSession(PROFILE)
     const before = [json(c0), json(c1)]

@@ -268,6 +268,7 @@ describe('prepareSkinApply — 노출 조건·진입 가드', () => {
       () => useSettingsStore.getState().setProductProfile({ ...calendarProfile(), kind: 'sheet' } as ProductProfile),
       () => useSettingsStore.getState().setProductProfile(calendarProfile([])),
       () => vi.stubEnv('VITE_ENABLE_CALENDAR_SKINS', 'false'),
+      () => vi.stubEnv('VITE_ENABLE_CALENDAR', 'false'),
       () => useSettingsStore.setState({ currentSettings: { ...useSettingsStore.getState().currentSettings, editMode: true } } as never),
       () => useCalendarSkinStore.getState().reset(),
     ]
@@ -392,6 +393,40 @@ describe('prepareSkinApply — 원천 재조회·호환 재검사', () => {
     expect((deps.fetchSet as ReturnType<typeof vi.fn>).mock.calls.map((c) => c[0])).toEqual(expect.arrayContaining(['base', 'set-winter', 'set-spring']))
     const fromObjs = (spies.merge.mock.calls[0][1] as { objects: Plain[] }).objects
     expect(fromObjs.find((o) => o.id === 'b-bg')?.fill).toBe('#f00')
+  })
+
+  describe('직전 스킨 세트 조회 실패(network)', () => {
+    /** 세션이 겨울 디자인을 따르는 중 — 겨울 세트 조회만 실패 */
+    function winterSession() {
+      setup([
+        [...clone(WINTER_T[0]), { type: 'image', id: 'w-frame0_fillImage', frameRef: 'w-frame0', src: '/storage/uploads/p0.jpg', left: 10, top: 10, width: 50, height: 50 }],
+        clone(WINTER_T[1]),
+      ])
+      useCalendarStore.getState().setSkinKey('winter')
+      vi.spyOn(console, 'warn').mockImplementation(() => {})
+      return makeDeps({
+        fetchSet: vi.fn(async (id: string) => {
+          if (id === 'set-winter') throw new Error('network down')
+          return clone(sets[id]) as never
+        }),
+      })
+    }
+
+    it('idSetCache 에 직전 세트 ids 가 있으면 판정 집합에 넣는다(from 은 null) → 확인으로 간다', async () => {
+      const deps = winterSession()
+      useCalendarSkinStore.getState().cacheIdSets('set-winter', WINTER_T.map((objs) => new Set(objs.map((o) => o.id as string))))
+      const plan = await confirmPlan('third', deps)
+      expect(plan.from).toEqual([null, null])
+      expect([...plan.templateIds[0]]).toEqual(expect.arrayContaining(['w-bg', 'w-frame0', 'w-title', 'w-grid0']))
+      expect(plan.summarySkin).toMatchObject({ blocked: false, templateMarkedCustomerCount: 0, customerKept: 0 })
+    })
+
+    it('캐시도 없으면 출처 불명 — 옛 틀이 고객 추가로 남아 차단', async () => {
+      const deps = winterSession()
+      const out = await prepareSkinApply('third', deps)
+      expect(out.kind).toBe('blocked')
+      expect(out.kind === 'blocked' && out.plan.templateIds[0].has('w-frame0')).toBe(false)
+    })
   })
 })
 
@@ -536,6 +571,19 @@ describe('executeSkinApply — 성공', () => {
     expect(log).toContain('fill0:w-frame0')
     expect(deps.keepUploads).not.toHaveBeenCalled()
   })
+
+  it('refills: 원래 사진의 extension(촬영일 등)을 다시 채우는 사진에 보존한다', async () => {
+    sets['set-winter'] = setOf('set-winter', [WINTER_T[0].map((o) => (o.id === 'w-frame0' ? frame('w-frame0', { left: 30 }) : o)), WINTER_T[1]])
+    const ext = { takenAt: '2026-05-01', grayscale: true }
+    Object.assign(canvases[0].objects.find((o) => o.id === 'photo0') as Plain, { extension: clone(ext) })
+    const deps = makeDeps()
+    const plan = await confirmPlan('winter', deps)
+    expect(plan.summarySkin.photosRefilled).toBe(1)
+    expect((await executeSkinApply(plan, 'skin', deps)).kind).toBe('applied')
+    const fill = (deps.fillFrame as ReturnType<typeof vi.fn>).mock.calls[0]
+    expect((fill[2] as Plain).extension).toEqual(ext)
+    expect((fill[3] as Plain).id).toBe('w-frame0')
+  })
 })
 
 describe('executeSkinApply — 실패·롤백', () => {
@@ -564,6 +612,53 @@ describe('executeSkinApply — 실패·롤백', () => {
     expect(markDirty).not.toHaveBeenCalled()
     expect(useCalendarSkinStore.getState().phase).toBe('failed')
     expect(isAutosaveSuspended()).toBe(false)
+  })
+
+  it('보류 안 스냅샷(serialize) 예외 → 실패로 끝내고 상태·작업 오버레이·보류를 정리(loadJSON 0회)', async () => {
+    const deps = makeDeps()
+    const plan = await confirmPlan('winter', deps)
+    const out = await executeSkinApply(plan, 'skin', { ...deps, serialize: () => { throw new Error('toJSON boom') } })
+    expect(out).toEqual({ kind: 'failed', reason: '캔버스 읽기 실패: toJSON boom' })
+    expect(deps.loadJSON).not.toHaveBeenCalled()
+    expect(useCalendarSkinStore.getState().phase).toBe('failed')
+    expect(log.filter((l) => l.startsWith('longTask:start'))).toHaveLength(1)
+    expect(log[log.length - 1]).toBe('longTask:end')
+    expect(isAutosaveSuspended()).toBe(false)
+  })
+
+  it('적용 성공 후처리 예외 → 전 캔버스 롤백·skinKey·되돌리기 스냅샷 원래대로', async () => {
+    const { out, before } = await failingRun({ requestFrame: () => { throw new Error('raf boom') } })
+    expect(out).toEqual({ kind: 'failed', reason: '적용 후처리 실패: raf boom' })
+    expect(canvases.map(serialize)).toEqual(before)
+    expect(useCalendarStore.getState().meta?.skinKey).toBeUndefined()
+    expect(useCalendarSkinStore.getState().undo).toBeNull()
+    expect(useCalendarSkinStore.getState().phase).toBe('failed')
+    expect(isAutosaveSuspended()).toBe(false)
+  })
+
+  it('보류 진입 전 예외(상태 전환) → 실패로 끝내고 캔버스·보류에 손대지 않는다', async () => {
+    const deps = makeDeps()
+    const plan = await confirmPlan('winter', deps)
+    vi.spyOn(useCalendarSkinStore.getState(), 'setUndo').mockImplementationOnce(() => { throw new Error('store boom') })
+    const out = await executeSkinApply(plan, 'skin', deps)
+    expect(out).toEqual({ kind: 'failed', reason: '적용 준비 실패: store boom' })
+    expect(deps.loadJSON).not.toHaveBeenCalled()
+    expect(log.some((l) => l.startsWith('longTask:start'))).toBe(false)
+    expect(useCalendarSkinStore.getState().phase).toBe('failed')
+  })
+
+  it('사후 검증 — 캔버스 그리드 수가 새 디자인과 다르면 전 캔버스 롤백(재합성 수는 캔버스와 일치해도)', async () => {
+    const { out, before } = await failingRun({
+      loadJSON: vi.fn(async (_e, c, json) => {
+        const fc = c as unknown as FakeCanvas
+        // 둘째 캔버스는 그리드가 빠진 채 실린다 — strict 재합성은 실린 캔버스 기준이라 통과한다
+        const objs = (json.objects as Plain[]).filter((o) => !(fc.idx === 1 && o.extensionType === 'calendar-grid' && String(o.id).startsWith('w-')))
+        fc.objects = objs.map(toFake)
+      }),
+    })
+    expect(out).toEqual({ kind: 'failed', reason: '그리드 수 불일치(page 1)' })
+    expect(canvases.map(serialize)).toEqual(before)
+    expect(useCalendarStore.getState().meta?.skinKey).toBeUndefined()
   })
 
   it('loadJSON 가드: 콜백이 오지 않으면 8초 뒤 reject(시간 초과 = 실패)', async () => {

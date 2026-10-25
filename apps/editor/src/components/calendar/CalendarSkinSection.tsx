@@ -129,7 +129,16 @@ export default function CalendarSkinSection() {
     }
     if (key === useCalendarStore.getState().meta?.skinKey) return
     useCalendarSkinStore.getState().setPhase('checking', key ?? '')
-    const out = await prepareSkinApply(key)
+    let out: Awaited<ReturnType<typeof prepareSkinApply>>
+    try {
+      out = await prepareSkinApply(key)
+    } catch (e) {
+      // 예외로 'checking' 에 갇히지 않게 상태를 푼다(준비 단계는 캔버스·스토어를 바꾸지 않는다)
+      console.warn('[calendarSkin] 적용 준비 실패:', e instanceof Error ? e.message : e)
+      useCalendarSkinStore.getState().setPhase('idle')
+      setNotice(REJECT_MESSAGES.network ?? null)
+      return
+    }
     if (out.kind === 'noop') {
       useCalendarSkinStore.getState().setPhase('idle')
       return
@@ -155,7 +164,16 @@ export default function CalendarSkinSection() {
 
   const confirm = useCallback(async (plan: SkinApplyPlan, choice: SkinBackgroundChoice) => {
     setDialog(null)
-    const out = await executeSkinApply(plan, choice)
+    let out: Awaited<ReturnType<typeof executeSkinApply>>
+    try {
+      out = await executeSkinApply(plan, choice)
+    } catch (e) {
+      // 실행이 예외로 끝나면 'applying' 상태에 갇히지 않게 푼다(작업 오버레이는 executeSkinApply 가 보류 안에서 닫는다)
+      console.warn('[calendarSkin] 적용 실패:', e instanceof Error ? e.message : e)
+      useCalendarSkinStore.getState().setPhase('idle')
+      showToast(SKIN_FAILED_MESSAGE, 'error', 5000)
+      return
+    }
     if (out.kind === 'aborted') {
       useCalendarSkinStore.getState().setPhase('idle')
       setNotice(out.reason === 'save-failed' ? SKIN_SAVE_FAILED_MESSAGE : REJECT_MESSAGES[out.reason] ?? null)

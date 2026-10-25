@@ -188,6 +188,15 @@ describe('CalendarSkinSection — 카드', () => {
     expect(useCalendarSkinStore.getState().phase).toBe('idle')
   })
 
+  it('준비(prepare)가 예외로 끝나도 checking 에 갇히지 않는다 — idle·안내·카드 다시 누를 수 있음', async () => {
+    h.prepare.mockRejectedValue(new Error('boom'))
+    render(<CalendarSkinSection />)
+    await clickCard('겨울')
+    expect(useCalendarSkinStore.getState().phase).toBe('idle')
+    expect(screen.getByText('디자인을 불러오지 못했습니다. 잠시 후 다시 시도해 주세요.')).toBeTruthy()
+    expect((card('겨울') as HTMLButtonElement).disabled).toBe(false)
+  })
+
   it('저장 중이면 조회하지 않고 안내한다', async () => {
     act(() => useSaveStore.setState({ status: 'saving' } as never))
     render(<CalendarSkinSection />)
@@ -294,6 +303,21 @@ describe('CalendarSkinSection — 확인 대화상자', () => {
     expect(h.undo).toHaveBeenCalledTimes(1)
     act(() => useCalendarSkinStore.getState().setPhase('idle'))
     expect(screen.queryByRole('button', { name: '적용 취소' })).toBeNull()
+  })
+
+  it('실행(execute)이 예외로 끝나도 applying 에 갇히지 않는다 — idle·실패 안내', async () => {
+    h.prepare.mockResolvedValue({ kind: 'confirm', plan: plan() })
+    h.execute.mockImplementation(async () => {
+      useCalendarSkinStore.getState().setPhase('applying')
+      throw new Error('boom')
+    })
+    render(<CalendarSkinSection />)
+    await clickCard('겨울')
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: '바꾸기' }))
+    })
+    expect(useCalendarSkinStore.getState().phase).toBe('idle')
+    expect((card('겨울') as HTMLButtonElement).disabled).toBe(false)
   })
 
   it('적용 직전 저장 실패 → 안내하고 idle', async () => {

@@ -57,9 +57,12 @@ export const SKIN_LOAD_TIMEOUT_MS = 8000
 export const SKIN_OTHERS_CONCURRENCY = 3
 export const SKIN_LONG_TASK_MESSAGE = '디자인을 바꾸는 중...'
 
-/** 킬스위치 — 값이 정확히 'false' 면 끈다(기존 VITE_ENABLE_* 관례). 달력 메뉴 자체는 VITE_ENABLE_CALENDAR 가 관장한다 */
+/**
+ * 킬스위치 — 값이 정확히 'false' 면 끈다(기존 VITE_ENABLE_* 관례). 달력 기능 전체(VITE_ENABLE_CALENDAR)와
+ * 스킨(VITE_ENABLE_CALENDAR_SKINS) 둘 중 하나라도 꺼지면 스킨 절·적용을 막는다(메뉴 노출과 별개로 코드에서 방어).
+ */
 export function isCalendarSkinsFlagEnabled(): boolean {
-  return import.meta.env.VITE_ENABLE_CALENDAR_SKINS !== 'false'
+  return import.meta.env.VITE_ENABLE_CALENDAR !== 'false' && import.meta.env.VITE_ENABLE_CALENDAR_SKINS !== 'false'
 }
 
 export interface SkinCanvasHandle {
@@ -447,14 +450,15 @@ export async function prepareSkinApply(targetKey: string | undefined, depsIn?: P
   } else {
     const prevSkin = skins.find((s) => s.key === prevSkinKey)
     if (prevSkin) {
-      prevSkinSetId = prevSkin.templateSetId
       const prevSet = target && prevSkin.templateSetId === target.templateSetId ? toSet : null
       const r: FetchResult = prevSet ? { status: 'ok', set: prevSet } : await fetchSafe(deps, prevSkin.templateSetId)
-      if (r.status === 'ok' && compatErrors(base, r.set).length === 0) {
-        const jsons = detailJsons(r.set)
-        if (jsons.length === count) from = jsons
-        useCalendarSkinStore.getState().cacheIdSets(prevSkin.templateSetId, idSetsOf(r.set))
+      if (r.status === 'ok') useCalendarSkinStore.getState().cacheIdSets(prevSkin.templateSetId, idSetsOf(r.set))
+      const jsons = r.status === 'ok' && compatErrors(base, r.set).length === 0 ? detailJsons(r.set) : null
+      if (jsons && jsons.length === count) {
+        from = jsons
+        prevSkinSetId = prevSkin.templateSetId
       } else {
+        // from 은 null(출처 불명). 직전 세트 ids 는 다른 스킨과 같이 판정 집합에 넣는다(캐시 우선, 없으면 다시 조회 — 실패하면 빠짐)
         console.warn(`[calendarSkin] 직전 디자인(${prevSkinKey}) 세트를 쓸 수 없음 — 기준을 알 수 없음으로 진행`)
       }
     }
@@ -634,22 +638,55 @@ export async function executeSkinApply(
     }
   }
 
-  releaseUndo()
-  useCalendarSkinStore.getState().setPhase('applying')
-  return deps.suspend(async (): Promise<SkinExecuteOutcome> => {
-    deps.emit('longTask:start', { message: SKIN_LONG_TASK_MESSAGE })
-    const fail = (reason: string): SkinExecuteOutcome => {
-      deps.emit('longTask:end')
-      useCalendarSkinStore.getState().setPhase('failed')
-      return { kind: 'failed', reason }
-    }
-    const handles = deps.getHandles()
-    const count = plan.to.length
-    if (handles.length !== count) return fail('캔버스 수가 바뀜')
+  const errorText = (e: unknown): string => (e instanceof Error ? e.message : String(e))
+  try {
+    releaseUndo()
+    useCalendarSkinStore.getState().setPhase('applying')
+  } catch (e) {
+    // 보류 진입 전 예외 — 캔버스는 그대로라 실패로만 끝낸다
+    useCalendarSkinStore.getState().setPhase('failed')
+    return { kind: 'failed', reason: `적용 준비 실패: ${errorText(e)}` }
+  }
+  let longTaskOpen = false
+  const fail = (reason: string): SkinExecuteOutcome => {
+    if (longTaskOpen) deps.emit('longTask:end')
+    longTaskOpen = false
+    useCalendarSkinStore.getState().setPhase('failed')
+    return { kind: 'failed', reason }
+  }
+  try {
+    return await deps.suspend(() => applyInsideSuspend())
+  } catch (e) {
+    // 보류 안에서 처리하지 못한 예외(보류는 runWithAutosaveSuspended finally 가 푼다) — 상태·오버레이만 정리
+    return fail(`적용 실패: ${errorText(e)}`)
+  }
 
-    // 스냅샷은 지금 다시 뜬다(대화상자를 띄운 사이의 변화까지 담는다). 병합도 이 값으로 다시 계산한다(순수 함수)
-    const before = handles.map((h) => deps.serialize(h.canvas))
-    const pagesBefore = snapshotPages(count)
+  async function applyInsideSuspend(): Promise<SkinExecuteOutcome> {
+    deps.emit('longTask:start', { message: SKIN_LONG_TASK_MESSAGE })
+    longTaskOpen = true
+    const count = plan.to.length
+    let handles: SkinCanvasHandle[]
+    let before: SkinCanvasJson[]
+    let pagesBefore: PagesSnapshot
+    try {
+      handles = deps.getHandles()
+      if (handles.length !== count) return fail('캔버스 수가 바뀜')
+      // 스냅샷은 지금 다시 뜬다(대화상자를 띄운 사이의 변화까지 담는다). 병합도 이 값으로 다시 계산한다(순수 함수)
+      before = handles.map((h) => deps.serialize(h.canvas))
+      pagesBefore = snapshotPages(count)
+    } catch (e) {
+      // 아직 아무 캔버스도 바꾸지 않았다 — 되돌릴 것 없이 실패
+      return fail(`캔버스 읽기 실패: ${errorText(e)}`)
+    }
+    /** 손댄 캔버스(0..touched)를 적용 직전 JSON 으로 되돌린다. 되돌리기도 실패하면 fatal(보류 유지) */
+    const rollback = async (touched: number, reason: string): Promise<SkinExecuteOutcome> => {
+      try {
+        for (let j = 0; j <= touched; j += 1) await restoreCanvas(deps, handles[j], j, before[j])
+      } catch (rollbackError) {
+        return haltFatal(deps, rollbackError)
+      }
+      return fail(reason)
+    }
     let keep: boolean[]
     let decision: SkinBackgroundDecision
     let results: SkinMergeResult[]
@@ -685,6 +722,10 @@ export async function executeSkinApply(
           }
           try {
             const image = await deps.loadImage(refill.src)
+            // 원래 사진의 extension(촬영일 등)을 보존한다 — 채움 경로는 기존 extension 에 병합한다
+            if (refill.extension !== undefined) {
+              ;(image as fabric.Object & { extension?: unknown }).extension = JSON.parse(JSON.stringify(refill.extension)) as unknown
+            }
             await deps.fillFrame(h.editor, h.canvas, image, frame)
           } catch (e) {
             console.warn(`[calendarSkin] 사진 다시 넣기 실패(page ${i}) — 그 사진만 뺌:`, e instanceof Error ? e.message : e)
@@ -703,15 +744,31 @@ export async function executeSkinApply(
         if (gridCountOf(handles[i].canvas.getObjects()) !== want) throw new Error(`그리드 수 불일치(page ${i})`)
       }
     } catch (e) {
-      console.warn('[calendarSkin] 적용 실패 — 되돌림:', e instanceof Error ? e.message : e)
-      try {
-        for (let j = 0; j <= touched; j += 1) await restoreCanvas(deps, handles[j], j, before[j])
-      } catch (rollbackError) {
-        return haltFatal(deps, rollbackError)
-      }
-      return fail(e instanceof Error ? e.message : String(e))
+      console.warn('[calendarSkin] 적용 실패 — 되돌림:', errorText(e))
+      return rollback(touched, errorText(e))
     }
 
+    try {
+      return finishApplied(handles, before, keep, decision, results, droppedSrcs)
+    } catch (e) {
+      // 성공 후처리 중 예외 — 전 캔버스를 되돌리고 skinKey·되돌리기 스냅샷도 원래대로
+      console.warn('[calendarSkin] 적용 후처리 실패 — 되돌림:', errorText(e))
+      useCalendarStore.getState().setSkinKey(plan.prevSkinKey)
+      disarmUndoWatch?.()
+      disarmUndoWatch = null
+      useCalendarSkinStore.getState().setUndo(null)
+      return rollback(count - 1, `적용 후처리 실패: ${errorText(e)}`)
+    }
+  }
+
+  function finishApplied(
+    handles: SkinCanvasHandle[],
+    before: SkinCanvasJson[],
+    keep: boolean[],
+    decision: SkinBackgroundDecision,
+    results: SkinMergeResult[],
+    droppedSrcs: string[],
+  ): SkinExecuteOutcome {
     // 성공 — skinKey 기록·dirty 1회
     useCalendarStore.getState().setSkinKey(plan.targetKey)
     useSaveStore.getState().markDirty()
@@ -731,6 +788,7 @@ export async function executeSkinApply(
     useCalendarSkinStore.getState().setUndo(undo)
     useCalendarSkinStore.getState().setPhase('applied')
     deps.emit('longTask:end')
+    longTaskOpen = false
     disarmUndoWatch = armSkinUndoWatch(handles, () => {
       disarmUndoWatch = null
       useCalendarSkinStore.getState().setUndo(null)
@@ -738,7 +796,7 @@ export async function executeSkinApply(
     }, deps.requestFrame)
     const photosDropped = results.reduce((n, r) => n + r.report.photosDropped, 0) + droppedSrcs.length
     return { kind: 'applied', label: plan.label, photosDropped }
-  })
+  }
 }
 
 /** 「적용 취소」 — 스냅샷으로 되돌리고 skinKey 를 이전 값으로. 스냅샷이 없으면 false */
