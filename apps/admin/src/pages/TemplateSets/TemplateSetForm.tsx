@@ -131,6 +131,8 @@ import {
   photoPrintPresetFormValues,
   productProfileSectionHint,
 } from './photoPrintProfilePresets';
+// 캘린더 스킨(2026-10-25) — 「상품 프로파일」 패널의 calendar.skins 편집 절
+import { CalendarSkinsSection } from './CalendarSkinsSection';
 
 const templateTypeLabels: Record<TemplateType, string> = {
   [TemplateType.WING]: '날개',
@@ -960,10 +962,15 @@ export const TemplateSetForm = () => {
       message.warning('적용할 캘린더 프리셋을 선택하세요.');
       return;
     }
-    form.setFieldsValue(calendarPresetFormValues(preset));
+    const presetValues = calendarPresetFormValues(preset);
+    form.setFieldsValue(presetValues);
     // 프리셋 JSON 은 항상 유효하지만, 거부 Promise 가 unhandled 로 남지 않게 한다.
     form.validateFields(['productProfileJson']).catch(() => undefined);
-    message.success(`${preset.label} 프리셋을 적용했습니다. 판형·단일 모드·양면 원파일·내지 추가 불가로 설정됩니다.`);
+    // 안내 문구의 면 수·쪽수는 적용값에서 만든다 — 프리셋에 따라 단면(faces 1) 또는 양면이고 쪽수도 다르다.
+    const sides = preset.profile.sheet.faces === 1 ? '단면' : '양면';
+    message.success(
+      `${preset.label} 프리셋을 적용했습니다. 판형·단일 모드·${sides} ${presetValues.pageCountMin}쪽·PDF 원파일·내지 추가 불가로 설정됩니다.`,
+    );
   };
 
   const handleApplyPhotoPrintPreset = () => {
@@ -1875,6 +1882,8 @@ export const TemplateSetForm = () => {
                         placeholder='비워 두면 프로파일 없음(기존 동작). 예: { "version": 1, "kind": "calendar" | "photo-print", ... }'
                       />
                     </Form.Item>
+
+                    <CalendarSkinsSection templateSetId={id} templateIds={templates.map((t) => t.templateId)} />
                   </>
                 ),
               },
