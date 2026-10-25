@@ -238,7 +238,7 @@ describe('벽걸이 1단 단면 14쪽 전환(오너 확정 2026-10-24) — 나�
       width: 297,
       height: 415,
       editorMode: EditorMode.SINGLE,
-      pdfOutputMode: 'duplex-merged',
+      pdfOutputMode: 'single',
       canAddPage: false,
       pageCountMin: 14,
       pageCountMax: 14,

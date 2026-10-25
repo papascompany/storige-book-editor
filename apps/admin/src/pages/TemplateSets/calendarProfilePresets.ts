@@ -106,7 +106,7 @@ export function findCalendarProfilePreset(key: string | undefined): CalendarProf
 
 /**
  * 프리셋 적용 시 채울 템플릿셋 폼 필드 값(TemplateSetForm 의 Form 필드명 기준).
- * - 단일 모드·pdfOutputMode 'duplex-merged'(편집기 산출 PDF 그대로 — 단면 wall-1 도 같은 경로)·내지 추가 불가·
+ * - 단일 모드·pdfOutputMode 양면 'duplex-merged'·단면(벽걸이 1단) 'single'(둘 다 편집기 산출 PDF 그대로 — 표기만 다름)·내지 추가 불가·
  *   페이지 범위 [count,count](26, 벽걸이 1단 14)·증감 단위 없음·JSON textarea.
  * 순수 함수 — 폼 컴포넌트 테스트 없이 값 계약을 고정한다.
  */
@@ -114,7 +114,7 @@ export interface CalendarPresetFormValues {
   width: number;
   height: number;
   editorMode: EditorMode;
-  pdfOutputMode: 'duplex-merged';
+  pdfOutputMode: 'duplex-merged' | 'single';
   canAddPage: false;
   pageCountMin: number;
   pageCountMax: number;
@@ -131,7 +131,7 @@ export function calendarPresetFormValues(preset: CalendarProfilePreset): Calenda
     width: preset.width,
     height: preset.height,
     editorMode: EditorMode.SINGLE,
-    pdfOutputMode: 'duplex-merged',
+    pdfOutputMode: preset.profile.sheet?.faces === 1 ? 'single' : 'duplex-merged',
     canAddPage: false,
     pageCountMin: count,
     pageCountMax: count,

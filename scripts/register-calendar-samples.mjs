@@ -284,7 +284,9 @@ async function main() {
     const setBody = {
       name: setName, type: 'leaflet', editorMode: 'single', width: p.width, height: p.height,
       canAddPage: false, pageCountRange: [profile.pages.count, profile.pages.count], pageStep: null, templates,
-      productProfile: profile, pdfOutputMode: 'duplex-merged', colorMode: 'rgb', enabledMenus: null,
+      productProfile: profile,
+      // 단면(벽걸이 1단)은 'single', 양면은 'duplex-merged' — 둘 다 편집기 산출 PDF 그대로(표기만 다름).
+      pdfOutputMode: profile.sheet.faces === 1 ? 'single' : 'duplex-merged', colorMode: 'rgb', enabledMenus: null,
       // 도련 정책(오너 결정 A, 2026-10-17): 판형은 재단 그대로, 세트에 cropMarkEnabled·bleedMm 3 — 편집기 PDF 는 재단+6mm 에
       // TrimBox·코너 마커를 넣고(책자와 같은 게이트), 워커는 workSize 매칭·hasBleed=true 로 BLEED_MISSING 없이 통과한다.
       cropMarkEnabled: true, bleedMm: 3,
