@@ -10,8 +10,6 @@ import {
   isSkinMergeSuspect,
   mergeSkinCanvas,
   summarizeSkinMergeReports,
-  SKIN_MERGE_SUSPECT_MIN_CUSTOMER,
-  SKIN_MERGE_SUSPECT_RATIO,
   type SkinCanvasJson,
 } from './skin'
 import { core } from '../utils/canvas'
@@ -193,6 +191,42 @@ describe('mergeSkinCanvas — 채움 사진', () => {
     expect(report.photosRefilled).toBe(1)
   })
 
+  it('틀 모서리 rx·ry 생략과 0, 한쪽만 준 값과 양쪽 같은 값은 같은 틀 모양 — 사진 유지(fabric Rect 와 같은 해석)', () => {
+    const same: Array<[Obj, Obj]> = [
+      [{}, { rx: 0, ry: 0 }],
+      [{ rx: 0 }, {}],
+      [{ rx: 8 }, { rx: 8, ry: 8 }],
+      [{ ry: 6 }, { rx: 6, ry: 6 }],
+    ]
+    for (const [a, b] of same) {
+      const p = photo('f1', '/u/a.jpg')
+      const { json, refills, report } = mergeSkinCanvas(canvas([ws(), p, frame('f1', 0, 0, a)]), null, canvas([ws(), frame('f1', 0, 0, b)]))
+      expect(refills).toEqual([])
+      expect(report).toMatchObject({ photosKept: 1, photosRefilled: 0 })
+      expect(byId(json, 'f1_fillImage')).toEqual(p)
+    }
+    // 실제로 모서리가 다르면 여전히 refills(frame-shape)
+    for (const [a, b] of [[{}, { rx: 8, ry: 8 }], [{ rx: 8 }, { rx: 8, ry: 4 }]] as Array<[Obj, Obj]>) {
+      const { refills } = mergeSkinCanvas(canvas([ws(), photo('f1', '/u/a.jpg'), frame('f1', 0, 0, a)]), null, canvas([ws(), frame('f1', 0, 0, b)]))
+      expect(refills.map((r) => r.reason)).toEqual(['frame-shape'])
+    }
+  })
+
+  it("틀 origin 키워드와 숫자(0=left·top, 0.5=center, 1=right·bottom)는 같은 기하 — 사진 유지", () => {
+    const pairs: Array<[Obj, Obj]> = [
+      [{}, { originX: 0, originY: 0 }],
+      [{ originX: 'center', originY: 'center' }, { originX: 0.5, originY: 0.5 }],
+      [{ originX: 'right', originY: 'bottom' }, { originX: 1, originY: 1 }],
+    ]
+    for (const [a, b] of pairs) {
+      const { refills, report } = mergeSkinCanvas(canvas([ws(), photo('f1', '/u/a.jpg'), frame('f1', 0, 0, a)]), null, canvas([ws(), frame('f1', 0, 0, b)]))
+      expect(refills).toEqual([])
+      expect(report.photosKept).toBe(1)
+    }
+    const { refills } = mergeSkinCanvas(canvas([ws(), photo('f1', '/u/a.jpg'), frame('f1', 0, 0)]), null, canvas([ws(), frame('f1', 0, 0, { originX: 0.5 })]))
+    expect(refills.map((r) => r.reason)).toEqual(['geometry'])
+  })
+
   it('템플릿 견본 채움 사진(from 과 같은 id·src)은 고객 사진이 아니다 — 스킨 견본을 쓴다', () => {
     const sample = photo('f1', '/t/sample.jpg')
     const from = canvas([ws(), sample, frame('f1', 0, 0)])
@@ -257,7 +291,11 @@ describe('mergeSkinCanvas — 템플릿 유래 판정(판정 집합 · 보조 �
     expect([...templateIds].sort()).toEqual(['bg-1', 'bg-s', 'g-s', 'g1', 'old-deco-shared', 'workspace'])
     const { json, report } = mergeSkinCanvas(cur, null, to, { templateIds })
     expect(ids(json)).toEqual(['workspace', 'bg-s', 'g-s', 'st-1', 'st-locked', 'st-unlocked'])
-    expect(report).toMatchObject({ templateRemoved: 5, auxiliaryTemplateCount: 4, customerKept: 3, suspect: false })
+    // 판정 집합 밖 보조 판정 객체 4개 → 출처 불명이지만 고객 추가(스티커)에 템플릿 표지가 없어 차단하지 않는다
+    expect(report).toMatchObject({
+      templateRemoved: 5, auxiliaryTemplateCount: 4, customerKept: 3,
+      originUnknown: true, outsideTemplateIdsCount: 4, templateMarkedCustomerCount: 0, suspect: false,
+    })
   })
 
   it('고객이 직접 잠근 요소(user 잠금)·잠금 해제 뒤 남은 lockInfo 는 판정 집합 밖이면 고객 요소로 보존', () => {
@@ -290,28 +328,78 @@ describe('mergeSkinCanvas — 템플릿 유래 판정(판정 집합 · 보조 �
     const { json, report } = mergeSkinCanvas(cur, null, canvas([ws(), bg('bg-s')]), { keepCustomerBackground: true })
     expect(ids(json)).toEqual(['workspace', 'x-bg', 'x-el', 'x-frame'])
     expect(report).toMatchObject({ templateRemoved: 0, auxiliaryTemplateCount: 0, customerKept: 2, customerBackgroundsKept: 1 })
+    // 고객 틀(표지 frame)이 있어도 출처를 알면(직전 스킨 없음·판정 집합 밖 템플릿 객체 없음) 차단하지 않는다
+    expect(report).toMatchObject({ originUnknown: false, templateMarkedCustomerCount: 1, suspect: false })
+  })
+})
+
+describe('mergeSkinCanvas — 차단 판정(출처 불명 + 템플릿 표지)', () => {
+  // 기준 템플릿(from)·스킨(to) — 판정 집합 = 두 템플릿 ids
+  const base = (): SkinCanvasJson => canvas([ws(), bg('bg-1'), frame('f1', 0, 0), grid('g1')])
+  const skin = (): SkinCanvasJson => canvas([ws(), bg('bg-s'), frame('f-s', 0, 0), grid('g-s')])
+  /** 판정 집합 밖 사진틀(고객 라이브러리 틀이거나, 모르는 스킨의 템플릿 틀) */
+  const strayFrame = (): Obj => frame('stray-frame', 300, 200)
+
+  it('출처 불명 × 표지 유무 4조합 — 출처 불명이고 표지가 있을 때만 suspect', () => {
+    // 출처 불명(from=null + 직전 스킨 있음) · 고객 추가에 사진틀 표지 → 차단
+    const unknownMarked = mergeSkinCanvas(canvas([ws(), strayFrame(), sticker('a')]), null, skin(), { prevSkinKey: 'gone', dryRun: true })
+    expect(unknownMarked.report).toMatchObject({ originUnknown: true, templateMarkedCustomerCount: 1, customerKept: 2, suspect: true })
+    // 출처 불명 · 표지 없음(스티커 20개) → 통과 — 개수는 보지 않는다
+    const many = Array.from({ length: 20 }, (_, k) => sticker(`s${k}`))
+    const unknownPlain = mergeSkinCanvas(canvas([ws(), ...many]), null, skin(), { prevSkinKey: 'gone', dryRun: true })
+    expect(unknownPlain.report).toMatchObject({ originUnknown: true, templateMarkedCustomerCount: 0, customerKept: 20, suspect: false })
+    // 출처 앎(from 있음·판정 집합 완전) · 고객 사진틀 표지 → 통과(고객 라이브러리 틀)
+    const knownMarked = mergeSkinCanvas(canvas([ws(), bg('bg-1'), frame('f1', 0, 0), grid('g1'), strayFrame()]), base(), skin(), { prevSkinKey: 'spring', dryRun: true })
+    expect(knownMarked.report).toMatchObject({ originUnknown: false, templateMarkedCustomerCount: 1, customerKept: 1, suspect: false })
+    // 출처 앎 · 표지 없음 → 통과
+    const knownPlain = mergeSkinCanvas(canvas([ws(), bg('bg-1'), frame('f1', 0, 0), grid('g1'), sticker('a')]), base(), skin(), { dryRun: true })
+    expect(knownPlain.report).toMatchObject({ originUnknown: false, templateMarkedCustomerCount: 0, suspect: false })
+    // from=null 이어도 직전 스킨이 없으면(prevSkinKey 생략·null) 이 조건만으로는 출처 불명이 아니다
+    for (const prevSkinKey of [undefined, null]) {
+      const r = mergeSkinCanvas(canvas([ws(), strayFrame()]), null, skin(), { prevSkinKey, dryRun: true }).report
+      expect(r).toMatchObject({ originUnknown: false, templateMarkedCustomerCount: 1, suspect: false })
+    }
+    const sum = summarizeSkinMergeReports([knownMarked.report, unknownMarked.report, unknownPlain.report])
+    expect(sum).toMatchObject({ blocked: true, suspectIndices: [1], templateMarkedCustomerCount: 2 })
+    expect(summarizeSkinMergeReports([knownMarked.report, unknownPlain.report]).blocked).toBe(false)
   })
 
-  it("'고객 추가' 개수가 임계 이상이면 차단 보고(suspect) — 합계 blocked, 임계 미만은 통과", () => {
-    // 기준 템플릿 객체 8개(workspace 제외). 판정 집합에 없는 새로 만든 스킨 디자인 6개가 남은 경우 = 판정 오류
-    const baseTpl = canvas([ws(), bg('bg-1'), frame('f1', 0, 0), grid('g1'), ...Array.from({ length: 5 }, (_, i) => ({ type: 'path', id: `deco-${i}` }))])
-    const cur = canvas([ws(), ...Array.from({ length: 6 }, (_, i) => ({ type: 'path', id: `scratch-${i}` }))])
-    const suspect = mergeSkinCanvas(cur, null, baseTpl, { referenceObjectCount: 8 })
-    expect(suspect.report).toMatchObject({ customerKept: 6, referenceObjectCount: 8, suspect: true })
-    const ok = mergeSkinCanvas(canvas([ws(), sticker('a'), sticker('b')]), null, baseTpl)
-    expect(ok.report).toMatchObject({ customerKept: 2, referenceObjectCount: 8, suspect: false })
-    const sum = summarizeSkinMergeReports([ok.report, suspect.report])
-    expect(sum).toMatchObject({ blocked: true, suspectIndices: [1], customerKept: 8 })
-    expect(summarizeSkinMergeReports([ok.report]).blocked).toBe(false)
+  it('판정 집합 밖 top-level 템플릿 객체(보조 판정)가 있으면 from 을 알아도 출처 불명 — 표지 있는 고객 추가가 있으면 차단', () => {
+    // 모르는 스킨의 날짜 그리드(deleteable:false·calendar-grid)가 남았다 = 판정 집합이 현재 디자인을 다 담지 못함
+    const cur = canvas([ws(), grid('g-unknown'), strayFrame(), photo('stray-frame', '/u/a.jpg')])
+    const { report } = mergeSkinCanvas(cur, base(), skin(), { dryRun: true })
+    expect(report).toMatchObject({ auxiliaryTemplateCount: 1, outsideTemplateIdsCount: 1, originUnknown: true, templateMarkedCustomerCount: 1, suspect: true })
+    // 그리드 id 가 판정 집합에 있으면(templateIds) 출처를 안다 → 같은 고객 틀이 있어도 통과
+    const known = mergeSkinCanvas(cur, base(), skin(), { dryRun: true, templateIds: ['g-unknown'] }).report
+    expect(known).toMatchObject({ outsideTemplateIdsCount: 0, originUnknown: false, suspect: false })
+    // 템플릿 잠금(designer)·deleteable:false 객체도 같은 신호
+    for (const stray of [{ type: 'path', id: 'x-lock', lockInfo: { isLocked: true, lockLevel: 'admin' } }, { type: 'path', id: 'x-del', deleteable: false }]) {
+      const r = mergeSkinCanvas(canvas([ws(), stray, strayFrame()]), base(), skin(), { dryRun: true }).report
+      expect(r).toMatchObject({ outsideTemplateIdsCount: 1, originUnknown: true, suspect: true })
+    }
   })
 
-  it('isSkinMergeSuspect: 하한 4 · 비율 0.5 · 기준 0 이면 false', () => {
-    expect([SKIN_MERGE_SUSPECT_MIN_CUSTOMER, SKIN_MERGE_SUSPECT_RATIO]).toEqual([4, 0.5])
-    expect(isSkinMergeSuspect(3, 2)).toBe(false) // 하한 미만 — 샘플 크기(2~4개) 템플릿에 스티커 3개는 정상
-    expect(isSkinMergeSuspect(4, 4)).toBe(true)
-    expect(isSkinMergeSuspect(4, 9)).toBe(false) // ceil(4.5)=5 미만
-    expect(isSkinMergeSuspect(5, 9)).toBe(true)
-    expect(isSkinMergeSuspect(10, 0)).toBe(false)
+  it('시스템 객체(가이드·재단선·excludeFromExport)는 판정 집합 밖이어도 출처 판정·표지 수에 넣지 않는다', () => {
+    const system: Obj[] = [
+      { type: 'rect', id: 'cut-border', deleteable: false },
+      { type: 'rect', id: 'safe-zone-border', deleteable: false },
+      { type: 'line', id: 'center-guideline-v', deleteable: false },
+      { type: 'rect', id: 'spread-guide-0', extensionType: 'frame' },
+      { type: 'line', extensionType: 'guideline', deleteable: false },
+      { type: 'rect', id: 'scr-only', excludeFromExport: true, extensionType: 'frame', lockInfo: { isLocked: true, lockLevel: 'designer' } },
+      { type: 'GuideLine', id: 'gl-1', extensionType: 'frame' },
+    ]
+    const cur = canvas([ws(), bg('bg-1'), frame('f1', 0, 0), grid('g1'), ...system, strayFrame()])
+    const { report } = mergeSkinCanvas(cur, base(), skin(), { dryRun: true })
+    // 고객 라이브러리 틀(stray-frame) 1개만 표지로 센다 · 시스템 객체는 출처 불명 신호가 아니다
+    expect(report).toMatchObject({ outsideTemplateIdsCount: 0, templateMarkedCustomerCount: 1, originUnknown: false, suspect: false })
+  })
+
+  it('isSkinMergeSuspect: 출처 불명 AND 표지 1개 이상', () => {
+    expect(isSkinMergeSuspect(true, 1)).toBe(true)
+    expect(isSkinMergeSuspect(true, 0)).toBe(false)
+    expect(isSkinMergeSuspect(false, 5)).toBe(false)
+    expect(isSkinMergeSuspect(false, 0)).toBe(false)
   })
 })
 

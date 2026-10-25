@@ -44,12 +44,10 @@ export const SKIN_TEXT_TYPES: readonly string[] = ['text', 'i-text', 'textbox']
 /** 사진틀 기하 비교 허용 오차(px·도) */
 export const SKIN_GEOMETRY_TOLERANCE = 0.5
 /**
- * 판정 오류 의심(차단) — '고객 추가' 개수 하한. 샘플 캘린더 템플릿은 면당 workspace 외 2~4개 객체라
- * 하한 3 이면 스티커 3개를 붙인 정상 캔버스도 막힌다(테스트 고정) — 4 로 둔다.
+ * 차단 판정의 템플릿 표지 extensionType — '고객 추가'로 분류된 요소에 이 값(또는 deleteable:false·템플릿 잠금)이 있고
+ * 출처가 불명하면 판정 오류 의심으로 막는다. 분류(보조 판정)에는 쓰지 않는다(`SKIN_TEMPLATE_EXTENSION_TYPES`).
  */
-export const SKIN_MERGE_SUSPECT_MIN_CUSTOMER = 4
-/** 판정 오류 의심(차단) — '고객 추가' 개수가 기준 템플릿 객체 수의 이 비율 이상 */
-export const SKIN_MERGE_SUSPECT_RATIO = 0.5
+export const SKIN_TEMPLATE_MARK_EXTENSION_TYPES: readonly string[] = ['frame', 'background', 'calendar-grid']
 
 const GRID_EXTENSION_TYPE = 'calendar-grid'
 const FRAME_EXTENSION_TYPE = 'frame'
@@ -59,6 +57,10 @@ const WORKSPACE_ID = 'workspace'
 const DESIGN_TOP_LEVEL_KEYS = ['background', 'backgroundImage', 'overlay', 'overlayImage'] as const
 /** 템플릿이 건 잠금 수준(고객 'user' 잠금은 고객 요소일 수 있어 판정에 쓰지 않는다) */
 const TEMPLATE_LOCK_LEVELS = ['designer', 'admin']
+/** 출처 판정에서 빼는 시스템 객체(편집기 화면 전용 가이드·재단선) — 편집기 시스템 객체 판정과 같은 표지 */
+const SYSTEM_OBJECT_IDS = ['workspace', 'cut-border', 'safe-zone-border']
+const SYSTEM_OBJECT_ID_PREFIXES = ['center-guideline-', 'spread-guide-']
+const SYSTEM_EXTENSION_TYPES = ['guideline', 'printguide']
 
 export interface SkinMergeOptions {
   /** true 면 보고·refills 만 계산하고 json 은 null(확인 대화상자 개수용 — 보고는 실제 실행과 같다) */
@@ -68,7 +70,12 @@ export interface SkinMergeOptions {
    * `from`·`to` 의 top-level ids 는 항상 포함한다.
    */
   templateIds?: Iterable<string>
-  /** 차단 판정의 기준 템플릿 객체 수(workspace 제외). 생략 = `from`(없으면 `to`) 의 객체 수 */
+  /**
+   * 세션의 직전 디자인(스킨) key. `from` 이 null 인데 이 값이 있으면 '출처 불명'(직전 스킨 세트를 쓸 수 없음)으로 본다.
+   * 생략·null = 직전 스킨 없음(기본 디자인).
+   */
+  prevSkinKey?: string | null
+  /** 보고용 기준 템플릿 객체 수(workspace 제외). 생략 = `from`(없으면 `to`) 의 객체 수 — @deprecated 차단 판정에 쓰지 않는다 */
   referenceObjectCount?: number
   /** 새 id 생성기(테스트 주입용). 기본 uuid v4 */
   createId?: () => string
@@ -114,7 +121,7 @@ export interface SkinMergeDropped {
 }
 
 export interface SkinMergeReport {
-  /** 차단 판정 기준 템플릿 객체 수(workspace 제외) */
+  /** 기준 템플릿 객체 수(workspace 제외) — @deprecated 차단 판정에 쓰지 않는다(보고용으로만 남김) */
   referenceObjectCount: number
   /** 템플릿 유래로 판정해 버린 현재 객체 수(그리드·틀·문구 포함, 채운 사진 제외) */
   templateRemoved: number
@@ -142,8 +149,18 @@ export interface SkinMergeReport {
   customerKept: number
   /** 그중 id 충돌(자신·그룹 자식·clipPath 중 하나라도)로 새 id 를 받은 객체 수 */
   customerReissued: number
-  /** 판정 오류 의심 — '고객 추가' 개수가 기준 템플릿 객체 수에 가깝다(`isSkinMergeSuspect`). true 면 적용하지 않는다 */
+  /** 판정 오류 의심 — 출처 불명이고 '고객 추가' 중 템플릿 표지가 있다(`isSkinMergeSuspect`). true 면 적용하지 않는다 */
   suspect: boolean
+  /**
+   * 출처 불명 — `from` 이 null 인데 직전 스킨이 있었거나(`prevSkinKey`), 판정 집합 밖 top-level 객체가 있다.
+   * 판정 집합 밖 객체에서 시스템 객체와 고객 분류(고객 추가·고객 배경·채움 사진)는 뺀다 — 고객 요소는 원래 집합 밖이라
+   * 세면 이 신호가 늘 참이 된다. 남는 것은 보조 판정(템플릿 표지)으로만 템플릿 유래가 된 객체다(`outsideTemplateIdsCount`).
+   */
+  originUnknown: boolean
+  /** 판정 집합 밖인데 보조 판정으로 템플릿 유래가 된 top-level 객체 수(시스템 객체 제외) — 판정 집합이 현재 디자인을 다 담지 못한다는 신호 */
+  outsideTemplateIdsCount: number
+  /** '고객 추가'로 분류된 요소 중 템플릿 표지(템플릿 잠금·deleteable:false·`SKIN_TEMPLATE_MARK_EXTENSION_TYPES`)가 있는 수 */
+  templateMarkedCustomerCount: number
   /** 뺀 사진·문구 목록(안내용) */
   dropped: SkinMergeDropped[]
   /** 결과에 남긴 고객 배경 수(workspace 바로 위). customerKept 에는 세지 않는다 */
@@ -165,7 +182,7 @@ export interface SkinMergeResult {
 
 /** 여러 캔버스 보고 합계(확인 대화상자·차단 판정용) */
 export interface SkinMergeSummary
-  extends Omit<SkinMergeReport, 'dropped' | 'suspect' | 'referenceObjectCount' | 'removedCustomerBackgrounds' | 'forcedKeepReason'> {
+  extends Omit<SkinMergeReport, 'dropped' | 'suspect' | 'originUnknown' | 'referenceObjectCount' | 'removedCustomerBackgrounds' | 'forcedKeepReason'> {
   /** 판정 오류 의심 캔버스 인덱스(입력 배열 순서) — 1개라도 있으면 적용하지 않는다 */
   suspectIndices: number[]
   blocked: boolean
@@ -190,14 +207,19 @@ export function collectSkinTemplateIds(canvasDatas: Iterable<unknown>): Set<stri
 }
 
 /**
- * 판정 오류 의심 — '고객 추가' 개수가 하한(`SKIN_MERGE_SUSPECT_MIN_CUSTOMER`) 이상이고
- * 기준 템플릿 객체 수 × `SKIN_MERGE_SUSPECT_RATIO` 이상(기준 객체 수 0 이면 false).
- * `customerKept` 는 고객 배경을 세지 않은 값이다(배경은 판정 오류 신호가 아님 — `customerBackgroundsKept` 로 따로 보고).
+ * 판정 오류 의심 — 출처 불명(`originUnknown`)이고 '고객 추가'로 분류된 요소 중 템플릿 표지가 1개 이상.
+ * 판정 집합이 완전하면 템플릿 요소가 고객 추가로 남지 않으므로(오분류 0) 개수 임계값은 쓰지 않는다.
+ * '고객 추가'는 고객 배경을 세지 않은 값이다(고객 배경은 따로 분류·보고 — `customerBackgroundsKept`).
  */
-export function isSkinMergeSuspect(customerKept: number, referenceObjectCount: number): boolean {
-  if (referenceObjectCount <= 0) return false
-  return customerKept >= SKIN_MERGE_SUSPECT_MIN_CUSTOMER
-    && customerKept >= Math.ceil(referenceObjectCount * SKIN_MERGE_SUSPECT_RATIO)
+export function isSkinMergeSuspect(originUnknown: boolean, templateMarkedCustomerCount: number): boolean {
+  return originUnknown && templateMarkedCustomerCount > 0
+}
+
+/** 템플릿 표지 — 템플릿 잠금(designer/admin)·deleteable:false·`SKIN_TEMPLATE_MARK_EXTENSION_TYPES` */
+function hasSkinTemplateMark(o: SkinObject): boolean {
+  return o.deleteable === false
+    || hasTemplateLock(o.lockInfo)
+    || (typeof o.extensionType === 'string' && SKIN_TEMPLATE_MARK_EXTENSION_TYPES.includes(o.extensionType))
 }
 
 /** 캔버스별 보고 합계 */
@@ -216,6 +238,8 @@ export function summarizeSkinMergeReports(reports: readonly SkinMergeReport[]): 
     textsUnverified: 0,
     customerKept: 0,
     customerReissued: 0,
+    outsideTemplateIdsCount: 0,
+    templateMarkedCustomerCount: 0,
     suspectIndices: [],
     blocked: false,
     dropped: [],
@@ -238,6 +262,8 @@ export function summarizeSkinMergeReports(reports: readonly SkinMergeReport[]): 
     sum.textsUnverified += r.textsUnverified
     sum.customerKept += r.customerKept
     sum.customerReissued += r.customerReissued
+    sum.outsideTemplateIdsCount += r.outsideTemplateIdsCount ?? 0
+    sum.templateMarkedCustomerCount += r.templateMarkedCustomerCount ?? 0
     if (r.suspect) sum.suspectIndices.push(i)
     sum.dropped.push(...r.dropped)
     // 새 필드가 없는 구 보고(직렬화 왕복 등)도 받는다
@@ -306,6 +332,9 @@ export function mergeSkinCanvas(
     customerKept: 0,
     customerReissued: 0,
     suspect: false,
+    originUnknown: false,
+    outsideTemplateIdsCount: 0,
+    templateMarkedCustomerCount: 0,
     dropped: [],
     customerBackgroundsKept: 0,
     skinBackgroundsReplaced: 0,
@@ -485,7 +514,14 @@ export function mergeSkinCanvas(
     if (reissued) report.customerReissued += 1
   }
   report.customerKept = customers.length
-  report.suspect = isSkinMergeSuspect(report.customerKept, report.referenceObjectCount)
+  // 차단 판정 — 출처 불명 + '고객 추가' 중 템플릿 표지
+  for (const o of curObjs) {
+    if (o.id !== WORKSPACE_ID && !isSystemObject(o) && !inJudge(o) && isAuxiliaryTemplate(o)) report.outsideTemplateIdsCount += 1
+  }
+  report.templateMarkedCustomerCount = customers.filter((c) => !isSystemObject(c) && hasSkinTemplateMark(c)).length
+  const prevSkinKnown = typeof opts.prevSkinKey === 'string' && opts.prevSkinKey.length > 0
+  report.originUnknown = (from === null && prevSkinKnown) || report.outsideTemplateIdsCount > 0
+  report.suspect = isSkinMergeSuspect(report.originUnknown, report.templateMarkedCustomerCount)
 
   if (opts.dryRun) return { json: null, refills, report }
 
@@ -567,6 +603,15 @@ function countDesignObjects(objs: readonly SkinObject[]): number {
 function hasTemplateLock(lockInfo: unknown): boolean {
   return isRecord(lockInfo) && lockInfo.isLocked === true
     && typeof lockInfo.lockLevel === 'string' && TEMPLATE_LOCK_LEVELS.includes(lockInfo.lockLevel)
+}
+
+/** 편집기 화면 전용 시스템 객체(workspace·가이드·재단선) — 출처 판정에서 뺀다 */
+function isSystemObject(o: SkinObject): boolean {
+  if (o.excludeFromExport === true || o.type === 'GuideLine') return true
+  if (typeof o.extensionType === 'string' && SYSTEM_EXTENSION_TYPES.includes(o.extensionType)) return true
+  if (typeof o.id !== 'string') return false
+  const id = o.id
+  return SYSTEM_OBJECT_IDS.includes(id) || SYSTEM_OBJECT_ID_PREFIXES.some((p) => id.startsWith(p))
 }
 
 function isText(o: SkinObject): boolean {
@@ -665,23 +710,41 @@ function near(a: unknown, b: unknown, fallback: number): boolean {
   return Math.abs(num(a, fallback) - num(b, fallback)) <= SKIN_GEOMETRY_TOLERANCE
 }
 
-/** 틀 기하(left·top·width·height·scale·angle·skew, 오차 0.5) + origin·flip 이 같은가 */
+/**
+ * 틀 기하(left·top·width·height·scale·angle·skew, 오차 0.5) + origin·flip 이 같은가.
+ * origin 은 fabric 과 같이 키워드와 숫자(0=left·top, 0.5=center, 1=right·bottom)를 같은 값으로 본다(생략 = left·top).
+ */
 function sameGeometry(a: SkinObject, b: SkinObject): boolean {
   return near(a.left, b.left, 0) && near(a.top, b.top, 0)
     && near(a.width, b.width, 0) && near(a.height, b.height, 0)
     && near(a.scaleX, b.scaleX, 1) && near(a.scaleY, b.scaleY, 1)
     && near(a.angle, b.angle, 0) && near(a.skewX, b.skewX, 0) && near(a.skewY, b.skewY, 0)
-    && (a.originX ?? 'left') === (b.originX ?? 'left') && (a.originY ?? 'top') === (b.originY ?? 'top')
+    && originFactor(a.originX, 'x') === originFactor(b.originX, 'x')
+    && originFactor(a.originY, 'y') === originFactor(b.originY, 'y')
     && (a.flipX === true) === (b.flipX === true) && (a.flipY === true) === (b.flipY === true)
+}
+
+/**
+ * rect 모서리 반경 — fabric `Rect._initRxRy` 와 같이 생략은 0, 한쪽만 있으면 다른 쪽도 같은 값.
+ * (생략과 0, `{rx:8}` 과 `{rx:8, ry:8}` 은 같은 틀 모양이다)
+ */
+function cornerRadii(o: SkinObject): [number, number] {
+  const rx = num(o.rx, 0)
+  const ry = num(o.ry, 0)
+  if (rx && !ry) return [rx, rx]
+  if (ry && !rx) return [ry, ry]
+  return [rx, ry]
 }
 
 /** 틀 모양(clipPath 를 결정하는 값)이 같은가 — type·src·path·points·rx·ry */
 function sameFrameShape(a: SkinObject, b: SkinObject): boolean {
   if (a.type !== b.type || a.src !== b.src) return false
-  for (const key of ['path', 'points', 'rx', 'ry'] as const) {
+  for (const key of ['path', 'points'] as const) {
     if (JSON.stringify(a[key]) !== JSON.stringify(b[key])) return false
   }
-  return true
+  const [arx, ary] = cornerRadii(a)
+  const [brx, bry] = cornerRadii(b)
+  return arx === brx && ary === bry
 }
 
 /**
