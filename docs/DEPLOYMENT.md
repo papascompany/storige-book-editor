@@ -1785,6 +1785,13 @@ docker logs storige-api 2>&1 | grep -E "\[FLAGS\] api |\[FLAGS-CHECK\]" | tail -
 
 **롤백**: 편집기만 — Vercel `storige-editor` 직전 Ready Production 배포 promote. api/worker 무관.
 
+### 처음 연 템플릿 세트의 2쪽 이후 사진틀 클릭 채움 (2026-10-25 준비, editor 전용 — 적용 시점 = editor 배포)
+
+- 동작: 템플릿 세트를 처음 열면 첫 쪽뿐 아니라 2쪽 이후(낱장 세트 페이지·스프레드 세트 내지)의 사진틀도 클릭 → 파일 선택 → 채움이 된다. 종전에는 사진인화 세트만 2쪽 이후에 클릭 핸들러를 다시 붙여, 캘린더·프로파일 없는 세트는 새로 고침(저장본 복원 경로)해야 채울 수 있었다. 핸들러는 런타임 전용이라 저장 JSON·재오픈 경로는 그대로다.
+- 범위: **editor 만 변경** — editor 단독 배포(Vercel) 가능. canvas-core·api·worker·DB·`.env`·FLAGS·저장 형식 무변경(VPS 재배포 없음).
+
+**롤백**: 편집기만 — Vercel `storige-editor` 직전 Ready Production 배포 promote. api/worker 무관.
+
 ### 캘린더 날짜 데이터 갱신·릴리스 절차 (T4, 2026-10-24 준비 — 계획 B4·오너 결정 D4)
 
 > 대상: canvas-core 정적 날짜 데이터 `packages/canvas-core/src/calendar/data/kr-2025-2035-v1.ts`(**생성물 — 직접 편집 금지**). 입력은 생성기 `packages/canvas-core/scripts/gen-calendar-data.mjs`(천문 계산·공휴일 규정·잡절 규칙)와 `packages/canvas-core/scripts/calendar-overrides.json`(규정 밖 지정일 — 임시공휴일·선거일, `temporary`)뿐이다. 데이터는 canvas-core 를 통해 **editor 번들에만** 들어가므로 반영 = editor 배포(master push → Vercel)이고 api·worker 재배포는 필요 없다(api 는 `@storige/types` `CALENDAR_DATA_VERSIONS` 의 버전 키·범위로 프로파일만 검증). 근거: [`CALENDAR_EDITOR_FEATURE_PLAN_2026-10-21.md`](./CALENDAR_EDITOR_FEATURE_PLAN_2026-10-21.md) §2 B4·§5 D4.

@@ -1564,6 +1564,10 @@ export function useEditorContents(): UseEditorContentsReturn {
                   // #2: workspace = trim + cutSize(양변 합) — 게이트 OFF 면 +0 = 현행 동일
                   const cvs = latestAllCanvas[newPageIndex]
                   if (cvs) {
+                    // 사진틀(프레임) 클릭 채움 재바인딩 — 세트 종류와 무관(첫 페이지 loadCanvasData 와 같은 순서).
+                    // 이 호출이 없으면 처음 연 세트의 2쪽 이후 사진틀은 리스너 0개라 클릭해도 채워지지 않는다.
+                    // 사진인화 세트의 initPhotoPrintSeededCanvas 안 재바인딩은 _frameInteractiveBound 가드로 no-op.
+                    rebindFrameInteractivity(targetEditor, cvs)
                     // P1 캘린더: 캘린더 세트면 calendar-grid 재합성(프로파일 null 이면 즉시 0, no-op).
                     void rehydrateCalendarGrids(targetEditor, cvs, newPageIndex)
                     // P2-d 사진인화 (D7): 사진인화 세트면 fitMode/유테/흑백 런타임 복구(프로파일 null 이면 즉시 0, no-op).
@@ -1573,7 +1577,7 @@ export function useEditorContents(): UseEditorContentsReturn {
                     // 클릭 채움 재바인딩 → applyObjectPermissions(editMode) → trackRequiredEdits. 이 경로는 첫 페이지
                     // (loadCanvasData:532 applyCustomerLocks)와 달리 권한 적용이 없어 TemplatePlugin.afterLoad 가 되살린
                     // 텍스트 hasControls/lockScaling 이 그대로 남았다(D11). 사진인화 세트에만 적용해 NULL·캘린더 세트의
-                    // 현행 동작은 그대로 둔다.
+                    // 잠금·권한 동작은 그대로 둔다(사진틀 재바인딩만 위에서 모든 세트에 수행).
                     if (photoPrintProfile) initPhotoPrintSeededCanvas(targetEditor, cvs, newPageIndex, photoPrintProfile)
                     const totalWidth = mmToPxDisplay(capturedWidth + screenCutSizeMm)
                     const totalHeight = mmToPxDisplay(capturedHeight + screenCutSizeMm)
@@ -2206,6 +2210,8 @@ export function useEditorContents(): UseEditorContentsReturn {
                 }, 8000)
                 servicePlugin.loadJSON(dataToLoad, () => {
                   console.log(`[EditorContents:Spread] loadJSON completed for inner page ${newPageIndex}`)
+                  // 사진틀(프레임) 클릭 채움 재바인딩 — 표지(loadCanvasData)와 같이 내지 페이지에도 부여(멱등).
+                  rebindFrameInteractivity(targetEditor, latestAllCanvas[newPageIndex])
                   // Part B: 스프레드 내지 페이지도 고객 진입 시 객체별 이동/변형 잠금 적용.
                   applyCustomerLocks(latestAllCanvas[newPageIndex])
                   trackRequiredEdits(latestAllCanvas[newPageIndex]) // L7(멱등)
