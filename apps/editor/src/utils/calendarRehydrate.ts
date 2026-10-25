@@ -69,6 +69,58 @@ export async function rehydrateCalendarGrids(
   }
 }
 
+export interface StrictGridRehydrateResult {
+  /** false = 재합성을 끝내지 못함(편집기·캔버스·플러그인·날짜 데이터 없음, 또는 플러그인 예외) */
+  ok: boolean
+  /** 다시 그린 그리드 수 */
+  count: number
+}
+
+/**
+ * `rehydrateCalendarGrids` 의 실패 신호 변형 — 캘린더 디자인(스킨) 적용·롤백 경로 전용.
+ * 기존 함수는 진입을 막지 않으려고 예외를 삼키고 0 을 돌려주지만, 적용 경로는 그리드를 못 그리면 되돌려야 한다.
+ * 같은 렌더 입력을 쓰고, 실패를 `{ ok:false }` 로 돌려준다. 그리드 수 대조(count vs 캔버스의 calendar-grid 수)는 호출자가 한다.
+ * - 캘린더 프로파일이 아니면 `{ ok:true, count:0 }`(할 일 없음)
+ * - 플러그인이 없으면 그리드가 없는 캔버스만 ok
+ */
+export async function rehydrateCalendarGridsStrict(
+  editor: Editor | null | undefined,
+  canvas: fabric.Canvas | null | undefined,
+  canvasIndex: number,
+): Promise<StrictGridRehydrateResult> {
+  const profile = useSettingsStore.getState().productProfile
+  if (!isCalendarProfile(profile)) return { ok: true, count: 0 }
+  if (!editor || !canvas) return { ok: false, count: 0 }
+  const plugin = editor.getPlugin<CalendarPlugin>('CalendarPlugin')
+  if (!plugin) {
+    const grids = canvas.getObjects().filter((o) => (o as { extensionType?: unknown }).extensionType === 'calendar-grid')
+    return { ok: grids.length === 0, count: 0 }
+  }
+  const cal = profile.calendar
+  const meta = useCalendarStore.getState().meta
+  const data = getCalendarData(meta?.dataVersion ?? cal.dataVersion)
+  if (!data) return { ok: false, count: 0 }
+  const start = resolveCalendarStart(profile, meta)
+  const yearDelta = resolveCanvasYearDelta(cal, cal.yearPolicy, meta, canvasIndex)
+  const ctx: CalendarRenderContext = {
+    startYear: start.year,
+    startMonth: start.month,
+    canvasMonthOffset: resolveCanvasMonthOffset(profile, canvasIndex),
+    weekStart: cal.weekStart,
+    show: { ...(meta?.show ?? cal.show) },
+    anniversaries: toAnniversaryInputs(meta?.anniversaries ?? []),
+    data,
+    yearSpan: cal.yearPolicy?.span,
+  }
+  if (yearDelta !== undefined) ctx.yearDelta = yearDelta
+  try {
+    return { ok: true, count: await plugin.rehydrate(ctx) }
+  } catch (error) {
+    console.warn(`[calendarRehydrate] 그리드 재합성 실패(strict, page ${canvasIndex}):`, error instanceof Error ? error.message : error)
+    return { ok: false, count: 0 }
+  }
+}
+
 /**
  * 세션 기념일 → 렌더 입력. 문구 스타일은 D1(b) 최소 2종(fill·fontWeight)만 넘기고(정제는 canvas-core 가 한 번 더),
  * 둘 다 없으면 style 키를 두지 않는다 — 스타일 없는 기념일의 렌더 입력은 종전과 같다.

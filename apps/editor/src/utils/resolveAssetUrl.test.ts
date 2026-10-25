@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { resolveAssetUrl } from './resolveAssetUrl'
+import { getAssetBaseUrl, resolveAssetUrl } from './resolveAssetUrl'
 
 // VITE_API_BASE_URL 미설정 시 기본값 'http://localhost:4000/api' 가 사용된다.
 const BASE = 'http://localhost:4000/api'
@@ -43,5 +43,12 @@ describe('resolveAssetUrl', () => {
     expect(resolveAssetUrl('storage/files/bg/b.png')).toBe(
       `${BASE}/storage/files/bg/b.png`
     )
+  })
+})
+
+describe('getAssetBaseUrl', () => {
+  it('resolveAssetUrl 이 상대 경로 앞에 붙이는 base 와 같다(끝 / 없음)', () => {
+    expect(getAssetBaseUrl()).toBe(BASE)
+    expect(resolveAssetUrl('/storage/uploads/a.jpg')).toBe(`${getAssetBaseUrl()}/storage/uploads/a.jpg`)
   })
 })

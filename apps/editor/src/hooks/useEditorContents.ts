@@ -76,7 +76,7 @@ import type { fabric } from 'fabric'
 import type { EditorMode, SpreadConfig, EditPage, SpreadInnerSpec } from '@storige/types'
 import { TemplateType } from '@storige/types'
 
-function applyCustomerLocks(canvas: fabric.Canvas | null | undefined): void {
+export function applyCustomerLocks(canvas: fabric.Canvas | null | undefined): void {
   const { currentSettings, coverMaterialLocked } = useSettingsStore.getState()
   applyObjectPermissions(canvas, currentSettings.editMode)
   const isCover = isCoverPageCanvas(

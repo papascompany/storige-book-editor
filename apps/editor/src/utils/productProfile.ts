@@ -16,6 +16,7 @@ import type { PdfExportOptions } from '@storige/canvas-core'
 import { useSettingsStore } from '@/stores/useSettingsStore'
 import { useCalendarStore } from '@/stores/useCalendarStore'
 import { usePhotoPrintStore } from '@/stores/usePhotoPrintStore'
+import { useCalendarSkinStore } from '@/stores/useCalendarSkinStore'
 
 /**
  * productProfile.ts — 템플릿셋 `productProfile` 을 편집기 스토어에 배선하는 헬퍼 (P1 캘린더, 2026-10-17)
@@ -62,13 +63,17 @@ export function resolveFixedCanvasCount(profile: ProductProfile | null | undefin
  * @returns 판정된 프로파일(null = legacy)
  */
 export function applyTemplateSetProductProfile(
-  templateSet: ProductProfileSource | null | undefined,
+  templateSet: (ProductProfileSource & { id?: unknown }) | null | undefined,
 ): ProductProfile | null {
   const profile = resolveProductProfile(templateSet, (m) => console.warn(`[EditorContents] ${m}`))
   useSettingsStore.getState().setProductProfile(profile)
   useCalendarStore.getState().setFromProfile(profile)
   // P2-d 사진인화: photo-print 가 아니면 reset(null) — 캘린더 스토어와 같은 규약
   usePhotoPrintStore.getState().setFromProfile(profile)
+  // 캘린더 디자인(스킨) 적용의 기준 세트 id — 적용 직전 이 세트를 다시 받아 호환을 재검사한다. 세트가 없으면 reset
+  const setId = templateSet?.id
+  if (typeof setId === 'string' && setId.length > 0) useCalendarSkinStore.getState().setBase(setId)
+  else useCalendarSkinStore.getState().reset()
   return profile
 }
 

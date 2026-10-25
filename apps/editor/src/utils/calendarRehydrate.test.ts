@@ -14,7 +14,7 @@ vi.mock('@storige/canvas-core', async (importOriginal) => ({
 
 import { useSettingsStore } from '@/stores/useSettingsStore'
 import { useCalendarStore } from '@/stores/useCalendarStore'
-import { rehydrateCalendarGrids } from './calendarRehydrate'
+import { rehydrateCalendarGrids, rehydrateCalendarGridsStrict } from './calendarRehydrate'
 
 /**
  * P1 캘린더 (2026-10-17): 복원 직후 그리드 재합성 헬퍼.
@@ -205,5 +205,55 @@ describe('rehydrateCalendarGrids — 연달력 ctx.yearSpan·yearDelta (T3b)', (
     await rehydrateCalendarGrids(makeEditor(true), fakeCanvas, 0)
     expect(rehydrateMock.mock.calls[0][0]).toMatchObject({ yearSpan: 'calendar-year' })
     expect(rehydrateMock.mock.calls[0][0]).not.toHaveProperty('yearDelta')
+  })
+})
+
+/** 스킨 적용 경로 전용 strict 변형 — 실패를 신호로 돌려준다(기존 함수는 예외를 삼키고 0) */
+describe('rehydrateCalendarGridsStrict', () => {
+  const gridCanvas = (grids: number) =>
+    ({ getObjects: () => Array.from({ length: grids }, () => ({ extensionType: 'calendar-grid' })) }) as unknown as fabric.Canvas
+
+  it('프로파일 null → { ok:true, count:0 }(할 일 없음), 플러그인 조회 없음', async () => {
+    const editor = makeEditor(true)
+    expect(await rehydrateCalendarGridsStrict(editor, fakeCanvas, 1)).toEqual({ ok: true, count: 0 })
+    expect(editor.getPlugin).not.toHaveBeenCalled()
+  })
+
+  it('plugin.rehydrate 예외 → ok:false(기존 함수는 같은 입력에 0 을 돌려 성공처럼 보인다)', async () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => {})
+    getCalendarDataMock.mockReturnValue(fakeData)
+    useSettingsStore.getState().setProductProfile(calendarProfile())
+    rehydrateMock.mockRejectedValueOnce(new Error('boom'))
+    expect(await rehydrateCalendarGridsStrict(makeEditor(true), fakeCanvas, 3)).toEqual({ ok: false, count: 0 })
+    rehydrateMock.mockRejectedValueOnce(new Error('boom'))
+    expect(await rehydrateCalendarGrids(makeEditor(true), fakeCanvas, 3)).toBe(0)
+  })
+
+  it('날짜 데이터 없음 → ok:false, 플러그인 미호출', async () => {
+    useSettingsStore.getState().setProductProfile(calendarProfile())
+    expect(await rehydrateCalendarGridsStrict(makeEditor(true), fakeCanvas, 3)).toEqual({ ok: false, count: 0 })
+    expect(rehydrateMock).not.toHaveBeenCalled()
+  })
+
+  it('정상 → { ok:true, count } 이고 렌더 입력은 기존 함수와 같다', async () => {
+    getCalendarDataMock.mockReturnValue(fakeData)
+    useSettingsStore.getState().setProductProfile(calendarProfile())
+    useCalendarStore.getState().setFromProfile(calendarProfile())
+    useCalendarStore.getState().setStartMonth(2027, 3)
+    expect(await rehydrateCalendarGridsStrict(makeEditor(true), fakeCanvas, 3)).toEqual({ ok: true, count: 3 })
+    await rehydrateCalendarGrids(makeEditor(true), fakeCanvas, 3)
+    expect(rehydrateMock.mock.calls[0][0]).toEqual(rehydrateMock.mock.calls[1][0])
+  })
+
+  it('플러그인 미등록: 그리드가 없는 캔버스만 ok, 그리드가 있으면 ok:false', async () => {
+    useSettingsStore.getState().setProductProfile(calendarProfile())
+    expect(await rehydrateCalendarGridsStrict(makeEditor(false), gridCanvas(0), 1)).toEqual({ ok: true, count: 0 })
+    expect(await rehydrateCalendarGridsStrict(makeEditor(false), gridCanvas(2), 1)).toEqual({ ok: false, count: 0 })
+  })
+
+  it('편집기·캔버스 없음 → ok:false', async () => {
+    useSettingsStore.getState().setProductProfile(calendarProfile())
+    expect(await rehydrateCalendarGridsStrict(null, fakeCanvas, 1)).toEqual({ ok: false, count: 0 })
+    expect(await rehydrateCalendarGridsStrict(makeEditor(true), null, 1)).toEqual({ ok: false, count: 0 })
   })
 })

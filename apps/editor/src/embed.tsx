@@ -66,6 +66,7 @@ import { summarizeProductProfile, type PhotobookPricing, type PhotoItem, type Pr
 // P1 캘린더 (2026-10-17): 세션 메타 저장/복원·그리드 재합성 (프로파일 null 이면 전부 no-op)
 import { rehydrateCalendarGrids } from './utils/calendarRehydrate'
 import { calendarSessionMetadataFields, rehydrateAllCalendarGrids, restoreCalendarSessionMeta } from './utils/calendarRehydrateAll'
+import { saveNowRegistry } from './utils/saveNowRegistry'
 // P2-d 사진인화 (2026-10-19): 세션 metadata.items 저장/복원·사진틀 옵션 재적용 (프로파일 null 이면 전부 no-op)
 import { rehydratePhotoPrint } from './utils/photoPrintRehydrate'
 import {
@@ -921,6 +922,8 @@ function EmbeddedEditor({
     getIsDirty: () => useSaveStore.getState().isDirty,
     saveNow,
   })
+  // 캘린더 디자인(스킨) 적용 직전 저장용 — 훅 바깥 경로(calendarSkinApply)가 같은 saveNow 를 쓰게 등록, 언마운트 시 해제
+  useEffect(() => saveNowRegistry.register(saveNow), [saveNow])
 
   // getState(editor.state)·IIFE getState 의 쪽수·현재 화면 순번.
   // 초기화 완료(isInitializedRef) 뒤에만 계산한다 — 초기화 중(캔버스 일부만 생성)·변경 이력 복원 중·언마운트 뒤는 null.

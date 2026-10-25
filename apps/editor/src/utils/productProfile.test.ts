@@ -12,6 +12,7 @@ import {
   resolvePhotoPrintSeedCount,
   type PhotoPrintProductProfile,
 } from './productProfile'
+import { useCalendarSkinStore } from '@/stores/useCalendarSkinStore'
 
 /**
  * P1 캘린더 (2026-10-17): 템플릿셋 productProfile → 스토어 배선·캔버스 월 매핑·라벨 resolver.
@@ -70,6 +71,25 @@ describe('applyTemplateSetProductProfile', () => {
     expect(p).toBeNull()
     expect(warn).toHaveBeenCalledTimes(1)
     expect(useSettingsStore.getState().productProfile).toBeNull()
+  })
+
+  it('캘린더 디자인(스킨) 기준 세트 id: 문자열 id 면 기록, id 없음·비문자열이면 reset — 반환·다른 스토어는 같다', () => {
+    const p = applyTemplateSetProductProfile({ id: 'set-1', productProfile: calendarProfile() })
+    expect(useCalendarSkinStore.getState().baseTemplateSetId).toBe('set-1')
+    expect(p?.kind).toBe('calendar')
+    expect(useCalendarStore.getState().meta).toMatchObject({ startYear: 2027, startMonth: 1 })
+    useCalendarSkinStore.getState().setCardReason('k', 'missing')
+    applyTemplateSetProductProfile({ id: 'set-1', productProfile: calendarProfile() })
+    expect(useCalendarSkinStore.getState().cardReasons).toEqual({ k: 'missing' })
+    applyTemplateSetProductProfile({ id: 'set-2', productProfile: calendarProfile() })
+    expect(useCalendarSkinStore.getState().baseTemplateSetId).toBe('set-2')
+    expect(useCalendarSkinStore.getState().cardReasons).toEqual({})
+    applyTemplateSetProductProfile({ id: 7, productProfile: calendarProfile() })
+    expect(useCalendarSkinStore.getState().baseTemplateSetId).toBeNull()
+    applyTemplateSetProductProfile({ id: 'set-3' })
+    expect(useCalendarSkinStore.getState().baseTemplateSetId).toBe('set-3')
+    applyTemplateSetProductProfile(null)
+    expect(useCalendarSkinStore.getState().baseTemplateSetId).toBeNull()
   })
 })
 

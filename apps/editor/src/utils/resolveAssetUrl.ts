@@ -13,6 +13,14 @@ const API_BASE_URL =
   import.meta.env.VITE_API_BASE_URL || 'http://localhost:4000/api'
 
 /**
+ * resolveAssetUrl 이 상대 경로 앞에 붙이는 API base(끝 '/' 제거). 같은 기본값을 쓴다.
+ * 업로드 URL 판정(calendarSkinUploads.classifyBackgroundSrc)처럼 "이 base 로 만든 URL 인가"를 볼 때 쓴다.
+ */
+export function getAssetBaseUrl(): string {
+  return API_BASE_URL.replace(/\/$/, '')
+}
+
+/**
  * 상대 스토리지 경로를 API origin 기준 절대 URL 로 변환한다.
  * - falsy → null
  * - 절대 URL(http/https) / data: / blob: → 원본 그대로
