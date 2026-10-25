@@ -483,3 +483,54 @@ describe('TemplatePlugin.replaceTemplate — 재오픈 세션·현재 템플릿 
     expect(byId(canvas, 'a-photo')[0].parentLayerId).toBe('a-frame')
   })
 })
+
+// 화면 전용 오버레이 판정 — 'cut-guide' id 등록은 만드는 곳이 없어 제거(2026-10-25). 템플릿 매뉴얼 규약대로
+// extensionType 'overlay'(+printExclude)로 얹은 객체는 id 와 무관하게 템플릿 요소이고, 인쇄 제외는 printExclude 플래그로만 정해진다.
+describe('TemplatePlugin — 화면 전용 오버레이 판정(cut-guide id 등록 제거 뒤)', () => {
+  beforeAll(() => {
+    vi.stubGlobal('window', { addEventListener: vi.fn(), removeEventListener: vi.fn() })
+  })
+  afterAll(() => {
+    vi.unstubAllGlobals()
+  })
+
+  it("extensionType 'overlay' 는 id 'cut-guide' 여도 템플릿 요소, 'ring-overlay' id 는 계속 등록, 맨 id 'cut-guide' 는 더 이상 id 로 판정하지 않는다", () => {
+    const { plugin } = makeHarness()
+    const asObj = (o: Plain) => o as unknown as fabric.Object
+    expect(plugin.isTemplateElement(asObj({ id: 'cut-guide', extensionType: 'overlay', printExclude: true }))).toBe(true)
+    expect(plugin.isTemplateElement(asObj({ id: 'ring-overlay' }))).toBe(true)
+    expect(plugin.isTemplateElement(asObj({ id: 'ring-overlay', extensionType: 'overlay', printExclude: true }))).toBe(true)
+    expect(plugin.isTemplateElement(asObj({ id: 'cut-guide' }))).toBe(false)
+  })
+
+  it("저장본의 'cut-guide' 오버레이(overlay·printExclude)는 교체 때 템플릿 요소로 제거되고, 맨 id 객체도 현재 템플릿 id 목록이 있으면 제거된다", async () => {
+    const saved: Plain = {
+      objects: [
+        { type: 'rect', id: 'workspace', width: 300, height: 300 },
+        { type: 'rect', id: 'cut-guide', extensionType: 'overlay', printExclude: true, selectable: false, evented: false, width: 300, height: 10 },
+        { type: 'rect', id: 'u-sticker', extensionType: 'sticker', width: 5, height: 5 },
+      ],
+    }
+    const nextTpl = [
+      { type: 'rect', id: 'workspace', width: 300, height: 300 },
+      { type: 'rect', id: 'n-bg', extensionType: 'background', width: 300, height: 300 },
+    ]
+
+    const a = makeHarness()
+    await loadJSON(a.canvas, saved)
+    await a.plugin.replaceTemplate(await enliven(nextTpl))
+    expect(byId(a.canvas, 'cut-guide')).toHaveLength(0)
+    expect(byId(a.canvas, 'u-sticker')).toHaveLength(1)
+
+    // extensionType 없이 id 만 'cut-guide' 인 옛 템플릿 객체 — currentTemplateIds 로 템플릿 유래 판정
+    const b = makeHarness()
+    await loadJSON(b.canvas, {
+      objects: [
+        { type: 'rect', id: 'workspace', width: 300, height: 300 },
+        { type: 'rect', id: 'cut-guide', width: 300, height: 10 },
+      ],
+    })
+    await b.plugin.replaceTemplate(await enliven(nextTpl), { currentTemplateIds: ['workspace', 'cut-guide'] })
+    expect(byId(b.canvas, 'cut-guide')).toHaveLength(0)
+  })
+})

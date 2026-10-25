@@ -66,7 +66,6 @@ class TemplatePlugin extends PluginBase {
     'center-guideline-v',
     // P1 캘린더 오버레이 규약(2026-10-17): 링 바인딩·재단 가이드 PNG 는 화면 전용(printExclude/excludeFromExport)
     'ring-overlay',
-    'cut-guide'
   ]
 
   constructor(canvas: fabric.Canvas, editor: Editor, options: PluginOption) {
