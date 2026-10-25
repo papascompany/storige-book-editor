@@ -61,6 +61,7 @@ import { EmbeddedEditor, type EditorInstanceMethods } from './embed'
 import { useAppStore } from './stores/useAppStore'
 import { useSaveStore } from './stores/useSaveStore'
 import { SAVE_FAILURE_MESSAGES } from './utils/embedFailurePolicy'
+import { __resetAutosaveSuspendForTest, runWithAutosaveSuspended } from './utils/autosaveSuspend'
 
 interface Envelope {
   event: string
@@ -160,5 +161,47 @@ describe('EmbeddedEditor — 저장·완료 실패 SAVE_FAILED 문구', () => {
     await expect(instanceRef.current!.complete()).rejects.toBe(thrown)
     expect(posted('editor.error')).toEqual([{ code: 'SAVE_FAILED', message, fatal: false }])
     expect(posted('editor.complete')).toHaveLength(0)
+  })
+
+  describe('자동저장 보류 중(디자인 적용·PDF 생성)', () => {
+    /** 보류 창을 열어 둔 채 fn 을 실행하고 닫는다 */
+    async function whileSuspended(fn: () => Promise<void>): Promise<void> {
+      let release: () => void = () => undefined
+      const pending = runWithAutosaveSuspended(() => new Promise<void>((r) => { release = r }))
+      try {
+        await fn()
+      } finally {
+        release()
+        await pending
+        __resetAutosaveSuspendForTest()
+      }
+    }
+
+    it('instance.save → SAVE_FAILED(고정 문구) 로 거부하고 서버 update 를 부르지 않는다', async () => {
+      api.update.mockResolvedValue({ id: 'sess-1', updatedAt: 'now' })
+      const onError = vi.fn()
+      const instanceRef = renderEmbed(onError)
+      await whileSuspended(async () => {
+        await expect(instanceRef.current!.save()).rejects.toBeInstanceOf(Error)
+      })
+      const payload = { code: 'SAVE_FAILED', message: SAVE_FAILURE_MESSAGES.save.other, fatal: false }
+      expect(posted('editor.error')).toEqual([payload])
+      expect(onError).toHaveBeenCalledWith(payload)
+      expect(posted('editor.save')).toHaveLength(0)
+      expect(api.update).not.toHaveBeenCalled()
+    })
+
+    it('instance.complete → SAVE_FAILED(고정 문구) 로 거부하고 서버 update·complete 를 부르지 않는다', async () => {
+      api.update.mockResolvedValue({ id: 'sess-1' })
+      api.complete.mockResolvedValue({ id: 'sess-1', orderSeqno: '1' })
+      const instanceRef = renderEmbed()
+      await whileSuspended(async () => {
+        await expect(instanceRef.current!.complete()).rejects.toBeInstanceOf(Error)
+      })
+      expect(posted('editor.error')).toEqual([{ code: 'SAVE_FAILED', message: SAVE_FAILURE_MESSAGES.complete.other, fatal: false }])
+      expect(posted('editor.complete')).toHaveLength(0)
+      expect(api.update).not.toHaveBeenCalled()
+      expect(api.complete).not.toHaveBeenCalled()
+    })
   })
 })

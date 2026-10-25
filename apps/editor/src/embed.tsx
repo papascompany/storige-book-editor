@@ -27,7 +27,7 @@ import { rebindFrameInteractivity } from './utils/frameInteractive'
 import { applyObjectPermissions, applyCoverMaterialLock } from './utils/objectPermissions'
 import { trackRequiredEdits, collectUneditedRequiredForCustomer } from './utils/requiredEditGate'
 import { getPageStepBlockMessage } from './utils/pageStepGuard'
-import { runWithAutosaveSuspended } from './utils/autosaveSuspend'
+import { isAutosaveSuspended, runWithAutosaveSuspended } from './utils/autosaveSuspend'
 import { useAuthStore } from './stores/useAuthStore'
 import { useSettingsStore } from './stores/useSettingsStore'
 import { useEditorStore } from './stores/useEditorStore'
@@ -2448,8 +2448,25 @@ function EmbeddedEditor({
 
   // Expose instance methods
   useEffect(() => {
+    /**
+     * 자동저장 보류 중(캘린더 디자인 적용·PDF 생성 창)에는 캔버스가 중간 상태일 수 있어 저장·완료를 거부한다.
+     * 형식은 저장 실패와 같다 — editor.error SAVE_FAILED(fatal:false, 고정 문구) + 원래 오류로 reject.
+     */
+    const rejectWhileSuspended = (phase: 'save' | 'complete'): never => {
+      const err = new Error('작업이 끝나지 않아 지금은 저장할 수 없습니다. 잠시 후 다시 시도해 주세요.')
+      console.warn(`[EmbeddedEditor] ${phase} 거부 — 자동저장 보류 중`)
+      const errPayload = {
+        code: 'SAVE_FAILED' as const,
+        message: saveFailureMessage(err, phase),
+        fatal: false,
+      }
+      onError?.(errPayload)
+      postToParent(parentOrigin, 'editor.error', errPayload)
+      throw err
+    }
     instanceRef.current = {
       save: async () => {
+        if (isAutosaveSuspended()) rejectWhileSuspended('save')
         if (fatalInitErrorRef.current) throw new Error('편집기를 초기화하지 못해 저장할 수 없습니다.')
         const currentSessionId = currentSession?.id || sessionId
 
@@ -2498,6 +2515,7 @@ function EmbeddedEditor({
       },
 
       complete: async () => {
+        if (isAutosaveSuspended()) rejectWhileSuspended('complete')
         if (fatalInitErrorRef.current) throw new Error('편집기를 초기화하지 못해 저장할 수 없습니다.')
         const currentSessionId = currentSession?.id || sessionId
 
