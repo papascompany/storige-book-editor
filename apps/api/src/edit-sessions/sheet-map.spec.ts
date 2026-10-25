@@ -69,6 +69,27 @@ const deskLargeP1: ProductProfile = {
   output: { mode: 'single-pdf' },
 };
 
+/** 벽걸이 1단 단면 14쪽(admin calendarProfilePresets wall-1 과 동일, single-pdf) — 표지 1 + 월 12(사진+그리드) + 에필로그 1 */
+const wall1Single14: ProductProfile = {
+  version: 1,
+  kind: 'calendar',
+  editorType: 'calendar_wall1_a3',
+  pages: { kind: 'fixed', count: 14, step: 1, protectedIndices: [0, 13], labelRule: 'month' },
+  sheet: { faces: 1, canvasLayout: 'canvas-per-sheet', binding: 'top-ring', backRotation: 0, duplexFlip: 'short-edge' },
+  calendar: {
+    layout: 'wall-1',
+    monthCount: 12,
+    coverCanvases: 1,
+    canvasesPerMonth: 1,
+    epilogueCanvases: 1,
+    allowedRange: { from: '2026-01', to: '2027-12' },
+    weekStart: 0,
+    show: { holidays: true, lunar: true, solarTerms: true },
+    dataVersion: 'kr-2025-2035-v1',
+  },
+  output: { mode: 'single-pdf' },
+};
+
 function patch(base: ProductProfile, fn: (p: ProductProfile) => void): ProductProfile {
   const clone = JSON.parse(JSON.stringify(base)) as ProductProfile;
   fn(clone);
@@ -218,6 +239,15 @@ describe('buildSheetMap (설계 §6.3 골든)', () => {
     expectError(() => buildSheetMap(patch(wallB25, (p) => { p.pages.protectedIndices = []; }), 25), 'INVALID_PROFILE');
     expectError(() => buildSheetMap(patch(pairSame, (p) => { p.pages.protectedIndices = [2]; }), 6), 'INVALID_PROFILE');
     expectError(() => buildSheetMap(patch(pairSame, (p) => { p.sheet.faces = 1; }), 4), 'INVALID_PROFILE');
+  });
+
+  it('벽걸이 1단 단면 14쪽: single-pdf 프리셋은 INVALID_PROFILE(sheet-map 대상 아님), sheet-map 으로 바꾸면 14시트 전부 back null', () => {
+    expectError(() => buildSheetMap(wall1Single14, 14), 'INVALID_PROFILE');
+    const asSheetMap = patch(wall1Single14, (p) => { p.output = { mode: 'sheet-map', sheetFiles: 'per-sheet' }; });
+    // canvas-per-sheet 는 protectedIndices [0,13](표지·에필로그)과 무관하게 캔버스 1개 = 시트 1장
+    expect(buildSheetMap(asSheetMap, 14)).toEqual(Array.from({ length: 14 }, (_, i) => single(i, i)));
+    expectError(() => buildSheetMap(asSheetMap, 13), 'PAGE_COUNT_MISMATCH');
+    expectError(() => buildSheetMap(asSheetMap, 26), 'PAGE_COUNT_MISMATCH');
   });
 
   it('protectedIndices 중 인쇄 범위 밖 값은 무시(에필로그가 없는 pageCount 로 호출해도 매핑 유지)', () => {

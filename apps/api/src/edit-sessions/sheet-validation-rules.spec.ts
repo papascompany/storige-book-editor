@@ -271,6 +271,39 @@ describe('deriveSheetValidationRules', () => {
       expect(deriveSheetValidationRules(withProfile(sheetRangeProfile(1)))).toEqual({ productKind: 'sheet', coverSpine: 'none' });
     });
 
+    /** 벽걸이 1단 단면 14쪽(admin 프리셋 wall-1 과 같은 값): faces 1·canvas-per-sheet·월 1캔버스·step 1·protected [0,13] */
+    const wall1SingleProfile = (): ProductProfile => ({
+      ...calendarProfile(),
+      editorType: 'calendar_wall1_a3',
+      pages: { kind: 'fixed', count: 14, step: 1, protectedIndices: [0, 13], labelRule: 'month' },
+      sheet: { faces: 1, canvasLayout: 'canvas-per-sheet', binding: 'top-ring', backRotation: 0, duplexFlip: 'short-edge' },
+      calendar: { ...(calendarProfile().calendar as NonNullable<ProductProfile['calendar']>), layout: 'wall-1', canvasesPerMonth: 1 },
+    });
+
+    it('(a-3) 벽걸이 1단 단면 fixed 14·faces 1·step 1 → expectedPages 14, pageStep 키 없음(단면이라 2 고정 아님)', () => {
+      const warn = jest.fn();
+      expect(deriveSheetValidationRules(withProfile(wall1SingleProfile(), { warn }))).toEqual({
+        productKind: 'sheet',
+        expectedPages: 14,
+        coverSpine: 'none',
+      });
+      // 프로파일 검증 통과(경고 0) — 실패했다면 종전 결과로 떨어지며 warn 이 남는다
+      expect(warn).not.toHaveBeenCalled();
+    });
+
+    it('(a-4) 벽걸이 1단 + 호스트 orderOptions.pageStep 2 → 종전 산출대로 pageStep 2(단면 프로파일은 덮지 않음), expectedPages 14 유지', () => {
+      const session = {
+        mode: SessionMode.BOTH,
+        metadata: { orderOptions: { pageStep: 2 } },
+      } as unknown as SheetValidationRulesInput['session'];
+      expect(deriveSheetValidationRules(withProfile(wall1SingleProfile(), { session }))).toEqual({
+        productKind: 'sheet',
+        pageStep: 2,
+        expectedPages: 14,
+        coverSpine: 'none',
+      });
+    });
+
     it('(NULL) templateSet.productProfile null·undefined → 종전 결과와 동일(coverSpine 키 없음)', () => {
       expect(deriveSheetValidationRules(withProfile(null))).toEqual(deriveSheetValidationRules(base()));
       expect(deriveSheetValidationRules(base())).toEqual({ productKind: 'sheet' });
