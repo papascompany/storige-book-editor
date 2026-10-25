@@ -18,6 +18,7 @@ import { useSettingsStore } from '@/stores/useSettingsStore'
 import { useCalendarStore, type CalendarYearRole } from '@/stores/useCalendarStore'
 import { rehydrateAllCalendarGrids } from '@/utils/calendarRehydrateAll'
 import CalendarGridTools from './CalendarGridTools'
+import CalendarSkinSection from './CalendarSkinSection'
 import {
   formatCalendarEndMonthLabel,
   daysInSolarMonth,
@@ -180,6 +181,7 @@ export default function CalendarPanel() {
           formError={formError}
           setFormError={setFormError}
         />
+        <CalendarSkinSection />
         {editMode && <CalendarGridTools onGridsChanged={onGridsChanged} />}
       </div>
     </div>
