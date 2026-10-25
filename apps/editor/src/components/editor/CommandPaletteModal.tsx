@@ -102,7 +102,12 @@ function buildActions(props: Pick<CommandPaletteModalProps, 'onFinish' | 'onOpen
     { type: 'EDIT', label: '편집도구', icon: Pencil, keywords: ['edit', 'tool'] },
   ]
 
-  const tools: CommandAction[] = TOOL_MENUS.map((m) => ({
+  // 「템플릿」(페이지 템플릿 교체)만 템플릿셋 enabledMenus 화이트리스트를 따른다 — ToolBar 와 같은 규칙(null = 전체, editMode 는 전체).
+  // 캘린더 스킨을 둔 세트는 화이트리스트에서 TEMPLATE 을 빼 팔레트 우회 진입까지 막는다. 다른 메뉴는 현행 그대로.
+  const { enabledMenus, currentSettings } = useSettingsStore.getState()
+  const templateAllowed =
+    currentSettings.editMode === true || enabledMenus == null || (enabledMenus as string[]).includes('TEMPLATE')
+  const tools: CommandAction[] = TOOL_MENUS.filter((m) => m.type !== 'TEMPLATE' || templateAllowed).map((m) => ({
     id: `tool-${m.type}`,
     group: '도구',
     label: `${m.label} 도구 열기`,
@@ -341,6 +346,9 @@ export default function CommandPaletteModal(props: CommandPaletteModalProps) {
 
   // 페이지 정보 (페이지 이동 액션용)
   const pages = useEditorStore((s) => s.pages)
+  // 도구 목록의 「템플릿」 필터 입력 — 팔레트는 닫혀도 마운트돼 있으므로 세트가 바뀌면 목록을 다시 만든다
+  const enabledMenus = useSettingsStore((s) => s.enabledMenus)
+  const editMode = useSettingsStore((s) => s.currentSettings.editMode)
 
   const allActions = useMemo(() => {
     const base = buildActions(props)
@@ -360,7 +368,7 @@ export default function CommandPaletteModal(props: CommandPaletteModalProps) {
     }))
     return [...base, ...pageActions]
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pages.length])
+  }, [pages.length, enabledMenus, editMode])
 
   const filtered = useMemo(
     () => allActions.filter((a) => matchesQuery(a, query)),

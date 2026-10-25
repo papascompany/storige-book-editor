@@ -414,6 +414,7 @@ GHOSTSCRIPT_PATH=/usr/bin/gs
 |---|---|---|---|
 | `VITE_ENABLE_CALENDAR` | editor 빌드 | on(미설정·`'false'` 외 모든 값) | P1 캘린더(2026-10-17). 정확히 `'false'` 로 두면 CalendarPlugin 등록과 도구 막대 달력 메뉴를 비활성한다(프로파일 NULL 세트는 값과 무관하게 현행). 빌드 시점 변수라 값을 바꾸면 master push(Vercel 재빌드) 뒤에 반영된다(`apps/editor/.env.example`) |
 | `VITE_ENABLE_PHOTO_PRINT` | editor 빌드 | on(미설정·`'false'` 외 모든 값) | P2-d 사진인화(2026-10-19 — 브랜치 `p1-calendar-2026-10-17` 전용·미커밋·운영 미반영). 정확히 `'false'` 로 두면 `PhotoPrintPlugin` 등록(`apps/editor/src/utils/createCanvas.ts`)과 도구 막대 사진인화 메뉴(`apps/editor/src/components/editor/ToolBar.tsx`)를 비활성한다. 켜져 있어도 메뉴·패널은 `productProfile.kind === 'photo-print'` 세트에서만 보이므로 프로파일 NULL 세트는 값과 무관하게 현행. 직렬화 속성 `fitMode`·`frameInsetMm` 등재는 플래그와 무관(`packages/canvas-core/src/utils/canvas.ts`)이라 꺼도 저장본은 보존된다. 빌드 시점 변수 — master push(Vercel 재빌드) 뒤 반영(`apps/editor/.env.example` 에 추가) |
+| `VITE_ENABLE_CALENDAR_SKINS` | editor 빌드 | on(미설정·`'false'` 외 모든 값) | 캘린더 디자인(스킨) 선택 절(달력 패널 「디자인」). 정확히 `'false'` 면 절을 숨기고 적용을 막는다. 달력 메뉴 전체는 `VITE_ENABLE_CALENDAR` 가 관장한다. 세션 `metadata.calendar.skinKey` 판독·저장은 플래그와 무관하게 통과하므로 꺼도 이미 적용된 디자인(canvasData)과 key 는 보존된다. 1순위 운영 수단은 데이터다 — 기준 세트 프로파일에서 `calendar.skins` 를 빼면 재배포 없이 그 세트에서 바로 사라진다. 스킨을 둔 세트는 `enabledMenus` 에서 `TEMPLATE` 을 빼야 도구 막대·명령 팔레트의 페이지 템플릿 교체가 숨는다. 빌드 시점 변수 — master push(Vercel 재빌드) 뒤 반영(`apps/editor/.env.example`) |
 
 ### 잡 생성 확인 · 잡 산출물 세션 조회 플래그 (api, 2026-10-03)
 
