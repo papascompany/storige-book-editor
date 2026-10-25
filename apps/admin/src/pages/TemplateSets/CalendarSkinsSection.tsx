@@ -27,6 +27,7 @@ import {
   removeSkin,
   skinCompatibilityErrors,
   skinFromTemplateSet,
+  skinKeyBlockReason,
   skinValidationErrors,
   templateDetailsFor,
   uniqueTemplateIds,
@@ -175,7 +176,7 @@ export const CalendarSkinsSection = ({ templateSetId, templateIds }: CalendarSki
       <Text type="secondary" style={{ display: 'block', fontSize: 12, marginBottom: 12 }}>
         스킨 세트는 이 세트와 구조가 같은 일반 캘린더 세트입니다. 이 세트의 템플릿을 복제해 디자인만 고치면 객체 id 가 유지되어
         문구·사진틀이 같은 자리로 옮겨집니다. 스킨을 둔 세트는 도구 메뉴에서 「템플릿」을 빼 두세요. 판매 중인 스킨은 고치지 말고 새
-        스킨으로 등록하고, 스킨 key 는 다른 세트에 다시 쓰지 않습니다. 목록은 아래 프로파일 JSON 의 calendar.skins 에 그대로 쓰입니다.
+        스킨으로 등록합니다. 스킨 key 는 대상 세트에서 자동으로 정해지며 바꿀 수 없습니다. 목록은 아래 프로파일 JSON 의 calendar.skins 에 그대로 쓰입니다.
       </Text>
 
       {read.kind === 'unreadable' && <Alert type="warning" showIcon message={read.reason} style={{ marginBottom: 12 }} />}
@@ -241,6 +242,8 @@ export const CalendarSkinsSection = ({ templateSetId, templateIds }: CalendarSki
       {skins.map((skin, i) => {
         const set = setsById.get(skin.templateSetId);
         const errors = rowErrors[i];
+        // 보조기술용 행 이름 — 버튼이 어느 스킨의 것인지 구분되게 한다
+        const rowName = skin.label.trim() || skin.key || `${i + 1}번 스킨`;
         return (
           <div
             key={`${i}-${skin.templateSetId}`}
@@ -252,20 +255,20 @@ export const CalendarSkinsSection = ({ templateSetId, templateIds }: CalendarSki
                 {i + 1}
               </Text>
               <Input
-                aria-label="스킨 이름"
+                aria-label={`${i + 1}번 스킨 이름`}
                 value={skin.label}
                 maxLength={CALENDAR_SKIN_LABEL_MAX}
                 placeholder="고객에게 보일 이름"
                 style={{ width: 220 }}
                 onChange={(e) => commit(patchSkin(skins, i, { label: e.target.value }))}
               />
-              <Tooltip title="세션에 기록되는 키. 판매를 시작한 뒤에는 바꾸지 마세요.">
+              <Tooltip title="대상 세트에서 자동으로 정해지며 바꿀 수 없음(세션에 기록되는 키)">
                 <Input
-                  aria-label="스킨 key"
+                  aria-label={`${i + 1}번 스킨 key`}
                   value={skin.key}
                   prefix="key"
-                  style={{ width: 200, fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace' }}
-                  onChange={(e) => commit(patchSkin(skins, i, { key: e.target.value }))}
+                  readOnly
+                  style={{ width: 260, fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace' }}
                 />
               </Tooltip>
               <span data-testid="calendar-skin-target">
@@ -277,14 +280,14 @@ export const CalendarSkinsSection = ({ templateSetId, templateIds }: CalendarSki
               <Space size={4}>
                 <Button
                   size="small"
-                  aria-label="위로"
+                  aria-label={`${rowName} 위로`}
                   icon={<ArrowUpOutlined />}
                   disabled={i === 0}
                   onClick={() => commit(moveSkin(skins, i, i - 1))}
                 />
                 <Button
                   size="small"
-                  aria-label="아래로"
+                  aria-label={`${rowName} 아래로`}
                   icon={<ArrowDownOutlined />}
                   disabled={i === skins.length - 1}
                   onClick={() => commit(moveSkin(skins, i, i + 1))}
@@ -292,7 +295,7 @@ export const CalendarSkinsSection = ({ templateSetId, templateIds }: CalendarSki
                 <Button
                   size="small"
                   danger
-                  aria-label="삭제"
+                  aria-label={`${rowName} 삭제`}
                   icon={<DeleteOutlined />}
                   onClick={() => commit(removeSkin(skins, i))}
                 />
@@ -332,7 +335,8 @@ export const CalendarSkinsSection = ({ templateSetId, templateIds }: CalendarSki
           {candidates.length === 0 && <Text type="secondary">후보 세트가 없습니다.</Text>}
           {candidates.map(({ set, errors }) => {
             const used = skins.some((s) => s.templateSetId === set.id);
-            const disabled = used || errors.length > 0 || !canAddSkin(skins) || read.kind !== 'calendar';
+            const keyBlock = used ? null : skinKeyBlockReason(set, skins);
+            const disabled = used || keyBlock !== null || errors.length > 0 || !canAddSkin(skins) || read.kind !== 'calendar';
             return (
               <div
                 key={set.id}
@@ -341,9 +345,13 @@ export const CalendarSkinsSection = ({ templateSetId, templateIds }: CalendarSki
               >
                 <Button
                   size="small"
+                  aria-label={`${set.name} 추가`}
                   icon={<PlusOutlined />}
                   disabled={disabled}
-                  onClick={() => commit([...skins, skinFromTemplateSet(set, skins)])}
+                  onClick={() => {
+                    const skin = skinFromTemplateSet(set);
+                    if (skin) commit([...skins, skin]);
+                  }}
                 >
                   추가
                 </Button>
@@ -357,6 +365,11 @@ export const CalendarSkinsSection = ({ templateSetId, templateIds }: CalendarSki
                     {used && <Tag color="blue">지정됨</Tag>}
                     {errors.length === 0 ? <Tag color="green">호환</Tag> : <Tag color="red">호환 안 됨</Tag>}
                   </Space>
+                  {keyBlock && (
+                    <div data-testid="calendar-skin-key-block" style={{ marginTop: 4, fontSize: 12, color: '#cf1322' }}>
+                      {keyBlock}
+                    </div>
+                  )}
                   {errors.length > 0 && (
                     <ul style={{ margin: '4px 0 0', paddingLeft: 18, fontSize: 12, color: '#cf1322' }}>
                       {errors.map((e) => (

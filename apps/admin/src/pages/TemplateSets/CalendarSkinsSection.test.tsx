@@ -307,14 +307,14 @@ describe('후보 — 같은 사이트·공유 캘린더 세트만, 호환 안 �
 });
 
 describe('편집 — 추가·이름·순서·삭제가 프로파일 JSON 에 그대로 쓰이고 저장된다', () => {
-  it('추가 2개 → 이름·key 변경 → 순서 바꿈 → 저장 payload 반영', async () => {
+  it('추가 2개 → 이름 변경 → 순서 바꿈 → 저장 payload 반영(key 는 대상 세트에서 결정)', async () => {
     setUpServer(calendarSet('ts-1'));
     renderForm();
     const section = await loadedSection();
 
     fireEvent.click(addButton(candidate(section, '봄 디자인')));
     await waitFor(() => expect(rows(section)).toHaveLength(1));
-    expect(skinsInJson()).toEqual([{ key: 'skin-1', label: '봄 디자인', templateSetId: 'k1', thumbnailUrl: '/thumb/k1.png' }]);
+    expect(skinsInJson()).toEqual([{ key: 'set-k1', label: '봄 디자인', templateSetId: 'k1', thumbnailUrl: '/thumb/k1.png' }]);
     expect(addButton(candidate(section, '봄 디자인')).disabled).toBe(true);
     expect(within(rows(section)[0]).getByTestId('calendar-skin-compat-ok')).toBeTruthy();
     expect(within(rows(section)[0]).getByTestId('calendar-skin-thumbs').querySelectorAll('img')).toHaveLength(2);
@@ -322,24 +322,78 @@ describe('편집 — 추가·이름·순서·삭제가 프로파일 JSON 에 그
     fireEvent.click(addButton(candidate(section, '공유 디자인')));
     await waitFor(() => expect(rows(section)).toHaveLength(2));
 
-    fireEvent.change(within(rows(section)[1]).getByLabelText('스킨 이름'), { target: { value: '겨울' } });
-    fireEvent.change(within(rows(section)[1]).getByLabelText('스킨 key'), { target: { value: 'winter' } });
+    fireEvent.change(within(rows(section)[1]).getByLabelText('2번 스킨 이름'), { target: { value: '겨울' } });
     await waitFor(() =>
       expect(skinsInJson()).toEqual([
-        { key: 'skin-1', label: '봄 디자인', templateSetId: 'k1', thumbnailUrl: '/thumb/k1.png' },
-        { key: 'winter', label: '겨울', templateSetId: 'shared' },
+        { key: 'set-k1', label: '봄 디자인', templateSetId: 'k1', thumbnailUrl: '/thumb/k1.png' },
+        { key: 'set-shared', label: '겨울', templateSetId: 'shared' },
       ]),
     );
 
-    fireEvent.click(within(rows(section)[1]).getByLabelText('위로'));
-    await waitFor(() => expect((skinsInJson() as Array<{ key: string }>).map((s) => s.key)).toEqual(['winter', 'skin-1']));
+    fireEvent.click(within(rows(section)[1]).getByLabelText('겨울 위로'));
+    await waitFor(() => expect((skinsInJson() as Array<{ key: string }>).map((s) => s.key)).toEqual(['set-shared', 'set-k1']));
 
     const data = await submitAndCapture();
     const sent = data.productProfile as { calendar: { skins: unknown } };
     expect(sent.calendar.skins).toEqual([
-      { key: 'winter', label: '겨울', templateSetId: 'shared' },
-      { key: 'skin-1', label: '봄 디자인', templateSetId: 'k1', thumbnailUrl: '/thumb/k1.png' },
+      { key: 'set-shared', label: '겨울', templateSetId: 'shared' },
+      { key: 'set-k1', label: '봄 디자인', templateSetId: 'k1', thumbnailUrl: '/thumb/k1.png' },
     ]);
+  });
+
+  it('key 칸은 편집할 수 없다(읽기 전용, 입력해도 JSON 불변)', async () => {
+    setUpServer(calendarSet('ts-1', { productProfile: withSkins([{ key: 'spring', label: '봄', templateSetId: 'k1' }]) }));
+    renderForm();
+    const section = await loadedSection();
+    const keyInput = within(rows(section)[0]).getByLabelText('1번 스킨 key') as HTMLInputElement;
+    expect(keyInput.readOnly).toBe(true);
+    const before = (document.querySelector('textarea#productProfileJson') as HTMLInputElement).value;
+    fireEvent.change(keyInput, { target: { value: 'hacked' } });
+    await waitFor(() => expect((within(rows(section)[0]).getByLabelText('1번 스킨 key') as HTMLInputElement).value).toBe('spring'));
+    expect((document.querySelector('textarea#productProfileJson') as HTMLInputElement).value).toBe(before);
+  });
+
+  it('삭제 후 다른 세트를 추가하면 key 가 다르고, 같은 세트를 다시 추가하면 같은 key', async () => {
+    setUpServer(calendarSet('ts-1'));
+    renderForm();
+    const section = await loadedSection();
+    const keys = () => (skinsInJson() as Array<{ key: string }> | undefined)?.map((s) => s.key);
+
+    fireEvent.click(addButton(candidate(section, '봄 디자인')));
+    await waitFor(() => expect(keys()).toEqual(['set-k1']));
+    fireEvent.click(within(rows(section)[0]).getByLabelText('봄 디자인 삭제'));
+    await waitFor(() => expect(rows(section)).toHaveLength(0));
+
+    fireEvent.click(addButton(candidate(section, '공유 디자인')));
+    await waitFor(() => expect(keys()).toEqual(['set-shared']));
+    expect(keys()).not.toContain('set-k1');
+
+    fireEvent.click(addButton(candidate(section, '봄 디자인')));
+    await waitFor(() => expect(keys()).toEqual(['set-shared', 'set-k1']));
+  });
+
+  it('JSON 에서 잘못된 key·중복 key 를 넣으면 형식 오류를 보이고, 만들 key 를 다른 세트가 쓰면 그 후보 추가를 막는다', async () => {
+    setUpServer(calendarSet('ts-1'));
+    renderForm();
+    const section = await loadedSection();
+    const textarea = await profileTextarea();
+    const setJson = (skins: unknown[]) =>
+      fireEvent.change(textarea, { target: { value: JSON.stringify(withSkins(skins), null, 2) } });
+
+    setJson([{ key: 'Bad Key', label: '봄', templateSetId: 'k1' }]);
+    await waitFor(() => expect(within(section).getByText(/calendar\.skins\[0\]\.key 는 소문자/)).toBeTruthy());
+
+    setJson([
+      { key: 'spring', label: '봄', templateSetId: 'k1' },
+      { key: 'spring', label: '겨울', templateSetId: 'shared' },
+    ]);
+    await waitFor(() => expect(within(section).getByText(/calendar\.skins\[1\]\.key\(spring\) 가 중복됩니다/)).toBeTruthy());
+
+    setJson([{ key: 'set-shared', label: '봄', templateSetId: 'k1' }]);
+    await waitFor(() => expect(addButton(candidate(section, '공유 디자인')).disabled).toBe(true));
+    expect(within(candidate(section, '공유 디자인')).getByTestId('calendar-skin-key-block').textContent).toContain(
+      '이 세트의 key(set-shared)를 다른 스킨「봄」이 쓰고 있어 추가할 수 없습니다',
+    );
   });
 
   it('삭제 — 하나씩 지우고, 모두 지우면 skins 키를 지워 원래 프로파일과 같아진다', async () => {
@@ -356,11 +410,11 @@ describe('편집 — 추가·이름·순서·삭제가 프로파일 JSON 에 그
     expect(rows(section)).toHaveLength(2);
     expect(addButton(candidate(section, '봄 디자인')).disabled).toBe(true);
 
-    fireEvent.click(within(rows(section)[0]).getByLabelText('삭제'));
+    fireEvent.click(within(rows(section)[0]).getByLabelText('봄 삭제'));
     await waitFor(() => expect(rows(section)).toHaveLength(1));
     expect(skinsInJson()).toEqual([{ key: 'winter', label: '겨울', templateSetId: 'shared' }]);
     expect(addButton(candidate(section, '봄 디자인')).disabled).toBe(false);
-    fireEvent.click(within(rows(section)[0]).getByLabelText('삭제'));
+    fireEvent.click(within(rows(section)[0]).getByLabelText('겨울 삭제'));
     await waitFor(() => expect(rows(section)).toHaveLength(0));
     expect('skins' in (profileValue().calendar as Record<string, unknown>)).toBe(false);
     expect(profileValue()).toEqual(calendarProfile());
@@ -371,13 +425,13 @@ describe('편집 — 추가·이름·순서·삭제가 프로파일 JSON 에 그
     renderForm();
     const section = await loadedSection();
     const textarea = await profileTextarea();
-    expect((within(rows(section)[0]).getByLabelText('스킨 이름') as HTMLInputElement).value).toBe('봄');
+    expect((within(rows(section)[0]).getByLabelText('1번 스킨 이름') as HTMLInputElement).value).toBe('봄');
 
     fireEvent.change(textarea, {
       target: { value: JSON.stringify(withSkins([{ key: 'spring', label: '봄 개정', templateSetId: 'k1' }]), null, 2) },
     });
     await waitFor(() =>
-      expect((within(rows(section)[0]).getByLabelText('스킨 이름') as HTMLInputElement).value).toBe('봄 개정'),
+      expect((within(rows(section)[0]).getByLabelText('1번 스킨 이름') as HTMLInputElement).value).toBe('봄 개정'),
     );
   });
 
@@ -385,7 +439,7 @@ describe('편집 — 추가·이름·순서·삭제가 프로파일 JSON 에 그
     setUpServer(calendarSet('ts-1', { productProfile: withSkins([{ key: 'spring', label: '봄', templateSetId: 'k1' }]) }));
     renderForm();
     const section = await loadedSection();
-    fireEvent.change(within(rows(section)[0]).getByLabelText('스킨 이름'), { target: { value: '' } });
+    fireEvent.change(within(rows(section)[0]).getByLabelText('1번 스킨 이름'), { target: { value: '' } });
     await waitFor(() => expect(within(section).getByText('스킨 목록 형식 오류')).toBeTruthy());
     expect(within(section).getByText(/calendar\.skins\[0\]\.label/)).toBeTruthy();
   });

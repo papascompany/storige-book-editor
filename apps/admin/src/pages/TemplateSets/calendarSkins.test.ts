@@ -1,18 +1,25 @@
 // 캘린더 스킨 편집 헬퍼 — JSON 읽기·쓰기 왕복, 후보 필터, 호환 판정 입력, 썸네일 자동 채움.
 import { describe, expect, it } from 'vitest';
-import { CALENDAR_SKIN_MAX, checkCalendarSkinCompatibility, type ProductProfile } from '@storige/types';
+import {
+  CALENDAR_SKIN_KEY_RE,
+  CALENDAR_SKIN_MAX,
+  checkCalendarSkinCompatibility,
+  isCalendarSkinKey,
+  type ProductProfile,
+} from '@storige/types';
 import { CALENDAR_PROFILE_PRESETS } from './calendarProfilePresets';
 import {
   SKIN_SET_NOT_FOUND,
   canAddSkin,
   filterSkinCandidates,
   moveSkin,
-  nextSkinKey,
   patchSkin,
   readCalendarSkins,
   removeSkin,
   skinCompatibilityErrors,
   skinFromTemplateSet,
+  skinKeyBlockReason,
+  skinKeyForTemplateSet,
   skinSetInput,
   skinThumbnailFromSet,
   skinValidationErrors,
@@ -27,6 +34,9 @@ import {
 const preset = CALENDAR_PROFILE_PRESETS[0];
 const calendarProfile = (): ProductProfile => JSON.parse(JSON.stringify(preset.profile)) as ProductProfile;
 const text = (v: unknown) => JSON.stringify(v, null, 2);
+const UUID_A = '0f8e2c1a-5b3d-4e6f-8a9b-1c2d3e4f5a6b';
+const UUID_B = '7a1b2c3d-4e5f-4a6b-9c8d-0e1f2a3b4c5d';
+const UUID_C = 'c4d5e6f7-0a1b-4c2d-8e3f-5a6b7c8d9e0f';
 
 function draft(key: string, templateSetId: string, extra: Partial<CalendarSkinDraft> = {}): CalendarSkinDraft {
   return { key, label: key.toUpperCase(), templateSetId, extra: {}, ...extra };
@@ -106,9 +116,38 @@ describe('writeCalendarSkins — calendar.skins 만 바꾸고 다른 키·순서
 describe('목록 조작', () => {
   const list = [draft('a', '1'), draft('b', '2'), draft('c', '3')];
 
-  it('nextSkinKey — 쓰이지 않은 첫 skin-N', () => {
-    expect(nextSkinKey([])).toBe('skin-1');
-    expect(nextSkinKey([{ key: 'skin-1' }, { key: 'skin-3' }])).toBe('skin-2');
+  it('skinKeyForTemplateSet — uuid 는 set- + 하이픈 뺀 소문자 hex 앞 24자, 형식 만족', () => {
+    const key = skinKeyForTemplateSet('1B9D6BCD-BBFD-4B2D-9B5D-AB8DFBBD4BED');
+    expect(key).toBe('set-1b9d6bcdbbfd4b2d9b5dab8d');
+    expect(isCalendarSkinKey(key)).toBe(true);
+    expect(CALENDAR_SKIN_KEY_RE.test(key as string)).toBe(true);
+    expect(skinKeyForTemplateSet('k1')).toBe('set-k1');
+    expect(skinKeyForTemplateSet('---')).toBeNull();
+  });
+
+  it('삭제 후 다른 세트를 추가하면 이전 key 와 다르다(지운 key 를 다시 쓰지 않음)', () => {
+    const a = skinFromTemplateSet({ id: UUID_A, name: 'A' }) as CalendarSkinDraft;
+    const b = skinFromTemplateSet({ id: UUID_B, name: 'B' }) as CalendarSkinDraft;
+    const afterRemove = removeSkin([a, b], 0);
+    const c = skinFromTemplateSet({ id: UUID_C, name: 'C' }) as CalendarSkinDraft;
+    expect(c.key).not.toBe(a.key);
+    expect(new Set([...afterRemove, c].map((s) => s.key)).size).toBe(2);
+    expect(new Set([a.key, b.key, c.key]).size).toBe(3);
+  });
+
+  it('같은 세트를 지웠다가 다시 추가하면 같은 key', () => {
+    const a = skinFromTemplateSet({ id: UUID_A, name: 'A' }) as CalendarSkinDraft;
+    const again = skinFromTemplateSet({ id: UUID_A, name: '이름 바뀜' }) as CalendarSkinDraft;
+    expect(removeSkin([a], 0)).toEqual([]);
+    expect(again.key).toBe(a.key);
+  });
+
+  it('skinKeyBlockReason — 만든 key 를 다른 세트 스킨이 쓰면 사유(접미사로 피하지 않음), key 를 못 만들면 사유', () => {
+    const key = skinKeyForTemplateSet(UUID_A) as string;
+    expect(skinKeyBlockReason({ id: UUID_A }, [])).toBeNull();
+    expect(skinKeyBlockReason({ id: UUID_A }, [{ key, label: '봄', templateSetId: UUID_A }])).toBeNull();
+    expect(skinKeyBlockReason({ id: UUID_A }, [{ key, label: '봄', templateSetId: UUID_B }])).toContain(`key(${key})`);
+    expect(skinKeyBlockReason({ id: '---' }, [])).toContain('만들 수 없어');
   });
 
   it('moveSkin·removeSkin·patchSkin — 새 배열, 범위 밖은 그대로', () => {
@@ -129,8 +168,8 @@ describe('목록 조작', () => {
 describe('skinFromTemplateSet — 이름·썸네일 자동 채움', () => {
   it('이름 = 세트명(40자), key 자동, 썸네일 = 세트 썸네일', () => {
     const long = '가'.repeat(50);
-    expect(skinFromTemplateSet({ id: 'ts-a', name: `  ${long}  `, thumbnailUrl: '/a.png' }, [{ key: 'skin-1' }])).toEqual({
-      key: 'skin-2',
+    expect(skinFromTemplateSet({ id: 'ts-a', name: `  ${long}  `, thumbnailUrl: '/a.png' })).toEqual({
+      key: 'set-tsa',
       label: '가'.repeat(40),
       templateSetId: 'ts-a',
       thumbnailUrl: '/a.png',
@@ -142,7 +181,8 @@ describe('skinFromTemplateSet — 이름·썸네일 자동 채움', () => {
     expect(skinThumbnailFromSet({ thumbnailUrl: null })).toBeUndefined();
     expect(skinThumbnailFromSet({ thumbnailUrl: '' })).toBeUndefined();
     expect(skinThumbnailFromSet({ thumbnailUrl: `/${'x'.repeat(2048)}` })).toBeUndefined();
-    const skin = skinFromTemplateSet({ id: 'ts-a', name: '  ' }, []);
+    const skin = skinFromTemplateSet({ id: 'ts-a', name: '  ' }) as CalendarSkinDraft;
+    expect(skinFromTemplateSet({ id: '---', name: 'x' })).toBeNull();
     expect(skin.label).toBe('디자인');
     expect('thumbnailUrl' in skin).toBe(false);
   });

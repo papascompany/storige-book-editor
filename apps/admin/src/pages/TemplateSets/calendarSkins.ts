@@ -13,6 +13,7 @@ import {
   CALENDAR_SKIN_MAX,
   CALENDAR_SKIN_THUMBNAIL_URL_MAX,
   checkCalendarSkinCompatibility,
+  isCalendarSkinKey,
   type CalendarSkinSetInput,
   type CalendarSkinTemplateSource,
   type TemplateRef,
@@ -111,13 +112,38 @@ export function parseRawProfile(text: string | null | undefined): Record<string,
   return parseRecord(text);
 }
 
-/** 목록 안에서 쓰이지 않은 첫 기본 key(`skin-1`, `skin-2`, …) */
-export function nextSkinKey(skins: readonly Pick<CalendarSkinDraft, 'key'>[]): string {
-  const used = new Set(skins.map((s) => s.key));
-  for (let n = 1; ; n += 1) {
-    const candidate = `skin-${n}`;
-    if (!used.has(candidate)) return candidate;
+/** 스킨 key = 'set-' + 세트 id 의 소문자 영숫자 앞 24자(uuid 는 하이픈을 뺀 hex 앞 24자) */
+const SKIN_KEY_PREFIX = 'set-';
+const SKIN_KEY_BODY_MAX = 24;
+
+/**
+ * 대상 세트 id 에서 스킨 key 를 결정적으로 만든다. 같은 세트는 늘 같은 key, 다른 세트는 다른 key 가 된다 —
+ * 지운 스킨의 key 가 다른 세트에 다시 붙지 않는다(기존 세션의 skinKey 가 다른 디자인으로 해석되지 않도록).
+ * 형식(`isCalendarSkinKey`)을 만족하는 key 를 만들 수 없으면 null.
+ */
+export function skinKeyForTemplateSet(templateSetId: string): string | null {
+  const body = templateSetId.toLowerCase().replace(/[^a-z0-9]/g, '').slice(0, SKIN_KEY_BODY_MAX);
+  if (body.length === 0) return null;
+  const key = `${SKIN_KEY_PREFIX}${body}`;
+  return isCalendarSkinKey(key) ? key : null;
+}
+
+/**
+ * 후보 세트를 스킨으로 추가할 수 없는 key 사유 — key 를 만들 수 없거나, 만든 key 를 현재 목록의 다른 세트 스킨이
+ * 쓰고 있으면(직접 편집한 경우) 문구. 접미사를 붙여 피하지 않는다. 추가 가능하면 null.
+ */
+export function skinKeyBlockReason(
+  set: Pick<SkinCandidateSet, 'id'>,
+  skins: readonly Pick<CalendarSkinDraft, 'key' | 'label' | 'templateSetId'>[],
+): string | null {
+  const key = skinKeyForTemplateSet(set.id);
+  if (key === null) return '세트 id 로 스킨 key 를 만들 수 없어 추가할 수 없습니다.';
+  const clash = skins.find((s) => s.key === key && s.templateSetId !== set.id);
+  if (clash) {
+    const name = clash.label.trim() || clash.templateSetId;
+    return `이 세트의 key(${key})를 다른 스킨「${name}」이 쓰고 있어 추가할 수 없습니다. 그 스킨의 key 를 고치세요.`;
   }
+  return null;
 }
 
 /** 스킨 후보 세트에서 읽는 필드(공유 TemplateSet·API 목록 응답의 부분형) */
@@ -141,15 +167,14 @@ export function skinThumbnailFromSet(set: Pick<SkinCandidateSet, 'thumbnailUrl'>
   return typeof url === 'string' && url.length > 0 && url.length <= CALENDAR_SKIN_THUMBNAIL_URL_MAX ? url : undefined;
 }
 
-/** 후보 세트로 새 스킨 한 줄을 만든다 — key 자동, 이름 = 세트명(40자), 썸네일 = 세트 썸네일 */
-export function skinFromTemplateSet(
-  set: Pick<SkinCandidateSet, 'id' | 'name' | 'thumbnailUrl'>,
-  existing: readonly Pick<CalendarSkinDraft, 'key'>[],
-): CalendarSkinDraft {
+/** 후보 세트로 새 스킨 한 줄을 만든다 — key = 세트 id 에서 결정, 이름 = 세트명(40자), 썸네일 = 세트 썸네일. key 를 못 만들면 null */
+export function skinFromTemplateSet(set: Pick<SkinCandidateSet, 'id' | 'name' | 'thumbnailUrl'>): CalendarSkinDraft | null {
+  const key = skinKeyForTemplateSet(set.id);
+  if (key === null) return null;
   const name = set.name.trim().slice(0, CALENDAR_SKIN_LABEL_MAX);
   const thumbnailUrl = skinThumbnailFromSet(set);
   return {
-    key: nextSkinKey(existing),
+    key,
     label: name.length > 0 ? name : '디자인',
     templateSetId: set.id,
     ...(thumbnailUrl !== undefined ? { thumbnailUrl } : {}),
@@ -173,7 +198,8 @@ export function removeSkin<T>(skins: readonly T[], index: number): T[] {
 export function patchSkin(
   skins: readonly CalendarSkinDraft[],
   index: number,
-  patch: Partial<Pick<CalendarSkinDraft, 'key' | 'label'>>,
+  // key 는 대상 세트에서 정해지므로 고치지 않는다(이름만)
+  patch: Partial<Pick<CalendarSkinDraft, 'label'>>,
 ): CalendarSkinDraft[] {
   return skins.map((s, i) => (i === index ? { ...s, ...patch } : s));
 }
