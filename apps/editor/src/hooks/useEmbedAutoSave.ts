@@ -620,6 +620,8 @@ export function useEmbedAutoSave(config: AutoSaveConfig) {
   useEffect(() => {
     return () => {
       debouncedSave.cancel()
+      // 자동저장 보류 중(스킨 적용·PDF 생성 창)의 캔버스는 중간 상태일 수 있어 백업하지 않는다
+      if (isAutosaveSuspended()) return
 
       if (isDirty && sessionId && canvas) {
         // R4 무편집 백업 억제: 초기화 이후 실제 사용자 편집이 0건이면 백업을 쓰지 않는다.

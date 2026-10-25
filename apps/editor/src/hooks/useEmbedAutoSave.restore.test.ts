@@ -46,6 +46,11 @@ vi.mock('@/stores/useAppStore', () => {
 import { useEmbedAutoSave } from './useEmbedAutoSave'
 import { useSaveStore } from '@/stores/useSaveStore'
 import { useSettingsStore } from '@/stores/useSettingsStore'
+import {
+  __resetAutosaveSuspendForTest,
+  isAutosaveSuspended,
+  runWithAutosaveSuspended,
+} from '@/utils/autosaveSuspend'
 
 const LOCAL_BACKUP_KEY = 'storige_embed_session_backup'
 const SESSION_ID = 'sess-restore'
@@ -304,6 +309,30 @@ describe('useEmbedAutoSave — restore (복원 동작)', () => {
       const raw = localStorage.getItem(LOCAL_BACKUP_KEY)
       expect(raw).not.toBeNull()
       expect(JSON.parse(raw as string).sessionId).toBe(SESSION_ID)
+    })
+
+    it('자동저장 보류 중(스킨 적용 등)에 언마운트하면 사용자 편집이 있어도 백업을 쓰지 않는다', async () => {
+      const c0 = fakeCanvas('c0')
+      setCanvases([c0])
+      const { unmount } = renderRestoreHook()
+      const call = (c0.on as ReturnType<typeof vi.fn>).mock.calls.find(
+        (c: unknown[]) => c[0] === 'object:modified',
+      )
+      expect(call).toBeTruthy()
+      act(() => {
+        ;(call?.[1] as () => void)()
+      })
+      let release: () => void = () => undefined
+      const pending = runWithAutosaveSuspended(() => new Promise<void>((r) => { release = r }))
+      try {
+        expect(isAutosaveSuspended()).toBe(true)
+        unmount()
+        expect(localStorage.getItem(LOCAL_BACKUP_KEY)).toBeNull()
+      } finally {
+        release()
+        await pending
+        __resetAutosaveSuspendForTest()
+      }
     })
 
     it('복원 성공본은 서버 미반영 사용자 콘텐츠 — 언마운트 백업이 재작성되어 보호된다', async () => {
