@@ -370,10 +370,13 @@ function dryRunAll(
   from: ReadonlyArray<SkinCanvasJson | null>,
   to: readonly SkinCanvasJson[],
   templateIds: readonly Set<string>[],
+  prevSkinKey: string | undefined,
   keep: (i: number) => boolean,
 ): SkinMergeSummary {
   return summarizeSkinMergeReports(
-    cur.map((c, i) => mergeSkinCanvas(c, from[i], to[i], { dryRun: true, templateIds: templateIds[i], keepCustomerBackground: keep(i) }).report),
+    cur.map((c, i) =>
+      mergeSkinCanvas(c, from[i], to[i], { dryRun: true, templateIds: templateIds[i], prevSkinKey, keepCustomerBackground: keep(i) }).report,
+    ),
   )
 }
 
@@ -470,11 +473,11 @@ export async function prepareSkinApply(targetKey: string | undefined, depsIn?: P
     return ids
   })
 
-  // 단계 2 — dryRun 두 옵션(blocked 는 두 옵션에서 같다: customerKept 는 배경을 세지 않음)
+  // 단계 2 — dryRun 두 옵션(blocked 는 두 옵션에서 같다: 출처·템플릿 표지 판정은 고객 배경 배치와 무관)
   const cur = handles.map((h) => deps.serialize(h.canvas))
   const toJsons = to as SkinCanvasJson[]
-  const summarySkin = dryRunAll(cur, from, toJsons, templateIds, () => false)
-  const summaryKeep = dryRunAll(cur, from, toJsons, templateIds, () => true)
+  const summarySkin = dryRunAll(cur, from, toJsons, templateIds, prevSkinKey, () => false)
+  const summaryKeep = dryRunAll(cur, from, toJsons, templateIds, prevSkinKey, () => true)
   const backgrounds = decideSkinBackgrounds(cur, summarySkin, deps.apiBase())
   const plan: SkinApplyPlan = {
     targetKey,
@@ -651,12 +654,16 @@ export async function executeSkinApply(
     let decision: SkinBackgroundDecision
     let results: SkinMergeResult[]
     try {
-      const summarySkin = dryRunAll(before, plan.from, plan.to, plan.templateIds, () => false)
+      const summarySkin = dryRunAll(before, plan.from, plan.to, plan.templateIds, plan.prevSkinKey, () => false)
       decision = decideSkinBackgrounds(before, summarySkin, deps.apiBase())
       const keepAll = choice === 'keep'
       keep = keepAll ? before.map(() => true) : decision.keepOnSkinChoice
       results = before.map((cur, i) =>
-        mergeSkinCanvas(cur, plan.from[i], plan.to[i], { templateIds: plan.templateIds[i], keepCustomerBackground: keep[i] }),
+        mergeSkinCanvas(cur, plan.from[i], plan.to[i], {
+          templateIds: plan.templateIds[i],
+          prevSkinKey: plan.prevSkinKey,
+          keepCustomerBackground: keep[i],
+        }),
       )
       if (results.some((r) => r.report.suspect || !r.json)) return fail('판정 오류 의심')
     } catch (e) {

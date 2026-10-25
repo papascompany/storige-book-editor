@@ -398,16 +398,49 @@ describe('prepareSkinApply — 원천 재조회·호환 재검사', () => {
 // ─── 차단 ──────────────────────────────────────────────────────────────────
 
 describe('prepareSkinApply / executeSkinApply — 차단', () => {
-  it('blocked(판정 오류 의심) → 확인 없이 끝나고 loadJSON·저장 0회', async () => {
-    const stickers = Array.from({ length: 4 }, (_, k) => ({ type: 'rect', id: `s${k}`, extensionType: 'sticker' }))
-    setup(sessionObjects(stickers))
+  /** 판정 집합 밖 사진틀 — 모르는(삭제된) 스킨의 템플릿 틀이거나 고객 라이브러리 틀 */
+  const strayFrame = frame('x-frame', { left: 60, top: 60 })
+  const stickers = (n: number) => Array.from({ length: n }, (_, k) => ({ type: 'rect', id: `s${k}`, extensionType: 'sticker' }))
+
+  it('blocked(출처 불명 + 템플릿 표지) → 확인 없이 끝나고 loadJSON·저장 0회', async () => {
+    setup(sessionObjects([strayFrame]))
+    useCalendarStore.getState().setSkinKey('gone') // 직전 스킨 세트를 알 수 없음 → from=null
     const saveNow = vi.fn(async () => true)
     const deps = makeDeps({ getSaveNow: () => saveNow })
     const out = await prepareSkinApply('winter', deps)
     expect(out.kind).toBe('blocked')
     expect(out.kind === 'blocked' && out.suspectIndices).toEqual([0])
+    expect(spies.merge.mock.calls.every((c) => (c[3] as { prevSkinKey?: string }).prevSkinKey === 'gone')).toBe(true)
     expect(deps.loadJSON).not.toHaveBeenCalled()
     expect(saveNow).not.toHaveBeenCalled()
+  })
+
+  it('개수는 보지 않는다 — 출처 불명이어도 표지 없는 고객 요소(스티커 20개)는 확인으로 간다', async () => {
+    setup(sessionObjects(stickers(20)))
+    useCalendarStore.getState().setSkinKey('gone')
+    const plan = await confirmPlan('winter')
+    expect(plan.summarySkin).toMatchObject({ blocked: false, customerKept: 20, templateMarkedCustomerCount: 0 })
+  })
+
+  it('출처를 알면(기본 디자인에서 적용) 고객 라이브러리 틀이 있어도 확인으로 간다', async () => {
+    setup(sessionObjects([strayFrame]))
+    const plan = await confirmPlan('winter')
+    expect(plan.prevSkinKey).toBeUndefined()
+    expect(plan.summarySkin).toMatchObject({ blocked: false, templateMarkedCustomerCount: 1 })
+  })
+
+  it('실행 재검사도 prevSkinKey 로 판정 — 확인 뒤 표지 있는 요소가 생기면 판정 오류 의심으로 멈춘다(loadJSON 0회)', async () => {
+    setup(sessionObjects(stickers(2)))
+    useCalendarStore.getState().setSkinKey('gone')
+    const deps = makeDeps()
+    const plan = await confirmPlan('winter', deps)
+    canvases[0].objects.push(toFake(strayFrame))
+    spies.merge.mockClear()
+    const out = await executeSkinApply(plan, 'skin', deps)
+    expect(out).toEqual({ kind: 'failed', reason: '판정 오류 의심' })
+    expect(spies.merge.mock.calls.length).toBeGreaterThan(0)
+    expect(spies.merge.mock.calls.every((c) => (c[3] as { prevSkinKey?: string }).prevSkinKey === 'gone')).toBe(true)
+    expect(deps.loadJSON).not.toHaveBeenCalled()
   })
 })
 
