@@ -7,8 +7,8 @@ import { useSettingsStore } from '@/stores/useSettingsStore'
 import { useSaveStore } from '@/stores/useSaveStore'
 import { showToast } from '@/stores/useToastStore'
 import {
-  SKIN_FATAL_MESSAGE,
   executeSkinApply,
+  getSkinFatalMessage,
   isCalendarSkinsFlagEnabled,
   prepareSkinApply,
   undoSkinApply,
@@ -249,7 +249,7 @@ export default function CalendarSkinSection() {
       {phase === 'fatal' && (
         <div className="fixed inset-0 z-[300] flex items-center justify-center bg-black/60" role="alertdialog" aria-modal="true" aria-label="화면 복구 실패">
           <div className="bg-white rounded-lg shadow-xl max-w-sm w-full mx-4 p-6 flex flex-col gap-4">
-            <p className="text-sm text-gray-800 leading-relaxed">{SKIN_FATAL_MESSAGE}</p>
+            <p className="text-sm text-gray-800 leading-relaxed">{getSkinFatalMessage()}</p>
             <Button type="button" onClick={() => window.location.reload()}>
               새로고침
             </Button>

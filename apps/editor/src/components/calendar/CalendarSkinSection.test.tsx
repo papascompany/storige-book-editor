@@ -22,7 +22,7 @@ import { useCalendarSkinStore } from '@/stores/useCalendarSkinStore'
 import { useCalendarStore } from '@/stores/useCalendarStore'
 import { useSaveStore } from '@/stores/useSaveStore'
 import { useSettingsStore } from '@/stores/useSettingsStore'
-import type { SkinApplyPlan } from '@/utils/calendarSkinApply'
+import { SKIN_FATAL_MESSAGE, type SkinApplyPlan } from '@/utils/calendarSkinApply'
 
 const SKINS = [
   { key: 'spring', label: '봄', templateSetId: 'set-spring', thumbnailUrl: '/storage/files/s.png' },
@@ -69,6 +69,7 @@ function plan(over: Partial<SkinApplyPlan> = {}): SkinApplyPlan {
     summarySkin: summary(),
     summaryKeep: summary(),
     backgrounds: { keepOnSkinChoice: [false, false], forcedKeepIndices: [], editorForcedKeepIndices: [], removedCanvasIndices: [], uploadsByCanvas: [[], []] },
+    droppedPhotosKeptInUploads: 0,
     showBackgroundChoice: false,
     pageLabels: ['표지', '1월 앞면', '1월 뒷면', '2월 앞면', '2월 뒷면'],
     anniversaryCount: 0,
@@ -217,8 +218,11 @@ describe('CalendarSkinSection — 확인 대화상자', () => {
     h.prepare.mockResolvedValue({ kind: 'confirm', plan: plan({ summarySkin: summary({ photosKept: 2, photosClipRebuilt: 1, textsMoved: 1 }), anniversaryCount: 2 }) })
     render(<CalendarSkinSection />)
     await clickCard('겨울')
-    const dialog = screen.getByRole('alertdialog', { name: '디자인 변경 확인' })
-    expect(within(dialog).getByText('디자인을 「겨울」(으)로 바꿀까요?')).toBeTruthy()
+    const dialog = screen.getByRole('dialog', { name: '디자인을 「겨울」(으)로 바꿀까요?' })
+    expect(dialog.getAttribute('aria-modal')).toBe('true')
+    const titleId = dialog.getAttribute('aria-labelledby') as string
+    expect(titleId).toBeTruthy()
+    expect(document.getElementById(titleId)?.textContent).toBe('디자인을 「겨울」(으)로 바꿀까요?')
     const items = within(dialog).getAllByRole('listitem').map((li) => li.textContent)
     expect(items).toEqual([
       '사진 3장은 그대로 옮깁니다.',
@@ -258,15 +262,32 @@ describe('CalendarSkinSection — 확인 대화상자', () => {
     expect(h.execute).toHaveBeenCalledWith(expect.objectContaining({ targetKey: 'winter' }), 'keep')
   })
 
+  it("빠지는 사진의 '내 업로드' 안내는 업로드 원본이 있을 때만 — 전부·일부·없음", async () => {
+    const droppedLine = async (keptInUploads: number): Promise<string | null | undefined> => {
+      h.prepare.mockResolvedValue({ kind: 'confirm', plan: plan({ summarySkin: summary({ photosDropped: 2, textsDropped: 1 }), droppedPhotosKeptInUploads: keptInUploads }) })
+      const view = render(<CalendarSkinSection />)
+      await clickCard('겨울')
+      const dialog = screen.getByRole('dialog', { name: '디자인을 「겨울」(으)로 바꿀까요?' })
+      const line = within(dialog).getAllByRole('listitem').find((li) => li.textContent?.startsWith('새 디자인에 자리가 없는'))?.textContent
+      fireEvent.click(screen.getByRole('button', { name: '취소' }))
+      view.unmount()
+      return line
+    }
+    expect(await droppedLine(2)).toBe("새 디자인에 자리가 없는 문구 1건·사진 2장은 빠집니다. 빠지는 사진은 '내 업로드'에 남습니다.")
+    expect(await droppedLine(1)).toBe("새 디자인에 자리가 없는 문구 1건·사진 2장은 빠집니다. 빠지는 사진 중 1장은 '내 업로드'에 남습니다.")
+    expect(await droppedLine(0)).toBe('새 디자인에 자리가 없는 문구 1건·사진 2장은 빠집니다.')
+  })
+
   it('blocked: 확인 버튼 없이 닫기만, 문구에 쪽 라벨', async () => {
     h.prepare.mockResolvedValue({ kind: 'blocked', plan: plan(), suspectIndices: [0, 3] })
     render(<CalendarSkinSection />)
     await clickCard('겨울')
-    const dialog = screen.getByRole('alertdialog', { name: '디자인 적용 불가' })
+    const dialog = screen.getByRole('dialog', { name: '디자인을 바꿀 수 없습니다' })
+    expect(dialog.getAttribute('aria-modal')).toBe('true')
     expect(within(dialog).getByText(/기존 디자인 요소를 구분하지 못한 쪽이 있습니다\(표지, 2월 앞면\)/)).toBeTruthy()
     expect(within(dialog).queryByRole('button', { name: '바꾸기' })).toBeNull()
     fireEvent.click(within(dialog).getAllByRole('button', { name: '닫기' })[1])
-    expect(screen.queryByRole('alertdialog')).toBeNull()
+    expect(screen.queryByRole('dialog')).toBeNull()
     expect(h.execute).not.toHaveBeenCalled()
     expect(useCalendarSkinStore.getState().phase).toBe('idle')
   })
@@ -279,7 +300,7 @@ describe('CalendarSkinSection — 확인 대화상자', () => {
     fireEvent.click(screen.getByRole('button', { name: '취소' }))
     expect(h.execute).not.toHaveBeenCalled()
     expect(useCalendarSkinStore.getState().phase).toBe('idle')
-    expect(screen.queryByRole('alertdialog')).toBeNull()
+    expect(screen.queryByRole('dialog')).toBeNull()
   })
 
   it('적용 뒤 「적용 취소」 버튼이 보이고 누르면 되돌린다', async () => {
@@ -335,7 +356,8 @@ describe('CalendarSkinSection — 확인 대화상자', () => {
   it('fatal 이면 새로고침 안내 오버레이', () => {
     act(() => useCalendarSkinStore.getState().setPhase('fatal'))
     render(<CalendarSkinSection />)
-    expect(screen.getByRole('alertdialog', { name: '화면 복구 실패' })).toBeTruthy()
+    const overlay = screen.getByRole('alertdialog', { name: '화면 복구 실패' })
+    expect(overlay.textContent).toContain(SKIN_FATAL_MESSAGE)
     expect(screen.getByRole('button', { name: '새로고침' })).toBeTruthy()
   })
 })

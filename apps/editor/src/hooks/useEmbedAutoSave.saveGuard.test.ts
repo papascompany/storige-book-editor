@@ -55,6 +55,7 @@ vi.mock('@/lib/sentry', () => ({
 
 import { useEmbedAutoSave } from './useEmbedAutoSave'
 import { useSaveStore } from '@/stores/useSaveStore'
+import { __resetAutosaveSuspendForTest, runWithAutosaveSuspended } from '@/utils/autosaveSuspend'
 
 const SESSION_ID = 'sess-guard'
 const LOCAL_BACKUP_KEY = 'storige_embed_session_backup'
@@ -292,5 +293,63 @@ describe('useEmbedAutoSave — 서버 저장 실패 로그', () => {
     expect(logged).not.toContain('canvasData')
     expect(logged).not.toContain('Bearer')
     expect(logged).not.toContain(JWT)
+  })
+})
+
+describe('useEmbedAutoSave — 자동저장 보류 중 언마운트', () => {
+  beforeEach(() => {
+    localStorage.clear()
+    updateMock.mockReset()
+    updateMock.mockResolvedValue({ id: SESSION_ID, updatedAt: new Date().toISOString() })
+    updateGuestMock.mockReset()
+    useSaveStore.getState().reset()
+    __resetAutosaveSuspendForTest()
+    vi.spyOn(console, 'warn').mockImplementation(() => {})
+    vi.spyOn(console, 'log').mockImplementation(() => {})
+  })
+
+  afterEach(() => {
+    __resetAutosaveSuspendForTest()
+    vi.useRealTimers()
+    vi.restoreAllMocks()
+  })
+
+  // 캔버스가 없으면(캔버스 준비 전 호스트 triggerSave) 캔버스 리스너 정리가 debounce 를 취소하지 않는다 —
+  // 언마운트 정리가 보류 판정보다 먼저 취소해야 언마운트 뒤 늦은 PATCH 가 나가지 않는다
+  it('보류 중 언마운트하면 대기 중인 debounce 저장을 취소한다(보류가 풀린 뒤에도 PATCH 0회)', async () => {
+    vi.useFakeTimers()
+    setCanvases([])
+    const { result, unmount } = renderGuardHook(null)
+    act(() => {
+      useSaveStore.getState().markDirty()
+    })
+    act(() => {
+      result.current.triggerSave()
+    })
+    let release: () => void = () => undefined
+    const pending = runWithAutosaveSuspended(() => new Promise<void>((r) => { release = r }))
+    unmount()
+    release()
+    await pending
+    await vi.advanceTimersByTimeAsync(5000)
+    expect(updateMock).not.toHaveBeenCalled()
+    expect(updateGuestMock).not.toHaveBeenCalled()
+  })
+
+  it('대조: 언마운트하지 않으면 같은 debounce 저장이 2초 뒤 PATCH 한다', async () => {
+    vi.useFakeTimers()
+    setCanvases([])
+    const { result, unmount } = renderGuardHook(null)
+    act(() => {
+      useSaveStore.getState().markDirty()
+    })
+    act(() => {
+      result.current.triggerSave()
+    })
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(2500)
+    })
+    expect(updateMock).toHaveBeenCalledTimes(1)
+    unmount()
   })
 })

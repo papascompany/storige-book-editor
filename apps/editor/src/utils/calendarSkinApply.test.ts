@@ -26,11 +26,14 @@ import { __resetSaveNowRegistryForTest } from '@/utils/saveNowRegistry'
 import { keepSkinUploads } from '@/utils/calendarSkinUploads'
 import { calendarSessionMetadataFields } from '@/utils/calendarRehydrateAll'
 import {
+  SKIN_FATAL_MESSAGE,
   SKIN_LONG_TASK_MESSAGE,
   SKIN_LOAD_TIMEOUT_MS,
+  SKIN_UNDO_FATAL_MESSAGE,
   __resetSkinApplyForTest,
   createDefaultSkinApplyDeps,
   executeSkinApply,
+  getSkinFatalMessage,
   prepareSkinApply,
   resolveSkinSection,
   undoSkinApply,
@@ -395,7 +398,7 @@ describe('prepareSkinApply — 원천 재조회·호환 재검사', () => {
     expect(fromObjs.find((o) => o.id === 'b-bg')?.fill).toBe('#f00')
   })
 
-  describe('직전 스킨 세트 조회 실패(network)', () => {
+  describe('직전 스킨 세트를 from 으로 쓸 수 없음(조회 실패 network·비호환)', () => {
     /** 세션이 겨울 디자인을 따르는 중 — 겨울 세트 조회만 실패 */
     function winterSession() {
       setup([
@@ -419,6 +422,18 @@ describe('prepareSkinApply — 원천 재조회·호환 재검사', () => {
       expect(plan.from).toEqual([null, null])
       expect([...plan.templateIds[0]]).toEqual(expect.arrayContaining(['w-bg', 'w-frame0', 'w-title', 'w-grid0']))
       expect(plan.summarySkin).toMatchObject({ blocked: false, templateMarkedCustomerCount: 0, customerKept: 0 })
+    })
+
+    it('직전 세트가 비호환이어도 받은 ids 를 캐시해 판정 집합에 쓰고 다시 조회하지 않는다(직전 세트 조회 1회)', async () => {
+      winterSession()
+      sets['set-winter'] = setOf('set-winter', WINTER_T, { siteId: 'site-b' })
+      const deps = makeDeps()
+      const plan = await confirmPlan('third', deps)
+      const calls = (deps.fetchSet as ReturnType<typeof vi.fn>).mock.calls.map((c) => c[0])
+      expect(calls.filter((id) => id === 'set-winter')).toHaveLength(1)
+      expect(plan.from).toEqual([null, null])
+      expect([...plan.templateIds[0]]).toEqual(expect.arrayContaining(['w-bg', 'w-frame0', 'w-title', 'w-grid0']))
+      expect(useCalendarSkinStore.getState().idSetCache['set-winter']).toBeTruthy()
     })
 
     it('캐시도 없으면 출처 불명 — 옛 틀이 고객 추가로 남아 차단', async () => {
@@ -636,6 +651,23 @@ describe('executeSkinApply — 실패·롤백', () => {
     expect(isAutosaveSuspended()).toBe(false)
   })
 
+  it('보류 안에서 잡지 못한 예외(작업 오버레이 시작) → 보류 밖 catch 가 실패로 끝내고 보류를 푼다(loadJSON 0회)', async () => {
+    const base = makeDeps()
+    const plan = await confirmPlan('winter', base)
+    const deps = makeDeps({
+      emit: (ev, payload) => {
+        if (ev === 'longTask:start') throw new Error('emit boom')
+        log.push(payload ? `${ev}:${(payload as { message: string }).message}` : ev)
+      },
+    })
+    const out = await executeSkinApply(plan, 'skin', deps)
+    expect(out).toEqual({ kind: 'failed', reason: '적용 실패: emit boom' })
+    expect(deps.loadJSON).not.toHaveBeenCalled()
+    expect(useCalendarSkinStore.getState().phase).toBe('failed')
+    expect(useCalendarStore.getState().meta?.skinKey).toBeUndefined()
+    expect(isAutosaveSuspended()).toBe(false)
+  })
+
   it('보류 진입 전 예외(상태 전환) → 실패로 끝내고 캔버스·보류에 손대지 않는다', async () => {
     const deps = makeDeps()
     const plan = await confirmPlan('winter', deps)
@@ -722,6 +754,8 @@ describe('executeSkinApply — 실패·롤백', () => {
     expect(deferred).not.toHaveBeenCalled()
     expect(settled).not.toHaveBeenCalled()
     expect(useCalendarStore.getState().meta?.skinKey).toBeUndefined()
+    expect(getSkinFatalMessage()).toBe(SKIN_FATAL_MESSAGE)
+    expect(log).toContain(`longTask:start:${SKIN_FATAL_MESSAGE}`)
   })
 })
 
@@ -772,6 +806,20 @@ describe('배경 결정(캔버스별 keepCustomerBackground)', () => {
     expect(deps.keepUploads).not.toHaveBeenCalled()
   })
 
+  it("빠지는 사진 중 업로드 원본만 droppedPhotosKeptInUploads 로 센다(data URL 은 '내 업로드'에 남지 않음)", async () => {
+    // 틀 하나에 사진 둘 — 새 틀은 하나만 받으므로 각 캔버스에서 1장씩 빠진다(표지: 업로드 원본, 1월 앞면: data URL)
+    const photo = (id: string, frameRef: string, src: string): Plain => ({ type: 'image', id, frameRef, src, left: 10, top: 10, width: 50, height: 50 })
+    setup(
+      sessionObjects(
+        [photo('photo0b', 'b-frame0', '/storage/uploads/p0b.jpg')],
+        [photo('photo1', 'b-frame1', 'data:image/png;base64,AAAA'), photo('photo1b', 'b-frame1', 'data:image/png;base64,BBBB')],
+      ),
+    )
+    const plan = await confirmPlan('winter')
+    expect(plan.summarySkin.photosDropped).toBe(2)
+    expect(plan.droppedPhotosKeptInUploads).toBe(1)
+  })
+
   it('대화상자 forcedKeep = data URL(canvas-core) ∪ 편집기 강제, library 는 빼기만', async () => {
     setup(sessionObjects([bg('cbg0', '/storage/outputs/x.png')], [bg('cbg1', 'data:image/png;base64,AAAA')]))
     const plan = await confirmPlan('winter')
@@ -814,6 +862,25 @@ describe('undoSkinApply — 「적용 취소」', () => {
     expect(useCalendarSkinStore.getState().undo).toBeNull()
     expect(useCalendarSkinStore.getState().phase).toBe('idle')
     expect(await undoSkinApply(deps)).toBe(false)
+  })
+
+  it('「적용 취소」 복원 실패 → fatal: 서버에 적용 뒤 상태가 있을 수 있다고 안내하고 보류를 풀지 않는다', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {})
+    let failLoad = false
+    const deps = makeDeps({
+      loadJSON: vi.fn(async (_e, c, json) => {
+        if (failLoad) throw new Error('restore fail')
+        ;(c as unknown as FakeCanvas).objects = (json.objects as Plain[]).map(toFake)
+      }),
+    })
+    await executeSkinApply(await confirmPlan('winter', deps), 'skin', deps)
+    failLoad = true
+    void undoSkinApply(deps)
+    await vi.waitFor(() => expect(useCalendarSkinStore.getState().phase).toBe('fatal'))
+    expect(getSkinFatalMessage()).toBe(SKIN_UNDO_FATAL_MESSAGE)
+    expect(log).toContain(`longTask:start:${SKIN_UNDO_FATAL_MESSAGE}`)
+    expect(isAutosaveSuspended()).toBe(true)
+    expect(useCalendarStore.getState().meta?.skinKey).toBe('winter')
   })
 
   it('새 적용은 이전 취소 스냅샷을 해제한다', async () => {

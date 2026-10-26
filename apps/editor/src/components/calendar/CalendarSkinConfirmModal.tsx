@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useId, useState } from 'react'
 import { AlertTriangle as Warning, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import type { SkinApplyPlan, SkinBackgroundChoice } from '@/utils/calendarSkinApply'
@@ -22,6 +22,16 @@ export function formatPageList(indices: readonly number[], labels: readonly stri
   return `${names.slice(0, 3).join(', ')} 외 ${names.length - 3}쪽`
 }
 
+/**
+ * 빠지는 사진의 '내 업로드' 안내 — 원본이 업로드 서버에 있는 사진만 남는다(data URL·되살릴 수 없는 원본은 남지 않음).
+ * 남는 사진이 없으면 안내하지 않는다
+ */
+function droppedPhotosUploadTail(dropped: number, keptInUploads: number): string {
+  if (dropped <= 0 || keptInUploads <= 0) return ''
+  if (keptInUploads >= dropped) return " 빠지는 사진은 '내 업로드'에 남습니다."
+  return ` 빠지는 사진 중 ${keptInUploads}장은 '내 업로드'에 남습니다.`
+}
+
 /** 확인 대화상자 본문 줄(값이 0인 항목은 생략) */
 export function buildSkinConfirmLines(plan: SkinApplyPlan): string[] {
   const s = plan.summarySkin
@@ -38,8 +48,7 @@ export function buildSkinConfirmLines(plan: SkinApplyPlan): string[] {
   if (s.textsDropped > 0) droppedParts.push(`문구 ${s.textsDropped}건`)
   if (s.photosDropped > 0) droppedParts.push(`사진 ${s.photosDropped}장`)
   if (droppedParts.length > 0) {
-    const tail = s.photosDropped > 0 ? " 업로드한 사진은 '내 업로드'에 남습니다." : ''
-    lines.push(`새 디자인에 자리가 없는 ${droppedParts.join('·')}은 빠집니다.${tail}`)
+    lines.push(`새 디자인에 자리가 없는 ${droppedParts.join('·')}은 빠집니다.${droppedPhotosUploadTail(s.photosDropped, plan.droppedPhotosKeptInUploads)}`)
   }
   if (s.textsUnverified > 0) lines.push(`고쳤는지 확인할 수 없는 문구 ${s.textsUnverified}건은 새 디자인 문구로 바뀝니다.`)
   lines.push(SKIN_POSITION_RESET_LINE)
@@ -99,15 +108,16 @@ export default function CalendarSkinConfirmModal({ mode, plan, suspectIndices = 
   const thumb = resolveAssetUrl(plan.thumbnailUrl)
   const blocked = mode === 'blocked'
   const title = blocked ? '디자인을 바꿀 수 없습니다' : `디자인을 「${plan.label}」(으)로 바꿀까요?`
+  const titleId = useId()
 
   return (
     <div className="fixed inset-0 z-[150] flex items-center justify-center bg-black/50" onClick={onCancel}>
       <div
         className="bg-white rounded-lg shadow-xl max-w-md w-full mx-4 overflow-hidden"
         onClick={(e) => e.stopPropagation()}
-        role="alertdialog"
+        role="dialog"
         aria-modal="true"
-        aria-label={blocked ? '디자인 적용 불가' : '디자인 변경 확인'}
+        aria-labelledby={titleId}
       >
         <div className="flex items-center justify-between px-6 py-4 border-b">
           <div className="flex items-center gap-3">
@@ -116,7 +126,7 @@ export default function CalendarSkinConfirmModal({ mode, plan, suspectIndices = 
                 <Warning className="w-5 h-5 text-amber-600" />
               </div>
             )}
-            <h3 className="text-base font-semibold text-gray-900">{title}</h3>
+            <h3 id={titleId} className="text-base font-semibold text-gray-900">{title}</h3>
           </div>
           <button
             type="button"

@@ -228,6 +228,11 @@ export interface SkinApplyPlan {
   /** '내 배경 유지' dryRun 합계 */
   summaryKeep: SkinMergeSummary
   backgrounds: SkinBackgroundDecision
+  /**
+   * '스킨 배경 사용' dryRun 에서 빠지는 사진 중 원본이 업로드 서버에 있는 사진 수(적용하면 '내 업로드'에 남긴다).
+   * data URL·되살릴 수 없는 원본은 세지 않는다
+   */
+  droppedPhotosKeptInUploads: number
   /** 대화상자 배경 선택 블록 노출 */
   showBackgroundChoice: boolean
   pageLabels: string[]
@@ -482,7 +487,9 @@ export async function prepareSkinApply(targetKey: string | undefined, depsIn?: P
   const toJsons = to as SkinCanvasJson[]
   const summarySkin = dryRunAll(cur, from, toJsons, templateIds, prevSkinKey, () => false)
   const summaryKeep = dryRunAll(cur, from, toJsons, templateIds, prevSkinKey, () => true)
-  const backgrounds = decideSkinBackgrounds(cur, summarySkin, deps.apiBase())
+  const apiBase = deps.apiBase()
+  const backgrounds = decideSkinBackgrounds(cur, summarySkin, apiBase)
+  const droppedPhotosKeptInUploads = summarySkin.dropped.filter((d) => d.kind === 'photo' && classifyBackgroundSrc(d.src, apiBase) === 'upload').length
   const plan: SkinApplyPlan = {
     targetKey,
     label: target?.label ?? '기본 디자인',
@@ -495,6 +502,7 @@ export async function prepareSkinApply(targetKey: string | undefined, depsIn?: P
     summarySkin,
     summaryKeep,
     backgrounds,
+    droppedPhotosKeptInUploads,
     showBackgroundChoice:
       summarySkin.removedCustomerBackgrounds.length + summarySkin.forcedKeepIndices.length > 0
       || summaryKeep.customerBackgroundsKept > 0,
@@ -597,16 +605,31 @@ function releaseUndo(): void {
   useCalendarSkinStore.getState().setUndo(null)
 }
 
+/** 적용 중 되돌리기 실패 — 적용 직전 저장(단계 5) 뒤로는 보류 중이라 서버 저장이 없다 */
 export const SKIN_FATAL_MESSAGE = '화면을 복구하지 못했습니다. 새로고침해 주세요. 서버에는 적용 직전 상태가 저장돼 있습니다'
+/**
+ * 「적용 취소」 실패 — 적용이 끝나 보류가 풀리면 자동저장(보류 중 미룬 저장·편집 이벤트 debounce·주기 저장, markDirty 뒤)이
+ * 새 디자인 상태를 서버에 쓴다.
+ * 취소를 그 저장 전에 눌렀으면 서버는 아직 적용 직전 상태라 단정하지 않는다
+ */
+export const SKIN_UNDO_FATAL_MESSAGE = '화면을 복구하지 못했습니다. 새로고침해 주세요. 「적용 취소」는 반영되지 않았고, 서버에는 새 디자인을 적용한 상태가 저장돼 있을 수 있습니다'
+
+let fatalMessage = SKIN_FATAL_MESSAGE
+
+/** fatal 오버레이에 띄울 문구(마지막 fatal 경로 기준) */
+export function getSkinFatalMessage(): string {
+  return fatalMessage
+}
 
 /**
  * fatal — 보류를 풀지 않고 멈춘다(보류가 풀리면 미뤄 둔 저장이 깨진 캔버스를 서버에 쓴다). longTask 오버레이는 남기고
  * 문구만 바꾼다. 사용자가 새로고침한다(CalendarSkinSection 이 새로고침 버튼을 띄운다).
  */
-function haltFatal(deps: SkinApplyDeps, error: unknown): Promise<never> {
+function haltFatal(deps: SkinApplyDeps, error: unknown, message: string = SKIN_FATAL_MESSAGE): Promise<never> {
   console.error('[calendarSkin] 화면 복구 실패 — 새로고침 필요:', error instanceof Error ? error.message : error)
+  fatalMessage = message
   useCalendarSkinStore.getState().setPhase('fatal')
-  deps.emit('longTask:start', { message: SKIN_FATAL_MESSAGE })
+  deps.emit('longTask:start', { message })
   return new Promise<never>(() => undefined)
 }
 
@@ -814,7 +837,7 @@ export async function undoSkinApply(depsIn?: Partial<SkinApplyDeps>): Promise<bo
       if (handles.length !== snapshot.before.length) throw new Error('캔버스 수가 바뀜')
       for (let i = 0; i < handles.length; i += 1) await restoreCanvas(deps, handles[i], i, snapshot.before[i] as SkinCanvasJson)
     } catch (e) {
-      return haltFatal(deps, e)
+      return haltFatal(deps, e, SKIN_UNDO_FATAL_MESSAGE)
     }
     useCalendarStore.getState().setSkinKey(snapshot.prevSkinKey)
     useSaveStore.getState().markDirty()
@@ -829,4 +852,5 @@ export async function undoSkinApply(depsIn?: Partial<SkinApplyDeps>): Promise<bo
 export function __resetSkinApplyForTest(): void {
   disarmUndoWatch?.()
   disarmUndoWatch = null
+  fatalMessage = SKIN_FATAL_MESSAGE
 }
