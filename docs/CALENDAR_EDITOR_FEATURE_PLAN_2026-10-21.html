@@ -211,17 +211,19 @@ footer { color: var(--ink-3); font-size: .8rem; border-top: 1px solid var(--line
 <body>
 <header class="masthead">
   <div class="masthead-inner">
-    <div class="eyebrow">Storige · 캘린더 트랙 · 원문 <span class="mono">docs/CALENDAR_EDITOR_FEATURE_PLAN_2026-10-21.md</span> v3 (2026-10-24)</div>
+    <div class="eyebrow">Storige · 캘린더 트랙 · 원문 <span class="mono">docs/CALENDAR_EDITOR_FEATURE_PLAN_2026-10-21.md</span> v3.3 (2026-10-26)</div>
     <h1>캘린더 편집기 기능 확장 계획</h1>
-    <p class="lede">설계 C1~C12 대비 코드 현황, 오너가 답해야 할 결정 D1~D11, 서브에이전트 병렬 트랙 T1a~T7·R 과 wave W0~W3, 2026-10-22 실측 수치와 위험을 한 장으로 정리했다. 원문 § 번호를 각 절에 붙였다. 10-23 변동(D12 방어선 운영 적용·HTML 커밋)은 원문 v3 §0 에 반영됐고 「10-23 변동」 절에도 요약해 두었다.</p>
+    <p class="lede">설계 C1~C12 대비 코드 현황, 오너가 답해야 할 결정 D1~D11, 서브에이전트 병렬 트랙 T1a~T7·R 과 wave W0~W3, 2026-10-22 실측 수치와 위험을 한 장으로 정리했다. 원문 § 번호를 각 절에 붙였다. 10-23 변동(D12 방어선 운영 적용·HTML 커밋)은 원문 v3 §0 에 반영됐고 「10-23 변동」 절에도 요약해 두었다. <b>v3.3(10-26) 동기 범위는 머리 상태·「운영 반영 전 체크리스트」(원문 §9)·「현황 타임라인」(원문 §0)이다</b> — 나머지 절(결정·트랙·실측·인벤토리·백로그)의 상태 표기는 작성 시점 값이며 최신 상태는 원문 §0·§3·§4·§8.3 을 따른다.</p>
     <div class="meta-row">
-      <span class="pill">상태 · W1 진행 중</span>
+      <span class="pill">상태 · W3 완료 (p1-calendar) · 운영 미반영</span>
+      <span class="pill">10-26 W3: T4r·T5(벽걸이 1단 단면 14쪽)·T7a·T7b 스킨 · B10·B11·B11-b · 템플릿 교체 핫픽스 · CONTRACT v1.28~v1.30 · FLAGS api 17→18</span>
+      <span class="pill">origin <code>f4910e3a</code> CI probe green · 후속 <code>33175133</code> 로컬(push 전)</span>
       <span class="pill">T1a 완료 (§8.1)</span>
       <span class="pill">T2 운영 반영 10-22 23:48 KST</span>
       <span class="pill">10-24 W1·W2 완료(p1-calendar): T3a·T3c·T3b·T4·T6 — 운영 미반영 · CONTRACT v1.26·v1.27 · D3 해소(벽걸이 1단 단면 14쪽)</span>
       <span class="pill">10-23 D12 방어선(max_allowed_packet 256M) 운영 적용</span>
       <span class="pill">운영 api/worker <code>11383962</code> (VPS 체크아웃 <code>e9725838</code>) · editor <code>c040b68e</code></span>
-      <span class="pill">운영 프로파일 세트 0건 (10-22 읽기 전용 확인)</span>
+      <span class="pill">운영 프로파일 세트 0 · 스냅샷 세션 0 (10-25 읽기 전용 SELECT)</span>
     </div>
   </div>
 </header>
@@ -230,6 +232,7 @@ footer { color: var(--ink-3); font-size: .8rem; border-top: 1px solid var(--line
 <nav class="toc" aria-label="목차">
   <ol>
     <li><a href="#summary">한눈에 보기</a></li>
+    <li><a href="#ops-checklist"><span class="toc-sec">§9</span>운영 반영 전 체크리스트</a></li>
     <li><a href="#decisions"><span class="toc-sec">§5</span>오너 결정 D1~D11</a></li>
     <li><a href="#design"><span class="toc-sec">§1·6·8</span>설계 방안 (그림)</a></li>
     <li><a href="#measure"><span class="toc-sec">§8</span>실측표 T1a</a></li>
@@ -280,6 +283,28 @@ footer { color: var(--ink-3); font-size: .8rem; border-top: 1px solid var(--line
       <p class="blocks" style="margin-top:.6rem;font-size:.82rem;color:var(--ink-3)">트랙 외 후속: P2-e 운영자 콘솔, §8.3 외부 연동 어댑터(jumbocard → insta_print → Frameshop → 100p), P2-d 오너 결정 값(판형·chemical 도련·유테·업로드 한도·촬영일 형식), O2(프로파일 NULL 세트 2페이지 이후 <code>applyCustomerLocks</code> 공백 — 기존 동작). 단 T1b·T5 의 실측은 캘린더와 공유하는 sheet-map 재합성·deliverables 경로까지 덮는다.</p>
     </div>
   </div>
+</section>
+<section id="ops-checklist">
+  <div class="sec-head">
+    <span class="src">원문 §9 운영 반영 전 체크리스트 (OPS-1a 준비, 2026-10-26)</span>
+    <h2>운영 반영 전 체크리스트</h2>
+    <p>W3 코드는 p1-calendar 에서 끝났고 운영에는 아직 반영되지 않았다(운영 api·worker <code>11383962</code>, VPS 체크아웃 <code>e9725838</code>, editor <code>c040b68e</code>). 본진이 이 표를 근거로 운영 반영 묶음 OPS-1a 계획을 오너 승인에 올린다. 이 문서를 작성하면서 운영은 바꾸지 않았다.</p>
+  </div>
+  <div tabindex="0" class="tbl-wrap dense">
+    <table>
+      <thead><tr><th scope="col">#</th><th scope="col">항목</th><th scope="col">상태</th><th scope="col">할 일 · 근거</th></tr></thead>
+      <tbody>
+        <tr><td class="key">①</td><td><b>FLAGS api 키 17 → 18</b> — <code>VALIDATION_BLEED_FROM_TEMPLATE_SET</code>(완료 검증 기본 도련, 기본 on)</td><td><span class="chip wait">api 배포 때</span></td><td>운영 <code>.env</code> 의 <code>FLAGS_EXPECTED_API</code> 프로필을 18 토큰으로 갱신(값은 문서에 적지 않음, <code>.env</code> 백업 후) → <code>[FLAGS-CHECK] api ok n=18</code>. 코드 롤백 시 17 토큰 복원. <a href="./DEPLOYMENT.md">DEPLOYMENT.md</a> 「완료 검증 기본 도련 — 재단선 세트 도련값」 절. worker FLAGS 무변경</td></tr>
+        <tr><td class="key">②</td><td><b>파트너 가이드·SDK 주석</b>의 '캘린더 26쪽 양면' 서술</td><td><span class="chip wait">본진 작성</span></td><td><a href="./PLATFORM_INTEGRATION_GUIDE.md">PLATFORM_INTEGRATION_GUIDE.md</a> 와 <code>packages/sdk/src/embed/protocol.ts</code> <code>EditorCompleteProduct</code> 주석을 "벽걸이 1단은 14쪽 단면 — <code>sheetCount</code> 14, <code>faces</code> 1 이면 <code>duplexFlip</code> 은 의미 없음"으로 갱신. 운영 반영 통지 문안과 함께</td></tr>
+        <tr><td class="key">③</td><td><b>샘플 디자인 교체(D7) → T1a 재실측 → 운영 폰트 확인 → 등록</b></td><td><span class="chip part">담당·시점 미지정</span></td><td>현재 샘플은 재단 안쪽만 채워 도련 3mm 가 흰 여백. 등록은 editor 반영 뒤(구 번들의 연달력 위험). wall1 은 14쪽 샘플로 등록. 운영 폰트 '본고딕(Noto Sans) Regular' 확인 미실행</td></tr>
+        <tr><td class="key">④</td><td><b>킬스위치 리허설</b></td><td><span class="chip ok">로컬 통과</span></td><td><code>VITE_ENABLE_CALENDAR=false</code>·<code>VITE_ENABLE_CALENDAR_SKINS=false</code> 브라우저 리허설 통과(저장본·<code>metadata.calendar</code> 보존). api <code>VALIDATION_BLEED_FROM_TEMPLATE_SET=off</code> 는 단위 테스트로 갈음</td></tr>
+        <tr><td class="key">⑤</td><td><b>운영 노출 통제</b></td><td><span class="chip ok">현재 노출 0</span></td><td>운영 프로파일 세트 0 · 스냅샷 세션 0(10-25 SELECT). 1차 차단 = 기준 세트에 <code>calendar.skins</code> 미등록(데이터). 2차 <code>VITE_ENABLE_CALENDAR_SKINS</code> 는 <b>미설정이면 on</b> — 플래그로도 막으려면 운영 Vercel editor 에 정확히 <code>'false'</code> 설정 필요, 현재 운영 설정값은 미확인. 스킨 세트는 <code>enabledMenus</code> 에서 <code>TEMPLATE</code> 제외. 판매 중 템플릿은 고치지 않고 새 스킨으로 등록</td></tr>
+        <tr><td class="key">⑥</td><td><b>배포 범위·순서·롤백</b></td><td><span class="chip wait">본진 계획</span></td><td><code>git diff --stat master..p1-calendar-2026-10-17</code>(master <code>12de30af</code> · p1 <code>33175133</code>): 113파일 +17755/−345 — editor 54 · canvas-core 19 · api 13 · admin 11 · docs 8 · types 3 · .cursor/plans 3 · scripts 1 · <code>docker-compose.yml</code> 1; <b>worker·sdk 0, DB 마이그레이션 0</b>. editor(Vercel, T4 날짜 데이터 릴리스 동반 — D4 오너 승인)·admin(Vercel) 롤백 = 직전 Ready promote. api(VPS: 프로파일 DTO·T3c·세션 생성 metadata 정리·완료 검증 기본 도련·스킨 참조 세트 검사) 롤백 = 직전 이미지 태그 + FLAGS 17 토큰. CONTRACT v1.26~v1.30 적용 시점은 배포 통지 시각으로 확정. 순서 안: api 이미지 태그 → <code>.env</code> 백업·FLAGS 18 → master 반영 → VPS api 재기동·nginx 재시작 → 스모크. DEPLOYMENT 에 W1~W3 통합 반영 절은 아직 없음(<a href="./DEPLOYMENT.md">DEPLOYMENT.md</a> 의 api 2절·editor 2절·날짜 데이터 절 참조)</td></tr>
+        <tr><td class="key">⑦</td><td><b>남은 후속(비차단)</b></td><td><span class="chip dim">후속</span></td><td>서버 스킨 참조 세트 역검사 · EDITOR-FLAKY-TESTS · 자동편집 후보에서 이미 배치된 사진 제외(UX) · <code>addImageFromURL</code> 미수정 · <code>useWorkSave</code> 복원 rebind · 2쪽 이후 <code>applyCustomerLocks</code> · B11-c 일반 '내 업로드' data URL · 템플릿 등록 매뉴얼 D-6·D-7·cut-guide 문구 · 기념일 굵게 PDF 미반영(기존 F4) · <code>photoPrintProfilePresets</code> 힌트 문구 · fatal 동안 호스트 재시도</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <p class="note"><b>W3 실측 요약(원문 §8.3, 로컬)</b>: p1 통합 스모크 통과(틀 채움·배경 storage URL, 재오픈, B10 진행 표시, PDF 26쪽) · T5 스모크 통과(wall1 14쪽, 워커 <code>isValid true</code>) · W3 e2e ①~⑥ 통과(R-3 느린 로드에서 손상 없이 롤백) · 킬스위치 리허설 2종 통과 · 스킨 병합 차단 신호 재측정 오탐/미탐 346/172 → 0/492(1440 세션, 정상·완전 시나리오 0/0).</p>
 </section>
 <section id="decisions">
   <div class="sec-head">
@@ -777,7 +802,7 @@ footer { color: var(--ink-3); font-size: .8rem; border-top: 1px solid var(--line
 </section>
 <section id="timeline">
   <div class="sec-head">
-    <span class="src">원문 §0 현황 통합 (2026-10-16 ~ 10-22, 상위 세션 + 이 세션)</span>
+    <span class="src">원문 §0 현황 통합 (2026-10-16 ~ 10-26, 상위 세션 + 이 세션)</span>
     <h2>현황 타임라인</h2>
     <p>초록 점은 운영 반영, 점선 테두리는 문서 전용 커밋이다. 운영 worker 는 <code>WORKER_LIGHTWEIGHT_SYNTHESIS=true</code>(qpdf 경로), VPS 체크아웃은 <code>e9725838</code>.</p>
   </div>
@@ -799,10 +824,15 @@ footer { color: var(--ink-3); font-size: .8rem; border-top: 1px solid var(--line
     <div class="tl-item docs"><span class="when">10-23 · <code>2d45fd54</code> (브랜치 <code>p1-calendar-2026-10-17</code>, origin push)</span><span class="what">이 HTML 시각화 — 결정 D1~D11 카드·근거 그림 4종·T1a 실측·트랙 소유권·위험; 원문 대조 리뷰 314항목·디자인 QA 반영</span><span class="ops">docs 전용 · master 미병합</span></div>
     <div class="tl-item docs"><span class="when">10-24 · <code>41fbbb60</code> (브랜치 <code>p1-calendar-2026-10-17</code>, origin push)</span><span class="what">이 계획 v3·HTML 동기·RESUME 10-24·새 세션 시작 프롬프트 <code>CALENDAR_EDITOR_ORCHESTRATION_SESSION_START_PROMPT_2026-10-24.md</code>·CI 회귀 기록</span><span class="ops">docs 전용 · master 미병합</span></div>
     <div class="tl-item docs"><span class="when">10-24 · <code>3e1d5317</code>…<code>12de30af</code> (다른 세션, master)</span><span class="what">문서·포털 설정 5커밋 — GUIDE 변경 이력·런처 예시·Shopify 10-15 문서 추적·링크; <b><code>200a2bd0</code> 가 CI 회귀(docs 포털 groups 에 <code>/api/v1/sessions</code>) 수정</b></span><span class="ops">master push 10-24 05:11Z · 코드 무변경 · p1-calendar 는 분기(병합 방식 오너 결정)</span></div>
+    <div class="tl-item docs"><span class="when">10-24 · <code>b8371f0b</code> (origin push)</span><span class="what">이 계획 v3.2 — W1 잔여·W2 완료(T3a·T3c·T3b·T4·T6, CONTRACT v1.26·v1.27) 상태를 머리·§0·HTML·RESUME 에 기록</span><span class="ops">docs 전용</span></div>
+    <div class="tl-item"><span class="when">10-25 · W3 1차 <code>946ec1f3</code>·<code>6bb57e0a</code> · <code>87ab0742</code> · <code>fff7a7cc</code> · <code>ff282ea3</code>…<code>5c56cfe8</code> (origin push)</span><span class="what"><b>W3 1차</b> — 완료 검증 기본 도련을 재단선 세트 <code>bleedMm</code> 으로(킬스위치 <code>VALIDATION_BLEED_FROM_TEMPLATE_SET</code>, FLAGS api 17→18, CONTRACT v1.28) · 기념일 굵게 입력 숨김(T3b-1a) · 잡절(복날) 표시 체크박스(T4r, 기본 off) · T7a 스킨 계약(<code>calendar.skins</code>·<code>skinKey</code>, v1.29)·저장 시 스킨 참조 세트 사이트 검사·병합 순수 함수 <code>mergeSkinCanvas</code></span><span class="ops">R GO/조건부 GO · CI probe 40109425709 green · 운영 미반영</span></div>
+    <div class="tl-item"><span class="when">10-25 · 묶음 1 — 11커밋 <code>2540382b</code>…<code>23c1a72a</code> (origin push = <code>23c1a72a</code>)</span><span class="what"><b>B10</b> 편집완료 진행 표시·이탈 경고(<code>2540382b</code>) · 스킨 병합 고객 배경 옵션(<code>3e098b8a</code>, T7a 검토 지적 B2 — 오너 결정 (b)) · <b>B11</b> 틀 채움 URL 게이트(<code>f90e335d</code>) · <b>B11-b</b> 배경 업로드 URL(<code>8cc5cba8</code>) · B11 보강 0×0(<code>ee7cecf9</code>) · 템플릿 교체 핫픽스(<code>364658d4</code>·<code>2c7ad183</code>·<code>5cd22188</code>·<code>6c3d5cc6</code>·<code>89cca115</code>, 연결 템플릿 합집합안) · imageFromURL 로드 실패 reject(<code>23c1a72a</code>)</span><span class="ops">p1 통합 스모크 통과(원문 §8.3) · CI probe 40198775440 green · 운영 미반영</span></div>
+    <div class="tl-item"><span class="when">10-25~26 · 묶음 2 — 21커밋 <code>45a97913</code>…<code>f4910e3a</code> (origin push = <code>f4910e3a</code>)</span><span class="what">첫 진입 2쪽 이후 사진틀 rebind(<code>45a97913</code>) · <b>T5</b> 벽걸이 1단 단면 14쪽(<code>3a31dfef</code>·<code>8b8b60e5</code>·<code>9f874a62</code>·<code>1c6aefbd</code>) · wall1 <code>pdfOutputMode</code> <code>'single'</code>(<code>9beca74d</code>) · <b>T7b-admin</b>(<code>ea430857</code>·<code>66645178</code>·<code>4aabffe1</code>) · <b>T7b-editor</b>(<code>8bafc0b8</code>·<code>1cf77af3</code>·<code>1bab52f1</code>·<code>6d693988</code>·<code>94996f20</code>·<code>231d48cf</code>, CONTRACT v1.30 <code>skinUploads</code>) · 차단 신호 교체·후속(<code>cf98e6f6</code>·<code>3ef643aa</code>·<code>b40f646c</code>·<code>2f8189c7</code>·<code>a2e1c68f</code> — 오탐/미탐 346/172 → 0/492) · 설계 문서(<code>f4910e3a</code>)</span><span class="ops">W3 브라우저 e2e ①~⑥ 통과(R-3 느린 로드에서도 손상 없이 롤백) · CI probe 40258811787 green · 운영 미반영</span></div>
+    <div class="tl-item docs"><span class="when">10-26 · <code>33175133</code> + 이 갱신 (로컬, push 전)</span><span class="what">W3 후속 — 스킨 확인 대화상자 '내 업로드' 안내를 업로드 원본 사진으로 한정, 적용 취소 실패 문구 분리, <code>role="dialog"</code> 접근성, 테스트 공백 보완(editor 2043 통과) · 킬스위치 리허설 2종 통과 · 이 계획 v3.3·HTML·RESUME·운영 반영 전 체크리스트</span><span class="ops">push 는 본진 · 운영 미반영</span></div>
   </div>
   <div class="card soft">
-    <h3>운영 현재 (2026-10-22 읽기 전용 확인)</h3>
-    <p><code>template_sets.product_profile IS NOT NULL</code> 0건(캘린더·사진인화 세트 없음), 프로파일 스냅샷을 가진 세션 0건 → 운영 고객 영향은 아직 없다.</p>
+    <h3>운영 현재 (2026-10-22 · 10-25 읽기 전용 확인)</h3>
+    <p><code>template_sets.product_profile IS NOT NULL</code> 0건(캘린더·사진인화 세트 없음), 프로파일 스냅샷을 가진 세션 0건 → 운영 고객 영향은 아직 없다(10-25 SELECT 에서도 프로파일 세트 0·스냅샷 세션 0).</p>
   </div>
 </section>
 <section id="inventory">
@@ -899,7 +929,7 @@ footer { color: var(--ink-3); font-size: .8rem; border-top: 1px solid var(--line
 </section>
 
 <footer>
-  <p>원문: <span class="mono">docs/CALENDAR_EDITOR_FEATURE_PLAN_2026-10-21.md</span> (v3, 2026-10-24) · 설계 정본 <span class="mono">PRODUCT_MODE_ARCHITECTURE_DESIGN_2026-10-16.md</span>(§11·§13) · 캘린더 세부 <span class="mono">CALENDAR_EDIT_MODE_DESIGN_2026-10-16.md</span>(C1~C12) · P1 결과 <span class="mono">CALENDAR_MODE_DEVELOPMENT_PLAN_2026-10-17.md</span> · P2 결과 <span class="mono">P2_PRODUCT_MODE_PLAN_2026-10-18.md</span> · 운영 반영 기록 <span class="mono">DEPLOYMENT.md</span> · 라이브 상태 SSOT <span class="mono">.cursor/plans/RESUME_PROMPT_2026-10-04.md</span> §2·§5.2.8. 코드가 문서보다 권위다. 이 HTML 은 2026-10-23 생성, 2026-10-24 v3 동기.</p>
+  <p>원문: <span class="mono">docs/CALENDAR_EDITOR_FEATURE_PLAN_2026-10-21.md</span> (v3.3, 2026-10-26) · 설계 정본 <span class="mono">PRODUCT_MODE_ARCHITECTURE_DESIGN_2026-10-16.md</span>(§11·§13) · 캘린더 세부 <span class="mono">CALENDAR_EDIT_MODE_DESIGN_2026-10-16.md</span>(C1~C12) · P1 결과 <span class="mono">CALENDAR_MODE_DEVELOPMENT_PLAN_2026-10-17.md</span> · P2 결과 <span class="mono">P2_PRODUCT_MODE_PLAN_2026-10-18.md</span> · 운영 반영 기록 <span class="mono">DEPLOYMENT.md</span> · 라이브 상태 SSOT <span class="mono">.cursor/plans/RESUME_PROMPT_2026-10-04.md</span> §2·§5.2.8. 코드가 문서보다 권위다. 이 HTML 은 2026-10-23 생성, 2026-10-24 v3 동기, 2026-10-26 v3.3 동기(머리·체크리스트·타임라인).</p>
 </footer>
 
 </main>
