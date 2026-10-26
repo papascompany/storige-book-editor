@@ -306,7 +306,7 @@ export interface EditorCompletePayload {
 
 /**
  * ADDITIVE 2026-10-17 P1 캘린더 — `editor.complete.product`.
- * `sheetCount` 는 faces=2 면 ceil(canvasCount/2), faces=1 이면 canvasCount (캘린더 26캔버스 → 13장 양면).
+ * `sheetCount` 는 faces=2 면 ceil(canvasCount/2), faces=1 이면 canvasCount (탁상·벽걸이 2단 26캔버스 → 13장 양면, 벽걸이 1단 14캔버스 → 14장 단면).
  * `kind` 'photo-print' 는 2026-10-19 P2-d(v1.25) additive — shape 은 불변(chemical N / digital ceil(N/2)).
  */
 export interface EditorCompleteProduct {
