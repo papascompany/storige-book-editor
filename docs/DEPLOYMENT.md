@@ -1840,6 +1840,61 @@ npx vitest run src/calendar src/plugins/CalendarPlugin.test.ts   # 데이터·co
 - 편집기만 되돌리면 된다: Vercel `storige-editor` 직전 Ready Production 배포 promote, 또는 데이터 커밋 `git revert` → master push. 세션에는 데이터 내용이 아니라 `dataVersion` 키만 저장되므로 되돌린 뒤 세션을 다시 열면 그리드가 되돌린 데이터로 다시 그려진다(rehydrate). 이미 합성된 PDF 는 영향 없음.
 - 새 버전 키를 추가했던 경우: 그 키를 쓰는 프로파일을 먼저 관리자 저장으로 기존 키로 되돌린 뒤 코드 revert(키가 남은 채 types 를 되돌리면 그 세트의 관리자 저장이 `calendar.dataVersion` 검증 400).
 
+### 2026-10-26 운영 반영 — 캘린더·사진인화 후속(CONTRACT_FREEZE v1.26~v1.30)
+
+> 브랜치 `p1-calendar-2026-10-17` 을 master 에 fast-forward 로 반영했다. 위 절들(세션 생성 metadata 정리·완료 검증 기본 도련·페이지 템플릿 교체 정리·처음 연 템플릿 세트의 사진틀 클릭 채움)과 캘린더 편집기 기능 계획 W1~W3([`CALENDAR_EDITOR_FEATURE_PLAN_2026-10-21.md`](./CALENDAR_EDITOR_FEATURE_PLAN_2026-10-21.md) §9 체크리스트)의 적용 시점이 이 반영이다. 시각은 UTC.
+
+**범위**
+- master `47808ae8` → `93d11eab` fast-forward(80커밋·114파일, `p1-calendar-2026-10-17` 병합).
+- 마이그레이션 0. worker 코드 변경 0(이미지 재빌드만). CONTRACT_FREEZE v1.26~v1.30 은 모두 ADDITIVE.
+- 후속 docs 커밋 `395331db`(파트너 가이드 적용 시점 확정)는 12:32Z master 에 올렸다. 문서만 바뀌어 Vercel 빌드는 취소했다.
+
+**편집기·관리자(Vercel)**
+- master push 04:57:32Z → production Ready 04:58Z(release `storige-editor`·`storige-admin` @`93d11ea`).
+- production 환경변수 `VITE_ENABLE_CALENDAR_SKINS=false` 를 설정했다. 캘린더 스킨(디자인) 절의 2차 차단이고, 스킨 세트를 운영에 등록할 때 제거한다(1차 차단 = 프로파일 `calendar.skins` 미등록).
+- 의존성 변경 0. vendor 청크 해시가 바뀐 것은 트리셰이킹 때문이다.
+
+**api·worker(VPS, `deploy@<VPS_HOST>`, `~/storige`)**
+- 사전 준비:
+  - 롤백 태그 `storige-api:rollback-pre-ops1a-20261026`·`storige-worker:rollback-pre-ops1a-20261026`(종전 `latest`).
+  - `.env` 백업 `.env.bak-20261026-ops1a`(권한 600).
+  - `FLAGS_EXPECTED_API` 를 17 → 18 토큰으로 갱신했다. 끝에 `VALIDATION_BLEED_FROM_TEMPLATE_SET=true` 를 추가했다. 키 자체는 `.env` 에 두지 않는다(기본 on).
+- 반영(05:14:30Z → 05:16:56Z): `git pull --ff-only origin master` → `docker compose build worker api` → `docker compose up -d worker` → `docker compose up -d api` → `docker compose restart nginx`.
+- 기동 확인:
+  - `[FLAGS-CHECK] api ok n=18`·`[FLAGS-CHECK] worker ok n=9`
+  - api·worker error/fatal 0, health ok
+  - OpenAPI 33 paths(반영 전후 동일)
+
+**예상 밖 1건 — mariadb 컨테이너 재생성**
+- `docker compose up -d worker` 가 의존 서비스(`depends_on`)인 mariadb 의 compose 정의 차이를 감지해 `storige-mariadb` 를 다시 만들었다. 05:16:26Z 생성 → 05:16:39Z ready 로, 공백은 약 13초였다.
+- 원인: `max_allowed_packet` 영구값 커밋 `dbc2333f` 이후 컨테이너를 다시 만든 적이 없었다.
+- 영향: 그 사이 nginx 요청 0, api DB 연결 오류 0, 데이터 영향 0. `max_allowed_packet` 은 268435456 그대로였다.
+- 절차 보강:
+  - 배포 전에 `docker compose config` 로 정의 차이를 확인한다.
+  - 의존 서비스가 의도치 않게 다시 만들어지는 것을 막으려면 `docker compose up -d --no-deps <서비스>` 를 쓴다.
+
+**운영 스모크**
+- 운영 편집기 루트 렌더, 콘솔 오류 0.
+- 책 세트 세션 1건으로 확인했다:
+  - 저장
+  - 템플릿 교체(사용자 요소 보존)
+  - 편집 완료: 진행 단계 표시, 업로드 2건, 검증 잡 2건 PASS·errors 0
+  - 기본 도련 3mm(비재단선 세트는 종전값)
+- 로그 1시간 집계에서 이상 0.
+- 관찰(기존 동작으로 분류, 후속 목록에 등재):
+  - 템플릿 교체 때 UUID 가 아닌 templateId 조회 404 경고 1건
+  - 완료 뒤 편집기가 열려 있으면 자동저장이 세션 상태를 editing 으로 되돌림
+  - 일부 폰트의 WOFF2 URL 미등록으로 `FONT_NOT_EMBEDDED` 경고
+
+**롤백**
+- api·worker:
+  1. `docker tag storige-api:rollback-pre-ops1a-20261026 storige-api:latest`(worker 도 같은 방식으로 `storige-worker:rollback-pre-ops1a-20261026` → `storige-worker:latest`)
+  2. `.env.bak-20261026-ops1a` 를 복원한다(FLAGS 17).
+  3. `docker compose up -d --no-build api worker` → `docker compose restart nginx`
+  4. `[FLAGS-CHECK] api ok n=17` 을 확인한다.
+- 편집기·관리자: Vercel 직전 Production 배포(`93d11eab` 이전 = `47808ae8`)를 promote 한다.
+- DB 롤백은 필요 없다(마이그레이션 0).
+
 ## 문제 해결
 
 ### 1. 컨테이너가 시작되지 않음
