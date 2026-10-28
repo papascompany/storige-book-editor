@@ -1895,6 +1895,35 @@ npx vitest run src/calendar src/plugins/CalendarPlugin.test.ts   # 데이터·co
 - 편집기·관리자: Vercel 직전 Production 배포(`93d11eab` 이전 = `47808ae8`)를 promote 한다.
 - DB 롤백은 필요 없다(마이그레이션 0).
 
+### 2026-10-28 운영 반영 — 재단선 포함 내지(TrimBox·BleedBox 역전)·무선 표지의 TrimBox 기준 판정(worker 전용)
+
+> master `b2dfc6e9` → `c690b91f`(PR #18 fast-forward, worker 3파일). 운영 파트너의 재단선 포함 무선책자 파일(표지·내지)이 검증에서 거부된 문제의 수정이다. 시각은 UTC.
+
+**범위**
+- worker 만 바뀐다. api·편집기·관리자 코드 무변경(api 컨테이너는 2026-10-26 이미지 그대로). 마이그레이션 0, `.env` 변경 0(FLAGS 토큰 수 그대로).
+- 동작 변경 — 둘 다 종전에 거부되던 파일이 통과하는 방향이고, 지금 통과하는 파일·양장 표지·킬스위치 OFF 상태의 결과는 바뀌지 않는다:
+  1. 내지: BleedBox 가 TrimBox 안쪽에 사방 균등(0.5~5mm)하게 들어간 역전 파일은 두 박스를 맞바꿔 재단 크기 기준으로 판정한다(`resolveReversedTrimBleed`). 합성 크롭(`planTrimBoxCrop`)도 같은 규칙을 쓰고, 크롭 산출물에는 바로잡은 TrimBox·BleedBox 를 기록한다.
+  2. 무선 표지: 전개폭(MediaBox)이 어긋나 `SPINE_SIZE_MISMATCH` 를 내기 직전에만, 명시 TrimBox 가 앞+책등+뒤(+날개)×높이(책등 ±허용오차)이고 TrimBox+도련 ⊂ MediaBox 이면 통과시킨다. 요청에 책등 정보(`orderOptions.spineWidthMm` 등)가 없으면 종전처럼 책등 검증 자체가 생략된다.
+- 계약 영향(ADDITIVE): 비차단 경고 `TRIMBOX_SIZE_BASIS` 의 `details` 에 역전을 보정했을 때만 `boxesSwapped: true`, 무선 표지 재판정일 때만 `fileType: 'cover'` 가 붙는다. 보정이 없으면 결과 형태는 종전과 같다. 규칙 설명은 [`PDF_VALIDATION_GUIDE.md`](./PDF_VALIDATION_GUIDE.md) 재단선 판정 절에 추가한다(후속 문서 커밋).
+- 킬스위치는 기존 `WORKER_TRIMBOX_SIZE_CHECK` 를 함께 쓴다(OFF 이면 두 판정 모두 종전 동작).
+- 테스트: `trimbox-size-basis.spec.ts` 11건 추가(역전 보정·비대칭 미보정·표지 전개폭·책등 허용오차 밖·킬스위치 OFF·양장 제외), worker jest 전체·`tsc --noEmit` 통과. master CI(ci·gitleaks) success.
+
+**api·worker(VPS, `deploy@<VPS_HOST>`, `~/storige`)**
+- 반영: 08:19:53Z `git pull --ff-only origin master`(`93d11eab` → `c690b91f`) → `docker compose build worker` → `docker compose up -d worker` → 08:21:17Z 기동. api·nginx 는 건드리지 않았다.
+- 이번 반영은 **롤백 태그와 `.env` 백업 없이** 진행됐다(아래 「롤백」 참고). 다음 worker 배포부터는 절차대로 `storige-worker:rollback-pre-<이름>` 태그를 먼저 만든다.
+- 기동 확인: `[FLAGS-CHECK] worker ok n=9`, `WORKER_TRIMBOX_SIZE_CHECK=true`(미설정 = 기본 ON), restarts 0, fatal 0.
+
+**운영 관찰(08:19Z~09:30Z)**
+- 검증 잡 9건: 통과 4, FIXABLE 3(`PAGE_COUNT_INVALID`), FAILED 2(`FILE_CORRUPTED` — qpdf 페이지 수 조회 실패, 2026-10-22 에도 같은 유형 2건이 있던 입력 파일 문제로 이번 변경과 무관).
+- `SIZE_MISMATCH`·`SPINE_SIZE_MISMATCH` 0건. 배포 직전(10-27·10-28 새벽)에 `SIZE_MISMATCH` 로 거부된 재단선 포함 파일의 재검증 요청은 아직 없어, 역전 보정 판정(`[TRIMBOX_SIZE_BASIS] swapped …`)은 0건이다. 재접수 뒤 같은 로그와 잡 결과의 `boxesSwapped` 로 확인한다.
+
+**롤백**
+- 이번 반영 직전 worker 이미지(`93d11eab` 빌드)는 별도 태그가 없어 `latest` 로 덮였다. 되돌리는 방법:
+  - (a) 킬스위치: `.env` 에 `WORKER_TRIMBOX_SIZE_CHECK=false` → `docker compose up -d --no-deps worker`. 단, 2026-09-30 부터 운영 중인 TrimBox 기준 판정과 합성 크롭 정규화 전체가 함께 꺼진다.
+  - (b) 코드: `git checkout 93d11eab` → `docker compose build worker` → `docker compose up -d --no-deps worker` → `git checkout master`. 서비스 공백은 worker 재생성 시간만큼이다.
+  - (b) 를 미리 준비하려면 `93d11eab` 체크아웃에서 worker 를 빌드해 `storige-worker:rollback-pre-trimbox-20261028` 로 태그해 둔다(서비스 영향 없음).
+- api·편집기·관리자·DB 롤백은 필요 없다(무변경).
+
 ## 문제 해결
 
 ### 1. 컨테이너가 시작되지 않음
