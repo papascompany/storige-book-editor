@@ -127,7 +127,7 @@
 
 ### 적용 범위와 평가 순서
 
-- **내지(`fileType === 'content'`)만** 대상이다. 표지(`cover`)·후가공(`post_process`)은 적용하지 않는다(결과 종전과 동일).
+- **내지(`fileType === 'content'`)만** 대상이다. 표지(`cover`)·후가공(`post_process`)은 적용하지 않는다(결과 종전과 동일). 예외: 2026-10-28 부터 **무선 표지**는 전개폭(MediaBox) 불일치일 때만 아래 「2026-10-28 보강」 절의 조건으로 TrimBox 재판정을 한다.
 - 기존 MediaBox 판정(`validatePageSize`)이 **`SIZE_MISMATCH` 를 냈을 때만** 재판정한다. MediaBox 판정을 통과한 파일은 박스 추출도 하지 않는다(결과 불변). MediaBox 만 있는 PDF 는 판정이 바뀌지 않는다.
 
 ### 통과 조건 (전부 충족해야 통과 — 페이지 혼합 불허)
@@ -201,6 +201,35 @@
 
 - MediaBox 236×323 · TrimBox 210×297(사방 13mm 재단선 여백) 내지 파일 **2건**: 종전 `SIZE_MISMATCH` 거부 → `TRIMBOX_SIZE_BASIS` 경고와 함께 **통과로 전환**(선언 도련이 주문 도련보다 부족하면 `BLEED_MISSING` 경고가 함께 붙는다).
 - 286×286 파일(명시 TrimBox 가 재단 크기를 가리키지 않음): **거부 유지**(`SIZE_MISMATCH`, 결과가 킬스위치 OFF 와 동일).
+
+### 2026-10-28 보강 — TrimBox·BleedBox 역전 파일 보정, 무선 표지 TrimBox 재판정 (커밋 `c690b91f`, 2026-10-28 08:21 UTC 운영 반영)
+
+> 코드: `trimbox-normalize.ts` `resolveReversedTrimBleed()`(판정 `evaluateTrimSizeBasis()`·크롭 `planTrimBoxCrop()` 공용), `pdf-validator.service.ts` `applyCoverTrimBoxBasis()`(`validateSpine()` 안). 테스트 `trimbox-size-basis.spec.ts`. 두 보강 모두 **종전에 거부되던 파일이 통과**하는 방향이며, 지금 통과하는 파일·양장 표지·킬스위치 OFF 의 결과는 바뀌지 않는다. 킬스위치는 위 `WORKER_TRIMBOX_SIZE_CHECK` 를 함께 쓴다.
+
+**1) 내지 — TrimBox·BleedBox 값이 뒤바뀐 파일**
+
+- 증상: 일부 PostScript→Distiller 계열 출력은 TrimBox 에 도련 포함 크기(예 216×303), BleedBox 에 재단 크기(예 210×297)를 기록한다(PDF 규격상 TrimBox ⊂ BleedBox 위반). 종전 판정은 TrimBox 가 기대 재단과 달라 `trimSizeMismatch` 로 불통과 → `SIZE_MISMATCH` 유지.
+- 보정 조건(페이지마다, 박스가 신뢰 가능할 때): 명시 TrimBox·BleedBox 가 모두 있고, **BleedBox 가 TrimBox 안쪽**에 들어가며, 4변 여백(TrimBox−BleedBox)이 **모두 0.5mm 이상·5mm 이하**이고 **최대−최소 차가 허용오차 이내**(사방 균등). 만족하면 두 박스를 맞바꿔 해석한다(TrimBox=안쪽 박스, BleedBox=바깥 박스). 비대칭(예 좌 1·우 5mm)·정상(TrimBox ⊂ BleedBox)·동일 박스·한쪽 부재는 보정하지 않는다(결과 종전과 동일).
+- 보정 뒤에는 위 「통과 조건」 1~8 을 그대로 적용한다. 그 결과 재단 210×297·도련 3mm 로 통과하면 `metadata.trimBox`·`bleedSize`·`hasBleed` 도 바로잡은 박스 기준으로 기록된다.
+- 합성·변환 크롭 정규화(위 절)도 같은 보정을 먼저 거친다. 검증을 통과한 역전 파일이 합성에서 크롭되지 않거나 엉뚱하게 크롭되는 일을 막기 위해서다. 크롭 산출물(임시 사본)에는 바로잡은 TrimBox·BleedBox 를 기록한다.
+- 결과 표면(ADDITIVE): 역전을 보정했을 때만 경고 `TRIMBOX_SIZE_BASIS` 의 `details.boxesSwapped = true` 가 붙는다. 보정이 없으면 `details` 는 종전과 같다.
+- 워커 로그: `[TRIMBOX_SIZE_BASIS] swapped media=WxH trim=WxH effBleed=… hasBleed=… pages=N/N`(보정 없으면 `swapped` 토큰 없음).
+
+**2) 무선 표지 — 전개폭이 어긋날 때 TrimBox 로 재판정**
+
+- 종전: `validateSpine()` 이 MediaBox 만 기대 전개(앞+책등+뒤+날개×2+도련×2 × 높이+도련×2)와 비교해 어긋나면 `SPINE_SIZE_MISMATCH`. 재단선 여백(예 사방 13mm)을 포함해 내보낸 표지는 박스 값이 정상이어도 차단됐다.
+- 재판정 조건: 책등 검증이 실제로 수행되고(요청에 `orderOptions.spineWidthMm` 등 책등 정보가 있어야 한다 — 없으면 종전처럼 책등 검증 자체가 생략), MediaBox 가 기대 전개와 어긋나며(`SPINE_SIZE_MISMATCH` 직전), **양장(hardcover)이 아니고**, 박스 추출이 가능할 때만. 기대 재단 = 기대 전개 − 주문 도련×2(가로·세로), 허용오차 = 책등 검증 허용오차(아래 「표지 책등·전개 크기 검증」 3), 기본 2mm).
+- 통과 조건: 위 「통과 조건」 1~8 과 같다(전 페이지 명시 TrimBox ≈ 기대 재단 ±허용오차, TrimBox+주문 도련 ⊂ MediaBox, 비회전·`/UserUnit` 1·10mm 이상·박스 신뢰). 1) 의 역전 보정도 함께 적용된다.
+- 통과 시: `SPINE_SIZE_MISMATCH` 를 내지 않고, 경고 `TRIMBOX_SIZE_BASIS` 에 `details.fileType = 'cover'`(+ `sizeBasis`·`trimBox`·`mediaBox`, 역전 보정 시 `boxesSwapped`)를 기록한다. 메시지: "재단 크기(TrimBox) 기준으로 표지 규격을 확인했습니다. 원본 파일에는 재단선·여백 영역이 포함되어 있습니다." `metadata.trimBox`·`hasBleed`·`bleedSize` 도 기록된다.
+- 불통과 시: 종전과 같은 `SPINE_SIZE_MISMATCH`(책등이 허용오차 밖으로 다른 주문은 계속 차단). 워커 로그 `[TRIMBOX_SIZE_BASIS] cover rejected reason=…`(`noTrimBox` 는 기록하지 않음).
+- 워커 로그(통과): `[TRIMBOX_SIZE_BASIS] cover [swapped ]media=WxH trim=WxH expected=WxH effBleed=…`.
+- 바뀌지 않는 것: MediaBox 가 이미 기대 전개와 맞는 표지(재판정 분기에 오지 않음), 양장 표지(싸바리 전개는 TrimBox 의미가 달라 제외), 책등 정보 없는 요청.
+- 표지 합성 결과물의 재단선 영역 크롭은 아직 없다(내지만 크롭 정규화 대상). 인쇄 공정 확인 뒤 별도 진행.
+
+**운영 실측 사례(2026-10-28, 수정 전 거부 파일)**
+
+- 내지 230×317(재단선 A4 위치, TrimBox 216×303·BleedBox 210×297 역전) 240쪽: 종전 `SIZE_MISMATCH` → 보정 뒤 재단 210×297·도련 3 으로 **통과**(`boxesSwapped`). 합성 크롭 결과 MediaBox 216×303·TrimBox 210×297·BleedBox 216×303.
+- 무선 표지 460×323(재단선 여백 13mm, 책등 14.4 / 6.7): 책등 정보를 실으면 종전 `SPINE_SIZE_MISMATCH` → TrimBox 재판정으로 **통과**(`fileType: 'cover'`). 책등을 2mm 넘게 다르게 넣으면 계속 차단.
 
 ---
 

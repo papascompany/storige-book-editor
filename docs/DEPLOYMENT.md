@@ -1904,7 +1904,7 @@ npx vitest run src/calendar src/plugins/CalendarPlugin.test.ts   # 데이터·co
 - 동작 변경 — 둘 다 종전에 거부되던 파일이 통과하는 방향이고, 지금 통과하는 파일·양장 표지·킬스위치 OFF 상태의 결과는 바뀌지 않는다:
   1. 내지: BleedBox 가 TrimBox 안쪽에 사방 균등(0.5~5mm)하게 들어간 역전 파일은 두 박스를 맞바꿔 재단 크기 기준으로 판정한다(`resolveReversedTrimBleed`). 합성 크롭(`planTrimBoxCrop`)도 같은 규칙을 쓰고, 크롭 산출물에는 바로잡은 TrimBox·BleedBox 를 기록한다.
   2. 무선 표지: 전개폭(MediaBox)이 어긋나 `SPINE_SIZE_MISMATCH` 를 내기 직전에만, 명시 TrimBox 가 앞+책등+뒤(+날개)×높이(책등 ±허용오차)이고 TrimBox+도련 ⊂ MediaBox 이면 통과시킨다. 요청에 책등 정보(`orderOptions.spineWidthMm` 등)가 없으면 종전처럼 책등 검증 자체가 생략된다.
-- 계약 영향(ADDITIVE): 비차단 경고 `TRIMBOX_SIZE_BASIS` 의 `details` 에 역전을 보정했을 때만 `boxesSwapped: true`, 무선 표지 재판정일 때만 `fileType: 'cover'` 가 붙는다. 보정이 없으면 결과 형태는 종전과 같다. 규칙 설명은 [`PDF_VALIDATION_GUIDE.md`](./PDF_VALIDATION_GUIDE.md) 재단선 판정 절에 추가한다(후속 문서 커밋).
+- 계약 영향(ADDITIVE): 비차단 경고 `TRIMBOX_SIZE_BASIS` 의 `details` 에 역전을 보정했을 때만 `boxesSwapped: true`, 무선 표지 재판정일 때만 `fileType: 'cover'` 가 붙는다. 보정이 없으면 결과 형태는 종전과 같다. 규칙 설명은 [`PDF_VALIDATION_GUIDE.md`](./PDF_VALIDATION_GUIDE.md) 재단선 판정 절의 「2026-10-28 보강」에 있다.
 - 킬스위치는 기존 `WORKER_TRIMBOX_SIZE_CHECK` 를 함께 쓴다(OFF 이면 두 판정 모두 종전 동작).
 - 테스트: `trimbox-size-basis.spec.ts` 11건 추가(역전 보정·비대칭 미보정·표지 전개폭·책등 허용오차 밖·킬스위치 OFF·양장 제외), worker jest 전체·`tsc --noEmit` 통과. master CI(ci·gitleaks) success.
 
@@ -1921,7 +1921,7 @@ npx vitest run src/calendar src/plugins/CalendarPlugin.test.ts   # 데이터·co
 - 이번 반영 직전 worker 이미지(`93d11eab` 빌드)는 별도 태그가 없어 `latest` 로 덮였다. 되돌리는 방법:
   - (a) 킬스위치: `.env` 에 `WORKER_TRIMBOX_SIZE_CHECK=false` → `docker compose up -d --no-deps worker`. 단, 2026-09-30 부터 운영 중인 TrimBox 기준 판정과 합성 크롭 정규화 전체가 함께 꺼진다.
   - (b) 코드: `git checkout 93d11eab` → `docker compose build worker` → `docker compose up -d --no-deps worker` → `git checkout master`. 서비스 공백은 worker 재생성 시간만큼이다.
-  - (b) 를 미리 준비하려면 `93d11eab` 체크아웃에서 worker 를 빌드해 `storige-worker:rollback-pre-trimbox-20261028` 로 태그해 둔다(서비스 영향 없음).
+  - (b) 는 2026-10-28 16:08Z 에 미리 준비했다: `93d11eab` 를 별도 worktree 로 받아 빌드한 `storige-worker:rollback-pre-trimbox-20261028`(빌드 캐시 전부 적중 → 2026-10-26 운영 worker 이미지와 동일). 되돌릴 때는 `docker tag storige-worker:rollback-pre-trimbox-20261028 storige-worker:latest` → `docker compose up -d --no-deps --no-build worker` → `[FLAGS-CHECK] worker ok` 확인.
 - api·편집기·관리자·DB 롤백은 필요 없다(무변경).
 
 ## 문제 해결
