@@ -91,6 +91,12 @@ interface FirstPageBoxes {
   authoritative: boolean;
 }
 
+/** 표지 TrimBox 기준 판정 입력 — 박스 추출은 lazy(전개폭 불일치일 때만). */
+interface CoverTrimBasisInput {
+  pages: () => PageBoxesPt[] | null;
+  pageCount: number;
+}
+
 @Injectable()
 export class PdfValidatorService {
   private readonly logger = new Logger(PdfValidatorService.name);
@@ -254,7 +260,10 @@ export class PdfValidatorService {
         !this.isCoverSeparateLayout(options) &&
         !this.isCoverSpineNone(options)
       ) {
-        this.validateSpine(widthMm, heightMm, options, errors, warnings, metadata);
+        this.validateSpine(widthMm, heightMm, options, errors, warnings, metadata, {
+          pages: () => pages.map((p) => pageBoxesFromPdfLib(p)),
+          pageCount: pages.length,
+        });
       }
 
       // 9. 페이지 방향 검증 (WBS 2.1, R3 집계형 재구현)
@@ -836,23 +845,25 @@ export class PdfValidatorService {
         !this.isCoverSeparateLayout(options) &&
         !this.isCoverSpineNone(options) &&
         (this.isCoverSpreadBinding(options) || this.hasSpineExpectation(options.orderOptions));
+      // X1 박스 공급자(내지 판형·표지 전개폭 TrimBox 판정 공용, lazy). 박스 소스는 crop mark 경로와
+      // 같은 폴백 순서 — qpdf 명시 박스(authoritative, pages.length===pageCount) → pdf-lib 폴백
+      // 분기(node 존재) → 둘 다 없으면 null(판별 불가 → MediaBox 판정 유지).
+      const trimBoxesProvider = (): PageBoxesPt[] | null => {
+        if (meta.ok && meta.pages.length > 0) {
+          if (meta.pages.length !== pageCount) return null;
+          return meta.pages.map((d) => pageBoxesFromQpdf(d));
+        }
+        if (firstPage.node) return pages.map((p) => pageBoxesFromPdfLib(p));
+        return null;
+      };
       if (!coverSpineAuthoritative) {
         const frontSizeErrStart = errors.length;
         this.validatePageSize(widthMm, heightMm, options, errors, metadata);
         // S6 후속: OFF 와 동일 — 2쪽 치수는 qpdf/pdfinfo 페이지별 치수(상수메모리)에서 얻는다
         this.validateSeparateBackCoverSize(pages, frontSizeErrStart, options, errors, metadata);
-        // X1: OFF 경로와 동일 규칙·위치. 박스 소스는 crop mark 경로와 같은 폴백 순서 —
-        // qpdf 명시 박스(authoritative, pages.length===pageCount) → pdf-lib 폴백 분기(node 존재)
-        // → 둘 다 없으면 null(판별 불가 → MediaBox 판정 유지).
+        // X1: OFF 경로와 동일 규칙·위치(박스 소스는 위 trimBoxesProvider).
         this.applyTrimBoxSizeBasis(
-          (): PageBoxesPt[] | null => {
-            if (meta.ok && meta.pages.length > 0) {
-              if (meta.pages.length !== pageCount) return null;
-              return meta.pages.map((d) => pageBoxesFromQpdf(d));
-            }
-            if (firstPage.node) return pages.map((p) => pageBoxesFromPdfLib(p));
-            return null;
-          },
+          trimBoxesProvider,
           pageCount,
           frontSizeErrStart,
           options,
@@ -881,7 +892,10 @@ export class PdfValidatorService {
         !this.isCoverSeparateLayout(options) &&
         !this.isCoverSpineNone(options)
       ) {
-        this.validateSpine(widthMm, heightMm, options, errors, warnings, metadata);
+        this.validateSpine(widthMm, heightMm, options, errors, warnings, metadata, {
+          pages: trimBoxesProvider,
+          pageCount,
+        });
       }
       this.validatePageOrientation(
         pages,
@@ -1416,15 +1430,76 @@ export class PdfValidatorService {
         sizeBasis: 'trimBox',
         trimBox: { width: verdict.trimMm.width, height: verdict.trimMm.height },
         mediaBox: { width: verdict.mediaMm.width, height: verdict.mediaMm.height },
+        // 역전 보정 시에만 키를 싣는다(정상 파일 details 불변).
+        ...(verdict.boxesSwapped ? { boxesSwapped: true } : {}),
       },
       autoFixable: false,
     });
     this.logger.log(
-      `[TRIMBOX_SIZE_BASIS] media=${verdict.mediaMm.width}x${verdict.mediaMm.height} ` +
+      `[TRIMBOX_SIZE_BASIS] ${verdict.boxesSwapped ? 'swapped ' : ''}` +
+        `media=${verdict.mediaMm.width}x${verdict.mediaMm.height} ` +
         `trim=${verdict.trimMm.width}x${verdict.trimMm.height} ` +
         `effBleed=${verdict.effectiveBleedMm} ` +
         `hasBleed=${verdict.hasBleed} pages=${pageCount}/${pageCount}`,
     );
+  }
+
+  /**
+   * 2026-10-28: 무선 표지 TrimBox 기준 전개폭 판정 — validateSpine 이 SPINE_SIZE_MISMATCH 를
+   * 내기 직전에만 호출된다. 내지 X1 과 같은 순수 함수(evaluateTrimSizeBasis)로, 전 페이지 명시
+   * TrimBox ≈ 기대 재단(앞+책등+뒤+날개 × 높이, ±책등 허용오차)이고 TrimBox+주문 도련 ⊂ MediaBox 면
+   * 통과(true — 호출부가 오류를 내지 않음). 킬스위치 WORKER_TRIMBOX_SIZE_CHECK 공용.
+   */
+  private applyCoverTrimBoxBasis(
+    input: CoverTrimBasisInput,
+    expectedTrimMm: { width: number; height: number },
+    orderBleedMm: number,
+    tolMm: number,
+    warnings: ValidationWarning[],
+    metadata: PdfMetadata,
+  ): boolean {
+    if (!VALIDATION_CONFIG.TRIMBOX_SIZE_CHECK) return false;
+    const verdict = evaluateTrimSizeBasis({
+      pages: input.pages(),
+      pageCount: input.pageCount,
+      expectedTrimMm,
+      targetBleedMm: orderBleedMm,
+      orderBleedMm,
+      tolMm,
+    });
+    if (!verdict.ok) {
+      if (verdict.reason !== 'noTrimBox') {
+        this.logger.log(
+          `[TRIMBOX_SIZE_BASIS] cover rejected reason=${verdict.reason}` +
+            (verdict.page ? ` page=${verdict.page}` : ''),
+        );
+      }
+      return false;
+    }
+    metadata.trimBox = { width: verdict.trimMm.width, height: verdict.trimMm.height };
+    metadata.hasBleed = verdict.hasBleed;
+    metadata.bleedSize = verdict.effectiveBleedMm;
+    warnings.push({
+      code: WarningCode.TRIMBOX_SIZE_BASIS,
+      message:
+        '재단 크기(TrimBox) 기준으로 표지 규격을 확인했습니다. 원본 파일에는 재단선·여백 영역이 포함되어 있습니다.',
+      details: {
+        sizeBasis: 'trimBox',
+        fileType: 'cover',
+        trimBox: { width: verdict.trimMm.width, height: verdict.trimMm.height },
+        mediaBox: { width: verdict.mediaMm.width, height: verdict.mediaMm.height },
+        ...(verdict.boxesSwapped ? { boxesSwapped: true } : {}),
+      },
+      autoFixable: false,
+    });
+    this.logger.log(
+      `[TRIMBOX_SIZE_BASIS] cover ${verdict.boxesSwapped ? 'swapped ' : ''}` +
+        `media=${verdict.mediaMm.width}x${verdict.mediaMm.height} ` +
+        `trim=${verdict.trimMm.width}x${verdict.trimMm.height} ` +
+        `expected=${Math.round(expectedTrimMm.width * 10) / 10}x${Math.round(expectedTrimMm.height * 10) / 10} ` +
+        `effBleed=${verdict.effectiveBleedMm}`,
+    );
+    return true;
   }
 
   // ============================================================
@@ -1758,6 +1833,7 @@ export class PdfValidatorService {
     errors: ValidationError[],
     warnings: ValidationWarning[],
     metadata: PdfMetadata,
+    trimBasis?: CoverTrimBasisInput,
   ): void {
     const { size, spineWidthMm, wingEnabled, wingWidthMm, binding, spineToleranceMm, spineSource } =
       options.orderOptions;
@@ -1832,6 +1908,18 @@ export class PdfValidatorService {
 
     const widthOff = Math.abs(widthMm - expectedTotalWidth) > tolerance;
     const heightOff = Math.abs(heightMm - expectedTotalHeight) > tolerance;
+    // 2026-10-28: 재단선 포함 무선 표지 — 전개폭(MediaBox) 불일치일 때만 명시 TrimBox 로 재판정.
+    // 양장(싸바리 전개)은 TrimBox 의미가 달라 제외. 통과 표지(MediaBox 일치)는 이 분기에 오지 않는다.
+    if ((widthOff || heightOff) && !isHardcover && trimBasis) {
+      const orderBleed = options.orderOptions.bleed ?? DEFAULT_BLEED_MM;
+      const expectedTrimMm = {
+        width: expectedTotalWidth - orderBleed * 2,
+        height: expectedTotalHeight - orderBleed * 2,
+      };
+      if (this.applyCoverTrimBoxBasis(trimBasis, expectedTrimMm, orderBleed, tolerance, warnings, metadata)) {
+        return;
+      }
+    }
     if (widthOff || heightOff) {
       const label = isHardcover ? '싸바리 전개' : `책등${wingTotal > 0 ? '·날개' : ''}`;
       errors.push({
