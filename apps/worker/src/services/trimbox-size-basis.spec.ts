@@ -26,7 +26,14 @@ import {
   WarningCode,
 } from '../dto/validation-result.dto';
 import { VALIDATION_CONFIG } from '../config/validation.config';
-import { normalizeBoxPt, planTrimBoxCrop } from '../utils/trimbox-normalize';
+import {
+  boxSizeMm,
+  normalizeBoxPt,
+  normalizeTrimBoxPdfDoc,
+  pageBoxesFromPdfLib,
+  planTrimBoxCrop,
+  resolveReversedTrimBleed,
+} from '../utils/trimbox-normalize';
 
 jest.setTimeout(120_000);
 
@@ -461,6 +468,137 @@ describe('X1 TrimBox 기준 내지 판형 판정', () => {
       const stale: PageSpec = { media: mmBox(0, 0, 212, 299), trim: mmBox(11, 14.5, 190, 270) };
       const r = await expectOnEqualsOff(await writePdf(repeat(stale, 4)), opts({ pages: 4 }));
       expect(r.isValid).toBe(true);
+    });
+  });
+
+  // 2026-10-28 네이처링 무선책자 내지(PScript5/Distiller): 230x317, 재단선은 A4 위치인데
+  // TrimBox=216x303(도련 영역)·BleedBox=210x297(재단)로 두 값이 뒤바뀌어 기록됨.
+  describe('TrimBox·BleedBox 역전 파일', () => {
+    const REV_PAGE: PageSpec = {
+      media: mmBox(0, 0, 230, 317),
+      trim: mmBox(7, 7, 216, 303),
+      bleed: mmBox(10, 10, 210, 297),
+    };
+    const boxesOf = (spec: PageSpec) => ({
+      mediaBox: normalizeBoxPt(spec.media),
+      trimBox: normalizeBoxPt(spec.trim as number[]),
+      bleedBox: normalizeBoxPt(spec.bleed as number[]),
+      rotate: 0,
+      userUnit: 1,
+      authoritative: true,
+    });
+
+    it('내지 + 주문 bleed 3 → 박스를 맞바꿔 통과(boxesSwapped), 재단 210x297·도련 3', async () => {
+      const r = await validateOn(await writePdf(repeat(REV_PAGE, 4)), opts({ pages: 4, bleed: 3 }));
+      expect(r.isValid).toBe(true);
+      expect(codes(r.errors)).toEqual([]);
+      const basis = r.warnings.find((w) => w.code === WarningCode.TRIMBOX_SIZE_BASIS);
+      expect(basis?.details).toEqual({
+        sizeBasis: 'trimBox',
+        trimBox: { width: 210, height: 297 },
+        mediaBox: { width: 230, height: 317 },
+        boxesSwapped: true,
+      });
+      expect(codes(r.warnings)).not.toContain(WarningCode.BLEED_MISSING);
+      expect(r.metadata.trimBox).toEqual({ width: 210, height: 297 });
+      expect(r.metadata.hasBleed).toBe(true);
+      expect(r.metadata.bleedSize).toBe(3);
+    });
+
+    it('킬스위치 OFF → 종전대로 SIZE_MISMATCH', async () => {
+      const off = await validateOff(await writePdf(repeat(REV_PAGE, 4)), opts({ pages: 4, bleed: 3 }));
+      expect(codes(off.errors)).toContain(ErrorCode.SIZE_MISMATCH);
+    });
+
+    it('BleedBox 가 TrimBox 안에서 비대칭(좌 1·우 5mm)이면 맞바꾸지 않음 → SIZE_MISMATCH 유지', async () => {
+      const asym: PageSpec = { ...REV_PAGE, bleed: mmBox(8, 10, 210, 297) };
+      const r = await validateOn(await writePdf(repeat(asym, 4)), opts({ pages: 4, bleed: 3 }));
+      expect(codes(r.errors)).toContain(ErrorCode.SIZE_MISMATCH);
+      expect(resolveReversedTrimBleed(boxesOf(asym), 1).swapped).toBe(false);
+    });
+
+    it('정상 박스(TrimBox ⊂ BleedBox)·동일 박스는 맞바꾸지 않음', () => {
+      expect(resolveReversedTrimBleed(boxesOf(B_PAGE), 1).swapped).toBe(false);
+      expect(resolveReversedTrimBleed(boxesOf(A_PAGE), 1).swapped).toBe(false);
+    });
+
+    it.each([
+      ['모르는 경로', {}],
+      ['아는 경로', { expectedTrimMm: { width: 210, height: 297 }, bleedMm: 3 }],
+    ])('합성 크롭(%s) → 216x303 로 크롭하고 TrimBox·BleedBox 를 바로잡아 기록', async (_l, ctx) => {
+      const plan = planTrimBoxCrop(boxesOf(REV_PAGE), ctx);
+      expect(plan.action).toBe('crop');
+      if (plan.action !== 'crop') return;
+      expect(boxSizeMm(plan.target)).toEqual({ width: 216, height: 303 });
+      expect(plan.swappedBoxes && boxSizeMm(plan.swappedBoxes.trimBox)).toEqual({ width: 210, height: 297 });
+
+      const doc = await PDFDocument.load(await buildPdf(repeat(REV_PAGE, 2)));
+      const res = await normalizeTrimBoxPdfDoc(doc, ctx, 'spec');
+      expect(res).toEqual({ applied: true, pagesCropped: 2 });
+      for (const page of doc.getPages()) {
+        const b = pageBoxesFromPdfLib(page);
+        expect(boxSizeMm(b.mediaBox)).toEqual({ width: 216, height: 303 });
+        expect(b.trimBox && boxSizeMm(b.trimBox)).toEqual({ width: 210, height: 297 });
+        expect(b.bleedBox && boxSizeMm(b.bleedBox)).toEqual({ width: 216, height: 303 });
+      }
+    });
+  });
+
+  // 2026-10-28: 재단선 포함 무선 표지 — 앞 210 + 책등 14 + 뒤 210 = 434 x 297, 도련 3, 재단선 여백 13mm.
+  describe('표지(무선) TrimBox 기준 전개폭 판정', () => {
+    const COVER_PAGE: PageSpec = {
+      media: mmBox(0, 0, 460, 323),
+      trim: mmBox(13, 13, 434, 297),
+      bleed: mmBox(10, 10, 440, 303),
+    };
+    const coverOpts = (over: Partial<ValidationOptions['orderOptions']> = {}) =>
+      opts({ pages: 240, spineWidthMm: 14, bleed: 3, ...over }, 'cover');
+
+    it('TrimBox ≈ 앞+책등+뒤 × 높이 → SPINE_SIZE_MISMATCH 없이 통과 + TRIMBOX_SIZE_BASIS(cover)', async () => {
+      const r = await validateOn(await writePdf([COVER_PAGE]), coverOpts());
+      expect(r.isValid).toBe(true);
+      expect(codes(r.errors)).not.toContain(ErrorCode.SPINE_SIZE_MISMATCH);
+      const basis = r.warnings.find((w) => w.code === WarningCode.TRIMBOX_SIZE_BASIS);
+      expect(basis?.details).toEqual({
+        sizeBasis: 'trimBox',
+        fileType: 'cover',
+        trimBox: { width: 434, height: 297 },
+        mediaBox: { width: 460, height: 323 },
+      });
+      expect(r.metadata.trimBox).toEqual({ width: 434, height: 297 });
+      expect(r.metadata.spineSize).toBe(14);
+    });
+
+    it('책등이 허용오차(2mm) 밖으로 다르면(주문 책등 18) → SPINE_SIZE_MISMATCH 유지', async () => {
+      const r = await validateOn(await writePdf([COVER_PAGE]), coverOpts({ spineWidthMm: 18 }));
+      expect(codes(r.errors)).toContain(ErrorCode.SPINE_SIZE_MISMATCH);
+      expect(codes(r.warnings)).not.toContain(WarningCode.TRIMBOX_SIZE_BASIS);
+    });
+
+    it('킬스위치 OFF → 종전대로 SPINE_SIZE_MISMATCH', async () => {
+      const off = await validateOff(await writePdf([COVER_PAGE]), coverOpts());
+      expect(codes(off.errors)).toContain(ErrorCode.SPINE_SIZE_MISMATCH);
+    });
+
+    it('MediaBox 가 이미 전개폭과 맞는 표지(440x303) → ON≡OFF(재판정 미진입)', async () => {
+      const exact: PageSpec = {
+        media: mmBox(0, 0, 440, 303),
+        trim: mmBox(3, 3, 434, 297),
+        bleed: mmBox(0, 0, 440, 303),
+      };
+      const p = await writePdf([exact]);
+      const on = await validateOn(p, coverOpts());
+      expect(on).toEqual(await validateOff(p, coverOpts()));
+      expect(on.isValid).toBe(true);
+      expect(codes(on.warnings)).not.toContain(WarningCode.TRIMBOX_SIZE_BASIS);
+    });
+
+    it('양장(hardcover)은 TrimBox 재판정 대상 아님 → ON≡OFF', async () => {
+      const p = await writePdf([COVER_PAGE]);
+      const o = coverOpts({ binding: 'hardcover', pages: 240 });
+      const on = await validateOn(p, o);
+      expect(on).toEqual(await validateOff(p, o));
+      expect(codes(on.warnings)).not.toContain(WarningCode.TRIMBOX_SIZE_BASIS);
     });
   });
 

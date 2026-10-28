@@ -159,6 +159,29 @@ function expandBoxMm(b: BoxRectPt, bxMm: number, byMm: number): BoxRectPt {
   return { x: b.x - dx, y: b.y - dy, width: b.width + 2 * dx, height: b.height + 2 * dy };
 }
 
+/** 역전 박스로 인정하는 (TrimBox − BleedBox) 변별 여백 하한(mm). 미만은 사실상 동일 박스로 본다. */
+export const TRIMBOX_REVERSED_MIN_BLEED_MM = 0.5;
+
+/**
+ * TrimBox·BleedBox 역전 보정(2026-10-28, 네이처링 무선책자 내지 — PScript5/Distiller 출력).
+ * 명시 BleedBox 가 TrimBox **안에** 사방 균등(±tol)하게 TRIMBOX_REVERSED_MIN_BLEED_MM~TRIMBOX_MAX_BLEED_MM
+ * 만큼 들어가 있으면(PDF 규격상 TrimBox ⊂ BleedBox 위반) 두 박스 값이 뒤바뀌어 기록된 것으로 보고
+ * 맞바꾼 사본을 돌려준다. 정상(TrimBox ⊂ BleedBox)·동일·비대칭·부재 박스는 입력 그대로(swapped=false).
+ */
+export function resolveReversedTrimBleed(
+  p: PageBoxesPt,
+  tolMm: number,
+): { boxes: PageBoxesPt; swapped: boolean } {
+  const same = { boxes: p, swapped: false };
+  if (!p.authoritative || !p.trimBox || !p.bleedBox) return same;
+  const margins = edgeMarginsMm(p.trimBox, p.bleedBox);
+  const eps = TRIMBOX_CROP_BOX_EPS_PT * PT_TO_MM;
+  if (Math.min(...margins) < TRIMBOX_REVERSED_MIN_BLEED_MM) return same;
+  if (Math.max(...margins) > TRIMBOX_MAX_BLEED_MM + eps) return same;
+  if (Math.max(...margins) - Math.min(...margins) > tolMm) return same;
+  return { boxes: { ...p, trimBox: p.bleedBox, bleedBox: p.trimBox }, swapped: true };
+}
+
 /**
  * 명시 BleedBox(MediaBox 로 clip) − TrimBox 의 4변 최소 여백(mm, 0 이상).
  * BleedBox 명시 부재면 0(도련 미선언).
@@ -340,6 +363,11 @@ export type TrimSizeBasisResult =
        * 아니면 호출부가 기존 BLEED_MISSING 을 낸다.
        */
       hasBleed: boolean;
+      /**
+       * 한 페이지라도 TrimBox·BleedBox 역전(resolveReversedTrimBleed)을 보정해 판정했으면 true.
+       * 보정이 없으면 키 자체가 없다(종전 결과 형태 불변).
+       */
+      boxesSwapped?: true;
     }
   | { ok: false; reason: TrimSizeBasisReject; /** 1-based */ page?: number };
 
@@ -367,8 +395,13 @@ export function evaluateTrimSizeBasis(input: TrimSizeBasisInput): TrimSizeBasisR
   if (pages.length !== pageCount) return { ok: false, reason: 'pageCountMismatch' };
 
   let effBleed = Number.POSITIVE_INFINITY;
+  let boxesSwapped = false;
+  let p1: PageBoxesPt = pages[0];
   for (let i = 0; i < pages.length; i++) {
-    const p = pages[i];
+    const resolved = resolveReversedTrimBleed(pages[i], tolMm);
+    const p = resolved.boxes;
+    if (resolved.swapped) boxesSwapped = true;
+    if (i === 0) p1 = p;
     const geo = checkTrimGeometry(p, tolMm);
     if (!geo.ok) return { ok: false, reason: geo.reason, page: i + 1 };
     const trimWmm = geo.trim.width * PT_TO_MM;
@@ -386,7 +419,6 @@ export function evaluateTrimSizeBasis(input: TrimSizeBasisInput): TrimSizeBasisR
     // BleedBox 명시 부재 페이지는 0(declaredBleedMinMm) → 문서 전체 0.
     effBleed = Math.min(effBleed, declaredBleedMinMm(p));
   }
-  const p1 = pages[0];
   const rawBleedMm = Number.isFinite(effBleed) ? effBleed : 0;
   return {
     ok: true,
@@ -395,6 +427,7 @@ export function evaluateTrimSizeBasis(input: TrimSizeBasisInput): TrimSizeBasisR
     // 표시(metadata.bleedSize)만 소수1 반올림 — 판정은 원값으로 한다(X1-R2 결정 원문).
     effectiveBleedMm: round1(rawBleedMm),
     hasBleed: rawBleedMm + TRIMBOX_BLEED_COMPARE_EPS_MM >= orderBleedMm - tolMm / 2,
+    ...(boxesSwapped ? { boxesSwapped: true as const } : {}),
   };
 }
 
@@ -579,6 +612,11 @@ export type TrimCropPlan =
       /** 적용 도련 B(mm) — 가로/세로(editSize 경로만 축별로 다를 수 있음, ±tol 대칭). */
       bleedMm: { x: number; y: number };
       source: TrimCropSource;
+      /**
+       * TrimBox·BleedBox 역전 보정(resolveReversedTrimBleed)으로 계획했으면 바로잡은 두 박스(pt).
+       * 적용부는 /TrimBox 를 trimBox 로, /BleedBox 를 bleedBox(목표로 clamp)로 다시 쓴다.
+       */
+      swappedBoxes?: { trimBox: BoxRectPt; bleedBox: BoxRectPt };
     };
 
 /**
@@ -628,9 +666,11 @@ function checkSlugEvidence(
  * B 우선순위: editSize → 주문 bleed → min(명시 BleedBox 대칭 최소 여백, DEFAULT_BLEED_MM).
  * (BleedBox 부재 B=0 크롭은 하지 않는다 — 도련과 slug 를 구분할 수 없어 원칙 1 을 보장 못 함)
  */
-export function planTrimBoxCrop(p: PageBoxesPt, ctx: TrimCropContext = {}): TrimCropPlan {
+export function planTrimBoxCrop(input: PageBoxesPt, ctx: TrimCropContext = {}): TrimCropPlan {
   const tolMm = ctx.tolMm ?? LEGACY_SIZE_TOLERANCE_MM;
   const noopTolMm = ctx.noopTolMm ?? tolMm;
+  // 판정(evaluateTrimSizeBasis)과 같은 역전 보정 — 검증 통과 파일이 합성에서 크롭되지 않는 일 방지.
+  const { boxes: p, swapped } = resolveReversedTrimBleed(input, tolMm);
   const geo = checkTrimGeometry(p, tolMm);
   if (!geo.ok) return { action: 'none', reason: geo.reason };
   const trim = geo.trim;
@@ -685,7 +725,15 @@ export function planTrimBoxCrop(p: PageBoxesPt, ctx: TrimCropContext = {}): Trim
   if (!boxContains(p.mediaBox, target, TRIMBOX_CROP_BOX_EPS_PT)) {
     return { action: 'none', reason: 'targetOutsideMedia' };
   }
-  return { action: 'crop', target, bleedMm: { x: round1(bx), y: round1(by) }, source };
+  return {
+    action: 'crop',
+    target,
+    bleedMm: { x: round1(bx), y: round1(by) },
+    source,
+    ...(swapped && p.trimBox && p.bleedBox
+      ? { swappedBoxes: { trimBox: p.trimBox, bleedBox: p.bleedBox } }
+      : {}),
+  };
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -842,8 +890,14 @@ export async function normalizeTrimBoxFile(
     const arr = boxToArray(plan.target);
     dict['/MediaBox'] = arr;
     dict['/CropBox'] = [...arr];
-    const bleed = clampToTarget(pg.bleedBoxPt ? normalizeBoxPt(pg.bleedBoxPt) : undefined, plan.target);
-    if (bleed) dict['/BleedBox'] = boxToArray(bleed);
+    if (plan.swappedBoxes) {
+      dict['/TrimBox'] = boxToArray(plan.swappedBoxes.trimBox);
+      const sb = plan.swappedBoxes.bleedBox;
+      dict['/BleedBox'] = boxToArray(clampToTarget(sb, plan.target) ?? sb);
+    } else {
+      const bleed = clampToTarget(pg.bleedBoxPt ? normalizeBoxPt(pg.bleedBoxPt) : undefined, plan.target);
+      if (bleed) dict['/BleedBox'] = boxToArray(bleed);
+    }
     const art = clampToTarget(pg.artBoxPt ? normalizeBoxPt(pg.artBoxPt) : undefined, plan.target);
     if (art) dict['/ArtBox'] = boxToArray(art);
     patch[`obj:${pg.ref}`] = { value: dict };
@@ -929,7 +983,12 @@ export async function normalizeTrimBoxPdfDoc(
     pageBoxes.push(boxes);
     if (plan.action !== 'crop') continue;
     const [x1, y1, x2, y2] = boxToArray(plan.target);
-    const bleed = clampToTarget(boxes.bleedBox, plan.target);
+    const sb = plan.swappedBoxes?.bleedBox;
+    const bleed = sb ? (clampToTarget(sb, plan.target) ?? sb) : clampToTarget(boxes.bleedBox, plan.target);
+    if (plan.swappedBoxes) {
+      const [a, b, c, d] = boxToArray(plan.swappedBoxes.trimBox);
+      page.setTrimBox(a, b, c - a, d - b);
+    }
     const art = clampToTarget(boxes.artBox, plan.target);
     page.setMediaBox(x1, y1, x2 - x1, y2 - y1);
     page.setCropBox(x1, y1, x2 - x1, y2 - y1);
