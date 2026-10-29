@@ -231,6 +231,25 @@ pnpm dev
 
 ## 프로덕션 배포
 
+### 0. 되돌릴 기준점 — 모든 api·worker 배포 공통 (2026-10-29)
+
+api 또는 worker 이미지를 다시 빌드하거나 컨테이너를 다시 만들기 **전에**, 누가·어느 작업 세션에서 배포하든 아래 두 가지를 먼저 남긴다. 2026-10-28 worker 반영은 이 단계 없이 진행돼 직전 이미지가 `latest` 로 덮였고, 롤백 태그는 옛 커밋을 다시 빌드해 사후에 만들어야 했다(아래 「2026-10-28 운영 반영」).
+
+```bash
+cd ~/storige
+# (1) .env 백업 — 값은 출력하지 않는다
+cp .env ".env.bak-pre-<이름>-$(date -u +%Y%m%dT%H%M%SZ)" && chmod 600 .env.bak-pre-<이름>-*
+# (2) 지금 실행 중인 컨테이너의 이미지에 롤백 태그 — latest 가 아니라 inspect 로 얻은 이미지 ID 에 붙인다
+docker tag "$(docker inspect -f '{{.Image}}' storige-api)"    storige-api:rollback-pre-<이름>
+docker tag "$(docker inspect -f '{{.Image}}' storige-worker)" storige-worker:rollback-pre-<이름>
+docker images --format '{{.Repository}}:{{.Tag}} {{.ID}}' | grep 'rollback-pre-<이름>'
+```
+
+- `<이름>` 은 배포 단위 이름과 날짜(예 `sheet-20261017`)로 쓰고, 반영 기록 절에 태그 이름과 이미지 ID 를 적는다.
+- 바꾸지 않는 서비스의 태그는 생략해도 된다(worker 만 배포하면 worker 만).
+- 되돌리기는 `docker tag storige-<서비스>:rollback-pre-<이름> storige-<서비스>:latest` → `docker compose up -d --no-deps --no-build <서비스>`(api 는 nginx 재시작) → `[FLAGS-CHECK] <서비스> ok` 확인이다.
+- 롤백 태그는 다음 배포가 안정된 뒤 정리한다. 2026-10-29 기준 최근 3개 배포 단위의 태그만 남긴다.
+
 ### 1. 빌드
 
 ```bash
@@ -1923,6 +1942,8 @@ npx vitest run src/calendar src/plugins/CalendarPlugin.test.ts   # 데이터·co
   - (b) 코드: `git checkout 93d11eab` → `docker compose build worker` → `docker compose up -d --no-deps worker` → `git checkout master`. 서비스 공백은 worker 재생성 시간만큼이다.
   - (b) 는 2026-10-28 16:08Z 에 미리 준비했다: `93d11eab` 를 별도 worktree 로 받아 빌드한 `storige-worker:rollback-pre-trimbox-20261028`(빌드 캐시 전부 적중 → 2026-10-26 운영 worker 이미지와 동일). 되돌릴 때는 `docker tag storige-worker:rollback-pre-trimbox-20261028 storige-worker:latest` → `docker compose up -d --no-deps --no-build worker` → `[FLAGS-CHECK] worker ok` 확인.
 - api·편집기·관리자·DB 롤백은 필요 없다(무변경).
+- 교훈: 이후 모든 api·worker 배포는 위 「프로덕션 배포 › 0. 되돌릴 기준점」을 먼저 한다.
+- 2026-10-29 06:50Z 관찰 갱신: 반영 뒤 `TRIMBOX_SIZE_BASIS` 결과 3건 — 역전 보정(`boxesSwapped: true`) 2건(그중 230×317 내지 1건 통과, 다른 1건은 쪽수 오류로 FIXABLE), 보정 없는 기준 판정 1건 통과, 무선 표지 재판정 0건. `[TRIMBOX_SIZE_BASIS] rejected reason=trimSizeMismatch` 1건은 주문 판형 210×297 에 재단 148×209.9 파일이 들어온 정당한 `SIZE_MISMATCH` 거부다.
 
 ## 문제 해결
 
