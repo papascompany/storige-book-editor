@@ -43,6 +43,7 @@ const spies = vi.hoisted(() => ({
   deleteLocalBackup: vi.fn(),
   markClean: vi.fn(),
   markServerSynced: vi.fn(),
+  markCompleted: vi.fn(),
   cancel: vi.fn(),
   order: [] as string[],
 }))
@@ -70,6 +71,7 @@ vi.mock('./hooks/useEmbedAutoSave', () => ({
       spies.order.push(`markServerSynced:${n}`)
       spies.markServerSynced(n)
     },
+    markCompleted: spies.markCompleted,
     triggerSave: Object.assign(() => {}, {
       cancel: () => {
         spies.order.push('cancel')

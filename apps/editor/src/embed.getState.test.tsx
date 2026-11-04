@@ -49,6 +49,7 @@ vi.mock('./hooks/useEmbedAutoSave', () => ({
     deleteLocalBackup: vi.fn(),
     markClean: vi.fn(),
     markServerSynced: vi.fn(),
+    markCompleted: vi.fn(),
     triggerSave: Object.assign(() => {}, { cancel: () => {} }),
   }),
 }))

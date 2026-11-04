@@ -895,7 +895,7 @@ function EmbeddedEditor({
   )
 
   // Auto-save hook integration
-  const { saveNow, restoreFromLocal, evaluateRestore, deleteLocalBackup, markClean, markServerSynced, triggerSave } =
+  const { saveNow, restoreFromLocal, evaluateRestore, deleteLocalBackup, markClean, markServerSynced, markCompleted, triggerSave } =
     useEmbedAutoSave({
       sessionId: currentSession?.id || sessionId || null,
       currentSession,
@@ -2587,6 +2587,9 @@ function EmbeddedEditor({
 
           // Then mark as completed
           const completedSession = await editSessionsApi.complete(currentSessionId)
+          // 완료 뒤 사용자 입력 전의 캔버스 이벤트(복원·재배치)가 자동저장(status:'editing')으로
+          // complete 를 되돌리지 않도록 대기 저장 취소 + 가드(useEmbedAutoSave.markCompleted).
+          markCompleted()
           setCurrentSession(completedSession)
 
           // 현재 총 페이지 수(라이브 캔버스 수) — 포토북 페이지 가변 가격 emit 용 (2026-06-24).
@@ -2691,7 +2694,7 @@ function EmbeddedEditor({
         }
       },
     }
-  }, [ready, canvas, sessionId, currentSession, options, onComplete, onCancel, onSave, onError, instanceRef, parentOrigin, readLivePageState])
+  }, [ready, canvas, sessionId, currentSession, options, onComplete, onCancel, onSave, onError, instanceRef, parentOrigin, readLivePageState, markCompleted])
 
   // Loading state handler
   const handleLoadingChange = useCallback((loading: boolean, message?: string) => {
@@ -3047,6 +3050,9 @@ function EmbeddedEditor({
       setFinishProgress({ stage: 'complete' })
       const completedSession = await editSessionsApi.complete(currentSessionId)
       await finishMark('complete:done', { coverFileId: completedSession.coverFileId, contentFileId: completedSession.contentFileId })
+      // 완료 뒤 사용자 입력 전의 캔버스 이벤트(PDF 생성 뒤 복원·재배치)가 자동저장(status:'editing')으로
+      // complete 를 되돌리지 않도록 대기 저장 취소 + 가드(useEmbedAutoSave.markCompleted).
+      markCompleted()
       setCurrentSession(completedSession)
 
       // S2 (2026-07-04): 이 경로(헤더 '편집완료' = 라이브 임베드 실완료 경로)에도 실측
@@ -3124,7 +3130,7 @@ function EmbeddedEditor({
       setFinishProgress(null)
       finishLeaveGuard.disarm()
     }
-  }, [canvas, editor, sessionId, currentSession, options, mode, orderSeqno, onComplete, onError, parentOrigin, markClean, deleteLocalBackup, markServerSynced, finishLeaveGuard])
+  }, [canvas, editor, sessionId, currentSession, options, mode, orderSeqno, onComplete, onError, parentOrigin, markClean, deleteLocalBackup, markServerSynced, markCompleted, finishLeaveGuard])
 
   // 내 작업에 저장 핸들러 - EditorHeader에서 호출됨
   const handleSaveWork = useCallback(async () => {

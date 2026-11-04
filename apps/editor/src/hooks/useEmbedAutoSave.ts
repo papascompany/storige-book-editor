@@ -85,6 +85,12 @@ export function useEmbedAutoSave(config: AutoSaveConfig) {
   // 저장 성공 시 리셋(반영된 편집은 더 이상 언마운트 백업 사유가 아님).
   const userEditedRef = useRef(false)
   const isRestoringRef = useRef(false)
+  // 완료 뒤 시스템 이벤트 가드(2026-11-04): 편집 완료(complete) 성공 직후부터 사용자 입력
+  // (pointerdown/keydown/touchstart)이 한 번이라도 들어올 때까지 true. 이 동안 발화하는
+  // object:added/modified/removed 는 PDF 생성 뒤 복원·재배치가 내는 시스템 이벤트라 dirty 로
+  // 세지 않는다 — 종전엔 이 이벤트가 debounce 자동저장(status:'editing')을 불러 complete 세션을
+  // editing 으로 되돌렸다(운영 실측 2026-11-04). 사용자 입력이 오면 해제돼 재편집 저장은 종전과 같다.
+  const completedAwaitingInputRef = useRef(false)
 
   // App Store
   const canvas = useAppStore((state) => state.canvas)
@@ -376,6 +382,8 @@ export function useEmbedAutoSave(config: AutoSaveConfig) {
     // moldIcon)가 세션 canvasData 에서 영구 누락 — 스킵 대신 생성 완료 후 1회 지연 실행.
     if (isAutosaveSuspended()) {
       deferUntilAutosaveResumed('embedAutoSave.saveToServer', () => {
+        // 보류 중 편집 완료가 끝났고 아직 사용자 입력이 없으면 지연 저장을 버린다(complete 되돌림 방지).
+        if (completedAwaitingInputRef.current) return
         void saveToServerRef.current?.()
       })
       return false
@@ -513,6 +521,8 @@ export function useEmbedAutoSave(config: AutoSaveConfig) {
       // 게이트는 embed 의 isInitializedRef(복원 완료 시점에만 true) — useAppStore.ready 는
       // 캔버스 등록 시점에 이미 true 라 게이트로 무효(AutoSaveConfig.initializedRef 주석 참조).
       if (initializedRef && !initializedRef.current) return
+      // 완료 직후 사용자 입력 전의 캔버스 이벤트는 시스템 발 — dirty·저장 트리거 없음(markCompleted 참조).
+      if (completedAwaitingInputRef.current) return
       // R4: 복원(loadFromJSON) 중 발화한 이벤트는 사용자 편집으로 세지 않는다 —
       // 언마운트 백업은 실제 사용자 편집이 1건 이상일 때만 기록한다(dirty 자체는 현행 유지).
       if (!isRestoringRef.current) userEditedRef.current = true
@@ -532,6 +542,31 @@ export function useEmbedAutoSave(config: AutoSaveConfig) {
       debouncedSave.cancel()
     }
   }, [canvas, markDirty, debouncedSave])
+
+  /**
+   * 완료 뒤 가드 해제 — 실제 사용자 입력이 한 번이라도 오면 캔버스 이벤트를 다시 dirty 로 센다.
+   * capture 단계라 fabric 의 upper-canvas 핸들러보다 먼저 플래그가 내려간다(같은 제스처의 편집도 저장 대상).
+   */
+  useEffect(() => {
+    const release = () => {
+      completedAwaitingInputRef.current = false
+    }
+    const events: Array<keyof WindowEventMap> = ['pointerdown', 'keydown', 'touchstart']
+    for (const type of events) window.addEventListener(type, release, true)
+    return () => {
+      for (const type of events) window.removeEventListener(type, release, true)
+    }
+  }, [])
+
+  /**
+   * 편집 완료(complete) 성공 직후 호출 — 대기 중 debounce 저장 취소 + clean 마킹 + 시스템 이벤트 가드 설정.
+   * 가드는 사용자 입력(pointerdown/keydown/touchstart)이 오면 자동 해제된다.
+   */
+  const markCompleted = useCallback(() => {
+    debouncedSave.cancel()
+    markClean()
+    completedAwaitingInputRef.current = true
+  }, [debouncedSave, markClean])
 
   /**
    * 네트워크 상태 감지
@@ -702,6 +737,7 @@ export function useEmbedAutoSave(config: AutoSaveConfig) {
     markDirty,
     markClean,
     markServerSynced,
+    markCompleted,
 
     // Trigger debounced save on change
     triggerSave: debouncedSave,
