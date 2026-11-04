@@ -2154,6 +2154,98 @@ describe('PdfValidatorService', () => {
 
       expect(detectFonts).toHaveBeenCalled();
     });
+
+    // ── 2026-11-04: 편집기 산출 파일(orderOptions.source='editor')의 PDF 표준 14폰트 제외 ──
+    describe("편집기 산출 파일(source='editor')의 표준 14폰트 미임베드 제외", () => {
+      const STANDARD_14 = [
+        'Helvetica', 'Helvetica-Bold', 'Helvetica-Oblique', 'Helvetica-BoldOblique',
+        'Courier', 'Courier-Bold', 'Courier-Oblique', 'Courier-BoldOblique',
+        'Times-Roman', 'Times-Bold', 'Times-Italic', 'Times-BoldItalic',
+        'Symbol', 'ZapfDingbats',
+      ];
+
+      // 4페이지 무선제본 + 정사이즈 → 폰트 경고 외 차단 사유 없음(위 첫 케이스와 같은 전제)
+      const makeA4 = async () => {
+        const pdfBytes = await PDFDocument.create().then((doc) => {
+          for (let i = 0; i < 4; i++) doc.addPage([210 * 2.83465, 297 * 2.83465]);
+          return doc.save();
+        });
+        mockedFs.readFile.mockResolvedValue(Buffer.from(pdfBytes));
+      };
+      const optionsWith = (source?: 'editor'): ValidationOptions => ({
+        fileType: 'content',
+        orderOptions: {
+          size: { width: 210, height: 297 },
+          pages: 4,
+          binding: 'perfect',
+          bleed: 0,
+          ...(source ? { source } : {}),
+        },
+      });
+      const fontsOf = (unembedded: string[]) => ({
+        fontCount: unembedded.length,
+        fonts: unembedded.map((name) => ({ name, type: 'Type1', embedded: false, subset: false })),
+        hasUnembeddedFonts: unembedded.length > 0,
+        unembeddedFonts: unembedded,
+        allFontsEmbedded: unembedded.length === 0,
+      });
+
+      it("source='editor' + 표준 14폰트만 미임베드 → FONT_NOT_EMBEDDED 없음, metadata.ignoredStandardFonts 에 14종 기록", async () => {
+        await makeA4();
+        detectFonts.mockResolvedValueOnce(fontsOf(STANDARD_14));
+
+        const result = await service.validate('./editor.pdf', optionsWith('editor'));
+
+        expect(result.warnings.find((w) => w.code === WarningCode.FONT_NOT_EMBEDDED)).toBeUndefined();
+        expect(result.metadata.hasUnembeddedFonts).toBe(false);
+        expect(result.metadata.unembeddedFonts).toEqual([]);
+        expect(result.metadata.ignoredStandardFonts).toEqual(STANDARD_14);
+        expect(result.metadata.fontCount).toBe(14);
+        expect(result.isValid).toBe(true);
+      });
+
+      it("source='editor' + 표준 폰트와 실제 미임베드 폰트 혼재 → 경고는 비표준 폰트만, 표준은 ignoredStandardFonts", async () => {
+        await makeA4();
+        detectFonts.mockResolvedValueOnce(fontsOf(['Helvetica', 'NanumGothic', 'Times-Bold']));
+
+        const result = await service.validate('./editor.pdf', optionsWith('editor'));
+
+        const w = result.warnings.find((x) => x.code === WarningCode.FONT_NOT_EMBEDDED);
+        expect(w).toBeDefined();
+        expect(w?.details?.unembeddedFonts).toEqual(['NanumGothic']);
+        expect(w?.message).toContain('1개');
+        expect(w?.message).not.toContain('Helvetica');
+        expect(result.metadata.hasUnembeddedFonts).toBe(true);
+        expect(result.metadata.unembeddedFonts).toEqual(['NanumGothic']);
+        expect(result.metadata.ignoredStandardFonts).toEqual(['Helvetica', 'Times-Bold']);
+      });
+
+      it("source='editor' 여도 변형 이름(Arial·TimesNewRomanPSMT)은 제외 대상이 아니다 — 종전대로 경고", async () => {
+        await makeA4();
+        detectFonts.mockResolvedValueOnce(fontsOf(['Arial', 'TimesNewRomanPSMT']));
+
+        const result = await service.validate('./editor.pdf', optionsWith('editor'));
+
+        const w = result.warnings.find((x) => x.code === WarningCode.FONT_NOT_EMBEDDED);
+        expect(w?.details?.unembeddedFonts).toEqual(['Arial', 'TimesNewRomanPSMT']);
+        expect(result.metadata).not.toHaveProperty('ignoredStandardFonts');
+      });
+
+      it('source 미제공(고객 업로드) + 표준 14폰트 미임베드 → 종전대로 FONT_NOT_EMBEDDED 경고, ignoredStandardFonts 없음', async () => {
+        await makeA4();
+        detectFonts.mockResolvedValueOnce(fontsOf(['Helvetica', 'Helvetica-Bold']));
+
+        const result = await service.validate('./upload.pdf', optionsWith());
+
+        const w = result.warnings.find((x) => x.code === WarningCode.FONT_NOT_EMBEDDED);
+        expect(w).toBeDefined();
+        expect(w?.details?.unembeddedFonts).toEqual(['Helvetica', 'Helvetica-Bold']);
+        expect(result.metadata.hasUnembeddedFonts).toBe(true);
+        expect(result.metadata.unembeddedFonts).toEqual(['Helvetica', 'Helvetica-Bold']);
+        expect(result.metadata).not.toHaveProperty('ignoredStandardFonts');
+        expect(result.isValid).toBe(true); // 비차단 경고(종전과 같음)
+      });
+    });
   });
 
   // ============================================================

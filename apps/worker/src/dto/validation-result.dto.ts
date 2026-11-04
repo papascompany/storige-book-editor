@@ -195,6 +195,11 @@ export interface PdfMetadata {
   /** 임베딩되지 않은 폰트 이름 목록 */
   unembeddedFonts?: string[];
   /**
+   * 2026-11-04: 편집기 산출 파일(`orderOptions.source:'editor'`)에서 경고 대상에서 제외한 PDF 표준 14폰트
+   * 목록 — 제외한 것이 있을 때만 기록. `unembeddedFonts`·`hasUnembeddedFonts` 는 제외 후 값이다.
+   */
+  ignoredStandardFonts?: string[];
+  /**
    * C-2a: 첫 페이지 TrimBox 크기(mm, 소수1자리) — TrimBox 명시 선언 시에만 기록.
    * X1: crop mark 검증 수행 시 + TrimBox 기준 판형 통과(TRIMBOX_SIZE_BASIS) 시 기록.
    */
@@ -340,6 +345,14 @@ export interface ValidationOptions {
      * (후가공 파일은 선·라운드·면적·투명 객체가 정상 입력).
      */
     postProcessColorRule?: 'any' | 'spot-only';
+    /**
+     * 2026-11-04(additive): 입력 파일 출처. `'editor'` = 편집기 산출 PDF(API 가 파일 metadata
+     * `generatedBy:'editor'` 로 스탬프). 이 값일 때만 PDF 표준 14폰트(Helvetica·Courier·Times 각 4종,
+     * Symbol, ZapfDingbats — 편집기 PDF 라이브러리가 모든 문서에 넣는 미임베드 기본 폰트)를
+     * FONT_NOT_EMBEDDED 경고에서 제외하고 `metadata.ignoredStandardFonts` 에 남긴다.
+     * 미제공(고객 업로드) = 종전 동작(표준 폰트도 경고).
+     */
+    source?: 'editor';
   };
   /** 최대 허용 파일 크기 (bytes) */
   maxFileSize?: number;

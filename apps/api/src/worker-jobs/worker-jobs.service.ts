@@ -858,10 +858,12 @@ export class WorkerJobsService implements OnModuleInit {
     // fileId로 파일 경로 조회
     let fileUrl = createValidationJobDto.fileUrl;
     let fileId = createValidationJobDto.fileId;
+    let editorGeneratedFile = false;
 
     if (fileId) {
       const file = await this.filesService.findById(fileId);
       fileUrl = this.toWorkerInputUrl(file); // s3 백엔드면 api://<id> 마커, local 은 filePath
+      editorGeneratedFile = file?.metadata?.generatedBy === 'editor';
     }
 
     // site default 머지 (호출자 명시값 보존)
@@ -870,6 +872,13 @@ export class WorkerJobsService implements OnModuleInit {
       internal?.skipSiteWorkerDefaults ? undefined : createValidationJobDto.siteId,
       createValidationJobDto.orderOptions,
     );
+
+    // 2026-11-04 ADDITIVE: 편집기 산출 파일 표식 `source:'editor'` — 서버 전유 스탬프(호출자 값은 소독).
+    // 근거는 파일 metadata.generatedBy==='editor' 뿐이다(fileUrl 직접 전달·고객 업로드 = 키 없음).
+    // 워커는 이 값이 있을 때만 PDF 표준 14폰트(편집기 PDF 라이브러리가 모든 문서에 넣는 미임베드
+    // 기본 폰트)를 FONT_NOT_EMBEDDED 경고에서 제외한다. 그 밖의 검증 동작에는 쓰이지 않는다.
+    delete orderOptions.source;
+    if (editorGeneratedFile) orderOptions.source = 'editor';
 
     // 표지 잡은 서버가 spine 을 재계산해 덮어씀(fail-closed).
     await this.injectServerSpine(createValidationJobDto.fileType, orderOptions);

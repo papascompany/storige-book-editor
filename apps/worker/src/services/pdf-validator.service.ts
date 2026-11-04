@@ -97,6 +97,47 @@ interface CoverTrimBasisInput {
   pageCount: number;
 }
 
+/**
+ * PDF 표준 14폰트(Standard 14) — 뷰어·RIP 이 자체 보유해 임베드 없이도 렌더가 보장되는 기본 폰트.
+ * 편집기 PDF 라이브러리(jsPDF)가 모든 문서에 리소스로 넣으므로 편집기 산출물에서는 치환 위험 신호가 아니다.
+ * ⚠️ 정확 일치만(Arial·TimesNewRoman 등 변형 이름은 제외 대상이 아님 — 고객 업로드 규칙과 혼동 금지).
+ */
+const PDF_STANDARD_14_FONTS: ReadonlySet<string> = new Set([
+  'Helvetica',
+  'Helvetica-Bold',
+  'Helvetica-Oblique',
+  'Helvetica-BoldOblique',
+  'Courier',
+  'Courier-Bold',
+  'Courier-Oblique',
+  'Courier-BoldOblique',
+  'Times-Roman',
+  'Times-Bold',
+  'Times-Italic',
+  'Times-BoldItalic',
+  'Symbol',
+  'ZapfDingbats',
+]);
+
+/**
+ * 미임베드 폰트 목록을 (경고 대상, 제외한 표준 14폰트) 로 나눈다 — `source==='editor'` 일 때만 분리하고,
+ * 그 밖(고객 업로드·미제공)은 입력을 그대로 경고 대상으로 돌려준다(종전 동작). 서브셋 접두(ABCDEF+)는
+ * 임베드 폰트에만 붙지만 방어적으로 떼고 비교한다.
+ */
+export function splitEditorStandardFonts(
+  unembeddedFonts: readonly string[],
+  source: 'editor' | undefined,
+): { unembeddedFonts: string[]; ignoredStandardFonts: string[] } {
+  if (source !== 'editor') return { unembeddedFonts: [...unembeddedFonts], ignoredStandardFonts: [] };
+  const kept: string[] = [];
+  const ignored: string[] = [];
+  for (const name of unembeddedFonts) {
+    const base = name.replace(/^[A-Z]{6}\+/, '');
+    (PDF_STANDARD_14_FONTS.has(base) ? ignored : kept).push(name);
+  }
+  return { unembeddedFonts: kept, ignoredStandardFonts: ignored };
+}
+
 @Injectable()
 export class PdfValidatorService {
   private readonly logger = new Logger(PdfValidatorService.name);
@@ -551,12 +592,23 @@ export class PdfValidatorService {
     // 동일한 FontDetectionResult 형태로 들어오며 실패 시 안전기본값이라 별도 가드가 없다.
     // 임베딩되지 않은 폰트는 인쇄소에서 글꼴 누락/치환을 유발하므로 비차단 경고로
     // 노출한다(기존 통과/에러 동작은 변경하지 않음).
+    // 2026-11-04: 편집기 산출 파일(orderOptions.source==='editor')은 PDF 표준 14폰트의 미임베드를 경고에서
+    // 제외한다 — 편집기 PDF 라이브러리가 모든 문서에 기본으로 넣는 폰트라 실제 치환 위험이 없는데도
+    // 최근 30일 FONT_NOT_EMBEDDED 경고 전부가 이 목록뿐이었다(운영 실측). 고객 업로드(source 없음)는 종전 그대로.
+    const { unembeddedFonts: effectiveUnembedded, ignoredStandardFonts } =
+      splitEditorStandardFonts(fontResult.unembeddedFonts, options.orderOptions.source);
     metadata.fontCount = fontResult.fontCount;
-    metadata.hasUnembeddedFonts = fontResult.hasUnembeddedFonts;
-    metadata.unembeddedFonts = fontResult.unembeddedFonts;
+    metadata.hasUnembeddedFonts = effectiveUnembedded.length > 0;
+    metadata.unembeddedFonts = effectiveUnembedded;
+    if (ignoredStandardFonts.length > 0) {
+      metadata.ignoredStandardFonts = ignoredStandardFonts;
+      this.logger.debug(
+        `Standard-14 unembedded fonts ignored for editor output: ${ignoredStandardFonts.join(', ')}`,
+      );
+    }
 
-    if (fontResult.hasUnembeddedFonts) {
-      const unembeddedFonts = fontResult.unembeddedFonts;
+    if (effectiveUnembedded.length > 0) {
+      const unembeddedFonts = effectiveUnembedded;
       this.logger.debug(
         `Unembedded fonts detected: ${unembeddedFonts.join(', ')}`,
       );

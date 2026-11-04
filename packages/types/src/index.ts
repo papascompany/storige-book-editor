@@ -1036,6 +1036,8 @@ export interface WorkerPdfMetadata {
   hasUnembeddedFonts?: boolean;
   /** 임베딩되지 않은 폰트 이름 목록 */
   unembeddedFonts?: string[];
+  /** 2026-11-04: 편집기 산출 파일에서 경고 대상에서 제외한 PDF 표준 14폰트 — 제외한 것이 있을 때만 기록 (additive) */
+  ignoredStandardFonts?: string[];
   /** C-2a: 첫 페이지 TrimBox 크기(mm, 소수1자리) — TrimBox 명시 선언 시에만 기록 */
   trimBox?: { width: number; height: number };
   /** C-2a: 재단 기하(TrimBox) 명시 선언 여부 — crop mark 검증 수행 시에만 기록 */

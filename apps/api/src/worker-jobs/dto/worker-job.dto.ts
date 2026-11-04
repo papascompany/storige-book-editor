@@ -117,6 +117,13 @@ export class CreateValidationJobDto {
      * CMYK 사용을 오류로 본다. 미전송 = 'any'(오류·경고 없음 — 후가공 파일은 선·면적·투명 객체가 정상 입력).
      */
     postProcessColorRule?: 'any' | 'spot-only';
+    /**
+     * 2026-11-04 ADDITIVE(서버 전유 스탬프 — 호출자 값은 소독): 입력 파일이 편집기 산출물(파일 metadata
+     * `generatedBy:'editor'`)이면 서버가 `'editor'` 를 싣는다. 워커는 이 값이 있을 때만 PDF 표준 14폰트의
+     * 미임베드를 FONT_NOT_EMBEDDED 경고에서 제외한다(`metadata.ignoredStandardFonts` 에 기록). 고객 업로드·
+     * `fileUrl` 직접 전달 = 키 없음 = 종전 동작.
+     */
+    source?: 'editor';
   };
 
   @ApiPropertyOptional({

@@ -85,6 +85,8 @@ interface ValidationJobData {
     coverSpine?: 'none';
     /** 2026-10-17(낱장 분류 검증): 후가공 파일 색 규칙. 'spot-only'=CMYK 사용 시 오류. 미제공='any'(오류·경고 없음). */
     postProcessColorRule?: 'any' | 'spot-only';
+    /** 2026-11-04: 입력 파일 출처('editor'=편집기 산출 — 표준 14폰트 미임베드 경고 제외). 미제공=종전. */
+    source?: 'editor';
   };
 }
 
