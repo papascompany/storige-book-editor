@@ -1275,6 +1275,69 @@ describe('EditSessionsService', () => {
           else process.env.EDITOR_SPREAD_VALIDATION_MAPPING = original;
         }
       });
+
+      // ── 2026-11-04: 재단선 세트의 content 잡 trimSize/workSize 도 펼침면 기준 ──
+      // 종전엔 size 만 420×210 이고 trimSize 210×210·workSize 216×216(한 면)이라 펼침면 TrimBox 가
+      // TRIMBOX_SIZE_MISMATCH(비차단) 경고를 받았다. 표지 잡은 한 면 판형 그대로다.
+      describe('재단선 세트(cropMarkEnabled) — content 잡 trimSize/workSize 펼침면 정합', () => {
+        const withCropTrim = (width: number, height: number, bleedMm = 3): void => {
+          mockTemplateSetsService.findOne = jest.fn().mockResolvedValue({
+            width,
+            height,
+            cropMarkEnabled: true,
+            bleedMm,
+            sizeToleranceMm: 0.2,
+          });
+        };
+
+        it('정사각 210×210 세트: content size·trimSize 420×210, workSize 426×216 / 표지 잡은 210×210·216×216', async () => {
+          withCropTrim(210, 210, 3);
+          withDetails([COVER_SPREAD, innerSpread(210, 210)]);
+          await call(withCover());
+          expect(optsFor('content')).toMatchObject({
+            size: { width: 420, height: 210 },
+            trimSize: { width: 420, height: 210 },
+            workSize: { width: 426, height: 216 },
+            bleedMm: 3,
+            cropMarkEnabled: true,
+            expectedOrientation: 'landscape',
+          });
+          expect(optsFor('cover')).toMatchObject({
+            size: { width: 210, height: 210 },
+            trimSize: { width: 210, height: 210 },
+            workSize: { width: 216, height: 216 },
+          });
+          expect(optsFor('cover')).not.toHaveProperty('expectedOrientation');
+        });
+
+        it('세로 판형 A4 세트(도련 2mm): content trimSize 420×297, workSize 424×301', async () => {
+          withCropTrim(210, 297, 2);
+          withDetails([innerSpread(210, 297), PAGE]);
+          await call(withCover());
+          expect(optsFor('content')).toMatchObject({
+            size: { width: 420, height: 297 },
+            trimSize: { width: 420, height: 297 },
+            workSize: { width: 424, height: 301 },
+            expectedOrientation: 'landscape',
+          });
+          expect(optsFor('cover')).toMatchObject({
+            size: { width: 210, height: 297 },
+            trimSize: { width: 210, height: 297 },
+            workSize: { width: 214, height: 301 },
+            expectedOrientation: 'portrait',
+          });
+        });
+
+        it('재단선 세트가 아니면(trimSize 미주입) content 에 trimSize/workSize 를 새로 만들지 않는다 — 종전 동일', async () => {
+          withTrim(210, 210); // cropMarkEnabled:false
+          withDetails([COVER_SPREAD, innerSpread(210, 210)]);
+          await call(withCover());
+          expect(optsFor('content').size).toEqual({ width: 420, height: 210 });
+          expect(optsFor('content')).not.toHaveProperty('trimSize');
+          expect(optsFor('content')).not.toHaveProperty('workSize');
+          expect(optsFor('content')).not.toHaveProperty('bleedMm');
+        });
+      });
     });
   });
 

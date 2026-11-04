@@ -2525,12 +2525,22 @@ export class EditSessionsService {
       // ORIENTATION_MISMATCH 경고로 집계된다. 표지 잡(coverOrderOptions)은 건드리지 않는다 —
       // [표지 spread → 내지 spread] 결합 세트의 표지 기대 크기·방향은 판형 기준 그대로.
       // R-195 플래그(EDITOR_SPREAD_VALIDATION_MAPPING)와 무관하게 적용(overrides.content 에 size 키 없음).
+      // 2026-11-04: 재단선 세트(위 cropMarkEnabled 게이트가 trimSize/workSize 를 한 면 판형으로 실은 경우)는
+      // 재단·작업 사이즈도 펼침면 기준(2W×H, (2W+2b)×(H+2b))으로 함께 바꾼다 — content.pdf 의 TrimBox 가
+      // 펼침면이라 한 면 trimSize 와 비교하면 정상 산출물이 TRIMBOX_SIZE_MISMATCH(비차단) 경고를 받았다
+      // (운영 실측 2026-11-04). 표지 잡·워커 비교 로직·pageMultiple 산식은 바꾸지 않는다.
       if (innerLayout.kind === 'inner-spread') {
         const { width: iw, height: ih } = innerLayout.size;
+        const spreadTrimMm = contentOrderOptions.trimSize ? { width: iw, height: ih } : undefined;
+        const spreadBleedMm = contentOrderOptions.bleedMm;
         contentOrderOptions = {
           ...contentOrderOptions,
           size: { width: iw, height: ih },
           expectedOrientation: iw > ih ? 'landscape' : 'portrait',
+          ...(spreadTrimMm ? { trimSize: spreadTrimMm } : {}),
+          ...(spreadTrimMm && typeof spreadBleedMm === 'number'
+            ? { workSize: { width: iw + spreadBleedMm * 2, height: ih + spreadBleedMm * 2 } }
+            : {}),
         };
       }
 
