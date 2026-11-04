@@ -1947,6 +1947,29 @@ npx vitest run src/calendar src/plugins/CalendarPlugin.test.ts   # 데이터·co
 
 ## 문제 해결
 
+
+### 2026-11-04 운영 반영 — 편집 완료 뒤 상태 유지·펼침면 내지 검증 치수 정합·편집기 PDF 표준 14폰트 경고 제외 (editor·api·worker, CONTRACT v1.31)
+
+> master `b805c460` → `6ab73407`(PR #19 fast-forward, 4커밋). 세 변경 모두 ADDITIVE·비차단이며 라우트·DTO 응답·이벤트는 바뀌지 않았다. 시각은 UTC.
+
+**범위**
+- editor — 편집 완료 성공 직후 대기 중인 자동저장을 취소하고, 사용자 입력(pointerdown/keydown/touchstart) 전의 캔버스 이벤트(PDF 생성 뒤 복원·재배치)는 자동저장 트리거에서 제외한다. 종전에는 이 이벤트가 `status:'editing'` 저장을 불러 완료된 세션이 editing 으로 되돌아갔다(런처 세션 운영 실측 2026-11-04). 재편집 저장은 종전과 같다.
+- api — 내지 펼침면 세트의 완료 검증 content 잡 `orderOptions.trimSize`·`workSize` 를 펼침면 기준(2W×H, (2W+2b)×(H+2b))으로 `size` 와 일관되게 싣는다(정상 산출물의 `TRIMBOX_SIZE_MISMATCH` 비차단 경고 해소). 검증 잡 생성 시 `fileId` 파일이 편집기 산출(`metadata.generatedBy:'editor'`)이면 `orderOptions.source:'editor'` 를 서버 스탬프로 싣는다(호출자 값은 소독).
+- worker — `orderOptions.source==='editor'` 일 때만 PDF 표준 14폰트의 미임베드를 `FONT_NOT_EMBEDDED` 경고에서 제외하고 `metadata.ignoredStandardFonts` 에 기록한다(최근 30일 경고 13건 전부 이 목록뿐이었다). 고객 업로드 PDF 는 종전 그대로.
+- 마이그레이션 0, `.env` 변경 0(FLAGS 토큰 수 api 18·worker 9 그대로).
+
+**편집기·관리자(Vercel)**
+- master push 14:23:01Z → production success(editor·admin). 의존성 변경 0.
+
+**api·worker(VPS, `deploy@<VPS_HOST>`, `~/storige`)**
+- 0단계: `.env` 백업 `.env.bak-pre-fix3-20261104T142017Z`(600), 롤백 태그 `storige-api:rollback-pre-fix3-20261104`(= 종전 latest `6c24f0eff6f4`)·`storige-worker:rollback-pre-fix3-20261104`(= `95ae359738f1`).
+- 반영: `git pull --ff-only origin master`(14:23:26Z, `6ab73407`) → `docker compose build worker api`(14:23:28Z~, 약 1분 30초) → `docker compose up -d --no-deps worker`(14:24:56Z) → `docker compose up -d --no-deps api` → `docker compose restart nginx`.
+- 기동 확인: `[FLAGS-CHECK] api ok n=18`·`[FLAGS-CHECK] worker ok n=9`, health 200(내부·공개), api·worker error/fatal 0, OpenAPI 33 paths(전후 동일), nginx 5xx 0, 편집기 루트 렌더·콘솔 오류 0. mariadb 재생성 없음(`--no-deps`).
+
+**롤백**
+1. `docker tag storige-api:rollback-pre-fix3-20261104 storige-api:latest`(worker 도 같은 방식) → `docker compose up -d --no-deps --no-build api worker` → `docker compose restart nginx` → `[FLAGS-CHECK]` 두 줄 ok 확인.
+2. 편집기·관리자: Vercel 직전 Production(`b805c460`, 번들은 `93d11eab` 과 동일) promote.
+3. `.env` 는 변경이 없어 복원 불요. DB 롤백 불요.
 ### 1. 컨테이너가 시작되지 않음
 
 ```bash
