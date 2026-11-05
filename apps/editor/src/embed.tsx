@@ -24,6 +24,7 @@ import axios from 'axios'
 import { createRoot, Root } from 'react-dom/client'
 import { useAppStore } from './stores/useAppStore'
 import { rebindFrameInteractivity } from './utils/frameInteractive'
+import { normalizeRestoredFonts } from './utils/fontRestore'
 import { applyObjectPermissions, applyCoverMaterialLock } from './utils/objectPermissions'
 import { trackRequiredEdits, collectUneditedRequiredForCustomer } from './utils/requiredEditGate'
 import { getPageStepBlockMessage } from './utils/pageStepGuard'
@@ -1905,6 +1906,9 @@ function EmbeddedEditor({
             for (let i = 0; i < saved.length && i < canvases.length; i++) {
               const lapEnd = loadProfile.lapStart('restore:page')
               if (saved[i]) await core.loadFromJSON(canvases[i], saved[i])
+              // 미등록 폰트 → 기본 폰트 정규화 — core.loadFromJSON 은 FontPlugin 을 거치지 않으므로
+              // 복원 직후 화면 폰트를 PDF 출력(기본 폰트 벡터화)과 맞춘다(utils/fontRestore 참조).
+              normalizeRestoredFonts(allEditors[i], canvases[i])
               // 복원 직후 사진틀 인터랙션 재바인딩 (핸들러는 직렬화 안 됨 → 미재바인딩 시 채우기 불능).
               rebindFrameInteractivity(allEditors[i], canvases[i])
               // P1 캘린더: 캘린더 세트면 calendar-grid 재합성(프로파일 null 이면 즉시 0, no-op).
@@ -1932,6 +1936,8 @@ function EmbeddedEditor({
             // 단일 캔버스 (legacy 및 cover 전용 세션)
             await core.loadFromJSON(fabricCanvas, saved)
             const singleIdx = Math.max(0, canvases.indexOf(fabricCanvas))
+            // 미등록 폰트 → 기본 폰트 정규화 (멀티페이지 분기와 동일 사유)
+            normalizeRestoredFonts(allEditors[singleIdx], fabricCanvas)
             rebindFrameInteractivity(allEditors[singleIdx], fabricCanvas)
             // P1 캘린더: 캘린더 세트면 calendar-grid 재합성(프로파일 null 이면 즉시 0, no-op).
             void rehydrateCalendarGrids(allEditors[singleIdx], fabricCanvas, singleIdx)

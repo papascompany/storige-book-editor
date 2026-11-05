@@ -5,6 +5,7 @@ import { useSaveStore } from '@/stores/useSaveStore'
 import { editSessionsApi, type EditSessionResponse } from '@/api/edit-sessions'
 import { core } from '@storige/canvas-core'
 import { rebindFrameInteractivity } from '@/utils/frameInteractive'
+import { normalizeRestoredFonts } from '@/utils/fontRestore'
 import { rehydrateCalendarGrids } from '@/utils/calendarRehydrate'
 import { calendarSessionMetadataFields } from '@/utils/calendarRehydrateAll'
 import { rehydratePhotoPrint } from '@/utils/photoPrintRehydrate'
@@ -279,6 +280,8 @@ export function useEmbedAutoSave(config: AutoSaveConfig) {
         for (let i = 0; i < saved.length && i < canvases.length; i++) {
           if (saved[i]) {
             await core.loadFromJSON(canvases[i], saved[i])
+            // 미등록 폰트 → 기본 폰트 정규화 (embed 세션 복원과 동일 — utils/fontRestore 참조)
+            normalizeRestoredFonts(editors[i], canvases[i])
             restored++
           }
           // 복원 직후 사진틀 인터랙션 재바인딩 (핸들러 미직렬화 → 미재바인딩 시 채우기 불능).
@@ -331,6 +334,7 @@ export function useEmbedAutoSave(config: AutoSaveConfig) {
         await core.loadFromJSON(canvas, saved)
         const canvases = useAppStore.getState().allCanvas
         const editors = useAppStore.getState().allEditors || []
+        normalizeRestoredFonts(editors[Math.max(0, canvases.indexOf(canvas))], canvas)
         rebindFrameInteractivity(editors[Math.max(0, canvases.indexOf(canvas))], canvas)
         // P1 캘린더: 캘린더 세트면 calendar-grid 재합성(프로파일 null 이면 즉시 0, no-op).
         void rehydrateCalendarGrids(editors[Math.max(0, canvases.indexOf(canvas))], canvas, Math.max(0, canvases.indexOf(canvas)))

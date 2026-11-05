@@ -357,6 +357,69 @@ class FontPlugin extends PluginBase {
     }))
   }
 
+  /**
+   * 캔버스에 이미 올라온 텍스트 객체의 미등록 폰트를 기본 폰트로 정규화한다(복원 경로용).
+   *
+   * 세션 복원(`core.loadFromJSON`, 임베드 세션·로컬 백업)은 ServicePlugin.loadJSON 의
+   * beforeLoad/afterLoad 를 거치지 않아 applyFontToObject 가 호출되지 않는다 — 저장본의
+   * 'Times New Roman' 등이 화면에 브라우저 대체 글꼴로 그대로 남고, PDF 저장 시점에야
+   * 기본 폰트로 벡터화돼 화면과 출력이 달라진다. 복원 직후 이 메서드를 호출해 객체의
+   * 기본 fontFamily 와 styles 의 문자별 fontFamily 를 같은 규칙으로 맞춘다(WYSIWYG).
+   *
+   * 그룹은 재귀 처리한다. 변경이 있으면 치수 재계산 뒤 렌더를 요청하고 변경 객체 수를 돌려준다.
+   * 대체 이벤트(fontSubstituted)는 resolveFontFamily 가 요청 패밀리당 1회 발행한다.
+   */
+  public normalizeCanvasFonts(canvas: fabric.Canvas = this._canvas): number {
+    if (!canvas || typeof canvas.getObjects !== 'function') return 0
+    let changed = 0
+
+    const visit = (obj: fabric.Object): void => {
+      const anyObj = obj as fabric.Object & {
+        fontFamily?: string
+        styles?: Record<string, Record<string, { fontFamily?: string }>>
+        _objects?: fabric.Object[]
+      }
+      if (obj.type === 'text' || obj.type === 'i-text' || obj.type === 'textbox') {
+        let touched = false
+        if (typeof anyObj.fontFamily === 'string' && anyObj.fontFamily) {
+          const r = this.resolveFontFamily(anyObj.fontFamily)
+          if (r.substituted) {
+            obj.set('fontFamily', r.family)
+            touched = true
+          }
+        }
+        const styles = anyObj.styles
+        if (styles && typeof styles === 'object') {
+          for (const line of Object.values(styles)) {
+            if (!line || typeof line !== 'object') continue
+            for (const charStyle of Object.values(line)) {
+              if (!charStyle || typeof charStyle.fontFamily !== 'string' || !charStyle.fontFamily) continue
+              const r = this.resolveFontFamily(charStyle.fontFamily)
+              if (r.substituted) {
+                charStyle.fontFamily = r.family
+                touched = true
+              }
+            }
+          }
+        }
+        if (touched) {
+          const t = obj as fabric.Text
+          if (typeof t.initDimensions === 'function') t.initDimensions()
+          obj.dirty = true
+          obj.setCoords()
+          changed += 1
+        }
+      }
+      if (Array.isArray(anyObj._objects)) {
+        anyObj._objects.forEach(visit)
+      }
+    }
+
+    canvas.getObjects().forEach(visit)
+    if (changed > 0) canvas.requestRenderAll()
+    return changed
+  }
+
   private noteSubstitution(resolution: FontFamilyResolution): void {
     const key = resolution.primary || resolution.requested
     if (this.substitutions.has(key)) return
