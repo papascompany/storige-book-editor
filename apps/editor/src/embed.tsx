@@ -37,7 +37,7 @@ import { useEmbedAutoSave } from './hooks/useEmbedAutoSave'
 import { useEmbedBackGuard } from './hooks/useEmbedBackGuard'
 import { useCanvasContainerSizeSync } from './hooks/useCanvasContainerSizeSync'
 import { useSnapSettingsSync } from './hooks/useSnapSettingsSync'
-import { useObjectOutOfTrimToast, useSafeZoneWarningToast, useImageLowDpiToast } from './hooks/useCoverRegion'
+import { useObjectOutOfTrimToast, useSafeZoneWarningToast, useImageLowDpiToast, useFontSubstitutionToast } from './hooks/useCoverRegion'
 import { createCanvas, safeDisposeCanvas, CanvasInitCancelledError } from './utils/createCanvas'
 import { buildSpreadSnapshots } from './utils/buildSpreadSnapshots'
 import {
@@ -886,6 +886,8 @@ function EmbeddedEditor({
   }, [isPhotoPrintSet, photoPrintCanvases])
   // R8: 배치 이미지 유효 DPI(<150) 경고 toast — EditorView 와 대칭 배선 (embed 누락=F4 사고 전례)
   useImageLowDpiToast(ready)
+  // 미등록 폰트 → 기본 폰트 대체 안내 toast — EditorView 와 대칭 배선 (FontPlugin fontSubstituted 이벤트 브리지)
+  useFontSubstitutionToast(ready)
 
   const { loadEmptyEditor, loadTemplateSetEditor } = useEditorContents()
 

@@ -6,6 +6,19 @@ import { parseColorValue } from '../utils'
 import { convertSvgTextToPath, OpenTypeFontResolver } from '../converters/svgTextToPath'
 import { validateTextGlyphs as validateGlyphs } from '../converters/validateGlyphs'
 import { dlog, dwarn } from '../utils/debugLog'
+import { resolveFontFamily, type FontFamilyResolution } from './fontFamilyResolve'
+
+/**
+ * 미등록 폰트 패밀리가 기본 폰트로 대체될 때 Editor 로 발행되는 이벤트 payload.
+ * 같은 요청 패밀리에 대해 FontPlugin 인스턴스당 1회만 발행한다(편집기 토스트용).
+ */
+export interface FontSubstitutedEvent {
+  /** 객체·JSON 에 적혀 있던 원문 패밀리(첫 항목, 따옴표 제거) */
+  requested: string
+  /** 실제로 적용·출력되는 기본 폰트 */
+  applied: string
+}
+export const FONT_SUBSTITUTED_EVENT = 'fontSubstituted'
 
 // FontSource 인터페이스 정의 (src 사용)
 interface FontSource {
@@ -116,6 +129,11 @@ class FontPlugin extends PluginBase {
   // 파싱된 opentype.Font 캐시 — 아웃라인(getPath) 시 TTF buffer 재파싱 비용 제거.
   // 키: 폰트패밀리(요청 원본 이름). PDF 저장에서 같은 폰트 텍스트가 여럿이어도 1회만 파싱.
   private opentypeFontCache = new Map<string, any>()
+  // 기본 폰트(생성자 인자) — 미등록 패밀리의 대체 대상(fontFamilyResolve 참조).
+  private defaultFontName = ''
+  // 기본 폰트로 대체된 요청 패밀리 → 적용 폰트. 이벤트는 패밀리당 1회만 발행하고,
+  // 늦게 구독하는 편집기(ready 이후)가 지난 대체 내역을 재생할 수 있게 보관한다.
+  private substitutions = new Map<string, string>()
 
   constructor(
     canvas: fabric.Canvas,
@@ -128,6 +146,7 @@ class FontPlugin extends PluginBase {
 
     // woff2ToTtf 호출에 사용할 API 베이스 URL 저장 (끝의 슬래시 제거).
     this.apiBaseUrl = apiBaseUrl?.replace(/\/$/, '') || undefined
+    this.defaultFontName = defaultFont
 
     dlog('font', 'create fonts', fontList.length)
     this.createFontCSS(fontList)
@@ -237,8 +256,11 @@ class FontPlugin extends PluginBase {
    * loadJSON 전 사전 로딩용
    */
   public async ensureFontLoaded(name: string): Promise<void> {
-    const matchedFont = findFontVariantMatch(name, this.fontLoadingStatus)
-    const targetFont = matchedFont || normalizeFontName(name)
+    // 미등록 패밀리는 기본 폰트로 해석 — 브라우저가 알지 못하는 이름을 '로드 완료'로
+    // 오판(document.fonts.check 는 미지 패밀리에 true)하던 경로를 기본 폰트 로드로 바꾼다.
+    const resolvedName = this.resolveFontFamily(name).family
+    const matchedFont = findFontVariantMatch(resolvedName, this.fontLoadingStatus)
+    const targetFont = matchedFont || normalizeFontName(resolvedName)
 
     // 이미 로드된 폰트
     if (this.fontLoadingStatus.get(targetFont) === 'loaded') {
@@ -264,8 +286,11 @@ class FontPlugin extends PluginBase {
    * afterLoad에서 실제 객체에 적용할 때 사용
    */
   public async applyFontToObject(object: fabric.Object, name: string): Promise<void> {
-    const matchedFont = findFontVariantMatch(name, this.fontLoadingStatus)
-    const targetFont = matchedFont || normalizeFontName(name)
+    // 미등록 패밀리는 객체 자체를 기본 폰트로 바꾼다 — 화면·글리프 검증·PDF 벡터화가
+    // 모두 같은 폰트를 보게 하는 지점(WYSIWYG). 대체 시 fontSubstituted 이벤트 1회.
+    const resolvedName = this.resolveFontFamily(name).family
+    const matchedFont = findFontVariantMatch(resolvedName, this.fontLoadingStatus)
+    const targetFont = matchedFont || normalizeFontName(resolvedName)
 
     // 폰트가 로드되지 않았으면 먼저 로드
     if (this.fontLoadingStatus.get(targetFont) !== 'loaded') {
@@ -312,6 +337,40 @@ class FontPlugin extends PluginBase {
   }
 
   /**
+   * 요청 패밀리를 라이브러리 기준으로 해석한다(미등록 → 기본 폰트 대체).
+   * 대체가 일어나면 요청 패밀리당 1회 `fontSubstituted` 이벤트를 Editor 로 발행한다.
+   * 규칙·가드는 fontFamilyResolve.ts 참조.
+   */
+  public resolveFontFamily(requested: string): FontFamilyResolution {
+    const resolution = resolveFontFamily(requested, this.fontUrlByName, this.defaultFontName)
+    if (resolution.substituted) {
+      this.noteSubstitution(resolution)
+    }
+    return resolution
+  }
+
+  /** 지금까지 기본 폰트로 대체된 요청 패밀리 → 적용 폰트(늦은 구독자 재생용 스냅샷) */
+  public getFontSubstitutions(): Array<FontSubstitutedEvent> {
+    return Array.from(this.substitutions.entries()).map(([requested, applied]) => ({
+      requested,
+      applied
+    }))
+  }
+
+  private noteSubstitution(resolution: FontFamilyResolution): void {
+    const key = resolution.primary || resolution.requested
+    if (this.substitutions.has(key)) return
+    this.substitutions.set(key, resolution.family)
+    dwarn('font', `미등록 폰트 → 기본 폰트 대체: "${key}" → "${resolution.family}"`)
+    const payload: FontSubstitutedEvent = { requested: key, applied: resolution.family }
+    try {
+      this._editor?.emit?.(FONT_SUBSTITUTED_EVENT, payload)
+    } catch (err) {
+      dwarn('font', 'fontSubstituted 이벤트 발행 실패', err)
+    }
+  }
+
+  /**
    * TTF 버퍼를 폰트패밀리별로 캐싱하여 반환
    * @param fontFamily - 폰트 패밀리 이름
    * @returns TTF buffer (ArrayBuffer)
@@ -330,8 +389,11 @@ class FontPlugin extends PluginBase {
     dlog('font', `📥 TTF buffer cache miss, fetching: ${fontFamily}`)
 
     try {
-      // 폰트 파일 URL 가져오기 (woff2 / ttf / otf 가능)
-      const fontUrl = this._getWoff2FontUrl(fontFamily)
+      // 폰트 파일 URL 가져오기 (woff2 / ttf / otf 가능).
+      // 미등록 패밀리는 기본 폰트 URL 로 해석 — 종전에는 여기서 throw → convertTextToPath 가
+      // null → ServicePlugin 이 화면 2배 래스터(PNG)로 폴백했다. 이제 기본 폰트로 벡터화한다.
+      const resolved = this.resolveFontFamily(fontFamily)
+      const fontUrl = this._getWoff2FontUrl(resolved.family)
       if (!fontUrl) {
         throw new Error(`WOFF2 font URL not found for: ${fontFamily}`)
       }

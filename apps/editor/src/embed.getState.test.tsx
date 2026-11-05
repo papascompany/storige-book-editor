@@ -60,6 +60,7 @@ vi.mock('./hooks/useCoverRegion', () => ({
   useObjectOutOfTrimToast: () => undefined,
   useSafeZoneWarningToast: () => undefined,
   useImageLowDpiToast: () => undefined,
+  useFontSubstitutionToast: () => undefined,
 }))
 vi.mock('./hooks/useResolvedPageNavPosition', () => ({ useResolvedPageNavPosition: () => 'bottom' as const }))
 vi.mock('./utils/createCanvas', async (importOriginal) => {

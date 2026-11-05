@@ -17,6 +17,8 @@ export { default as ImageProcessingPlugin } from './plugins/ImageProcessingPlugi
 export { default as AlignPlugin } from './plugins/AlignPlugin'
 export { default as AccessoryPlugin } from './plugins/AccessoryPlugin'
 export { default as FontPlugin } from './plugins/FontPlugin'
+export { FONT_SUBSTITUTED_EVENT, type FontSubstitutedEvent } from './plugins/FontPlugin'
+export { parsePrimaryFontFamily, resolveFontFamily, type FontFamilyResolution } from './plugins/fontFamilyResolve'
 export { default as FilterPlugin } from './plugins/FilterPlugin'
 export { default as EffectPlugin } from './plugins/EffectPlugin'
 export { default as SmartCodePlugin } from './plugins/SmartCodePlugin'

@@ -21,7 +21,7 @@ import { showToast } from '@/stores/useToastStore'
 import { SpreadPagePanel } from '@/components/PagePanel/SpreadPagePanel'
 import { BookNavigation } from '@/components/PageNavigation/BookNavigation'
 import { useResolvedPageNavPosition } from '@/hooks/useResolvedPageNavPosition'
-import { useSpreadAutoAnchor, useSpreadOutOfBoundsToast, useObjectOutOfTrimToast, useSafeZoneWarningToast, useImageLowDpiToast, useSpineNarrowTextWarningToast } from '@/hooks/useCoverRegion'
+import { useSpreadAutoAnchor, useSpreadOutOfBoundsToast, useObjectOutOfTrimToast, useSafeZoneWarningToast, useImageLowDpiToast, useSpineNarrowTextWarningToast, useFontSubstitutionToast } from '@/hooks/useCoverRegion'
 import { useCanvasThemeSync } from '@/hooks/useCanvasThemeSync'
 import { useCanvasLocalBackup } from '@/hooks/useCanvasLocalBackup'
 import { useCanvasContainerSizeSync } from '@/hooks/useCanvasContainerSizeSync'
@@ -553,6 +553,8 @@ export default function EditorView() {
   useSafeZoneWarningToast(ready)
   // R8: 배치 이미지 유효 DPI(<150) 실시간 경고 toast (ImageDpiWarningPlugin 이벤트 브리지)
   useImageLowDpiToast(ready)
+  // 미등록 폰트 → 기본 폰트 대체 안내 toast (FontPlugin fontSubstituted 이벤트 브리지, embed 와 대칭)
+  useFontSubstitutionToast(ready)
   // A-3① (트랙 C): 무선 얇은 책등(3mm 미만) 텍스트 배치 경고 toast
   useSpineNarrowTextWarningToast(ready)
   // 캔버스 측 다크 모드 동기화 — 룰러 + 객체 선택 핸들 (§8.3 다크 모드 Phase 3)

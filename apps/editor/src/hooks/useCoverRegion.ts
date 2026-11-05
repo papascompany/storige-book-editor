@@ -2,7 +2,7 @@ import { useCallback, useEffect } from 'react'
 import { useAppStore } from '@/stores/useAppStore'
 import { useSettingsStore } from '@/stores/useSettingsStore'
 import { showToast } from '@/stores/useToastStore'
-import { type SpreadPlugin } from '@storige/canvas-core'
+import { type SpreadPlugin, FONT_SUBSTITUTED_EVENT, type FontSubstitutedEvent } from '@storige/canvas-core'
 import type { SpreadRegion } from '@storige/types'
 
 /**
@@ -250,6 +250,49 @@ export function useImageLowDpiToast(ready: boolean): void {
     editor.on('imageLowDpi', handler)
     return () => {
       editor.off?.('imageLowDpi', handler)
+    }
+  }, [ready, editor])
+}
+
+/**
+ * 미등록 폰트 → 기본 폰트 대체 안내 toast (2026-11-05).
+ *
+ * `FontPlugin` 이 텍스트의 fontFamily 를 라이브러리에서 찾지 못해 기본 폰트로 대체할 때
+ * (fabric 기본값 'Times New Roman', 삭제·비활성화된 라이브러리 폰트, 로드 실패 폴백 'Arial' 등)
+ * 요청 패밀리당 1회 발행하는 `fontSubstituted` 이벤트를 구독해 사용자에게 알린다.
+ * 종전에는 화면은 브라우저 대체 글꼴, PDF 는 저해상 래스터(PNG)로 나가면서 아무 안내가 없었다.
+ *
+ * 대체는 세션 로드(beforeLoad/afterLoad) 중에 일어나 `ready` 이전일 수 있으므로, 구독 시점에
+ * FontPlugin 이 보관한 대체 내역(`getFontSubstitutions`)을 먼저 재생한다.
+ * 순수 화면 안내 — 저장/출력/차단 동작 없음(대체 자체는 canvas-core 가 수행).
+ */
+export function useFontSubstitutionToast(ready: boolean): void {
+  const editor = useAppStore((s) => s.editor)
+
+  useEffect(() => {
+    if (!ready || !editor) return
+
+    const notified = new Set<string>()
+    const notify = (payload: FontSubstitutedEvent) => {
+      const requested = payload?.requested?.trim()
+      const applied = payload?.applied?.trim()
+      if (!requested || !applied || notified.has(requested)) return
+      notified.add(requested)
+      showToast(
+        `등록되지 않은 폰트 '${requested}' 은(는) 기본 폰트 '${applied}' 로 대체되어 인쇄됩니다. 글꼴 메뉴에서 다른 폰트를 선택할 수 있습니다.`,
+        'warning',
+        6000,
+      )
+    }
+
+    const fontPlugin = editor.getPlugin?.('FontPlugin') as
+      | { getFontSubstitutions?: () => FontSubstitutedEvent[] }
+      | undefined
+    fontPlugin?.getFontSubstitutions?.().forEach(notify)
+
+    editor.on(FONT_SUBSTITUTED_EVENT, notify)
+    return () => {
+      editor.off?.(FONT_SUBSTITUTED_EVENT, notify)
     }
   }, [ready, editor])
 }
