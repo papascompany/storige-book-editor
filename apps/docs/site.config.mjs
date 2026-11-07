@@ -217,13 +217,13 @@ export const OPENAPI = {
   },
 
   /**
-   * 요약문 치환 — 내부 설계서 절 참조(§9-10) 제거. 그 외 summary 는 원문 그대로 렌더.
+   * 요약문 치환 — 파트너 대면 표기(띄어쓰기·구분)로 옮긴다. 그 외 summary 는 원문 그대로 렌더.
    * descriptionOverrides 와 동일한 `{ text, expectedSource }` 계약을 따른다(드리프트 시 빌드 실패).
    */
   summaryOverrides: {
     BooksController_downloadPdf: {
       text: '최종 PDF 다운로드 (소유 검증 스트림) — FINALIZED 전용',
-      expectedSource: '최종 PDF 다운로드(소유검증 스트림) — FINALIZED 전용(§9-10)',
+      expectedSource: '최종 PDF 다운로드(소유검증 스트림) — FINALIZED 전용',
     },
   },
 
@@ -242,7 +242,7 @@ export const OPENAPI = {
     'BookSpecsController_calculatedSize.422': {
       text: 'ERR_PAGE_COUNT_OUT_OF_RANGE — 판형의 `pageMin` / `pageMax` / `pageIncrement` 규칙 위반. 어떤 규칙인지는 `errors[].code` 로 세분된다.',
       expectedSource:
-        'ERR_PAGE_COUNT_OUT_OF_RANGE — pageMin/Max/Increment 위반 (설계서 §3.3, errors[].code 세분)',
+        'ERR_PAGE_COUNT_OUT_OF_RANGE — pageMin/Max/Increment 위반 (errors[].code 세분)',
     },
   },
 
