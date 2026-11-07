@@ -16,7 +16,7 @@ import { Type } from 'class-transformer';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 /**
- * Partner API v1 — 1-call 런처(P2-b, 2026-10-18) 입력 DTO.
+ * Partner API v1 — 1-call 런처 입력 DTO.
  * 정본: docs/PRODUCT_MODE_ARCHITECTURE_DESIGN_2026-10-16.md §8.1
  *
  * 대상: 캘린더·낱장(프로파일 세트 + NULL 세트) 세션. 사진인화 `items`/`externalPhotos` 는
@@ -98,7 +98,7 @@ export class PartnerSessionLaunchDto {
   items?: unknown[];
 
   @ApiPropertyOptional({
-    description: "캘린더 시작연월 — { startYm: 'YYYY-MM' }(설계안 §8.1) 또는 { startYear, startMonth }. startYm 은 서버가 startYear/startMonth 로 풀어 metadata.calendar 에 기록한다(편집기가 그 시작연월로 연다)",
+    description: "캘린더 시작연월 — { startYm: 'YYYY-MM' } 또는 { startYear, startMonth }. startYm 은 서버가 startYear/startMonth 로 풀어 metadata.calendar 에 기록한다(편집기가 그 시작연월로 연다)",
     type: Object,
   })
   @IsOptional()

@@ -210,7 +210,7 @@ export class FilesController {
   }
 
   /**
-   * 공통 스트리밍 파이프 — 헤더 설정 + 에러/중단 처리(트랙 B-(c)).
+   * 공통 스트리밍 파이프 — 헤더 설정 + 에러/중단 처리.
    * `res.send(buffer)` 대신 `stream.pipe(res)` 로 2GB 도 API heap 상수.
    * - stream 'error': 헤더 전이면 500 JSON, 후면 연결 강제 종료(잘린 응답).
    * - res 'close'(클라 중단): 업스트림(R2/fs) 스트림 destroy → 연결 누수 방지.
@@ -367,9 +367,9 @@ export class FilesController {
     @CurrentUser() user: any,
     @ApiKeySite() apiKeySite?: ApiKeySitePayload,
   ): Promise<FileResponseDto> {
-    // S3-A안(2026-08-28, D1): 검증된 shop-session 이 실려 오면 완료 확정 시 파일에
+    // 검증된 shop-session 이 실려 오면 완료 확정 시 파일에
     // 그 site 를 스탬프한다(테넌트 귀속). 토큰 없음·서명 검증 실패·비-shop → NULL.
-    // 근거 원칙은 edit-sessions.createGuest 의 I-1 과 동일 — 스탬프 근거는 서명 검증된
+    // 근거 원칙은 edit-sessions.createGuest 와 동일 — 스탬프 근거는 서명 검증된
     // JWT 뿐이며, body 로 site 를 주장할 자리는 애초에 없다.
     // 운영자 대리 편집(2026-09-29): 검증된 운영자 액세스 토큰도 같은 방식으로 site 를 스탬프한다.
     // v1.9: 토큰 근거가 없으면 검증된 활성 사이트 키(X-API-Key)의 사이트로 귀속한다.
@@ -408,7 +408,7 @@ export class FilesController {
     @CurrentUser() user: any,
     @ApiKeySite() apiKeySite?: ApiKeySitePayload,
   ): Promise<FileResponseDto> {
-    // S3-A안(2026-08-28, D1): multipart/complete 와 동일한 옵션형 site 스탬프(운영자 포함, 2026-09-29).
+    // multipart/complete 와 동일한 옵션형 site 스탬프(운영자 포함).
     // v1.9: 사이트 키 근거도 multipart/complete 와 같은 우선순위로 쓴다.
     const caller = this.presignedCompleteCaller('single', user, apiKeySite);
     const file = await this.presignedUpload.completeSingle(id, dto.uploadToken, caller);
@@ -717,7 +717,7 @@ export class FilesController {
       });
     }
 
-    // 트랙 B-(c): 전체버퍼(res.send) → 스트리밍(stream.pipe). 권한검증은 위에서 완료.
+    // 스트리밍(stream.pipe) — 전체 버퍼를 올리지 않는다. 권한검증은 위에서 완료.
     const { stream, file: f, size } = await this.filesService.getFileStream(id);
     this.streamToResponse(res, stream, {
       contentType: f.mimeType,
@@ -781,10 +781,10 @@ export class FilesController {
   }
 
   /**
-   * R2/local **이미지 자산** 브라우저 공개 스트리밍 — 트랙 B-(c) 권장안 A. ⭐
+   * R2/local **이미지 자산** 브라우저 공개 스트리밍.
    *
    * 편집기가 >50MB 내부 '이미지'를 R2 에 presigned 업로드한 뒤, 이 엔드포인트로 표시(display)한다.
-   * (nginx `/storage/*` 는 로컬만 서빙 → R2 키는 404 였음. 이 라우트가 그 갭을 메운다.)
+   * (nginx `/storage/*` 는 로컬만 서빙하므로 R2 키는 이 라우트로 서빙한다.)
    *
    * 서빙 규칙(2026-06-20):
    *  - **표시용 래스터 이미지로만 한정**: RAW_SERVE_TYPES(jpeg/png/webp/gif) 만 서빙, 그 외는 404.
@@ -840,8 +840,8 @@ export class FilesController {
   }
 
   /**
-   * 파일 하드 삭제 (외부 API Key 인증) — 2026-06-13 보존정책 트랙.
-   * 테넌트(100p_books 등)가 주문 이행 완료 후 호출 → 저장 백엔드 객체 + DB 레코드 영구 제거.
+   * 파일 하드 삭제 (외부 API Key 인증) — 보존정책.
+   * 테넌트가 주문 이행 완료 후 호출 → 저장 백엔드 객체 + DB 레코드 영구 제거.
    * 멱등 — 이미 없으면 404.
    */
   @Delete(':id/external')

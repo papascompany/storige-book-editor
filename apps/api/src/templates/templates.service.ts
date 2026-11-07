@@ -118,7 +118,7 @@ export class TemplatesService {
       query.andWhere('template.isActive = :isActive', { isActive });
     }
 
-    // P2b: 템플릿=hybrid(시스템공유 site_id=NULL + per-site). includeNull=true 로
+    // 템플릿=hybrid(시스템공유 site_id=NULL + per-site). includeNull=true 로
     // 시스템공유 자산은 전 사이트에 노출, 운영자는 자기 site + 공유만 본다(전역 admin 무필터).
     if (scope) applySiteScope(query, 'template', scope, { includeNull: true });
 

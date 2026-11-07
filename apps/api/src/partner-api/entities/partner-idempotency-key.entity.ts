@@ -1,7 +1,7 @@
 import { Column, CreateDateColumn, Entity, Index, PrimaryColumn } from 'typeorm';
 
 /**
- * partner_idempotency_keys — v1 멱등 캐시 (설계서 §2.2·§4).
+ * partner_idempotency_keys — v1 멱등 캐시.
  *
  * scope = (site_id, env, method, path, idempotency_key) UNIQUE —
  * INSERT 선점이 원자 연산이 되어 동시 요청 경쟁에서 이중 실행을 차단한다.

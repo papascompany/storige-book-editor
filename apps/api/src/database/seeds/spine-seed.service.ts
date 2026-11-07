@@ -20,8 +20,8 @@ export class SpineSeedService implements OnModuleInit {
   ) {}
 
   async onModuleInit() {
-    // F16: 시드 실패(예: v2 마이그레이션 미적용 상태 재배포 — 신규 컬럼 SELECT 1054)가
-    // Nest 부트 전체를 크래시시키지 않게 격리(CFG-001 'throw 금지' 관례). 실패 시
+    // 시드 실패(예: v2 마이그레이션 미적용 상태 재배포 — 신규 컬럼 SELECT 1054)가
+    // Nest 부트 전체를 크래시시키지 않게 격리(부팅 경로 'throw 금지' 관례). 실패 시
     // spine v2 경로만 국소 열화되고 전 API 다운은 방지 — 액션 메시지로 관측.
     try {
       await this.seedPaperTypes();
@@ -67,7 +67,7 @@ export class SpineSeedService implements OnModuleInit {
   }
 
   /**
-   * R-44 v2 지종 시드 — bookmoa SSOT 두께표(무선 29 + 양장 35)를 code=정규 라벨로 편입.
+   * v2 지종 시드 — 파트너 쇼핑몰 SSOT 두께표(무선 29 + 양장 35)를 code=정규 라벨로 편입.
    *
    * - 단위: 무선 thicknessPerPageMm(mm/페이지) / 양장 thicknessPerSheetMm(mm/장).
    * - legacy `thickness`(mm/장, NOT NULL)는 무선 = perPage×2 환산, 양장 = perSheet 그대로 —

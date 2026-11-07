@@ -28,7 +28,7 @@ import {
 } from './partner-idempotency.service';
 
 /**
- * v1 멱등 인터셉터 (설계서 §4) — v1 POST 라우트 전체 자동 적용
+ * v1 멱등 인터셉터 — v1 POST 라우트 전체 자동 적용
  * (@PartnerV1Controller 조합 데코레이터가 모듈 레벨로 바인딩).
  *
  * - 적용: POST + `Idempotency-Key` 헤더 존재 시. GET/PUT/DELETE 는 자연 멱등으로 미캐시.

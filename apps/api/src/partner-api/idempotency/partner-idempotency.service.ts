@@ -33,7 +33,7 @@ function isDuplicateKeyError(err: unknown): boolean {
 }
 
 /**
- * 멱등 캐시 저장소 (설계서 §4).
+ * 멱등 캐시 저장소.
  *
  * 선점은 `INSERT`(uq_idem_scope UNIQUE) 원자 연산 — 동시 요청·Bull 재시도
  * 경쟁 조건에서 이중 실행을 차단한다(기존 합성 멱등가드 완료마커 설계 교훈 승계).
@@ -89,7 +89,7 @@ export class PartnerIdempotencyService {
         if (!existing) continue; // 경합 삭제 — 재선점 시도
 
         if (existing.expiresAt.getTime() <= Date.now()) {
-          // TTL 만료 — 신규 요청으로 처리 (설계서 §4.1: 만료 후 신규 처리)
+          // TTL 만료 — 신규 요청으로 처리 (만료 후 신규 처리)
           await this.idempotencyRepository.delete({ id: existing.id });
           continue;
         }
@@ -124,7 +124,7 @@ export class PartnerIdempotencyService {
     );
   }
 
-  /** 5xx — 스냅샷 저장 없이 선점 해제(재시도 가능 유지, 설계서 §4.2) */
+  /** 5xx — 스냅샷 저장 없이 선점 해제(재시도 가능 유지) */
   async release(id: string): Promise<void> {
     await this.idempotencyRepository.delete({ id });
   }

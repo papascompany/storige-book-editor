@@ -32,9 +32,9 @@ export interface BookSpecSpineFormula {
  *
  * - 외부 대면 판형 마스터 — template_sets 자유입력 width/height ·
  *   products/spine(paper/binding) · format_presets 에 분산된 판형 정보의 정규화.
- * - uid('bs_...')만 외부 노출, 내부 UUID(id)는 비노출 (설계서 §2.0 접두 체계).
+ * - uid('bs_...')만 외부 노출, 내부 UUID(id)는 비노출 (외부 노출 접두 체계).
  * - 초기 시드는 수집 스크립트(cli/collect-book-specs.cli.ts) dry-run 산출을
- *   오너 검토 후 수동 적용 (설계서 §9-6 — 자동 시드 금지).
+ *   운영자 검토 후 수동 적용 (자동 시드 금지).
  * - 하드 삭제 금지 — is_active 소프트 토글만 (format_presets 관행).
  * - sizeToleranceMm 기본 1 = 워커 LEGACY_SIZE_TOLERANCE_MM(변경 절대 금지,
  *   2026-06-10 회귀 이력)과 정합하는 "노출용" 값. v1 은 읽기 전용 —
@@ -86,7 +86,7 @@ export class BookSpec {
    * 기본 1 = 워커 검증 폴백 LEGACY_SIZE_TOLERANCE_MM
    * (apps/worker/src/config/validation.config.ts — 변경 절대 금지 값)과 정합.
    * templateSetId 연결 시 template_sets.size_tolerance_mm 계약값을 우선 노출
-   * (검증측과 동일한 우선순위 규칙 — 설계서 §1.2).
+   * (검증측과 동일한 우선순위 규칙).
    */
   @Column({ name: 'size_tolerance_mm', type: 'float', default: 1 })
   sizeToleranceMm: number;
@@ -111,7 +111,7 @@ export class BookSpec {
   @Column({ name: 'template_set_id', type: 'varchar', length: 36, nullable: true })
   templateSetId: string | null;
 
-  /** 과금 확정(설계서 §9-1) 전 null 운용 */
+  /** 과금 확정 전 null 운용 */
   @Column({ type: 'json', nullable: true })
   pricing: Record<string, unknown> | null;
 

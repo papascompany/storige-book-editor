@@ -21,7 +21,7 @@ import {
  * - POST=신규(active 단수 유형은 기존재 시 409 ERR_ASSET_ALREADY_EXISTS)
  *   / PUT=교체(기존 row status='replaced' 전환 + 신규 'active' — 이력 보존).
  * - 파일 실체(file_id)는 기존 files 계층 재사용 — 삭제·보존도 기존 retention 승계.
- *   files 는 조회+참조만(AD-1). template_set_id/binding_params 는 바인딩형(W4).
+ *   files 는 조회+참조만. template_set_id/binding_params 는 바인딩형.
  * - photo 다건은 sort_order 로 순서 유지.
  */
 @Entity('book_assets')
@@ -45,7 +45,7 @@ export class BookAsset {
   @Column({ name: 'file_id', type: 'varchar', length: 36, nullable: true })
   fileId: string | null;
 
-  /** 바인딩형 templateSet 참조(W4) */
+  /** 바인딩형 templateSet 참조 */
   @Column({ name: 'template_set_id', type: 'varchar', length: 36, nullable: true })
   templateSetId: string | null;
 

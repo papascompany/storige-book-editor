@@ -23,7 +23,7 @@ import { EditSessionsModule } from '../edit-sessions/edit-sessions.module';
  *   import(가드/필터/인터셉터 의존 DI 해석)로 승계.
  * - ApiKeyGuard 의존 SitesService 는 SitesModule @Global 로 주입.
  * - BookSpec 은 bookSpecUid 검증·view 역해석(id→uid)용 읽기 참조만(조회+참조).
- * - files/file_edit_sessions/worker_jobs 무접촉(AD-1) — 자산 파일 투입(W2)은
+ * - files/file_edit_sessions/worker_jobs 무접촉 — 자산 파일 투입은
  *   FilesModule 의 FilesService 재사용(신규 파일 등록/조회, 기존 상태 변경 없음).
  */
 @Module({
@@ -31,19 +31,19 @@ import { EditSessionsModule } from '../edit-sessions/edit-sessions.module';
     TypeOrmModule.forFeature([Book, BookAsset, BookFinalization, BookSpec]),
     PartnerApiModule,
     FilesModule,
-    // W3 최종화 오케스트레이터 의존:
-    //  - WorkerJobsModule: validate/synthesize 잡 생성 + 콜백 역참조(#4) 순환 → forwardRef.
+    // 최종화 오케스트레이터 의존:
+    //  - WorkerJobsModule: validate/synthesize 잡 생성 + 워커 콜백 역참조 순환 → forwardRef.
     //  - WebhookModule: book.finalization.* v2 발신(opt-in).
     //  - BookSpecsModule: 페이지 규칙 재사용(assertPageRules — 단일 출처).
     forwardRef(() => WorkerJobsModule),
     WebhookModule,
     BookSpecsModule,
-    // W4 EDITOR_SESSION 승격 원본 조회(조회+참조만, AD-1).
+    // EDITOR_SESSION 승격 원본 조회(조회+참조만).
     EditSessionsModule,
   ],
   controllers: [BooksController],
   providers: [BooksService, BookFinalizationsService],
-  // BookFinalizationsService 는 WorkerJobsModule(#4 콜백)이 forwardRef 주입 — export 필수.
+  // BookFinalizationsService 는 WorkerJobsModule(워커 콜백)이 forwardRef 주입 — export 필수.
   exports: [BooksService, BookFinalizationsService],
 })
 export class BooksModule {}

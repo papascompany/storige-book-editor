@@ -2,7 +2,7 @@ import { ErrV1, PartnerV1Pagination } from '@storige/types';
 import { PartnerApiException } from './partner-api.exceptions';
 
 /**
- * v1 페이지네이션 규약 (설계서 §5.1) — v1 목록 라우트 공통 유틸.
+ * v1 페이지네이션 규약 — v1 목록 라우트 공통 유틸.
  *
  * - limit: 기본 20, 최대 100 — **초과값은 100으로 캡**(에러 아님).
  *   0 이하/비정수는 400 ERR_VALIDATION_FAILED.
@@ -78,7 +78,7 @@ function parseIntStrict(value: unknown): number | null {
 
 /**
  * limit/offset 쿼리 정규화 — 미제공 기본값, 위반 시 400(fieldErrors 동반),
- * limit 초과값은 100 캡(설계서 §5.1).
+ * limit 초과값은 100 캡.
  */
 export function normalizePaginationQuery(
   query: Record<string, unknown>,

@@ -5,7 +5,7 @@ import {
 } from '../partner-api.constants';
 
 /**
- * v1 레이트리밋 버킷 지정 (설계서 §5.2).
+ * v1 레이트리밋 버킷 지정.
  *
  * 기본 'general'(300 req/min per Key). 업로드/최종화 계열 라우트에
  * `@PartnerRateLimitBucket('heavy')`(100 req/min per Key)를 부착한다 —

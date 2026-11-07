@@ -7,11 +7,11 @@ import { WorkerJob } from './entities/worker-job.entity';
 import { WorkerJobsService } from './worker-jobs.service';
 
 /**
- * WK-4 (2026-06-13) — 고아 잡 스위퍼.
+ * 고아 잡 스위퍼.
  *
  * 배경: 워커가 상태 업데이트에 최종 실패하거나(API 다운/재배포 등),
  * 워커 프로세스가 잡 처리 중 죽으면 worker_jobs 레코드가 PENDING/PROCESSING
- * 으로 영원히 남는다. 호출자(bookmoa 등)는 폴링/웹훅 어느 쪽으로도 종결
+ * 으로 영원히 남는다. 호출자(파트너 서버 등)는 폴링/웹훅 어느 쪽으로도 종결
  * 신호를 받지 못한다.
  *
  * 동작: 10분 주기로 "생성 후 2시간 경과 && 아직 PENDING/PROCESSING" 잡을
@@ -31,7 +31,7 @@ export class WorkerJobsSweeperService {
   /** 1회 스윕 배치 상한 (대량 적체 시 cron 한 사이클 폭주 방지) */
   static readonly SWEEP_BATCH_LIMIT = 200;
 
-  /** 스위퍼가 찍는 세분화 에러 코드 (WK-1 errorCode 컬럼 활용) */
+  /** 스위퍼가 찍는 세분화 에러 코드 (errorCode 컬럼 활용) */
   static readonly SWEEP_ERROR_CODE = 'JOB_TIMEOUT_SWEPT';
 
   /** 동시 실행 가드 (이전 스윕이 길어지면 다음 사이클 skip) */

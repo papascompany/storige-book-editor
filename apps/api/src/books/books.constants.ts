@@ -4,33 +4,32 @@
  * 정본: docs/PARTNER_PLATFORM_API_V1_DESIGN_2026-07-07.md §2.4~2.6·§6.1
  */
 
-/** uid 접두 체계 (설계서 §2.0) — 내부 UUID(id)는 외부 비노출, uid 만 노출 */
+/** uid 접두 체계 — 내부 UUID(id)는 외부 비노출, uid 만 노출 */
 export const BOOK_UID_PREFIX = 'bk_';
 export const BOOK_FINALIZATION_UID_PREFIX = 'fin_';
 
 /**
  * 직접(멀티파트) 업로드 상한 — 100MB 단일.
  *
- * ⚠️ 설계서 "90/100MB" 표기 정정: 코드상 90MB 임계는 부재 → 100MB 단일 임계로
- *    확정한다. 초과분은 presigned/multipart 동결 표면(≤2GB)으로 업로드 후
+ * ⚠️ 임계는 100MB 하나다. 초과분은 presigned/multipart 동결 표면(≤2GB)으로 업로드 후
  *    fileId 참조 투입 경로를 쓴다(§1.4). 100MB 는 기존 files 업로드 라우트
  *    (files.controller upload/external)·FILE_UPLOAD_MAX_BYTES 와 정합.
  */
 export const BOOK_ASSET_DIRECT_UPLOAD_MAX_BYTES = 100 * 1024 * 1024;
 
 /**
- * book 당 active photo 자산 상한 — 무제한 누적 방어(적대 리뷰 렌즈1 P2-2).
+ * book 당 active photo 자산 상한 — 무제한 누적 방어.
  * 포토북 최대 페이지 규모를 넉넉히 상회하는 방어캡. 초과 시 422 ERR_VALIDATION_FAILED.
  */
 export const BOOK_MAX_ACTIVE_PHOTOS = 500;
 
 /**
- * 직접 업로드 허용 MIME — 기존 files.uploadFile(PDF-only) 계약 승계(AD-1: files.service 무접촉).
+ * 직접 업로드 허용 MIME — 기존 files.uploadFile(PDF-only) 계약 승계(files.service 무접촉).
  * 이미지/대용량 자산(photo 등)은 동결 업로드 표면으로 올린 fileId 참조 경로를 쓴다.
  */
 export const BOOK_ASSET_DIRECT_UPLOAD_MIME: readonly string[] = ['application/pdf'];
 
-/** 생성 유형 4종 (설계서 §2.4·§6.1) */
+/** 생성 유형 4종 */
 export type BookCreationType =
   | 'PDF_UPLOAD'
   | 'TEMPLATE'
@@ -44,11 +43,11 @@ export const BOOK_CREATION_TYPES: readonly BookCreationType[] = [
   'EDITOR_SESSION',
 ];
 
-/** 도서 상태 2종 (설계서 §6.2 AD-3) */
+/** 도서 상태 2종 */
 export type BookStatus = 'DRAFT' | 'FINALIZED';
 export const BOOK_STATUSES: readonly BookStatus[] = ['DRAFT', 'FINALIZED'];
 
-/** 자산 유형 5종 (설계서 §2.5) */
+/** 자산 유형 5종 */
 export type BookAssetType =
   | 'pdf_cover'
   | 'pdf_contents'
@@ -67,7 +66,7 @@ export const BOOK_ASSET_TYPES: readonly BookAssetType[] = [
 /** 자산 상태 — active(현행) / replaced(교체 이력 보존) */
 export type BookAssetStatus = 'active' | 'replaced';
 
-/** 최종화 실행 상태머신 (설계서 §6.3) — 상태만 본 배치에서 신설, 오케스트레이션은 W3 */
+/** 최종화 실행 상태머신 — 전이는 BookFinalizationsService 가 수행 */
 export type BookFinalizationStatus =
   | 'PENDING'
   | 'VALIDATING'
@@ -89,7 +88,7 @@ export const BOOK_FINALIZATION_STATUSES: readonly BookFinalizationStatus[] = [
  *  - passthrough: validate(병합본) → 편집기 합성완료본을 그대로 최종 산출(EDITOR_SESSION 병합).
  *
  * ⚠️ 착수(startFinalization) 시점에 해석해 book_finalizations.plan_snapshot 에 고정한다
- *    (적대 리뷰 렌즈2 P2-3 TOCTOU): validate 는 착수 시점 자산으로, compose 는 재조회 없이
+ *    (TOCTOU 방지): validate 는 착수 시점 자산으로, compose 는 재조회 없이
  *    동일 스냅샷으로 진행 → 진행 중 자산 교체(assertDraft 가 DRAFT 중 허용)와 무관하게 이번
  *    attempt 는 착수 시점 자산에 고정. entity/service 공유 타입(순환 import 방지 위해 여기 배치).
  */
@@ -104,7 +103,7 @@ export interface FinalizationPlan {
 }
 
 /**
- * creationType × asset_type 호환 매트릭스 (설계서 §6.1 — ERR_ASSET_INCOMPATIBLE 판정 기준).
+ * creationType × asset_type 호환 매트릭스 (ERR_ASSET_INCOMPATIBLE 판정 기준).
  *
  * | creationType       | pdf_cover | pdf_contents | photo | cover_binding | contents_binding |
  * | PDF_UPLOAD         |    ✅     |     ✅       |  ✖   |      ✖       |       ✖         |

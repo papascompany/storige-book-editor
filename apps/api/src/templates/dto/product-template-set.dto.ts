@@ -15,12 +15,12 @@ import { Type } from 'class-transformer';
  * 상품-템플릿셋 연결 생성 DTO
  */
 export class CreateProductTemplateSetDto {
-  @ApiProperty({ example: '001001001', description: '북모아 카테고리(상품) 코드' })
+  @ApiProperty({ example: '001001001', description: '파트너 쇼핑몰 카테고리(상품) 코드' })
   @IsString()
   @IsNotEmpty()
   sortcode: string;
 
-  @ApiPropertyOptional({ example: 1, description: '북모아 규격 번호 (선택, NULL이면 전체 규격)' })
+  @ApiPropertyOptional({ example: 1, description: '파트너 쇼핑몰 규격 번호 (선택, NULL이면 전체 규격)' })
   @IsOptional()
   @IsNumber()
   @Type(() => Number)
@@ -70,12 +70,12 @@ export class UpdateProductTemplateSetDto {
  * 상품-템플릿셋 일괄 연결 DTO
  */
 export class BulkCreateProductTemplateSetDto {
-  @ApiProperty({ example: '001001001', description: '북모아 카테고리(상품) 코드' })
+  @ApiProperty({ example: '001001001', description: '파트너 쇼핑몰 카테고리(상품) 코드' })
   @IsString()
   @IsNotEmpty()
   sortcode: string;
 
-  @ApiPropertyOptional({ example: 1, description: '북모아 규격 번호 (선택)' })
+  @ApiPropertyOptional({ example: 1, description: '파트너 쇼핑몰 규격 번호 (선택)' })
   @IsOptional()
   @IsNumber()
   @Type(() => Number)
@@ -94,12 +94,12 @@ export class BulkCreateProductTemplateSetDto {
  * 상품별 템플릿셋 조회 쿼리 DTO (외부용)
  */
 export class ProductTemplateSetQueryDto {
-  @ApiProperty({ example: '001001001', description: '북모아 카테고리(상품) 코드' })
+  @ApiProperty({ example: '001001001', description: '파트너 쇼핑몰 카테고리(상품) 코드' })
   @IsString()
   @IsNotEmpty()
   sortcode: string;
 
-  @ApiPropertyOptional({ example: 1, description: '북모아 규격 번호' })
+  @ApiPropertyOptional({ example: 1, description: '파트너 쇼핑몰 규격 번호' })
   @IsOptional()
   @IsNumber()
   @Type(() => Number)
@@ -110,7 +110,7 @@ export class ProductTemplateSetQueryDto {
  * 관리자용 목록 조회 쿼리 DTO
  */
 export class ProductTemplateSetListQueryDto {
-  @ApiPropertyOptional({ example: '001001001', description: '북모아 카테고리(상품) 코드' })
+  @ApiPropertyOptional({ example: '001001001', description: '파트너 쇼핑몰 카테고리(상품) 코드' })
   @IsOptional()
   @IsString()
   sortcode?: string;
@@ -151,7 +151,7 @@ export class ProductTemplateSetResponseDto {
   @ApiProperty({ example: '001001001' })
   sortcode: string;
 
-  @ApiPropertyOptional({ example: '책자', description: '상품명 (bookmoa 카테고리명)' })
+  @ApiPropertyOptional({ example: '책자', description: '상품명 (파트너 쇼핑몰 카테고리명)' })
   categoryName: string | null;
 
   @ApiPropertyOptional({ example: 1 })

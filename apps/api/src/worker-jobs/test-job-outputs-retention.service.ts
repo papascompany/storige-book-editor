@@ -9,7 +9,7 @@ import { WorkerJobStatus, WorkerJobType } from '@storige/types';
 import { WorkerJob } from './entities/worker-job.entity';
 
 /**
- * TestJobOutputsRetentionService — S2-5 (2026-07-16) test env 잡 산출물 24h retention.
+ * TestJobOutputsRetentionService — test env 잡 산출물 24h retention.
  *
  * 대상: options.isTest=true 합성(SYNTHESIZE) 잡의 outputs/{jobId}/ 디렉토리
  * (TEST 워터마크 더미 PDF + .synthesis-complete.json 멱등 마커).
@@ -40,7 +40,7 @@ import { WorkerJob } from './entities/worker-job.entity';
 export class TestJobOutputsRetentionService {
   private readonly logger = new Logger(TestJobOutputsRetentionService.name);
 
-  /** test 잡 산출물 보존 시간 — 24h 강제(로드맵 §6) */
+  /** test 잡 산출물 보존 시간 — 24h 강제 */
   static readonly RETENTION_MS = 24 * 60 * 60 * 1000;
 
   /** 1회 스윕 배치 상한 */

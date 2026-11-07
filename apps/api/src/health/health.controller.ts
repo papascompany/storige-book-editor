@@ -18,7 +18,7 @@ export class HealthController {
     @InjectQueue('pdf-synthesis') private synthesisQueue: Queue,
     private readonly queueMonitor: QueueMonitorService,
     private readonly metricsService: MetricsService,
-    // 컷아웃 큐(2026-08-05 S-P2A-B) — 관측 3곳(health/metrics/queue-monitor) 공통 등록.
+    // 컷아웃 큐 — 관측 3곳(health/metrics/queue-monitor) 공통 등록.
     // ⚠️ @Optional 필수 — HealthModule 의 BullModule.registerQueue 와 health.controller.spec
     //    의 테스트 모듈이 큐 3종만 제공한다. 미주입이면 헬스 응답에서 cutout 키만 빠지고
     //    나머지는 그대로 동작한다(부트 실패로 전 서비스를 죽이지 않는다).
@@ -28,7 +28,7 @@ export class HealthController {
   ) {}
 
   /**
-   * Prometheus scrape endpoint (P2-8)
+   * Prometheus scrape endpoint
    * 내부 docker network 의 prometheus 컨테이너에서만 접근.
    * nginx 외부 노출 X — `/api/metrics` 경로는 운영 nginx 에서 deny 또는 IP 화이트리스트 권장.
    */

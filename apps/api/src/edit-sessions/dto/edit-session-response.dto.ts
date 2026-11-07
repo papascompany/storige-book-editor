@@ -67,11 +67,11 @@ export class EditSessionResponseDto {
   @ApiProperty()
   updatedAt: Date;
 
-  /** Phase C — 사이트 컨텍스트 */
+  /** 사이트 컨텍스트 */
   @ApiPropertyOptional()
   siteId?: string | null;
 
-  // ── 인쇄 워크플로우 v1 Phase 4 (2026-05-19) ──
+  // ── 고객 첨부 내지 PDF · 게스트 세션 ──
   @ApiPropertyOptional({ description: '고객 첨부 내지 PDF file_id' })
   contentPdfFileId?: string | null;
 
@@ -81,7 +81,7 @@ export class EditSessionResponseDto {
   @ApiPropertyOptional({ description: '워커 검증 결과 캐시' })
   contentPdfValidationResult?: Record<string, unknown> | null;
 
-  @ApiPropertyOptional({ enum: ['replace', 'underlay'], description: 'P0-2: 내지 PDF 첨부 모드' })
+  @ApiPropertyOptional({ enum: ['replace', 'underlay'], description: '내지 PDF 첨부 모드' })
   contentPdfMode?: 'replace' | 'underlay' | null;
 
   @ApiPropertyOptional({ description: '게스트 식별자 (24h 만료)' })

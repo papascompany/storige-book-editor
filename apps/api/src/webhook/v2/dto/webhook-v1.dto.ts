@@ -18,7 +18,7 @@ import {
 import { WEBHOOK_V2_SUBSCRIBABLE_EVENTS } from '../webhook-v2.constants';
 
 /**
- * Partner API v1 Webhooks DTO 모음 (설계서 §1.5 라우트 20~26).
+ * Partner API v1 Webhooks DTO 모음.
  * 봉투/페이지네이션은 v1 코어 정본(@storige/types + partner-api/http) 사용.
  */
 

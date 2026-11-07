@@ -16,10 +16,10 @@ import { Template } from './template.entity';
 import type { ProductSpecs, TemplateSetType, TemplateRef, EditorMode, EditorMenuKey, PdfOutputMode, ColorOutputMode, PhotobookPricing, ProductProfile } from '@storige/types';
 
 /**
- * D-4 커버 3종 시드 코드 (2026-07-06, C-4 Track 3).
- * ⚠️ 고정 enum 금지(오너 결정 D-4 — "커버 종류는 상품 구성에 따라 추가될 수 있다").
+ * 커버 3종 시드 코드.
+ * ⚠️ 고정 enum 금지 — 커버 종류는 상품 구성에 따라 추가될 수 있다.
  *    컬럼은 varchar 자유 코드이며, 이 상수는 admin 셀렉트 시드/문서화 용도다.
- * ⚠️ packages/types 는 Track 1 소유 — 통합 시 이 로컬 선언을 Track 1 공유 타입으로 치환.
+ * ⚠️ packages/types 에도 같은 이름의 COVER_TYPE_SEED_CODES 가 있다(이 파일은 로컬 선언).
  */
 export const COVER_TYPE_SEED_CODES = [
   /** 하드커버(싸바리) — coverConfig.caseBind 활성 */
@@ -32,7 +32,7 @@ export const COVER_TYPE_SEED_CODES = [
 
 /**
  * 싸바리(caseBind) geometry — 하드커버 wrap 산출용 3필드 (mm).
- * 화면 = trim 기준 뷰 / 출력 = wrap 포함 사이즈 (D-4).
+ * 화면 = trim 기준 뷰 / 출력 = wrap 포함 사이즈.
  */
 export interface CoverCaseBindConfig {
   /** 합지(보드) 두께 mm */
@@ -110,7 +110,7 @@ export class TemplateSet {
   pageCountRange: number[];
 
   /**
-   * 내지 페이지 증감 단위 (S8, 2026-09-28, additive nullable=비파괴).
+   * 내지 페이지 증감 단위 (additive nullable=비파괴).
    * 물리 내지 페이지 수가 이 값의 배수여야 한다. 에디터는 이 단위로 추가/삭제하고
    * 배수가 아니면 편집 완료를 차단한다. NULL=제약 없음(기존 1장 단위 동작).
    * 마이그레이션: apps/api/migrations/20260928_add_template_set_page_step.sql
@@ -153,13 +153,12 @@ export class TemplateSet {
   enabledMenus: EditorMenuKey[] | null;
 
   // ─────────────────────────────────────────────────────
-  // 인쇄 워크플로우 v1 Phase 2 (2026-05-19)
-  // 면지 / 표지 편집 / 레더 커버 미리보기 필드.
+  // 인쇄 워크플로우 v1 — 면지 / 표지 편집 / 레더 커버 미리보기 필드.
   // 마이그레이션: apps/api/migrations/20260519_v1_phase2_workflow_schema.sql
   // ─────────────────────────────────────────────────────
 
   /**
-   * 면지(EndPaper) 구성 — Phase 2.
+   * 면지(EndPaper) 구성.
    * shape: { frontCount, backCount, frontEditable, backEditable }.
    * null: 면지 없음 (legacy/기본).
    */
@@ -212,7 +211,8 @@ export class TemplateSet {
   // ─────────────────────────────────────────────────────
   // 블리드 / 재단선 / 사이즈 검증 허용오차 (2026-06-10)
   // 마이그레이션: apps/api/migrations/20260610_add_bleed_cropmark_tolerance.sql
-  // ⚠️ P1 단계 = '필드 저장 + 전달'만. 워커의 실제 검증/변환 동작 변경은 P4에서.
+  // ⚠️ API 는 필드 저장 + 잡 옵션 전달만 한다. 실제 검증/변환은 워커가 하며, 검증 잡 주입은
+  //    cropMarkEnabled===true 세트에 한한다(EditSessionsService.createValidationJobs).
   // ─────────────────────────────────────────────────────
 
   /**
@@ -236,10 +236,10 @@ export class TemplateSet {
   sizeToleranceMm: number;
 
   // ─────────────────────────────────────────────────────
-  // 포토북 페이지 가변 가격 메타 (2026-06-24, Phase 2)
+  // 포토북 페이지 가변 가격 메타
   // 마이그레이션: apps/api/migrations/20260624_add_template_set_pricing.sql
   // ⚠️ storige 는 가격을 계산하지 않는다 — 메타 저장 + 편집완료 시 pageCount/pricing emit 만.
-  //    실제 가/감 가격 계산은 파트너(bookmoa-mobile 등) 장바구니 책임.
+  //    실제 가/감 가격 계산은 파트너 장바구니 책임.
   // ─────────────────────────────────────────────────────
 
   /**
@@ -251,7 +251,7 @@ export class TemplateSet {
   pricing: PhotobookPricing | null;
 
   // ─────────────────────────────────────────────────────
-  // D-4 커버 3종 메타 (2026-07-06, C-4 Track 3)
+  // 커버 3종 메타
   // 마이그레이션: apps/api/migrations/20260706_add_template_set_cover_type.sql
   // ⚠️ 편집 UX 는 coverType 으로 게이팅하지 않는다(공유 UX 원칙). 출력/emit 메타 전용.
   // ─────────────────────────────────────────────────────
@@ -259,7 +259,7 @@ export class TemplateSet {
   /**
    * 커버 종류 코드 (additive nullable=비파괴).
    * 시드 3종: 'hardcover_wrap' | 'softcover_variable_spine' | 'ready_made' — COVER_TYPE_SEED_CODES.
-   * 고정 enum 금지(D-4) — 자유 코드 확장 가능. NULL=미사용(기존 셋 동작 무변화).
+   * 고정 enum 금지 — 자유 코드 확장 가능. NULL=미사용(기존 셋 동작 무변화).
    */
   @Column({ name: 'cover_type', type: 'varchar', length: 50, nullable: true })
   coverType: string | null;
@@ -273,7 +273,7 @@ export class TemplateSet {
   coverConfig: TemplateSetCoverConfig | null;
 
   /**
-   * 상품별 편집 모드 프로파일 JSON (P1 캘린더, 2026-10-17, additive nullable=비파괴).
+   * 상품별 편집 모드 프로파일 JSON (additive nullable=비파괴).
    * 마이그레이션: apps/api/migrations/20261017_add_template_set_product_profile.sql
    * shape: packages/types/src/product-profile.ts `ProductProfile`(version 1, kind 'sheet'|'calendar').
    * NULL=기존 동작(legacy). 값이 있을 때만 편집기·API 가 `resolveProductProfile()` 결과로 분기한다.
@@ -283,7 +283,7 @@ export class TemplateSet {
   productProfile: ProductProfile | null;
 
   // ─────────────────────────────────────────────────────
-  // 방향(orientation) 페어링 (2026-07-14, 오너 승인 설계)
+  // 방향(orientation) 페어링
   // 마이그레이션: apps/api/migrations/20260714_add_orientation_pair.sql
   // 규칙 집행은 TemplateSetsService.pair/unpair/setOrientationDefault/deriveOrientation
   // (일반 PUT update 경로로는 설정 불가 — 대칭 불변식 보호).
@@ -328,8 +328,8 @@ export class TemplateSet {
   @Column({ name: 'is_active', type: 'boolean', default: true })
   isActive: boolean;
 
-  // P2 멀티테넌시 (2026-06-17) — 소속 site. NULL = 시스템공유(hybrid). additive nullable(비파괴).
-  // 조회 스코핑은 QueryScope(P2b)에서 적용. 인덱스는 마이그레이션 SQL에서 생성.
+  // 멀티테넌시 — 소속 site. NULL = 시스템공유(hybrid). additive nullable(비파괴).
+  // 조회 스코핑은 QueryScope에서 적용. 인덱스는 마이그레이션 SQL에서 생성.
   @Column({ name: 'site_id', type: 'varchar', length: 36, nullable: true })
   siteId: string | null;
 

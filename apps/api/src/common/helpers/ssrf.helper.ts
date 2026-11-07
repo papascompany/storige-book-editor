@@ -1,8 +1,8 @@
 /**
- * SSRF 방어 공용 유틸 (WH-002 계열 로직의 단일 출처).
+ * SSRF 방어 공용 유틸 (사설 IP 판정·원격 URL DNS 검사 로직의 단일 출처).
  *
  * 원래 worker-jobs.service.ts 에 private 로 있던 사설/링크로컬/루프백 IP 판정과
- * 원격 URL DNS 해석 검사를, 웹훅 발신 시점 가드(SEC/SSRF, 2026-07-16)가 동일 로직을
+ * 원격 URL DNS 해석 검사를, 웹훅 발신 시점 가드가 동일 로직을
  * 재사용할 수 있도록 추출했다. worker-jobs 는 이 유틸에 위임하고(계약 불변),
  * webhook.service 는 콜백 발신 직전에 `isRemoteUrlPublic` 로 실 IP 해석 후 사설대역을
  * 관통하는 DNS 이름/IPv4-mapped IPv6/정수 IP 표기를 차단한다.

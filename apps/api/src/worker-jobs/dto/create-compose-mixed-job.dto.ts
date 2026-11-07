@@ -140,7 +140,7 @@ export class CreateComposeMixedJobDto {
  *
  * - outputMode 는 string 폭(런타임은 @IsString 만 검증 — 'merged' 폴백 실값 통과)이라
  *   DTO 의 좁은 유니온을 그대로 흡수한다.
- * - partnerEnv 는 [S2-5] 인증 컨텍스트 env — external 라우트(sites 키)는 미전달=live 고정
+ * - partnerEnv 는 인증 컨텍스트 env — external 라우트(sites 키)는 미전달=live 고정
  *   (기존 호출 불변), finalization 은 book.env('test'|'live')를 전달해 isTest 더미 발화.
  */
 export interface ComposeMixedJobInput {
@@ -160,10 +160,10 @@ export interface ComposeMixedJobInput {
   siteId?: string;
   /**
    * [자동조립 opt-in] 외부 라우트 DTO 와 동일 의미(위 필드 주석 참조).
-   * 미전달=기존 동작 불변 — finalization 오케스트레이터(W3)는 전달하지 않는다.
+   * 미전달=기존 동작 불변 — finalization 오케스트레이터는 전달하지 않는다.
    */
   assembleFromSession?: boolean;
-  /** [S2-5] 인증 컨텍스트 env — 미전달=live(기존 불변). 'test'=isTest 더미 산출. */
+  /** 인증 컨텍스트 env — 미전달=live(기존 불변). 'test'=isTest 더미 산출. */
   partnerEnv?: PartnerEnv;
   /** books finalization 역참조 마커 — 부재=기존 옵션 불변 */
   finalizationId?: string;

@@ -1,12 +1,12 @@
 /**
- * 2026-10-17(낱장 분류 검증) — 편집 완료 낱장 세션의 검증 잡 분류 규칙(순수 함수).
+ * 낱장 분류 검증 — 편집 완료 낱장 세션의 검증 잡 분류 규칙(순수 함수).
  *
  * 배경: 편집기 낱장 세션(단면 1·양면 2·N장 낱장)은 cover 슬롯 파일로 검증되는데, 워커 cover 규칙은
- * 1·2·4쪽을 모두 통과시켜 단면 상품에 2쪽 PDF 가 들어와도 잡히지 않았다. 오너 분류(2026-10-17):
+ * 1·2·4쪽을 모두 통과시켜 단면 상품에 2쪽 PDF 가 들어와도 잡지 못한다. 분류 규칙:
  * 낱장은 파일 슬롯과 무관하게 **정확히 세션 기록 쪽수**(orderOptions.pages)여야 하고 빈 쪽 추가는
  * 정답이 아니다(autoFixable false). 워커는 orderOptions.productKind==='sheet' 로 이 분기를 탄다.
  *
- * 판정 근거는 편집기 P0 selectSingleModePdfCanvases(apps/editor/src/utils/singleModePdfCanvases.ts)의
+ * 판정 근거는 편집기 selectSingleModePdfCanvases(apps/editor/src/utils/singleModePdfCanvases.ts)의
  * spine/wing 가드와 같은 기준이다 — 편집기는 비스프레드 단일 모드에서 spine/wing 템플릿이 없을 때만
  * 캔버스 N개를 캔버스당 1쪽 PDF 로 묶는다. 서버도 같은 조건(single 세트 + spine/wing/spread 없음)일 때만
  * "캔버스 수 = PDF 쪽수 = 기대 쪽수" 가 성립한다고 보고 sheet 로 분류한다.
@@ -15,8 +15,8 @@
  * orderOptions 에 아무 키도 더하지 않는다(현행 byte-identical). 템플릿이 없거나 전부 'cover' 인 세트
  * (표지 전용 = 책 표지 편집)도 낱장이 아니므로 null.
  *
- * 2026-10-17 P1-e(상품 프로파일): 위 낱장 판정이 선 세트에 한해 `productProfile`(세션 스냅샷
- * metadata.productProfile 우선, 없으면 templateSet.productProfile)로 기대 쪽수·증감 단위를 보강한다.
+ * 상품 프로파일: 위 낱장 판정이 선 세트에 한해 `productProfile`(templateSet.productProfile 우선, 없으면
+ * 세션 스냅샷 metadata.productProfile — resolveSessionProductProfile)로 기대 쪽수·증감 단위를 보강한다.
  *   - pages.kind='fixed' → expectedPages = pages.count (캘린더 26 = 표지 1 + 12개월×2 + 에필로그 1)
  *   - sheet.faces=2 → pageStep 2, 아니면 pages.step(>1) → 그 값, 아니면 종전 산출(호스트·템플릿셋)
  * 프로파일이 NULL·버전 불일치·검증 실패(resolveProductProfile → null)면 종전 결과 그대로다.
@@ -29,7 +29,7 @@ import type { EditSessionEntity } from './entities/edit-session.entity';
 
 export interface SheetValidationRulesInput {
   session: Pick<EditSessionEntity, 'mode' | 'metadata'>;
-  /** TemplateSetsService.findOne 결과(조회 실패 시 null). productProfile 은 P1 additive(NULL = 종전) */
+  /** TemplateSetsService.findOne 결과(조회 실패 시 null). productProfile 은 additive(NULL = 종전) */
   templateSet: {
     editorMode?: string | null;
     pageStep?: number | null;
@@ -53,7 +53,7 @@ export interface SheetValidationRules {
    */
   expectedPages?: number;
   /**
-   * 2026-10-17 P1-e 후속: 프로파일 세트(캘린더 등)의 cover 슬롯 파일은 책등이 없다 — 워커가 binding
+   * 프로파일 세트(캘린더 등)의 cover 슬롯 파일은 책등이 없다 — 워커가 binding
    * perfect/hardcover 기본값으로 스프레드 표지 게이트(validatePageSize/validateBleed 스킵 + validateSpine →
    * SPINE_PARAMS_UNRESOLVED)를 타지 않도록 'none' 을 싣는다. 프로파일 non-null 일 때만 키 존재(NULL = 종전).
    */
@@ -71,7 +71,7 @@ function stepOver1(raw: unknown): number | undefined {
 
 /**
  * 템플릿셋 프로파일이 권위다(관리자가 선언한 상품 구성). 세션 스냅샷(metadata.productProfile)은 서버 소유 키
- * (security-2, 2026-10-19: EditSessionsService 가 생성·PATCH·완료 때 템플릿셋 현재값으로 재기록, 클라이언트 값은 무시)라
+ * (EditSessionsService 가 생성·PATCH·완료 때 템플릿셋 현재값으로 재기록, 클라이언트 값은 무시)라
  * 서버 기록값만 남지만, 템플릿셋에 프로파일이 없을 때만(세트 삭제·조회 실패 뒤 재합성) 폴백으로 쓴다.
  * 둘 다 있고 editorType 이 다르면 경고만 남기고 템플릿셋 값을 쓴다.
  */
@@ -141,7 +141,7 @@ function deriveLegacySheetRules(input: SheetValidationRulesInput): SheetValidati
   if (templateTypes === null) return null;
   if (templateTypes.some((t) => NON_SHEET_TEMPLATE_TYPES.has(t))) return null;
   // 2026-10-17 운영 실측 보완: 템플릿이 하나도 없으면 판정 근거가 없고, 템플릿이 전부 'cover' 인 single
-  // 세트(예: ShareSnap 하드커버 표지 전용 세트)는 책 표지 편집이지 낱장이 아니다 — 호스트가 책 쪽수를
+  // 세트(예: 파트너 쇼핑몰의 하드커버 표지 전용 세트)는 책 표지 편집이지 낱장이 아니다 — 호스트가 책 쪽수를
   // pages 로 보내면 표지 1쪽이 정확 비교에 걸린다. 둘 다 null(레거시 cover 규칙 유지).
   if (templateTypes.length === 0) return null;
   if (templateTypes.every((t) => t === 'cover')) return null;

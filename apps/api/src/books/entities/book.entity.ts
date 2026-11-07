@@ -20,15 +20,15 @@ import {
  * 마이그레이션: apps/api/migrations/20260716_add_books_core.sql
  *
  * - books 는 기존 files/file_edit_sessions/worker_jobs 를 대체하지 않는 파사드 —
- *   내부 오케스트레이션만 하고 기존 모듈 시맨틱은 무접촉(§6.1 AD-2, AD-1).
+ *   내부 오케스트레이션만 하고 기존 모듈 시맨틱은 무접촉(§6.1).
  * - uid('bk_...')만 외부 노출, 내부 UUID(id)는 비노출(§2.0 접두 체계).
  * - 전 리소스 site_id NOT NULL — v1 은 처음부터 site 스탬프 강제(§7.1).
- * - status 는 DRAFT/FINALIZED 2종(§6.2 AD-3). FINALIZED→DRAFT 되돌림은 v1 범위 밖.
- * - book_spec_id 는 NULLABLE (설계서 초안 NOT NULL 정정) — book_specs 시드가 오너
- *   승인 대기(§9-6)라 시드 없이도 DRAFT 생성이 가능해야 한다. finalization 페이지
- *   규칙은 W3 에서 book_spec 연결 시에만 적용.
+ * - status 는 DRAFT/FINALIZED 2종(§6.2). FINALIZED→DRAFT 되돌림은 v1 범위 밖.
+ * - book_spec_id 는 NULLABLE — book_specs 시드는 운영자 승인 후 수동 적용이라
+ *   시드 없이도 DRAFT 생성이 가능해야 한다. finalization 페이지
+ *   규칙은 book_spec 연결 시에만 적용.
  * - edit_session_id 는 file_edit_sessions(EditSession @Entity('file_edit_sessions'))
- *   참조 — EDITOR_SESSION 승격 원본. 조회+참조만(AD-1: 상태 변경 금지).
+ *   참조 — EDITOR_SESSION 승격 원본. 조회+참조만(상태 변경 금지).
  */
 @Entity('books')
 @Index('idx_books_site_env_status', ['siteId', 'env', 'status'])
@@ -57,7 +57,7 @@ export class Book {
   })
   creationType: BookCreationType;
 
-  /** book_specs.id — NULLABLE(시드 게이트). 연결 시 finalization 페이지 규칙 근거(W3) */
+  /** book_specs.id — NULLABLE(시드 게이트). 연결 시 finalization 페이지 규칙 근거 */
   @Column({ name: 'book_spec_id', type: 'varchar', length: 36, nullable: true })
   bookSpecId: string | null;
 

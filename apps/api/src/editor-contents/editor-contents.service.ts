@@ -13,10 +13,9 @@ import { EditorContentType } from '@storige/types';
 /**
  * 편집기 콘텐츠 조회 서비스.
  *
- * ⚠️ 2026-06-02 (P0-1, 에셋 단절 해소): 관리자 Library(`library_cliparts`/`library_frames`/
+ * ⚠️ 관리자 Library(`library_cliparts`/`library_frames`/
  * `library_backgrounds`)에 등록한 에셋이 고객 편집기 패널(요소/프레임/배경)에 노출되도록,
  * element/frame/background 타입은 **library_* 테이블에서** 조회한다.
- * (기존 `editor_contents` 테이블은 비어 있어 admin 에셋이 고객에게 전혀 안 보이던 문제.)
  * template/image 타입은 종전대로 `editor_contents` 사용(향후 통합 후보).
  */
 @Injectable()
@@ -117,7 +116,7 @@ export class EditorContentsService {
     }
     let [rows, total] = await scoped.getManyAndCount();
 
-    // 빈 화면 방지 폴백(P1, 2026-06-15): 큐레이션 연결은 존재하지만(curatedIds!==null)
+    // 빈 화면 방지 폴백: 큐레이션 연결은 존재하지만(curatedIds!==null)
     // 그 카테고리들에 활성 에셋이 0건이면 패널이 완전히 비어버린다 — 사용자에게는
     // "에셋이 아예 없다"로 보여 신뢰를 떨어뜨림. 이 경우 카테고리 필터를 제거하고
     // 전역(검색/태그 등 다른 조건은 보존)으로 1회 재조회한다. 정렬/페이지네이션 규약 보존.

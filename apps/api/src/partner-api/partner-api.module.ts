@@ -21,13 +21,13 @@ import { PartnerApiKeysController } from './keys/partner-api-keys.controller';
 import { PartnerApiKeysSweeper } from './keys/partner-api-keys.sweeper';
 
 /**
- * Partner API v1 — 신규 파사드 모듈 (설계서 AD-1).
+ * Partner API v1 — 신규 파사드 모듈 (기존 표면 무접촉).
  *
  * 표준 봉투·멱등성·페이지네이션·per-Key 레이트리밋·Bearer 병행 인증은
  * 이 모듈의 /api/v1/* 표면에만 실장한다. 기존 /external·동결 라우트 무접촉.
  *
  * - ApiKeyGuard 는 공용 파일 무수정으로 프로바이더 등록만 하여
- *   PartnerApiKeyGuard 가 위임 재사용한다(§7.1).
+ *   PartnerApiKeyGuard 가 위임 재사용한다.
  * - SitesService 는 SitesModule 이 @Global 이라 별도 import 불필요.
  * - exports: 타 도메인 모듈(BookSpecsModule 등)이 @PartnerV1Controller 를
  *   선언할 때, 컨트롤러 호스트 모듈에서 v1 스택(가드/필터/인터셉터)과 그

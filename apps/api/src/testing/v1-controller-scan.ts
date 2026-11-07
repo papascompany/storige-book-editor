@@ -11,7 +11,7 @@
  *  - partner-v1-guarded.spec.ts        — 가드 계약(무인증 라우트 0)
  *  - scripts/partner-openapi-surface.spec.ts — OpenAPI export 커버리지
  *
- * ⚠️ 스캔 사각(적대 리뷰 P2-1): 엄밀히는 "**`*.controller.ts` 파일명으로 선언된** v1
+ * ⚠️ 스캔 사각: 엄밀히는 "**`*.controller.ts` 파일명으로 선언된** v1
  * 컨트롤러의 ground truth" 다. 파일명 규약을 벗어나 정의된 v1 컨트롤러는 이 스캔에
  * 잡히지 않으며, 그 경우 OpenAPI 커버리지뿐 아니라 **가드 계약(무인증 라우트 0)까지
  * 침묵**한다 — 후자가 더 위험. 신규 v1 컨트롤러는 반드시 이 파일명 규약을 따를 것.

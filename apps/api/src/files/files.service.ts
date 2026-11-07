@@ -27,7 +27,7 @@ import {
   buildEditRetentionCutoffs,
 } from '../staff-edit-data/edit-retention';
 
-// SEC-010: 셸을 거치지 않는 execFile — 인자가 그대로 argv 로 전달돼 메타문자 해석/인젝션 불가.
+// 셸을 거치지 않는 execFile — 인자가 그대로 argv 로 전달돼 메타문자 해석/인젝션 불가.
 const execFileAsync = promisify(execFile);
 
 /**
@@ -139,7 +139,7 @@ export class FilesService {
   }
 
   /**
-   * 워커 산출(외부 저장경로) PDF 를 File 레코드로 등록 — P4 내지 임포지션 결과 되연결용 (2026-06-10).
+   * 워커 산출(외부 저장경로) PDF 를 File 레코드로 등록 — 내지 임포지션 결과 되연결용.
    *
    * 업로드(uploadFile)와 달리 파일은 이미 워커가 STORAGE_PATH 아래(예: /storage/converted/x.pdf)에
    * 생성해 둔 상태다. 본 메서드는 그 경로를 검증(존재 + storage 루트 밖 traversal 방지)하고
@@ -172,8 +172,8 @@ export class FilesService {
 
     // outputFileUrl → 절대경로 변환 (downloadOutput 컨트롤러와 동일 규약)
     const storageBase = this.configService.get<string>('STORAGE_PATH', '/app/storage');
-    // 해석+경계 가드는 공유 헬퍼로 — 종전 인라인 startsWith(base) 검사는 형제 접두사
-    // (/app/storage-evil)를 통과시키는 결함이 있었다(감사 §8 ⑦, worker-jobs.controller 와 통합).
+    // 해석+경계 가드는 공유 헬퍼(resolveStoragePath)로 — 형제 접두사 경로(/app/storage-x)도
+    // 루트 밖으로 판정한다(worker-jobs.controller 와 같은 헬퍼).
     const resolvedPath = resolveStoragePath(outputFileUrl, storageBase);
     if (!resolvedPath) {
       throw new BadRequestException({
@@ -323,7 +323,7 @@ export class FilesService {
       fileName: file.fileName,
       originalName: file.originalName,
       fileUrl: file.fileUrl,
-      // SEC-008: filePath(절대경로·s3키) 미노출 — DTO 에서 제거.
+      // filePath(절대경로·s3키) 미노출 — DTO 에서 제거.
       thumbnailUrl: file.thumbnailUrl,
       fileSize: Number(file.fileSize),
       mimeType: file.mimeType,
@@ -364,8 +364,8 @@ export class FilesService {
   }
 
   /**
-   * @deprecated 트랙 B-(c) 이후 런타임 호출처 0건. 다운로드/서빙은 전부 `getFileStream`(전체버퍼
-   * 미적재)으로 전환됨. 동일 권한경계(findById+assertSiteAccess)가 두 벌로 남아 드리프트 위험이
+   * @deprecated 런타임 호출처 없음. 다운로드/서빙은 전부 `getFileStream`(전체버퍼
+   * 미적재)을 쓴다. 동일 권한경계(findById+assertSiteAccess)가 두 벌로 남아 드리프트 위험이
    * 있으니, 권한·라우팅 변경 시 반드시 getFileStream 을 정본으로 보고 이 메서드는 제거를 검토할 것.
    */
   async getFileBuffer(
@@ -388,7 +388,7 @@ export class FilesService {
       }
       return { buffer, file };
     } catch (error) {
-      // SEC-007: 클라 응답에 S3 키·서버 절대경로 노출 금지(getFileStream 선례 정합).
+      // 클라 응답에 S3 키·서버 절대경로 노출 금지(getFileStream 과 같은 규칙).
       // 진단정보는 서버 로그로만.
       this.logger.warn(
         `getFileBuffer failed (id=${id}, backend=${file.storageBackend}, key=${file.storageKey}, path=${file.filePath}): ${(error as Error)?.message}`,
@@ -402,7 +402,7 @@ export class FilesService {
   }
 
   /**
-   * 파일 **스트림** 읽기 (다운로드/인라인 서빙용) — 트랙 B-(c).
+   * 파일 **스트림** 읽기 (다운로드/인라인 서빙용).
    * getFileBuffer 와 동일한 라우팅/권한(assertSiteAccess)을 적용하되 파일을 heap 에
    * 통째로 적재하지 않는다(2GB 도 API heap 상수). 호출측은 `stream.pipe(res)` + `stream.on('error')`.
    *
@@ -498,7 +498,7 @@ export class FilesService {
   }
 
   /**
-   * 소프트삭제 복구 (48h 복구창 내) — deleted_at 과 expires_at 을 함께 NULL 로 되돌림 (O18).
+   * 소프트삭제 복구 (48h 복구창 내) — deleted_at 과 expires_at 을 함께 NULL 로 되돌림.
    * expires_at 을 남기면 과거 시각인 경우 다음 orphan/보존 sweep 이 즉시 재소프트삭제하므로
    * 복구 = 영구보관 상태로 되돌림. 보존 만료가 다시 필요하면 setExpiry 로 재설정한다.
    * 단일 UPDATE 로 두 컬럼을 원자적으로 갱신(UpdateQueryBuilder 는 soft-delete 필터를 걸지 않음).
@@ -506,7 +506,7 @@ export class FilesService {
    * 이미 purge(hardDelete)된 경우 NotFoundException(FILE_NOT_FOUND).
    * 이미 활성이면 멱등 반환 — 활성 파일에 예약된 expires_at(만료 예약)은 건드리지 않는다
    * (restore 는 삭제된 파일 전용; 예약 해제는 setExpiry(null) 사용).
-   * admin 라우트 노출은 P1.
+   * admin 라우트: POST /files/:id/restore (FilesController.restoreFile).
    * @returns 복구된 엔티티
    */
   async restore(id: string): Promise<FileEntity> {
@@ -524,7 +524,7 @@ export class FilesService {
     if (!file.deletedAt) {
       return file; // 이미 활성 — 멱등
     }
-    // deleted_at + expires_at 동시 해제 (O18) — expires_at 잔존 시 sweep 재삭제 방지
+    // deleted_at + expires_at 동시 해제 — expires_at 잔존 시 sweep 재삭제 방지
     await this.fileRepository.update({ id }, { deletedAt: null, expiresAt: null });
     return this.findById(id);
   }
@@ -547,8 +547,8 @@ export class FilesService {
   /**
    * 만료된(expires_at < now) 파일 조회 — retention cron 용. limit 으로 배치 제한.
    *
-   * P0 무중단 가드 (2026-07-03): **미완결 주문에 연결된 파일은 만료 sweep 에서 제외**한다.
-   * ⚠️ `order_seqno IS NULL` 단독 가드는 오답 — 100p/MD2 등 retention 오프로드 테넌트는
+   * 무중단 가드: **미완결 주문에 연결된 파일은 만료 sweep 에서 제외**한다.
+   * ⚠️ `order_seqno IS NULL` 단독 가드는 오답 — retention 오프로드 테넌트는
    *    order_seqno 와 expires_at 을 **동시 스탬프**(uploadFileExternal 이 orderSeqno 스탬프 후
    *    setExpiry)하므로, 그 방식은 이들의 정상 만료를 영구 차단해 스토리지 무한 잔존을 부른다.
    * 따라서 **주문 상태(편집세션 status)를 조인**해, 진행 중(status <> 'complete')인 세션이 존재하는
@@ -674,7 +674,7 @@ export class FilesService {
    * 명시적으로 포함시켜야 purge cron 이 찾을 수 있다.
    * ⚠️ expires_at IS NOT NULL 제한: 보존 sweep(만료예약 파일만)으로 soft-delete 된 것만 영구삭제.
    *    수동삭제(DELETE /files/:id → softDelete, expires_at 미설정)는 purge 대상에서 제외해
-   *    소프트삭제 상태로 보존(복구 가능) — 의도치 않은 영구손실 방지. (고아 정리는 P1 별도)
+   *    소프트삭제 상태로 보존(복구 가능) — 의도치 않은 영구손실 방지. (고아 정리는 FileOrphanService 가 별도 수행)
    * @param cutoff  deleted_at < cutoff 인 행만 (예: now - 48h)
    * @param limit   배치 제한
    */
@@ -692,7 +692,7 @@ export class FilesService {
   }
 
   /**
-   * P1 고아 파일 후보 조회 — **보수적 NOT EXISTS**. 데이터손실 방지가 최우선.
+   * 고아 파일 후보 조회 — **보수적 NOT EXISTS**. 데이터손실 방지가 최우선.
    *
    * 후보 조건 (전부 AND):
    *  1) order_seqno IS NULL          (주문 연결 없음)
@@ -836,7 +836,7 @@ export class FilesService {
   }
 
   /**
-   * P1 고아 강등 — expires_at=now 세팅 후 softDelete. **순서 필수**.
+   * 고아 강등 — expires_at=now 세팅 후 softDelete. **순서 필수**.
    * purge(findSoftDeletedOlderThan)는 expires_at IS NOT NULL 만 회수하므로,
    * expires_at 없이 softDelete 하면 고아가 soft 상태로 영구잔존한다.
    * → expires_at=now 로 즉시 '만료' 표식 + deleted_at 세팅 = 48h 후 기존 purge 가 hardDelete.
@@ -877,7 +877,7 @@ export class FilesService {
   ): Promise<string> {
     const file = await this.findById(fileId);
 
-    // P0-3: 테넌트 격리 — findById 직후·mimeType 검사 전에 대조(getFileStream 선례와 동일 위치).
+    // 테넌트 격리 — findById 직후·mimeType 검사 전에 대조(getFileStream 과 동일 위치).
     // 불일치 시 여기서 404 로 종료되므로 아래 GS 래스터화·thumbnailUrl 저장 부수효과는
     // 인가된 테넌트(또는 내부/worker)에서만 발생한다.
     this.assertSiteAccess(file, caller);
@@ -946,7 +946,7 @@ export class FilesService {
       }
 
       // Ghostscript를 사용해 PDF → PNG 변환
-      // SEC-010: execFile(인자배열, 셸 없음)로 실행 — 따옴표/메타문자 이스케이프 불필요,
+      // execFile(인자배열, 셸 없음)로 실행 — 따옴표/메타문자 이스케이프 불필요,
       // filePath 가 오염돼도 커맨드 인젝션 불가(argv 로 그대로 전달).
       const gsArgs = [
         '-q', // 배너·진행 로그 억제 → stdout 을 에러 메시지 전용으로 유지

@@ -131,7 +131,7 @@ export class ObjectStorageService {
   /**
    * 파일별 backend 로 객체를 **스트림**으로 읽기 (다운로드/인라인 서빙용).
    * `get():Buffer` 와 달리 파일을 JS heap 에 통째로 올리지 않는다 → 2GB 다운로드에도
-   * API heap 상수(~64KB 청크). 트랙 B-(c) 의 핵심.
+   * API heap 상수(~64KB 청크).
    *  - s3: `GetObjectCommand` 의 `Body`(Node 런타임에서 Readable) 를 그대로 반환(Buffer.concat 금지).
    *  - local: `fs.createReadStream`(경로 traversal 격리는 localPath 가 담당).
    * ⚠️ s3 의 NoSuchKey 등은 여기서 await 중 throw(헤더 전송 전) → 호출측이 404 로 변환.

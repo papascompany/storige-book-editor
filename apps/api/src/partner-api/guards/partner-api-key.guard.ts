@@ -17,17 +17,17 @@ import {
 import { PartnerApiKeysService } from '../keys/partner-api-keys.service';
 
 /**
- * v1 전용 인증 가드 (설계서 §7.1, AD-5).
+ * v1 전용 인증 가드.
  *
  * - `Authorization: Bearer <key>` 와 `X-API-Key: <key>` 병행 수용, 동일 키 검증.
  * - 둘 다 오면 Authorization 우선, 값 불일치 시 401 ERR_UNAUTHORIZED(모호성 거부).
  * - 1차: 기존 공용 ApiKeyGuard(sites editor/worker 키 로직)에 **위임 재사용** —
- *   공용 가드 파일은 무수정(§2.1: v1 키가 기존 표면으로 새는 것을 구조적으로 차단).
+ *   공용 가드 파일은 무수정(v1 키가 기존 표면으로 새는 것을 구조적으로 차단).
  *   성공 시 env='live'·apiKeyId=null 을 additive 스탬프(sites 키=단일 env 체계).
  * - 2차(폴백): sites 키 실패 시 partner_api_keys 조회 —
  *   SHA-256 해시 대조 + revoked/grace 만료 검사 + site active 검사 후
  *   req.user 에 site 컨텍스트+env+apiKeyId 세팅. **이 폴백은 본 가드에만 실장** —
- *   v1 발급 키(test 포함)는 기존 external 표면에서 무효(§7.3 논리 분리).
+ *   v1 발급 키(test 포함)는 기존 external 표면에서 무효(논리 분리).
  * - env 스코프: @PartnerLiveOnly 마킹 라우트를 test 키가 호출하면 403 ERR_ENV_MISMATCH.
  */
 @Injectable()

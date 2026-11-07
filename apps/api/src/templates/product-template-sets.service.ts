@@ -19,7 +19,7 @@ import {
   ProductTemplateSetListResponseDto,
 } from './dto/product-template-set.dto';
 
-// Bookmoa 엔티티 타입 (조건부 import)
+// 파트너 쇼핑몰 카테고리 엔티티 타입 (조건부 import)
 interface BookmoaCategoryLike {
   sortcode: string;
   cateName: string;
@@ -189,7 +189,7 @@ export class ProductTemplateSetsService {
       .take(limit)
       .getManyAndCount();
 
-    // 카테고리 이름 조회 (bookmoa DB에서)
+    // 카테고리 이름 조회 (파트너 쇼핑몰 카테고리 DB에서)
     const sortcodes = [...new Set(items.map((item) => item.sortcode))];
     const categoryMap = new Map<string, string>();
 
@@ -202,7 +202,7 @@ export class ProductTemplateSetsService {
           categoryMap.set(cat.sortcode, cat.cateName);
         });
       } catch (error) {
-        // bookmoa DB 연결 실패 시 무시
+        // 파트너 쇼핑몰 카테고리 DB 연결 실패 시 무시
         console.warn('Failed to fetch category names from bookmoa:', error.message);
       }
     }

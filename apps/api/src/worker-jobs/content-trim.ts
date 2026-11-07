@@ -20,7 +20,7 @@ export const CONTENT_TRIM_MAX_TOL_MM = 5;
 
 export type ContentTrimSource = 'templateSet' | 'bookSpec';
 
-/** X1 공유 계약(api ↔ worker) */
+/** 공유 계약(api ↔ worker) */
 export interface ContentTrim {
   trimWidthMm: number;
   trimHeightMm: number;

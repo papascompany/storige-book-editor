@@ -42,7 +42,7 @@ const ASSET_UPLOAD = FileInterceptor('file', {
  * Partner API v1 — Books(도서 aggregate) 컨트롤러.
  *
  * 정본: docs/PARTNER_PLATFORM_API_V1_DESIGN_2026-07-07.md §1·§2.4·§6
- * 글로벌 prefix 'api' → 최종 경로 /api/v1/books (설계서 모듈 배치 규약).
+ * 글로벌 prefix 'api' → 최종 경로 /api/v1/books (v1 모듈 배치 규약).
  *
  * v1 표준 스택 — @PartnerV1Controller 조합 데코레이터가 일괄 바인딩:
  *   @Public(전역 JwtAuthGuard 우회) + PartnerApiKeyGuard(Bearer/X-API-Key 병행)
@@ -50,7 +50,7 @@ const ASSET_UPLOAD = FileInterceptor('file', {
  *   인터셉터(§3.1). 핸들러는 순수 데이터만 반환 — 봉투 수동 래핑 금지(이중 래핑 방지).
  *   목록은 PaginatedResult 로 pagination(§5.1)을 싣는다.
  *
- * ⚠️ @Get(':uid') 는 정적 하위 경로(:uid/pdf-cover 등, W2)보다 뒤에 선언 —
+ * ⚠️ @Get(':uid') 는 정적 하위 경로(:uid/pdf-cover 등)보다 뒤에 선언 —
  *    Nest 라우팅은 선언 순서를 따르므로 구체 경로 우선.
  */
 @ApiTags('partner-v1')
@@ -59,10 +59,10 @@ const ASSET_UPLOAD = FileInterceptor('file', {
 export class BooksController {
   constructor(
     private readonly booksService: BooksService,
-    // W3 — 최종화 오케스트레이터. 라우트는 본 컨트롤러에 둔다(별도 v1 컨트롤러 신설 시
-    // partner-v1-guarded 전수 스캔 목록에 등재 필요 — 기존 컨트롤러 재사용이 최소 변경).
+    // 최종화 오케스트레이터. 라우트는 본 컨트롤러에 둔다(별도 v1 컨트롤러를 만들면
+    // partner-v1-guarded 전수 스캔 목록에 등재해야 한다).
     private readonly bookFinalizationsService: BookFinalizationsService,
-    // W3 GET .../pdf 스트림(local/s3 무관 getFileStream).
+    // GET .../pdf 스트림(local/s3 무관 getFileStream).
     private readonly filesService: FilesService,
   ) {}
 
@@ -89,7 +89,7 @@ export class BooksController {
     return PaginatedResult.of(items, total, { limit, offset });
   }
 
-  // ── 자산(W2) ────────────────────────────────────────────────────────
+  // ── 자산 ────────────────────────────────────────────────────────────
   // ⚠️ 정적 하위 경로는 @Get(':uid') 보다 앞에 선언(Nest 선언 순서 라우팅).
   // 각 라우트는 JSON {fileId} 또는 multipart(file) 두 입력을 함께 수용(fileId 우선).
   // 게이트: 테넌트 404 → FINALIZED 409 → 호환 422 → 기존재 409/404 순(서비스).
@@ -189,7 +189,7 @@ export class BooksController {
     return this.booksService.addPhoto(site, uid, { fileId: dto.fileId, file });
   }
 
-  // ── 최종화(W3) ──────────────────────────────────────────────────────
+  // ── 최종화 ──────────────────────────────────────────────────────────
   // ⚠️ 정적 하위 경로(2 세그먼트라 @Get(':uid') 에 shadow 되진 않으나 선언 순서 관행 유지).
   //   POST/GET .../finalization 은 상태머신 폴링 표면, GET .../pdf 는 소유검증 스트림(§9-10).
 
@@ -220,7 +220,7 @@ export class BooksController {
 
   @Get(':uid/pdf')
   @PartnerRateLimitBucket('heavy')
-  @ApiOperation({ summary: '최종 PDF 다운로드(소유검증 스트림) — FINALIZED 전용(§9-10)' })
+  @ApiOperation({ summary: '최종 PDF 다운로드(소유검증 스트림) — FINALIZED 전용' })
   @ApiResponse({ status: 200, description: 'application/pdf 스트림(local/s3 무관 상수메모리)' })
   @ApiResponse({ status: 404, description: 'ERR_NOT_FOUND — 미FINALIZED/없음/타 테넌트(존재 은닉)' })
   async downloadPdf(
@@ -243,7 +243,7 @@ export class BooksController {
       if (!res.headersSent) {
         // 스트리밍용으로 걸어둔 헤더를 정리한다 — Express res.json() 은 기설정 Content-Type 을
         // 덮지 않아, 정리 없이는 에러 JSON 이 application/pdf + attachment(+옛 Content-Length)로
-        // 나가 다운로더가 에러 본문을 .pdf 로 저장한다(적대 리뷰 실증, 3라우트 공통 일괄 수정).
+        // 나가 다운로더가 에러 본문을 .pdf 로 저장한다(다운로드 3라우트 공통 처리).
         res.removeHeader('Content-Type');
         res.removeHeader('Content-Disposition');
         res.removeHeader('Content-Length');

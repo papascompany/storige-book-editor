@@ -45,7 +45,7 @@ export class ProductTemplateSetsController {
 
   /**
    * 상품별 템플릿셋 조회 (외부용 - API Key 인증)
-   * bookmoa에서 호출하는 엔드포인트
+   * 파트너 쇼핑몰 서버가 호출하는 엔드포인트
    */
   @Get('by-product')
   @Public()

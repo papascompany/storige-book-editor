@@ -1,9 +1,9 @@
 /**
- * bookmoa R-195(2026-09-28) — 편집기 스프레드 책 완료 세션의 검증 잡 orderOptions 보정.
+ * 편집기 스프레드 책 완료 세션의 검증 잡 orderOptions 보정.
  *
  * 배경: 세션 완료 검증 잡은 레거시 metadata(size/pages/binding/bleed/paperThickness)만 읽는데
- * `/embed` 는 이 키들을 채우지 않는다(운영 08-01 이후 세션 36건 중 0건) → 편집기 산출 표지는
- * 항상 binding=perfect·pages=1·책등 없음으로 검증되어 표지 크기 검사가 통째로 생략됐다.
+ * `/embed` 는 이 키들을 채우지 않는다 → 보정이 없으면 편집기 산출 표지는
+ * 항상 binding=perfect·pages=1·책등 없음으로 검증되어 표지 크기 검사가 통째로 생략된다.
  *
  * 이 모듈은 편집기가 완료 시 기록한 값만으로 보정값을 만든다(추론 금지):
  *  - metadata.orderOptions.bindingType : 주문 제본(파트너 전달값)
@@ -349,14 +349,14 @@ export function deriveEditorSpreadValidationOverrides(
 }
 
 /* ──────────────────────────────────────────────────────────────────────────────────────────────
- * N-API-3b(2026-10-06) — 편집 완료 content 검증 잡의 쪽 단위(pageMultiple·중철 pageCountMax) 주입.
+ * 편집 완료 content 검증 잡의 쪽 단위(pageMultiple·중철 pageCountMax) 주입.
  *  - 편집기 실효 물리 쪽 단위 S 는 hostPageLimits.ts resolveStorePageLimits 미러: 호스트
  *    orderOptions.pageStep(1 = 무제약) → 템플릿셋 pageStep. 생성 시점 기록값만 읽는다.
  *  - content.pdf 1쪽 = 물리 k쪽(펼침면 2, 낱장 1) → PDF 단위 pageMultiple = Mphys / gcd(Mphys, k).
  *  - 중철은 lcm(S,4) 바닥값 + 상한(호스트 pageCountMax ?? 64)/k. 제본 판정은 주문값
- *    (normalizeOrderBinding) OR 최종 binding — R-195(EDITOR_SPREAD_VALIDATION_MAPPING)와 독립.
- *  - 데이터 주도 키는 bookmoa 확정 매핑(docs/PDF_VALIDATION_GUIDE.md:291)과 같은 worker 경로를 탄다.
- *  - 오너 결정 D1(a): page_step NULL + 낱장은 null(레거시 그대로). D3: pageCountMin·비중철 Max 미주입.
+ *    (normalizeOrderBinding) OR 최종 binding — EDITOR_SPREAD_VALIDATION_MAPPING 과 독립.
+ *  - 데이터 주도 키는 docs/PDF_VALIDATION_GUIDE.md「데이터 주도 페이지수 검증」매핑과 같은 worker 경로를 탄다.
+ *  - page_step NULL + 낱장은 null(레거시 그대로). pageCountMin·비중철 Max 는 주입하지 않는다.
  * ────────────────────────────────────────────────────────────────────────────────────────────── */
 
 /** 내지 펼침면 판정 결과(resolveInnerSpreadContentSizeMm 의 kind) */
@@ -436,7 +436,7 @@ export function deriveEditorContentPageRules(
   else if (input.layout === 'none') k = 1;
   else return null;
 
-  // 1) 제본 판정(R-195 독립)
+  // 1) 제본 판정(EDITOR_SPREAD_VALIDATION_MAPPING 과 독립)
   const orderOptions = asRecord(metadata.orderOptions);
   const orderBinding = normalizeOrderBinding(orderOptions?.bindingType);
   const isSaddle = orderBinding === 'saddle' || input.legacyBinding === 'saddle';
@@ -467,11 +467,11 @@ export function deriveEditorContentPageRules(
     mPhys = physicalStep;
     source = stepSource;
   } else if (k === 2) {
-    // D2(a): 레거시(perfect 4배수 · 그 밖 무검사)를 물리 단위로 해석
+    // 레거시(perfect 4배수 · 그 밖 무검사)를 물리 단위로 해석
     mPhys = input.legacyBinding === 'perfect' ? 4 : 1;
     source = 'legacy-2up';
   } else {
-    // D1(a): 단위 근거 없는 낱장 = 레거시 그대로
+    // 단위 근거 없는 낱장 = 레거시 그대로
     return null;
   }
 

@@ -8,7 +8,7 @@ import { PartnerSessionsController } from './partner-sessions.controller';
 import { PartnerSessionsService } from './partner-sessions.service';
 
 /**
- * Partner API v1 — 1-call 런처 모듈(P2-b, 2026-10-18, /api/v1/sessions/*).
+ * Partner API v1 — 1-call 런처 모듈(/api/v1/sessions/*).
  * 정본: docs/PRODUCT_MODE_ARCHITECTURE_DESIGN_2026-10-16.md §8.1
  *
  * - v1 표준 스택은 @PartnerV1Controller + PartnerApiModule import(가드/필터/인터셉터 DI)로 승계(BooksModule 선례).

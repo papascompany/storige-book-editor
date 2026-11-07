@@ -1,5 +1,5 @@
 /**
- * S4 2단계(2026-08-28, 오너 결정 D3·D4) — 합성 산출물 서명 URL 생성기.
+ * 합성 산출물 서명 URL 생성기.
  *
  * compose-mixed 등 SYNTHESIZE 산출물은 files 미등록이라 회수 경로가
  * nginx 무인증 정적 `/storage/outputs/…` 뿐이었다(접근통제 = jobId 은닉).
@@ -10,8 +10,8 @@
  *   여기:   md5 = base64url( md5( `${expires}${uri}${secret}` ) )
  *
  * ⚠️ $uri 는 **서명 경로**(/storage-signed/…) 그대로다 — 기존 무인증 경로
- *    (/storage/…)는 유예(grandfathering, D4)로 당분간 병행 서빙되며 cutover(D5,
- *    bookmoa 조율) 때 별도로 닫는다. 신규 표면은 처음부터 fail-closed.
+ *    (/storage/…)는 유예(grandfathering)로 병행 서빙되며 파트너 전환 완료 후
+ *    별도로 닫는다. 신규 표면은 처음부터 fail-closed.
  * ⚠️ md5 는 여기서 암호학적 무결성용이 아니라 nginx secure_link 모듈의 고정
  *    포맷이다. 시크릿이 충분히 길면(32B+) 위조에는 시크릿 추측이 필요하다.
  */

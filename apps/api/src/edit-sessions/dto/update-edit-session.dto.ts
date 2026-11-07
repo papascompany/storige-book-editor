@@ -29,11 +29,11 @@ export class UpdateEditSessionDto {
   @IsUUID()
   contentFileId?: string;
 
-  // ── 인쇄 워크플로우 v1 Phase 4 (2026-05-19) ──
-  // 고객 첨부 내지 PDF 흐름. 결정 3-3: PDF 첨부 ↔ 편집 배타.
-  // 결정 3-4: 검증 실패 시 첨부 자체 거부 — validationResult.issues 있으면 클라가 거부 UI 노출.
+  // ── 고객 첨부 내지 PDF 흐름 ──
+  // replace 모드는 PDF 첨부 ↔ 편집 배타(underlay 는 편집 허용 — contentPdfMode).
+  // 검증 실패 시 첨부 자체 거부 — validationResult.issues 있으면 클라가 거부 UI 노출.
 
-  @ApiPropertyOptional({ example: 'uuid', description: '고객 첨부 내지 PDF file_id (Phase 4)' })
+  @ApiPropertyOptional({ example: 'uuid', description: '고객 첨부 내지 PDF file_id' })
   @IsOptional()
   @IsUUID()
   contentPdfFileId?: string | null;
@@ -51,7 +51,7 @@ export class UpdateEditSessionDto {
 
   @ApiPropertyOptional({
     enum: ['replace', 'underlay'],
-    description: 'P0-2: 내지 PDF 첨부 모드. replace=PDF만 인쇄(배타), underlay=PDF 배경+편집 허용',
+    description: '내지 PDF 첨부 모드. replace=PDF만 인쇄(배타), underlay=PDF 배경+편집 허용',
   })
   @IsOptional()
   @IsIn(['replace', 'underlay'])

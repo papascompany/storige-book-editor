@@ -12,11 +12,11 @@ import {
 /**
  * 웹훅 v2 secret 유틸 — 발급 / at-rest 암호화(AES-256-GCM) / HMAC 서명.
  *
- * 설계서 §2.7: secret 은 서명 계산에 원문이 필요해 해시 보관 불가 →
+ * secret 은 서명 계산에 원문이 필요해 해시 보관 불가 →
  * WEBHOOK_CONFIG_ENC_KEY(32바이트)로 at-rest 암호화(secret_enc).
  * 응답 노출은 발급/회전 1회뿐. 원문 secret 은 절대 로그 금지.
  *
- * 서명 형식은 기존 WH-001 발신 정본(CONTRACT_FREEZE §1-E)과 동일:
+ * 서명 형식은 기존 v1 HMAC 발신 정본(CONTRACT_FREEZE §1-E)과 동일:
  *   `t=<unixsec>,v1=<hex>` / data = `${t}.${identifier}:${event}:${timestamp}`
  * — 전역 WEBHOOK_SECRET 대신 사이트별 secret 을 쓰는 것만 다르다.
  */
@@ -71,7 +71,7 @@ export function decryptWebhookSecret(secretEnc: string, encKey: Buffer): string 
 }
 
 /**
- * v2 HMAC-SHA256 서명 — WH-001 발신 정본 형식 유지(t=,v1=), 사이트별 secret.
+ * v2 HMAC-SHA256 서명 — v1 HMAC 발신 정본 형식 유지(t=,v1=), 사이트별 secret.
  * data = `${t}.${identifier}:${event}:${timestamp}`
  * (identifier = payload.jobId ?? payload.sessionId ?? delivery uid — 테스트 발송용 폴백)
  *

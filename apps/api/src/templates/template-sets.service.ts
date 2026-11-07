@@ -34,7 +34,7 @@ import {
   withOrientationSuffix,
   transformCanvasDataOrientation,
 } from './orientation-derive.util';
-// 트랙 C (2026-07-23) — 표지 spread 면 단위 방향 파생
+// 표지 spread 면 단위 방향 파생
 import {
   evaluateSpreadDeriveGate,
   transformSpreadCanvasDataOrientation,
@@ -85,7 +85,7 @@ export class TemplateSetsService {
     scope?: TenantScope,
   ): Promise<TemplateSet> {
     const editorMode = dto.editorMode ?? EditorMode.SINGLE;
-    // P3b — 사이트 운영자는 자기 site 소유로 강제(시스템 공유 NULL 생성 불가).
+    // 사이트 운영자는 자기 site 소유로 강제(시스템 공유 NULL 생성 불가).
     const siteId = scope ? resolveScopedSiteId(scope, dto.siteId) : (dto.siteId ?? null);
 
     // v1.29 캘린더 스킨 — 참조 세트 사이트 검사(skins 없으면 조회 없음)
@@ -111,7 +111,7 @@ export class TemplateSetsService {
       height: dto.height,
       canAddPage: dto.canAddPage ?? true,
       pageCountRange: dto.pageCountRange || [],
-      pageStep: dto.pageStep ?? null, // S8 내지 증감 단위 (null=제약 없음)
+      pageStep: dto.pageStep ?? null, // 내지 증감 단위 (null=제약 없음)
       padToPageStep: dto.padToPageStep ?? false, // 첨부 내지 PDF 빈 페이지 배수 채움 (opt-in)
       templates: dto.templates || [],
       editorMode,
@@ -120,13 +120,13 @@ export class TemplateSetsService {
       categoryId: dto.categoryId || null,
       // 생성 시에도 인쇄 워크플로우/출력 설정 저장(이전엔 누락되어 entity 기본값으로만 저장됨)
       endpaperConfig: dto.endpaperConfig ?? null,
-      pricing: dto.pricing ?? null, // 포토북 가격 메타 (Phase 2 §8)
+      pricing: dto.pricing ?? null, // 포토북 가격 메타
       coverEditable: dto.coverEditable ?? true,
       coverPreviewImage: dto.coverPreviewImage ?? null,
-      // D-4 커버 3종 메타 (2026-07-06, C-4 Track 3) — 생성 시에도 영속(additive nullable)
+      // 커버 3종 메타 — 생성 시에도 영속(additive nullable)
       coverType: dto.coverType ?? null,
       coverConfig: dto.coverConfig ?? null,
-      // 상품별 편집 모드 프로파일 (P1 캘린더, 2026-10-17) — 미지정=null(기존 동작, additive nullable)
+      // 상품별 편집 모드 프로파일 — 미지정=null(기존 동작, additive nullable)
       productProfile: dto.productProfile ?? null,
       contentPdfEditable: dto.contentPdfEditable ?? true,
       pdfOutputMode: dto.pdfOutputMode ?? 'duplex-merged',
@@ -196,10 +196,10 @@ export class TemplateSetsService {
       qb.andWhere('ts.isActive = :isActive', { isActive });
     }
 
-    // P2b: 템플릿셋=hybrid. includeNull=true → 시스템공유(site_id=NULL) 셋 + 자기 site.
+    // 템플릿셋=hybrid. includeNull=true → 시스템공유(site_id=NULL) 셋 + 자기 site.
     if (scope) applySiteScope(qb, 'ts', scope, { includeNull: true });
 
-    // P3b — 테넌트 스위처 명시 필터. 스코프와 AND 교집합이라 비전역 사용자가
+    // 테넌트 스위처 명시 필터. 스코프와 AND 교집합이라 비전역 사용자가
     // 타 site 값을 넣어도 빈 결과일 뿐 유출되지 않는다.
     if (query.siteId) {
       qb.andWhere('ts.siteId = :switcherSiteId', {
@@ -237,7 +237,7 @@ export class TemplateSetsService {
       throw new NotFoundException(`템플릿셋을 찾을 수 없습니다: ${id}`);
     }
 
-    // P3b — 상세 읽기 테넌트 격리(시스템 공유 NULL 은 열람 허용).
+    // 상세 읽기 테넌트 격리(시스템 공유 NULL 은 열람 허용).
     if (scope) assertSiteInScope(scope, templateSet.siteId, { allowNull: true });
 
     // ④ 연결된 라이브러리 카테고리 populate
@@ -337,7 +337,7 @@ export class TemplateSetsService {
   }
 
   /**
-   * 캘린더 스킨(v1.29, 설계 C10) 참조 세트 사이트 검사 — 프로파일 `calendar.skins[].templateSetId` 가 가리키는 세트가
+   * 캘린더 스킨(v1.29) 참조 세트 사이트 검사 — 프로파일 `calendar.skins[].templateSetId` 가 가리키는 세트가
    * 있고(소프트 삭제 제외) 그 siteId 가 기준 세트와 같거나 null(공유)이어야 한다. 아니면 400.
    * 없는 세트와 다른 사이트 세트, 두 경우를 같은 문구로 거부한다.
    * skins 가 없으면 조회하지 않는다. 구조 호환(레이아웃·판형·사진틀 수 등)은 admin·편집기의
@@ -431,7 +431,7 @@ export class TemplateSetsService {
    */
   async copy(id: string, scope?: TenantScope): Promise<TemplateSet> {
     const original = await this.findOne(id);
-    // P3b — 시스템 공유 세트의 복제는 허용(큐레이션 플로우: 공유 풀 → 자기 site 사본).
+    // 시스템 공유 세트의 복제는 허용(큐레이션 플로우: 공유 풀 → 자기 site 사본).
     if (scope) assertSiteInScope(scope, original.siteId, { allowNull: true });
     // 사이트 운영자 사본은 자기 site 소유, 전역 admin 은 원본 소유 유지.
     const copySiteId =
@@ -611,7 +611,7 @@ export class TemplateSetsService {
       qb.andWhere('ts.type = :type', { type });
     }
 
-    // P2b: hybrid. includeNull=true → 시스템공유 + 자기 site (편집기 '셋 교체'용).
+    // hybrid. includeNull=true → 시스템공유 + 자기 site (편집기 '셋 교체'용).
     if (scope) applySiteScope(qb, 'ts', scope, { includeNull: true });
 
     qb.orderBy('ts.name', 'ASC');
@@ -684,7 +684,7 @@ export class TemplateSetsService {
   }
 
   // ─────────────────────────────────────────────────────
-  // 방향(orientation) 페어링 + 파생 (2026-07-14, 오너 승인 설계)
+  // 방향(orientation) 페어링 + 파생
   // 마이그레이션: apps/api/migrations/20260714_add_orientation_pair.sql
   // 불변식: 대칭 저장(양쪽이 서로를 가리킴) / 짝 중 is_orientation_default 정확히 1개.
   // 일반 PUT update 경로로는 두 필드를 설정할 수 없다(DTO 미노출 + forbidNonWhitelisted).
@@ -729,7 +729,7 @@ export class TemplateSetsService {
 
     const target = await this.findOne(id);
     const partner = await this.findOne(pairedTemplateSetId);
-    // P3b — 양쪽 모두 변경되므로 양쪽 소유권 필요(크로스 테넌트 페어 금지).
+    // 양쪽 모두 변경되므로 양쪽 소유권 필요(크로스 테넌트 페어 금지).
     if (scope) {
       assertSiteInScope(scope, target.siteId);
       assertSiteInScope(scope, partner.siteId);
@@ -784,7 +784,7 @@ export class TemplateSetsService {
     }
 
     const partnerId = target.pairedTemplateSetId;
-    // P3b — 상대쪽 행도 변경되므로 소유권 확인(행이 이미 없으면 검사 불필요 — 아래 update 무해).
+    // 상대쪽 행도 변경되므로 소유권 확인(행이 이미 없으면 검사 불필요 — 아래 update 무해).
     if (scope && !scope.isGlobal) {
       const partner = await this.templateSetRepository.findOne({
         where: { id: partnerId },
@@ -818,7 +818,7 @@ export class TemplateSetsService {
   ): Promise<{ success: true; data: TemplateSet }> {
     const target = await this.findOne(id);
     if (scope) assertSiteInScope(scope, target.siteId);
-    // P3b — 짝 세트도 default 해제 변경되므로 소유권 확인.
+    // 짝 세트도 default 해제 변경되므로 소유권 확인.
     if (scope && !scope.isGlobal && target.pairedTemplateSetId) {
       const partner = await this.templateSetRepository.findOne({
         where: { id: target.pairedTemplateSetId },
@@ -840,13 +840,13 @@ export class TemplateSetsService {
   }
 
   /**
-   * 반대 방향 세트 파생 (오너 승인 설계 ③④, 2026-07-14).
+   * 반대 방향 세트 파생.
    *
    * - 판형 W↔H 스왑 + 설정(bleedMm·sizeToleranceMm·cropMarkEnabled·pageCountRange·
    *   editorMode·enabledMenus·pricing 등) 복사, 이름 ' (가로)'/' (세로)' 접미.
    * - is_active=0 초안 — 사람 검수 후 활성.
    * - page류 템플릿만 복제·변환(위치만 축별 비율 재배치 — orientation-derive.util).
-   *   [트랙 C 2026-07-23] includeCover 명시 시 spread(full)만 면 단위 변환 이월
+   *   includeCover 명시 시 spread(full)만 면 단위 변환 이월
    *   (spread-orientation-derive.util) — flat 계열·inner·spec 없음은 skip(meta 사유 안내,
    *   파생 전체를 중단하지 않음). spine/wing/cover/endpaper 별도 type 은 계속 미이월.
    *   ⚠️ includeCover 미지정 시 editorMode=book 파생 초안은 SPREAD 없이 시작 — 활성 전
@@ -868,7 +868,7 @@ export class TemplateSetsService {
   }> {
     const includeCover = options?.includeCover === true;
     const original = await this.findOne(id);
-    // P3b — 파생은 원본에 페어링을 기록(원본 변조)하므로 쓰기 소유권 필요.
+    // 파생은 원본에 페어링을 기록(원본 변조)하므로 쓰기 소유권 필요.
     // 파생 세트/템플릿 siteId 는 아래 트랜잭션에서 original/tpl 의 siteId 를 승계.
     if (scope) assertSiteInScope(scope, original.siteId);
 
@@ -903,7 +903,7 @@ export class TemplateSetsService {
       );
     }
 
-    // 트랙 C — includeCover 결과 수집(응답 meta, includeCover 시에만 노출)
+    // includeCover 결과 수집(응답 meta, includeCover 시에만 노출)
     const coverSkipped: Array<{ templateId: string; reason: string }> = [];
     const coverReviewNotes: string[] = [];
     let coverDerived = 0;
@@ -915,7 +915,7 @@ export class TemplateSetsService {
         const tpl = byId.get(ref.templateId);
         if (!tpl) continue;
 
-        // [트랙 C] 표지 spread — includeCover 명시 시에만(기본 off = 현행 거동).
+        // 표지 spread — includeCover 명시 시에만(기본 off = 현행 거동).
         // 게이트 skip 은 파생 중단이 아님: 표지만 빠진 초안 + meta 사유 안내
         // (표지 변환 불가가 내지 파생 전체를 막을 이유가 없음 — 현행보다 항상 같거나 나음).
         if (tpl.type === 'spread' && includeCover) {
@@ -971,7 +971,7 @@ export class TemplateSetsService {
         const newTemplate = this.templateRepository.create({
           id: uuidv4(),
           name: withOrientationSuffix(tpl.name, suffix),
-          thumbnailUrl: null, // 방향이 다른 원본 썸네일 오도 방지 (오너 설계 ④)
+          thumbnailUrl: null, // 방향이 다른 원본 썸네일 오도 방지
           type: tpl.type,
           width: tpl.height,
           height: tpl.width,
@@ -988,7 +988,7 @@ export class TemplateSetsService {
           categoryId: tpl.categoryId,
           editCode: null, // unique 컬럼 — 복제 금지
           templateCode: null, // unique 컬럼 — 복제 금지
-          isActive: true, // 오너 설계 ④: 복제 템플릿 is_active=1
+          isActive: true, // 복제 템플릿 is_active=1
           createdBy: tpl.createdBy,
           siteId: tpl.siteId,
         });
@@ -1029,7 +1029,7 @@ export class TemplateSetsService {
         productSpecs: original.productSpecs,
         siteId: original.siteId,
         isDeleted: false,
-        isActive: false, // 초안 — 사람 검수 후 활성 (오너 설계 ③)
+        isActive: false, // 초안 — 사람 검수 후 활성
         pairedTemplateSetId: original.id,
         isOrientationDefault: false, // 원본이 default 유지
       });
@@ -1044,7 +1044,7 @@ export class TemplateSetsService {
       return newSet;
     });
 
-    // 트랙 C: includeCover 시에만 meta 노출 — 미지정 응답은 기존과 byte-호환
+    // includeCover 시에만 meta 노출 — 미지정 응답은 기존과 byte-호환
     if (includeCover) {
       return {
         success: true,

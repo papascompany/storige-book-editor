@@ -1,5 +1,5 @@
 /**
- * 기능 플래그 기동 스냅샷(OPS-S4-N2).
+ * 기능 플래그 기동 스냅샷.
  *
  * 부팅 시 각 플래그의 **유효 불리언**을 한 줄 로그로 남긴다. 값은 소비 코드와 같은 소스·같은
  * 술어로 얻는다(원값을 다시 해석하지 않도록, 가능하면 소비 서비스의 getter 를 쓴다):
@@ -64,9 +64,9 @@ export const API_FEATURE_FLAG_KEYS = [
   'PARTNER_JOB_VIEW',
   // 2026-10-17(낱장 분류 검증) 킬스위치 — 줄 끝에 붙는다(운영 FLAGS_EXPECTED_API 프로필에도 추가).
   'EDITOR_SHEET_VALIDATION_RULES',
-  // 2026-10-18(P2-b 1-call 런처 /api/v1/sessions/*) 킬스위치 — 줄 끝에 붙는다(운영 FLAGS_EXPECTED_API 프로필에도 추가).
+  // 2026-10-18(1-call 런처 /api/v1/sessions/*) 킬스위치 — 줄 끝에 붙는다(운영 FLAGS_EXPECTED_API 프로필에도 추가).
   'PARTNER_SESSION_LAUNCH_ENABLED',
-  // 2026-10-18(P2-c sheet-map 출력) 킬스위치 — 줄 끝에 붙는다(운영 FLAGS_EXPECTED_API 프로필에도 추가).
+  // 2026-10-18(sheet-map 출력) 킬스위치 — 줄 끝에 붙는다(운영 FLAGS_EXPECTED_API 프로필에도 추가).
   'SHEET_MAP_OUTPUT_ENABLED',
   // 2026-10-25(완료 검증 기본 도련 = 재단선 세트 도련) 킬스위치 — 줄 끝에 붙는다(운영 FLAGS_EXPECTED_API 프로필에도 추가).
   'VALIDATION_BLEED_FROM_TEMPLATE_SET',
@@ -106,7 +106,7 @@ export interface ApiFeatureFlagInputs {
   editorSheetValidationRulesRaw: unknown;
   /** process.env.PARTNER_SESSION_LAUNCH_ENABLED — partner-sessions.service 와 같은 소스·같은 술어(2026-10-18) */
   partnerSessionLaunchEnabledRaw: unknown;
-  /** process.env.SHEET_MAP_OUTPUT_ENABLED — edit-sessions.service 와 같은 소스·같은 술어(2026-10-18 P2-c) */
+  /** process.env.SHEET_MAP_OUTPUT_ENABLED — edit-sessions.service 와 같은 소스·같은 술어(2026-10-18) */
   sheetMapOutputEnabledRaw: unknown;
   /** process.env.VALIDATION_BLEED_FROM_TEMPLATE_SET — edit-sessions.service 와 같은 소스·같은 술어(2026-10-25) */
   validationBleedFromTemplateSetRaw: unknown;
@@ -235,7 +235,7 @@ export function isEditorSpreadValidationMappingOn(env: NodeJS.ProcessEnv = proce
 }
 
 /**
- * EDITOR_CONTENT_PAGE_RULES 진리값 술어(N-API-3b 킬스위치) — 기본 ON. 앞뒤 공백 제거 + 대소문자 무시,
+ * EDITOR_CONTENT_PAGE_RULES 진리값 술어(편집기 쪽 단위 주입 킬스위치) — 기본 ON. 앞뒤 공백 제거 + 대소문자 무시,
  * 'off' 일 때만 OFF(미설정·빈 문자열·그 밖의 값은 ON).
  */
 export function isEditorContentPageRulesOnRaw(raw: unknown): boolean {
@@ -243,7 +243,7 @@ export function isEditorContentPageRulesOnRaw(raw: unknown): boolean {
 }
 
 /**
- * 편집 완료 content 검증 잡에 편집기 실효 쪽 단위(pageMultiple·중철 pageCountMax)를 싣는가(N-API-3b).
+ * 편집 완료 content 검증 잡에 편집기 실효 쪽 단위(pageMultiple·중철 pageCountMax)를 싣는가.
  * 기본 true. 호출 시점마다 env 를 읽는다(롤백 = env 'off' + 재시작).
  */
 export function isEditorContentPageRulesOn(env: NodeJS.ProcessEnv = process.env): boolean {
@@ -261,7 +261,7 @@ export function isEditorSheetValidationRulesOnRaw(raw: unknown): boolean {
 /**
  * 편집 완료 낱장(single 세트, spine/wing/spread 없음) 세션의 검증 잡에 productKind='sheet'(+pageStep)을
  * 싣는가(2026-10-17(낱장 분류 검증)). 기본 true. 호출 시점마다 env 를 읽는다.
- * 2026-10-24 T3c(C1): off 는 상품 프로파일 NULL 세트에만 적용된다 — 프로파일 세트(캘린더·사진인화)는 off 여도
+ * off 는 상품 프로파일 NULL 세트에만 적용된다 — 프로파일 세트(캘린더·사진인화)는 off 여도
  * 규칙을 유지한다(edit-sessions.service createValidationJobs 의 profileRulesOn 게이트).
  * 롤백 = .env 에 EDITOR_SHEET_VALIDATION_RULES=off → api 재생성 → nginx 재시작. [FLAGS] api 줄 끝 키로 확인한다
  * (API_FEATURE_FLAG_KEYS 등록 + docker-compose api environment 매핑, 2026-10-17).
@@ -271,7 +271,7 @@ export function isEditorSheetValidationRulesOn(env: NodeJS.ProcessEnv = process.
 }
 
 /**
- * PARTNER_SESSION_LAUNCH_ENABLED 진리값 술어(2026-10-18 P2-b 1-call 런처 킬스위치) — 기본 ON.
+ * PARTNER_SESSION_LAUNCH_ENABLED 진리값 술어(1-call 런처 킬스위치) — 기본 ON.
  * EDITOR_SHEET_VALIDATION_RULES 와 같은 해석(앞뒤 공백 제거 + 대소문자 무시, 'off' 일 때만 OFF).
  */
 export function isPartnerSessionLaunchEnabledRaw(raw: unknown): boolean {
@@ -288,7 +288,7 @@ export function isPartnerSessionLaunchEnabled(env: NodeJS.ProcessEnv = process.e
 }
 
 /**
- * SHEET_MAP_OUTPUT_ENABLED 진리값 술어(2026-10-18 P2-c sheet-map 출력 킬스위치) — 기본 ON.
+ * SHEET_MAP_OUTPUT_ENABLED 진리값 술어(sheet-map 출력 킬스위치) — 기본 ON.
  * PARTNER_SESSION_LAUNCH_ENABLED 와 같은 해석(앞뒤 공백 제거 + 대소문자 무시, 'off' 일 때만 OFF).
  */
 export function isSheetMapOutputEnabledRaw(raw: unknown): boolean {

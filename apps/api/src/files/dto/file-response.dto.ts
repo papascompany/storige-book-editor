@@ -14,7 +14,7 @@ export class FileResponseDto {
   @ApiProperty({ description: '파일 URL' })
   fileUrl: string;
 
-  // SEC-008(2026-06-22): filePath(서버 절대경로·s3 키) 는 클라 응답에서 제거.
+  // filePath(서버 절대경로·s3 키) 는 클라 응답에서 제거.
   // 워커는 GET /files/:id 에 도달 불가(JwtAuthGuard 가 X-API-Key 401)하고 /download/external
   // 스트리밍으로 바이트를 받으므로 이 필드에 의존하지 않으며, editor/admin 프론트도 미소비.
 
@@ -30,10 +30,10 @@ export class FileResponseDto {
   @ApiProperty({ description: '파일 타입', enum: FileType })
   fileType: FileType;
 
-  @ApiPropertyOptional({ description: 'bookmoa 주문 번호' })
+  @ApiPropertyOptional({ description: '파트너 쇼핑몰 주문 번호' })
   orderSeqno: number | null;
 
-  @ApiPropertyOptional({ description: 'bookmoa 회원 번호' })
+  @ApiPropertyOptional({ description: '파트너 쇼핑몰 회원 번호' })
   memberSeqno: number | null;
 
   @ApiPropertyOptional({ description: '추가 메타데이터' })

@@ -17,16 +17,15 @@ import {
  * 정본: docs/PARTNER_PLATFORM_API_V1_DESIGN_2026-07-07.md §2.6·§6.3
  * 마이그레이션: apps/api/migrations/20260716_add_books_core.sql
  *
- * ⚠️ 본 배치(W1+W2)는 테이블/엔티티만 신설한다. 실행 상태머신
- *    (PENDING→VALIDATING→COMPOSING→COMPLETED/FAILED)과 워커 validate/
- *    synthesize/compose-mixed 오케스트레이션·output_file_id 고정·웹훅
- *    book.finalization.completed 발송은 W3 finalization 오케스트레이터가 구현한다.
- * - validate_job_id/compose_job_id 는 worker_jobs.id 참조(조회+참조만, AD-1).
+ * - 실행 상태머신(PENDING→VALIDATING→COMPOSING→COMPLETED/FAILED)과 워커 잡
+ *   오케스트레이션·output_file_id 고정·웹훅 book.finalization.* 발송은
+ *   BookFinalizationsService 가 수행한다.
+ * - validate_job_id/compose_job_id 는 worker_jobs.id 참조(조회+참조만).
  * - FAILED 후 재호출은 attempt+1 새 행(§6.3 멱등 규약).
  */
 @Entity('book_finalizations')
 @Index('idx_book_finalizations_book', ['bookId', 'status'])
-// [렌즈1 P2-2 / 렌즈2 P2-3] 동시 착수 원자화 — (book_id, attempt) 유니크로 무키·상이
+// 동시 착수 원자화 — (book_id, attempt) 유니크로 무키·상이
 //   Idempotency-Key 동시 2 POST 의 패자 INSERT 를 DB 레벨에서 차단(dup-key → 409).
 //   attempt 는 항상 max+1 로 증분(§6.3 멱등)이라 정상 경로는 자연 만족, 경쟁 삽입만 충돌한다.
 @Index('uq_book_finalizations_book_attempt', ['bookId', 'attempt'], { unique: true })
@@ -70,7 +69,7 @@ export class BookFinalization {
   pageCount: number | null;
 
   /**
-   * [P1-2] 워커 validate 를 건너뛰고 최종화한 표식 — book_spec 미연결 or pageCount
+   * 워커 validate 를 건너뛰고 최종화한 표식 — book_spec 미연결 or pageCount
    * 미확정이라 대조 판형이 없어 조건부 validate 를 skip 했을 때 true(§6.3 조건부 계약).
    * BookFinalizationView·웹훅 payload 에 노출해 파트너가 미검증 FINALIZED 를 인지한다.
    */
@@ -78,7 +77,7 @@ export class BookFinalization {
   validationSkipped: boolean;
 
   /**
-   * [렌즈2 P2-3] 착수 시점 자산 스냅샷(TOCTOU 방지) — validate/compose 가 재조회 없이
+   * 착수 시점 자산 스냅샷(TOCTOU 방지) — validate/compose 가 재조회 없이
    * 이 스냅샷을 쓴다. 진행 중(VALIDATING/COMPOSING) 자산 교체와 무관하게 이번 attempt 는
    * 착수 시점 자산에 고정된다. 구 행(마이그레이션 이전)엔 null → 서비스가 resolvePlan 폴백.
    */

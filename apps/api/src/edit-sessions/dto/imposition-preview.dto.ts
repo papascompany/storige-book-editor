@@ -9,7 +9,7 @@ import {
  * 임포지션 미리보기 응답 DTO (2026-06-16).
  *
  * GET /edit-sessions/:id/imposition-preview 의 응답 형태.
- * 외부(bookmoa-mobile 등)가 "고객 첨부 내지 PDF가 책으로 묶이면
+ * 외부 호출자(파트너 앱 등)가 "고객 첨부 내지 PDF가 책으로 묶이면
  * 펼침면이 어떻게 보이는가"를 그리기 위한 표시용 데이터.
  *
  * ⚠️ Swagger 문서화를 위한 DTO 래퍼일 뿐, layout 의 실제 계산은

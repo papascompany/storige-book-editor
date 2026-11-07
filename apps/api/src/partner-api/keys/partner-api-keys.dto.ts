@@ -12,7 +12,7 @@ export class IssuePartnerApiKeyDto {
   @IsIn(['test', 'live'])
   env: PartnerEnv;
 
-  @ApiPropertyOptional({ example: 'bookmoa production', description: '키 라벨' })
+  @ApiPropertyOptional({ example: 'shop production', description: '키 라벨' })
   @IsOptional()
   @IsString()
   @Length(1, 100)

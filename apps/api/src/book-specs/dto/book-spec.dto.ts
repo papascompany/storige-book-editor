@@ -81,7 +81,7 @@ export interface BookSpecView {
   isActive: boolean;
 }
 
-/** calculated-size 응답 data shape (설계서 §1.2 #3) */
+/** calculated-size 응답 data shape */
 export interface CalculatedSizeView {
   bookSpecUid: string;
   pageCount: number;

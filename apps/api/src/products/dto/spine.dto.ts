@@ -52,7 +52,7 @@ export class CalculateSpineDto {
 
   @ApiPropertyOptional({
     example: 0.048,
-    description: 'R-44 v2: 커스텀 페이지당 두께(mm/페이지) — perfect v2 공식 강제 오버라이드',
+    description: 'v2: 커스텀 페이지당 두께(mm/페이지) — perfect v2 공식 강제 오버라이드',
   })
   @IsOptional()
   @IsNumber()
@@ -61,7 +61,7 @@ export class CalculateSpineDto {
 
   @ApiPropertyOptional({
     example: 0.095,
-    description: 'R-44 v2: 커스텀 장당 두께(mm/장) — hardcover v2 공식 강제 오버라이드',
+    description: 'v2: 커스텀 장당 두께(mm/장) — hardcover v2 공식 강제 오버라이드',
   })
   @IsOptional()
   @IsNumber()
@@ -105,7 +105,7 @@ export class SpineCalculationResultDto {
 
   @ApiProperty({
     example: 'v2',
-    description: "적용 공식 버전 — 'v2'=bookmoa SSOT 정합, 'v1'=legacy 선형식",
+    description: "적용 공식 버전 — 'v2'=파트너 쇼핑몰 책등 계산식(SSOT) 정합, 'v1'=legacy 선형식",
   })
   formulaVersion: 'v1' | 'v2';
 

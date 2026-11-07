@@ -1,7 +1,7 @@
 import { CreateProductDto } from './create-product.dto';
 
 export class UpdateProductDto implements Partial<CreateProductDto> {
-  // Bookmoa-style 필드 (Admin UI 호환)
+  // 쇼핑몰 연동형 필드 (Admin UI 호환)
   name?: string;
   code?: string;
   categoryId?: string;

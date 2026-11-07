@@ -95,7 +95,7 @@ export class EditSessionEntity {
   workerError: string | null;
 
   /**
-   * Phase C — 세션 발사 사이트 식별 (X-API-Key /auth/shop-session 시 자동 주입).
+   * 세션 발사 사이트 식별 (X-API-Key /auth/shop-session 시 자동 주입).
    * 기존 데이터는 NULL.
    */
   @Index('idx_edit_sessions_site_id')
@@ -106,15 +106,13 @@ export class EditSessionEntity {
   callbackUrl: string | null;
 
   // ─────────────────────────────────────────────────────
-  // 인쇄 워크플로우 v1 Phase 2 (2026-05-19)
-  // 면지/PDF첨부/게스트 토큰/레더 커버를 위한 신규 컬럼.
+  // 인쇄 워크플로우 v1 — 면지/PDF첨부/게스트 토큰/레더 커버 컬럼.
   // 마이그레이션: apps/api/migrations/20260519_v1_phase2_workflow_schema.sql
-  // 사용자 확정 결정 §4.4 (3-1~3-6 권장안).
   // ─────────────────────────────────────────────────────
 
   /**
    * 고객 첨부 내지 PDF file_id.
-   * 결정 3-3: PDF 첨부와 일부 편집은 배타적 — 둘 다 동시 보유 금지.
+   * PDF 첨부와 일부 편집은 배타적(replace 모드) — 둘 다 동시 보유 금지.
    */
   @Column({ name: 'content_pdf_file_id', type: 'varchar', length: 36, nullable: true })
   contentPdfFileId: string | null;
@@ -125,13 +123,12 @@ export class EditSessionEntity {
 
   /**
    * 워커 검증 결과 캐시 (issues, warnings, metadata).
-   * 결정 3-4: 검증 실패 시 클라이언트가 첨부 자체 거부 UI 노출 — 이 필드 확인.
+   * 검증 실패 시 클라이언트가 첨부 자체 거부 UI 노출 — 이 필드 확인.
    */
   @Column({ name: 'content_pdf_validation_result', type: 'json', nullable: true })
   contentPdfValidationResult: Record<string, unknown> | null;
 
   /**
-   * P0-2 (2026-06-02) → 표시전용 재정의 (2026-06-07).
    * 내지 PDF 첨부 모드.
    * - 'replace'(기본/레거시): PDF 만 인쇄, 캔버스 편집 배타(PDF_ATTACHED_EXCLUSIVE).
    * - 'underlay'(표시전용): PDF 각 페이지를 `excludeFromExport:true` 잠금배경 가이드로
@@ -144,7 +141,7 @@ export class EditSessionEntity {
   contentPdfMode: 'replace' | 'underlay' | null;
 
   /**
-   * 게스트 식별자 — 결정 3-1: 24h 자동 삭제. 결정 3-6: 저장 시점에 회원 전환 유도.
+   * 게스트 식별자 — 24h 자동 삭제. 저장 시점에 회원 전환 유도.
    * 회원 가입 시 user/member 컬럼으로 마이그레이션되고 guestToken/guestExpiresAt 클리어.
    */
   @Index('idx_edit_sessions_guest_token')

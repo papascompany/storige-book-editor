@@ -943,7 +943,7 @@ export class WorkerJobsService implements OnModuleInit {
     orderOptions: Partial<CreateValidationJobDto['orderOptions']> & Record<string, any>,
   ): Promise<void> {
     if (!orderOptions) return;
-    // F2(스탬프 선소독): spineSource/clientSpineWidthMm/spineUnresolvedReason 은 서버
+    // 스탬프 선소독: spineSource/clientSpineWidthMm/spineUnresolvedReason 은 서버
     // 전유 필드 — orderOptions 가 @IsObject 단독(중첩 무검증)이라 호출자가 위조 전송
     // 가능하므로 모든 경로(비cover·미주입·v1 폴백·예외 포함)에서 무조건 소거하고,
     // 스탬프는 아래 해당 경로만 재발급한다(감사 판별 1:1 보장).
@@ -951,10 +951,10 @@ export class WorkerJobsService implements OnModuleInit {
     delete orderOptions.clientSpineWidthMm;
     delete orderOptions.spineUnresolvedReason;
     if (fileType !== 'cover' || !this.spineService) return;
-    // S6: 앞/뒤 낱장 표지는 스프레드가 아니라 책등 폭이 검증에 쓰이지 않는다 — 주입·덮어쓰기
+    // 앞/뒤 낱장 표지는 스프레드가 아니라 책등 폭이 검증에 쓰이지 않는다 — 주입·덮어쓰기
     // 없이 종료(스탬프 소독은 위에서 이미 수행). 무효값은 미전송 취급(현행 주입 경로).
     if (orderOptions.coverLayout === 'separate') return;
-    // P1-e(2026-10-17): 프로파일 세트 cover 슬롯(책등 없음)도 spine 주입 대상이 아니다 — 워커가
+    // 프로파일 세트 cover 슬롯(책등 없음)도 spine 주입 대상이 아니다 — 워커가
     // validateSpine 을 생략하므로 spineWidthMm 을 덮어쓰지 않는다(스탬프 소독은 위에서 수행).
     if (orderOptions.coverSpine === 'none') return;
     const binding = orderOptions.binding as string;
@@ -973,7 +973,7 @@ export class WorkerJobsService implements OnModuleInit {
         this.logger.warn(
           `[spine-inject] 지종 '${paperType}' v2 두께 미보유(v1 폴백) — 클라 spineWidthMm 유지`,
         );
-        // R-53: 클라 값도 없으면 워커 SPINE_PARAMS_UNRESOLVED 사유 스탬프
+        // 클라 값도 없으면 워커 SPINE_PARAMS_UNRESOLVED 사유 스탬프
         if (typeof orderOptions.spineWidthMm !== 'number') {
           orderOptions.spineUnresolvedReason = 'V1_FALLBACK';
         }
@@ -995,7 +995,7 @@ export class WorkerJobsService implements OnModuleInit {
         `[spine-inject] SPINE_PARAMS_UNRESOLVED: '${paperType}'/${binding} 재계산 실패 ` +
           `(${error.message}) — 클라 값 유지(SOFT)`,
       );
-      // R-53: 클라 값도 없으면 워커 SPINE_PARAMS_UNRESOLVED 사유 스탬프
+      // 클라 값도 없으면 워커 SPINE_PARAMS_UNRESOLVED 사유 스탬프
       if (typeof orderOptions.spineWidthMm !== 'number') {
         orderOptions.spineUnresolvedReason = 'UNMAPPED_PAPER';
       }
@@ -1376,7 +1376,7 @@ export class WorkerJobsService implements OnModuleInit {
    * 원본 이미지 1장 → 워커(rembg 사이드카)가 알파 PNG 를 만들고 `CutoutJobResult` 를
    * `worker_jobs.result` 로 돌려준다. 원본 파일은 보존되고 새 파일 등록은 하지 않는다
    * (등록은 후속 범위 — `registerExternalFile` 기본 mimeType 이 application/pdf 라
-   *  PNG 에 그대로 쓰면 `GET /files/:id/raw` 가 404 나는 함정이 있다, 스파이크 §5-4).
+   *  PNG 에 그대로 쓰면 `GET /files/:id/raw` 가 404 난다).
    *
    * ⚠️ editSessionId 절대 미주입 — 세션 workerStatus 상태기계 오염 방지
    *    (createBleedFixJob 주석과 동일 이유).
@@ -1778,10 +1778,10 @@ export class WorkerJobsService implements OnModuleInit {
    *
    * 자산 정의(워커 실동작 기준):
    *  - 표지: `coverEditable !== false && coverUrl` 일 때만 실제 PDF 가 실린다.
-   *    (apps/worker/src/processors/synthesis.processor.ts:518-531 separate / :589-590 merged)
+   *    (apps/worker/src/processors/synthesis.processor.ts handleComposeMixedSynthesis — separate / merged)
    *    coverEditable=false 이거나 coverUrl 부재면 워커는 `addPage([coverPt])` = 백지.
-   *  - 내지: `contentPdfUrl` (:483-488 buildContentPdf / :602 merged)
-   *  - 면지: 배열의 **non-null 원소**만 자산. null 원소는 빈 페이지 생성 지시다(:478-481).
+   *  - 내지: `contentPdfUrl` (같은 메서드의 buildContentPdf / merged)
+   *  - 면지: 배열의 **non-null 원소**만 자산. null 원소는 빈 페이지 생성 지시다.
    *
    * 셋 다 0건이면 워커는 A4 백지 1p 를 COMPLETED 로 내보낸다(고객에겐 성공으로 보이는 백지
    * 주문). 그래서 자동조립 여부와 무관하게 400 으로 막는다.
@@ -1812,32 +1812,32 @@ export class WorkerJobsService implements OnModuleInit {
    *    composeFront/BackEndpaperUrls·composeCover/ContentWidthMm/HeightMm)로만 흐른다.
    *
    * ── 도출 출처(코드 확인 근거) ──────────────────────────────────────────────
-   *  - 세션 로드: edit-sessions.service.ts:317-319 과 동일한 relations(coverFile/contentFile).
+   *  - 세션 로드: EditSessionsService.findById 와 동일한 relations(coverFile/contentFile).
    *    (edit-sessions 모듈은 읽기 전용 참조 — 본 서비스는 이미 주입된 editSessionRepository 사용)
-   *  - 표지 PDF   ← session.coverFile            (edit-session.entity.ts:60-62)
-   *  - 첨부 내지  ← session.contentPdfFileId     (edit-session.entity.ts:119-120)
-   *      · 첨부와 편집은 배타(entity :117-118), underlay 편집도 **인쇄는 첨부 원본 그대로**
-   *        (entity :133-144) → 첨부가 있으면 항상 첨부가 내지다.
-   *  - 편집 내지  ← session.contentFile          (edit-session.entity.ts:67-69)
-   *  - 워커 입력 URL 변환 ← toWorkerInputUrl (worker-jobs.service.ts:186-188, s3=api://<id>)
-   *  - 판형(mm)   ← templateSet.width/height     (template-set.entity.ts:88-98)
+   *  - 표지 PDF   ← session.coverFile            (EditSessionEntity.coverFile)
+   *  - 첨부 내지  ← session.contentPdfFileId     (EditSessionEntity.contentPdfFileId)
+   *      · 첨부와 편집은 배타(EditSessionEntity.contentPdfFileId 주석), underlay 편집도 **인쇄는 첨부 원본 그대로**
+   *        (EditSessionEntity.contentPdfMode 주석) → 첨부가 있으면 항상 첨부가 내지다.
+   *  - 편집 내지  ← session.contentFile          (EditSessionEntity.contentFile)
+   *  - 워커 입력 URL 변환 ← toWorkerInputUrl (s3=api://<id>)
+   *  - 판형(mm)   ← templateSet.width/height     (TemplateSet.width/height)
    *  - 표지 판형  ← metadata.spread 의 outputWidthMm/HeightMm(우선) · totalWidthMm/HeightMm(폴백)
    *                 — createComposeMixedJob 본문의 스프레드·출력 사이즈 블록과 동일 출처. 펼침면 책의 빈 표지
    *                 치수이며, 둘 다 없으면 templateSet 판형.
-   *  - 면지 매수  ← templateSet.endpaperConfig.frontCount/backCount (template-set.entity.ts:147-154)
-   *      · null 원소 = 빈 면지 페이지(create-compose-mixed-job.dto.ts:51-58 계약).
-   *  - 표지 편집여부 ← templateSet.coverEditable (template-set.entity.ts:156-161)
+   *  - 면지 매수  ← templateSet.endpaperConfig.frontCount/backCount (TemplateSet.endpaperConfig)
+   *      · null 원소 = 빈 면지 페이지(create-compose-mixed-job.dto.ts 면지 URL 배열 계약).
+   *  - 표지 편집여부 ← templateSet.coverEditable (TemplateSet.coverEditable)
    *      · **요구 판정에만** 쓴다(레더커버는 표지 PDF 가 없는 게 정상). 큐 값으로 스탬프하지
    *        않는다 — 워커는 coverUrl 부재 시 coverEditable 값과 무관하게 빈 표지를 만든다
-   *        (synthesis.processor.ts:518-531·589-590) → 산출 동일.
-   *  - 콜백 URL   ← session.callbackUrl          (edit-session.entity.ts:105-106)
-   *  - 잡 siteId  ← session.siteId               (edit-session.entity.ts:101-103, dto.siteId 보다 우선)
+   *        (synthesis.processor.ts handleComposeMixedSynthesis) → 산출 동일.
+   *  - 콜백 URL   ← session.callbackUrl          (EditSessionEntity.callbackUrl)
+   *  - 잡 siteId  ← session.siteId               (EditSessionEntity.siteId, dto.siteId 보다 우선)
    *
    * ── 인가(자동조립 경로 한정) ──────────────────────────────────────────────
    * 호출자 siteId(검증된 shop-session JWT) 와 session.siteId 가 **둘 다 존재하고 일치**할
    * 때만 허용한다. 하나라도 없거나 다르면 미존재와 같은 404(SESSION_NOT_FOUND) — 존재 은닉.
-   * books.service.ts:160-168 의 정답 패턴을 따르며, `session.siteId &&` 형태의 약한 검사
-   * (edit-sessions.service.ts:386-394)는 의도적으로 복사하지 않는다(NULL-site 통과 구멍).
+   * BooksService.createFromSession 의 패턴을 따르며, `session.siteId &&` 형태의 약한 검사
+   * (NULL-site 세션을 통과시킨다)는 쓰지 않는다.
    * 추가로 토큰에 주문 스코프가 있으면 session.orderSeqno 도 대조한다(같은 테넌트 내
    * 다른 주문 세션 조립 차단 — 아래 게이트 주석 참조).
    */
@@ -1916,10 +1916,10 @@ export class WorkerJobsService implements OnModuleInit {
     }
 
     // 템플릿셋(판형·면지·표지 편집여부) + 템플릿 상세(spreadConfig) — 미존재/미지정은
-    // 도출 불가로 취급(인프라 예외는 rethrow, createBleedFixJob:655-666 선례).
+    // 도출 불가로 취급(인프라 예외는 rethrow, createBleedFixJob 과 같은 처리).
     // templateDetails 가 필요한 이유: 표지 유무·내지 페이지 크기의 권위 신호인
     // spreadConfig(regionScope/innerSpec)는 templateSet 이 아니라 templates 행에 있다
-    // (templates/entities/template.entity.ts:87).
+    // (Template.spreadConfig).
     let templateSet: TemplateSet | undefined;
     let templateDetails: Template[] = [];
     if (session.templateSetId) {
@@ -1942,7 +1942,7 @@ export class WorkerJobsService implements OnModuleInit {
       .map((t) => t?.spreadConfig)
       .filter((c): c is NonNullable<Template['spreadConfig']> => !!c);
     // 내지 전용 펼침면 세트는 표지 자체가 없고 편집기가 cover PDF 를
-    // 생성·업로드조차 하지 않는다(apps/editor/src/embed.tsx:1736 isInnerOnlySpread, :1760).
+    // 생성·업로드조차 하지 않는다(apps/editor/src/embed.tsx isInnerOnlySpread).
     // cover_editable 은 NOT NULL DEFAULT 1 이라 이 조합을 '표지 결손'으로 오판하면
     // 이 상품군 전체가 자동조립 불가가 된다.
     const innerOnlySpread =
@@ -1979,14 +1979,14 @@ export class WorkerJobsService implements OnModuleInit {
 
     // ── 내지 페이지 크기 ──
     // ⚠️ 이 값은 워커에서 **빈 면지 페이지 치수**로만 쓰인다
-    //    (synthesis.processor.ts:447-450 contentPt → :486·:502 addPage([contentPt])).
+    //    (synthesis.processor.ts handleComposeMixedSynthesis: contentPt → addPage([contentPt])).
     //    따라서 templateSet 판형(재단 trim) 원본이 아니라 **실제 내지 PDF 페이지 크기**와
     //    맞춰야 한 PDF 안에서 면지와 내지의 페이지 크기가 어긋나지 않는다.
     //  ① 펼침면 내지(2-up)는 한 페이지가 두 면이다 — pageWidthMm*2 × pageHeightMm
-    //     (apps/editor/src/utils/photobookSpread.ts:174-185 computeInnerContentSizeMm).
+    //     (apps/editor/src/utils/photobookSpread.ts computeInnerContentSizeMm).
     //  ② cropMarkEnabled && bleedMm>0 이면 편집기가 작업사이즈(trim + bleed*2)로 페이지를
-    //     만든다(packages/canvas-core/src/plugins/ServicePlugin.ts:731-748 useEditSize,
-    //     apps/editor/src/embed.tsx:1722-1725 markOpt → :1809 내지 호출).
+    //     만든다(packages/canvas-core/src/plugins/ServicePlugin.ts useEditSize,
+    //     apps/editor/src/embed.tsx markOpt → 내지 호출).
     const innerTrimWidthMm =
       positive(innerSpec?.pageWidthMm) !== undefined
         ? (innerSpec!.pageWidthMm as number) * 2
@@ -2034,14 +2034,14 @@ export class WorkerJobsService implements OnModuleInit {
     // ── 필수 자산 판정 ──
     // 표지는 outputMode 가 표지를 쓰는 경우(separate/merged)에만 요구한다.
     //  · content-only(레더커버)·single(낱장)은 워커가 표지를 아예 만들지 않는다
-    //    (synthesis.processor.ts:552-580).
+    //    (synthesis.processor.ts handleComposeMixedSynthesis).
     //  · 기성커버(coverEditable=false)는 표지 PDF 가 없는 것이 정상 상태다.
     //
     // ⚠️ dto.outputMode 원본으로 판정하면 안 되는 경우가 하나 있다 — 스프레드 책은
     //    본문의 스프레드 블록이 'content-only'|'single' 을 'separate' 로 **강제**하므로
-    //    (createComposeMixedJob 내 effectiveOutputMode, 아래 :1452-1458 상당),
+    //    (createComposeMixedJob 내 effectiveOutputMode),
     //    판정과 실행 모드가 어긋나면 워커가 coverUrl 없이 빈 cover.pdf 1p 를 만들고
-    //    COMPLETED 로 끝낸다(synthesis.processor.ts:518-531) = 위 빈 입력 차단이 막는 백지 산출.
+    //    COMPLETED 로 끝낸다(synthesis.processor.ts handleComposeMixedSynthesis) = 위 빈 입력 차단이 막는 백지 산출.
     //    강제 조건과 동일하게 metadata.spread 스냅샷 유무로 선판정한다.
     const spreadForcesSeparate =
       dto.coverEditable !== false && !!spread?.totalWidthMm && !!spread?.totalHeightMm;
@@ -2058,7 +2058,7 @@ export class WorkerJobsService implements OnModuleInit {
     if (!contentPdfUrl) missing.push('contentPdfUrl');
 
     // 빈 페이지가 실제로 생성되는 경우에만 치수 미해석을 실패로 본다
-    // (치수 부재 시 워커는 A4 고정 폴백 — synthesis.processor.ts:445-450).
+    // (치수 부재 시 워커는 A4 고정 폴백 — synthesis.processor.ts handleComposeMixedSynthesis).
     const willRenderBlankCover = coverUsedByOutputMode && !coverUrl;
     if (willRenderBlankCover && (!coverWidthMm || !coverHeightMm)) {
       missing.push('coverWidthMm/coverHeightMm');
@@ -2080,10 +2080,10 @@ export class WorkerJobsService implements OnModuleInit {
       });
     }
 
-    // 결정 8: dto 없으면 session.callbackUrl 폴백(웹훅 미발신 사각 해소).
+    // dto 없으면 session.callbackUrl 폴백(웹훅 미발신 사각 해소).
     // ⚠️ 감사 가능성: callbackUrl 은 '자산 출처'가 아니라 '결과 배달지'라 호출자가 고른 값이
     //    세션 권위를 이길 수 있다. 임의 도메인은 3중 완화(site webhook v2 config 우선 —
-    //    webhook.service.ts:148-159 · 호스트 allowlist · 사설 IP 차단)로 대개 막히지만
+    //    WebhookService.sendCallback · 호스트 allowlist · 사설 IP 차단)로 대개 막히지만
     //    allowlist 판정은 전역이므로, 어느 쪽이 이겼는지 로그에 남긴다(아래 assemble 요약).
     //    주 위험(타 고객 세션 조립)은 위 주문 스코프 게이트에서 닫힌다.
     const callbackUrlSource = dto.callbackUrl
@@ -2105,10 +2105,10 @@ export class WorkerJobsService implements OnModuleInit {
       ...(contentHeightMm !== undefined ? { contentHeightMm } : {}),
       ...(frontEndpaperUrls !== undefined ? { frontEndpaperUrls } : {}),
       ...(backEndpaperUrls !== undefined ? { backEndpaperUrls } : {}),
-      // 웹훅 미발신 사각 해소 — 잡 완료 발신은 job.options.callbackUrl 을 본다(:2312·:2373).
+      // 웹훅 미발신 사각 해소 — 잡 완료 발신은 job.options.callbackUrl 을 본다(updateJobStatus).
       ...(callbackUrl !== undefined ? { callbackUrl } : {}),
       // 잡 테넌트 스탬프는 세션 권위(dto.siteId 보다 우선) — NULL 스탬프 잡은
-      // assertJobSiteAccess(:1886-1895)에서 전 테넌트에 열린다.
+      // assertJobSiteAccess 에서 전 테넌트에 열린다.
       siteId: session.siteId,
     };
 
@@ -2135,22 +2135,15 @@ export class WorkerJobsService implements OnModuleInit {
   /**
    * [테넌트 스탬프 위조 차단] compose-mixed 잡의 `siteId` 결정.
    *
-   * `POST /worker-jobs/compose-mixed` 는 `@Public` 이라(worker-jobs.controller.ts:276-278)
+   * `POST /worker-jobs/compose-mixed` 는 `@Public` 이라(WorkerJobsController.createComposeMixed)
    * body 의 `siteId` 는 **무인증 호출자가 고른 값**이다. 다른 라우트들은 `@CurrentSite()` 로
-   * 서버가 도출한 값을 넣지만(worker-jobs.controller.ts:139·190·224·461), 이 라우트에서
-   * body 값을 그대로 `job.siteId` 로 기록하면 검증 주체가 없다.
-   *
-   * 그래서 임의 테넌트 UUID 를 실으면:
-   *  ① 잡이 그 사이트 소유로 귀속되고(assertJobSiteAccess:2310-2318 이 그 테넌트에만 개방),
-   *  ② 완료 시 **그 사이트의 v2 웹훅 엔드포인트로 발신**될 수 있다
-   *     (updateJobStatus:2382-2391 게이트 → hasV2ConfigForJob(job, job.siteId)
-   *      → webhook.service.ts:83-92 hasV2Config → tryDispatchForSite).
-   *     v1 과 달리 v2 는 목적지 URL 이 **사이트 config** 에서 나오므로, 호출자가
-   *     callbackUrl 을 주지 않아도 남의 파트너 서버로 잡 결과가 배달된다.
+   * 서버가 도출한 값을 넣는다. `job.siteId` 는 잡 소유 판정(assertJobSiteAccess)과
+   * 완료 시 v2 웹훅 목적지(updateJobStatus → hasV2ConfigForJob → 사이트 config)를 정하므로
+   * body 값을 검증 없이 기록하지 않는다.
    *
    * ── 새 규칙 ────────────────────────────────────────────────────────────
    *  - 자동조립 경로(`assembled=true`): `dto.siteId` 는 이미 `session.siteId` 로
-   *    덮여 있고(assembleComposeInputFromSession:1474-1476), 그 값은 caller 와
+   *    덮여 있고(assembleComposeInputFromSession), 그 값은 caller 와
    *    일치가 강제된 세션 권위값이다 → **그대로 유지**.
    *  - 수동 경로: 검증된 shop-session(OptionalShopJwtGuard) 의 caller.siteId 와
    *    **일치할 때만** 채택. 불일치·caller 부재면 **무시하고 NULL 스탬프**.
@@ -2158,9 +2151,8 @@ export class WorkerJobsService implements OnModuleInit {
    * ⚠️ 400 을 던지지 않는다(무중단 최우선 — 조용한 하향이 안전).
    *    NULL 스탬프는 이 라우트가 도입될 때의 기본값이자
    *    `siteId` 미전달 호출자와 동일한 상태이므로 회귀가 아니다.
-   * ⚠️ NULL 잡은 assertJobSiteAccess 상 전 테넌트에 열린다(:2306 '공유/레거시'). 그러나
-   *    위조 잡의 내용은 이미 위조자 본인이 만든 것이고, 반대로 위조 스탬프는 피해 사이트로
-   *    **결과를 밀어내는**(웹훅) 능동적 경로라 NULL 이 엄격히 안전한 쪽이다.
+   * ⚠️ NULL 잡은 assertJobSiteAccess 상 전 테넌트에 열린다('공유/레거시'). 검증되지 않은
+   *    사이트로 결과가 웹훅 발신되는 것보다 NULL 이 안전한 쪽이다.
    *
    * ── 기존 호출자 영향: '게이트 불변' ≠ '배달 경로 불변' ─────────────────────
    *  · **판정(게이트) 은 불변**: updateJobStatus 의 발신 여부 판정은
@@ -2170,7 +2162,7 @@ export class WorkerJobsService implements OnModuleInit {
    *    sendSynthesisCallback → webhook.service.sendCallback(url, payload, {siteId}) 로 가고,
    *    sendCallback 은 `context.siteId` 가 있고 그 사이트에 v2 active config 가 있으면
    *    tryDispatchForSite(v2: 사이트별 HMAC + X-Storige-Delivery + 재시도 스토어)로
-   *    먼저 배달하고 반환한다(webhook.service.ts:143-159). siteId 가 NULL 이 되면
+   *    먼저 배달하고 반환한다(WebhookService.sendCallback). siteId 가 NULL 이 되면
    *    이 분기를 건너뛰고 **v1 레거시 경로**(전역 시크릿 서명)로 같은 URL 에 배달된다.
    *    → body.siteId + callbackUrl 을 함께 보내는 호출자가 v2 config 를 켜 두었어도
    *      수신 서명은 v1 이다. 연동 가이드에 '수동 경로 잡은 v2 배달 대상 아님'을 명시한다.
@@ -2214,7 +2206,7 @@ export class WorkerJobsService implements OnModuleInit {
         return null;
       }
       // ③-b editSessionId 가 **다른 테넌트 소유**로 확인되면 채택하지 않는다.
-      //     교차 테넌트 링크(잡 완료가 남의 세션 workerStatus 를 건드리는 경로, :2477)를
+      //     교차 테넌트 링크(잡 완료가 남의 세션 workerStatus 를 건드리는 경로)를
       //     스탬프로 굳히지 않는다. ⚠️ `sessionSiteId` 가 없거나 NULL 이면 **상충 소유자가
       //     없으므로** 채택한다 — 레거시 무소유 세션에서 거부하면 정상 파트너가 다시 깨진다.
       if (sessionSiteId && sessionSiteId !== keySiteId) {
@@ -2268,7 +2260,7 @@ export class WorkerJobsService implements OnModuleInit {
    * ── 빈 입력 400 ─────────────────────────────────────────────────────
    * 자동조립 여부와 무관하게 표지·내지 자산이 0건이면 400(EMPTY_COMPOSE_INPUT).
    * 막지 않으면 워커가 A4 백지 1p 를 COMPLETED 로 산출한다
-   * (apps/worker/src/processors/synthesis.processor.ts:441-450·589-590·602·617-618).
+   * (apps/worker/src/processors/synthesis.processor.ts handleComposeMixedSynthesis).
    *
    * ── 테넌트 스탬프 위조 차단 ──────────────────────────────────────────────
    * `job.siteId` 는 body 값을 그대로 받지 않는다 — 자동조립은 세션 권위,
@@ -2542,7 +2534,7 @@ export class WorkerJobsService implements OnModuleInit {
   // ============================================================================
 
   /**
-   * 분리 합성 작업 생성 (★ v1.1.4 설계서 기준)
+   * 분리 합성 작업 생성
    *
    * 단일 PDF에서 표지/내지를 분리하는 작업
    * - pdfFileId: 업로드된 PDF 파일 ID (pdfUrl 완전 제거)
@@ -2767,7 +2759,7 @@ export class WorkerJobsService implements OnModuleInit {
    * - sessionId: EditSession ID (편집기 산출물 + 세션 일치 이중 검증용)
    * - requestId: 멱등성 키(worker_jobs.request_id VARCHAR(36) — 36자 이내)
    * - siteId: 잡 소유 사이트(additive, 2026-10-18). 세션 siteId 를 승계 — 미전달=NULL(종전과 같다).
-   * - revision: P2-b 런처 synthesize 재합성 회차(additive, 2026-10-18). options.revision 에 저장하고
+   * - revision: 런처 synthesize 재합성 회차(additive). options.revision 에 저장하고
    *   완료 웹훅 payload 에 그대로 실린다. 미전달이면 options 에 키를 만들지 않는다(기존 잡 바이트 불변).
    */
   async createDuplexSplitJob(dto: {
@@ -2860,7 +2852,7 @@ export class WorkerJobsService implements OnModuleInit {
         mode: 'duplex-split',
         totalExpectedPages,
         callbackUrl: dto.callbackUrl,
-        // P2-b 재합성 회차 — 전달된 경우에만 키를 만든다(기존 잡 options 바이트 불변).
+        // 재합성 회차 — 전달된 경우에만 키를 만든다(기존 잡 options 바이트 불변).
         ...(typeof dto.revision === 'number' ? { revision: dto.revision } : {}),
       },
     });
@@ -2920,7 +2912,7 @@ export class WorkerJobsService implements OnModuleInit {
   }
 
   /**
-   * Sheet-map 합성 작업 생성 (P2-c, 2026-10-18 — ProductProfile output.mode='sheet-map').
+   * Sheet-map 합성 작업 생성 (ProductProfile output.mode='sheet-map').
    *
    * 편집기 산출 단일 PDF(캔버스 순서)를 API 가 미리 계산한 시트 앞/뒤 매핑(`sheets`, buildSheetMap 결과)대로
    * 워커가 per-sheet n파일 또는 merged-duplex 1파일로 만든다. duplex-split(2쪽씩 자르기)과 달리 표지 단면·
@@ -4074,7 +4066,7 @@ export class WorkerJobsService implements OnModuleInit {
 
   /**
    * Synthesis 작업 완료/실패 시 콜백 전송
-   * 설계서 기준: 하위호환 유지 (outputFileUrl은 항상 merged URL)
+   * 하위호환 유지 (outputFileUrl은 항상 merged URL)
    * 반환: 발신 성공(또는 v2 재시도 체인 접수) 여부 — 발신 장부(dispatchJobCallback)가 쓴다.
    */
   private async sendSynthesisCallback(job: WorkerJob): Promise<boolean> {
@@ -4095,7 +4087,7 @@ export class WorkerJobsService implements OnModuleInit {
         sessionId: job.editSessionId || undefined, // additive (계약 보강)
         orderId: job.options?.orderId,
         orderSeqno: job.options?.orderOptions?.orderSeqno, // 호스트가 보낸 orderOptions.orderSeqno echo-back
-        // P2-b 런처 synthesize 재합성 잡에만 존재(options.revision). 그 외 잡은 키 자체를 싣지 않는다
+        // 런처 synthesize 재합성 잡에만 존재(options.revision). 그 외 잡은 키 자체를 싣지 않는다
         // (기존 발신 바이트 불변 — webhook-v1-invariance.spec 게이트).
         ...(typeof job.options?.revision === 'number' ? { revision: job.options.revision } : {}),
         status: isCompleted ? 'completed' : 'failed',

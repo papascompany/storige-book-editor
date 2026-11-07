@@ -23,7 +23,7 @@ import {
  * - v1 은 읽기 전용 — 검증측(워커) 상수·로직 무접촉.
  * - 책등 계산은 기존 SpineService 재사용 (중복 구현 금지).
  * - 테넌트 스코프: 전역(siteId=null) + 자기 site 판형만 노출.
- *   타 사이트 판형은 존재 은닉을 위해 404 (ERR_NOT_FOUND 원칙, 설계서 §3.3).
+ *   타 사이트 판형은 존재 은닉을 위해 404 (ERR_NOT_FOUND 원칙).
  */
 @Injectable()
 export class BookSpecsService {
@@ -60,7 +60,7 @@ export class BookSpecsService {
   }
 
   /**
-   * 목록 — 필터(coverType/bindingType/isActive) + 페이지네이션(설계서 §5.1).
+   * 목록 — 필터(coverType/bindingType/isActive) + 페이지네이션.
    * 기본 정렬 sort_order ASC, created_at DESC 보조.
    * pagination 봉투 조립은 컨트롤러의 PaginatedResult.of() (v1 코어 규약) —
    * 여기서는 실측치(total·적용된 limit/offset)만 돌려준다.
@@ -127,7 +127,7 @@ export class BookSpecsService {
    * calculated-size — 페이지 수 기반 표지/내지/책등 실측 mm 계산.
    *
    * - 페이지 규칙(pageMin/Max/Increment) 위반 = 422 ERR_PAGE_COUNT_OUT_OF_RANGE
-   *   (설계서 §3.3 카탈로그 정본 — v1 표준 스택 정합화로 422 확정).
+   *   (ERR_* 카탈로그 기준).
    *   구문 위반(타입/누락 등)만 DTO ValidationPipe 의 400 ERR_VALIDATION_FAILED.
    * - 책등 = 기존 SpineService.calculate() 재사용.
    * - sizeToleranceMm: templateSet 계약값(size_tolerance_mm) 우선, 없으면
@@ -140,7 +140,7 @@ export class BookSpecsService {
   ): Promise<CalculatedSizeView> {
     const spec = await this.findByUid(siteId, uid);
 
-    this.assertPageRules(spec, pageCount); // 위반 = 422 (설계서 §3.3)
+    this.assertPageRules(spec, pageCount); // 위반 = 422
 
     const warnings: Array<{ code: string; message: string }> = [];
 
@@ -236,7 +236,7 @@ export class BookSpecsService {
   /**
    * 페이지 규칙 검증 — 위반 시 422 ERR_PAGE_COUNT_OUT_OF_RANGE.
    *
-   * status 는 설계서 §3.3 ERR_* 카탈로그(정본)와 ErrV1 주석의 422 를 따른다 —
+   * status 는 ERR_* 카탈로그와 ErrV1 주석의 422 를 따른다 —
    * 구문 위반(비정수/0/음수/누락)은 DTO 검증 400 ERR_VALIDATION_FAILED,
    * 구문은 유효하나 판형 도메인 규칙(pageMin/Max/Increment) 위반은 422 로 분리.
    *

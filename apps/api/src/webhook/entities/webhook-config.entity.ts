@@ -9,7 +9,7 @@ import {
 import { WebhookConfigStatus } from '../v2/webhook-v2.constants';
 
 /**
- * webhook_configs — 사이트·env별 웹훅 v2 설정 (설계서 §2.7).
+ * webhook_configs — 사이트·env별 웹훅 v2 설정.
  *
  * 현행 전역 단일 WEBHOOK_SECRET·site 단일 webhookUrl(uploadCallbackUrl)은 무접촉 —
  * v1 Partner API config 는 이 테이블이 정본이다.

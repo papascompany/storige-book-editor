@@ -55,7 +55,7 @@ async function bootstrap() {
     bufferLogs: true, // pino logger 등록 전까지 NestJS 기본 로그 버퍼링
   });
 
-  // P2-10 Pino logger를 NestJS 전역 logger로 사용 (AppModule LoggerModule.forRoot 결과)
+  // Pino logger를 NestJS 전역 logger로 사용 (AppModule LoggerModule.forRoot 결과)
   const pinoLogger = app.get(PinoLogger);
   app.useLogger(pinoLogger);
 
@@ -69,7 +69,7 @@ async function bootstrap() {
   // Body parser size limit (캔버스 데이터 등 대용량 JSON 허용)
   const configService = app.get(ConfigService);
 
-  // CFG-001(2026-06-22): 핵심 시크릿 누락 조기 경보. ⚠️ throw 금지(부팅 차단=전체 다운 위험).
+  // 핵심 시크릿 누락 조기 경보. ⚠️ throw 금지(부팅 차단=전체 다운 위험).
   // JWT_SECRET 은 기본값이 없어 누락 시 secret=undefined 로 인증이 조용히 붕괴하므로 로그로 가시화.
   // (Joi .required() 강제 검증은 prod .env 변수목록 불확실성 + 부팅실패 리스크로 채택 안 함.)
   if (configService.get('NODE_ENV') === 'production') {
@@ -80,7 +80,7 @@ async function bootstrap() {
         );
       }
     }
-    // WH-001(2026-06-23): WEBHOOK_SECRET 미주입 시 위조불가 HMAC 서명(X-Storige-Signature-HMAC)이
+    // WEBHOOK_SECRET 미주입 시 위조불가 HMAC 서명(X-Storige-Signature-HMAC)이
     // silent 생략된다(=웹훅 무서명). 미설정도 하위호환상 유효하나, .env 에 값이 있는데 컨테이너에
     // 미주입되는 회귀(docker-compose environment 매핑 누락)를 가시화. 경보일 뿐 부팅은 차단 안 함.
     if (!configService.get('WEBHOOK_SECRET')) {
@@ -90,7 +90,7 @@ async function bootstrap() {
     }
   }
 
-  // OPS-S4-N2: 기능 플래그 유효값 스냅샷(boolean 만, env 원문 미출력). 부팅 미차단.
+  // 기능 플래그 유효값 스냅샷(boolean 만, env 원문 미출력). 부팅 미차단.
   // FILE_ORPHAN_* / FILE_RETENTION_* 는 env 계층 값. FILE_ORPHAN_* 는 관리자 보존정책과
   // 런타임에 합성되고, FILE_RETENTION_* 는 관리자 저장소 설정 행 값이 있으면 그 값이 우선한다.
   // 보존정책 실효값은 아래 retention-effective 줄(관리자 저장소 설정 우선)로 따로 남긴다.
@@ -149,7 +149,7 @@ async function bootstrap() {
   app.useBodyParser('json', { limit: maxBodySize });
   app.useBodyParser('urlencoded', { limit: maxBodySize, extended: true });
 
-  // AUTH-001 WS-2(2026-06-22): 보안 응답 헤더(helmet). XSS 표면 축소·클릭재킹·MIME스니핑 방어.
+  // 보안 응답 헤더(helmet). XSS 표면 축소·클릭재킹·MIME스니핑 방어.
   // ⚠️ API 가 크로스오리진 리소스(GET /files/:id/raw 이미지 — 외부 임베드 편집기에서 로드)를
   //    서빙하므로 Cross-Origin-Resource-Policy=cross-origin 유지(same-origin 기본은 차단 회귀).
   //    CSP/COEP 는 API/Swagger·임베드 호환 위해 미부과(별도 단계에서 Report-Only 검토).
@@ -252,8 +252,8 @@ async function bootstrap() {
   app.setGlobalPrefix('api');
 
   // Swagger documentation
-  // ⚠️ /api/docs 접근 정책(현행: 공개 서빙)은 무변경 — 변경은 설계서 §9-3
-  //    오너 결정 사안. 여기서는 v1 태그 등록만 additive 로 수행한다.
+  // ⚠️ /api/docs 접근 정책(공개 서빙)은 여기서 바꾸지 않는다. 여기서는 v1 태그 등록만
+  //    additive 로 수행한다.
   const config = new DocumentBuilder()
     .setTitle('Storige API')
     .setDescription('Print Shopping Mall API Documentation')
@@ -274,7 +274,7 @@ async function bootstrap() {
   const document = SwaggerModule.createDocument(app, config, {
     extraModels: [PayloadTooLargeResponseDto],
   });
-  // 파트너 표면 큐레이션(SWEETBOOK_GAP_ROADMAP §8-10 조치안 B):
+  // 파트너 표면 큐레이션:
   // `/api/docs`(+ `-json`/`-yaml`)는 파트너에게 안내된 공개 URL이므로 유지하되,
   // production 에서는 내부/관리자/인증 표면을 감추고 파트너 대면 라우트만 노출한다.
   // 개발/스테이징은 전체 문서를 노출(내부 개발 편의).

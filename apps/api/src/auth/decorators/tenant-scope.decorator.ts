@@ -5,7 +5,7 @@ import {
 } from '../../common/helpers/tenant-scope.helper';
 
 /**
- * P2b 멀티테넌시 (2026-06-17) — 요청 사용자의 테넌트 스코프를 컨트롤러 파라미터로 주입.
+ * 멀티테넌시 — 요청 사용자의 테넌트 스코프를 컨트롤러 파라미터로 주입.
  *
  * 사용: `findAll(@CurrentScope() scope: TenantScope)` → service 에서
  *       `applySiteScope(qb, alias, scope, { includeNull })` 로 사이트별 조회 격리.

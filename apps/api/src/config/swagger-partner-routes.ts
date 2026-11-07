@@ -6,13 +6,10 @@ import type { OpenAPIObject } from '@nestjs/swagger';
  * production 에서 `/api/docs` 는 이 목록에 있는 라우트만 노출한다.
  *
  * 배경: `/api/docs`(+ `-json`/`-yaml`)는 파트너에게 안내해 온 공개 Swagger URL이다
- * (docs/PHP_INTEGRATION_FINAL_v3.md, PLATFORM_WORKER_INTEGRATION_v1.md 등). 그러나 무가드로
- * 등록되어 내부·관리자·인증 표면(auth/login·sites·sites/:id/regenerate·admin/storage-settings·
- * operators 등 173 오퍼레이션)까지 전량 열람 가능했다. URL 자체는 유지하되(파트너 무중단) 문서에
- * 노출되는 표면을 파트너 대면 라우트로 한정한다.
- * → SWEETBOOK_GAP_ROADMAP_2026-07-07.md §8-10 조치안 B(문서 큐레이션).
+ * (docs/PHP_INTEGRATION_FINAL_v3.md, PLATFORM_WORKER_INTEGRATION_v1.md 등). URL 자체는 유지하되
+ * 문서에 노출되는 표면을 파트너 대면 라우트로 한정하고, 내부·관리자·인증 표면은 노출하지 않는다.
  *
- * 정본 근거: docs/PLATFORM_INTEGRATION_GUIDE.md 파트너 라우트 표(§717~753) +
+ * 정본 근거: docs/PLATFORM_INTEGRATION_GUIDE.md §5.1 전체 엔드포인트 표 +
  *            파트너가 서버간/임베드로 호출하는 @Public·ApiKey 조회 라우트.
  *
  * 규율(fail-closed): 목록에 없는 라우트는 production 문서에서 비노출된다. 파트너 대면 라우트를

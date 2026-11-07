@@ -3,7 +3,7 @@ import { ApiPropertyOptional } from '@nestjs/swagger';
 import type { BookAssetType, BookAssetStatus } from '../books.constants';
 
 /**
- * 자산 투입 body (설계서 §2.5·§6.1) — 두 입력 형태 중 fileId 참조형.
+ * 자산 투입 body — 두 입력 형태 중 fileId 참조형.
  *
  * 파일 투입 두 형태(라우트는 둘 다 수용):
  *  ① fileId 참조 — 동결 presigned/multipart 업로드 표면(≤2GB, 전 MIME)에서 올린

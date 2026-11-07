@@ -43,7 +43,7 @@ export interface AssetFileInput {
  *
  * 정본: docs/PARTNER_PLATFORM_API_V1_DESIGN_2026-07-07.md §2.4·§6.1~6.2
  *
- * - books 는 파사드 — 기존 files/file_edit_sessions/worker_jobs 무접촉(AD-1).
+ * - books 는 파사드 — 기존 files/file_edit_sessions/worker_jobs 무접촉.
  * - 테넌트 스코프: 자기 site + 인증 env 만. 타 site/타 env 리소스는 존재 은닉
  *   위해 404 ERR_NOT_FOUND(§3.3 IDOR 방지).
  * - book_spec_id 는 nullable — bookSpecUid 미제공 시 book_spec 없이 DRAFT 생성
@@ -59,11 +59,11 @@ export class BooksService {
     // book_specs 는 조회+참조만 — bookSpecUid 검증 및 view 역해석(id→uid)용.
     @InjectRepository(BookSpec)
     private readonly bookSpecRepo: Repository<BookSpec>,
-    // files 는 신규 등록/조회만(AD-1: 기존 파일 상태 변경 없음) — 자산 파일 투입 재사용.
+    // files 는 신규 등록/조회만(기존 파일 상태 변경 없음) — 자산 파일 투입 재사용.
     private readonly filesService: FilesService,
-    // W4 — EDITOR_SESSION 승격 원본 조회(조회+참조만, AD-1: 세션 상태 변경 없음).
+    // EDITOR_SESSION 승격 원본 조회(조회+참조만, 세션 상태 변경 없음).
     // ⚠️ forwardRef — books ↔ edit-sessions ↔ worker-jobs ↔ book-finalizations ES import
-    //   순환(#4 콜백이 신설)에서 EditSessionsService 참조가 undefined 로 실체화되는 것을 차단.
+    //   순환(워커 콜백 역참조로 생김)에서 EditSessionsService 참조가 undefined 로 실체화되는 것을 차단.
     @Inject(forwardRef(() => EditSessionsService))
     private readonly editSessionsService: EditSessionsService,
   ) {}
@@ -73,10 +73,10 @@ export class BooksService {
   }
 
   /**
-   * DRAFT 도서 생성 — creationType 분기(W4).
+   * DRAFT 도서 생성 — creationType 분기.
    *
-   * - PDF_UPLOAD / MIX_COVER_TEMPLATE: 빈 DRAFT 생성 → 파트너가 자산 라우트(W2)로
-   *   투입 → finalization(W3) 오케스트레이션으로 실현.
+   * - PDF_UPLOAD / MIX_COVER_TEMPLATE: 빈 DRAFT 생성 → 파트너가 자산 라우트로
+   *   투입 → finalization 오케스트레이션으로 실현.
    * - EDITOR_SESSION: 완료 세션을 책으로 승격(핵심) — 소유/NULL-site/완료 검증 후
    *   세션 산출 PDF 를 book_assets 로 자동 연결(createFromSession).
    * - TEMPLATE: 내부 세션 생성은 게스트 폴백 함정(24h 고아화)이 있어 하지 않는다 —
@@ -111,11 +111,11 @@ export class BooksService {
   }
 
   /**
-   * EDITOR_SESSION 승격(W4 핵심) — 임베드 편집기 완료 세션을 책으로.
+   * EDITOR_SESSION 승격 — 임베드 편집기 완료 세션을 책으로.
    *
-   * 게이트 순서(설계서 §6.1 — storige 차별재):
+   * 게이트 순서:
    *  ① sessionId 필수(400) → ② findById(미존재 404 존재 은닉)
-   *  → ③ #5 교차테넌트 + NULL-site 명시 거부 → 404 ERR_NOT_FOUND(IDOR/존재 은닉)
+   *  → ③ 교차테넌트 + NULL-site 명시 거부 → 404 ERR_NOT_FOUND(IDOR/존재 은닉)
    *     ⚠️ 기존 세션 가드의 `session.siteId &&` 통과 함정을 명시 차단(NULL=미소유=거부).
    *  → ④ status=COMPLETE 아니면 409 ERR_SESSION_NOT_PROMOTABLE(SESSION_NOT_COMPLETE)
    *  → ⑤ 세션 산출 PDF(merged 우선·content 폴백) → registerExternalFile 로 book 자체
@@ -157,7 +157,7 @@ export class BooksService {
     }
     const { session, files } = artifact;
 
-    // ③ #5 교차테넌트 + NULL-site 명시 거부 — 둘 다 404(존재 은닉, IDOR 방지).
+    // ③ 교차테넌트 + NULL-site 명시 거부 — 둘 다 404(존재 은닉, IDOR 방지).
     //   NULL-site 세션(게스트/레거시)은 어떤 테넌트도 승격 불가(기존 가드 통과 함정 차단).
     if (!session.siteId || session.siteId !== site.siteId) {
       throw new PartnerApiException(
@@ -285,7 +285,7 @@ export class BooksService {
   }
 
   /**
-   * 테넌트 스코프 단건 조회 — 자산 라우트(W2)·상세 공용.
+   * 테넌트 스코프 단건 조회 — 자산 라우트·상세 공용.
    * 없음/타 site/타 env = 404 ERR_NOT_FOUND (IDOR 존재 노출 방지).
    */
   async findBookForSite(site: CurrentSitePayload, uid: string): Promise<Book> {
@@ -363,12 +363,12 @@ export class BooksService {
     };
   }
 
-  // ── 자산(W2) ────────────────────────────────────────────────────────
+  // ── 자산 ────────────────────────────────────────────────────────────
 
   /**
    * 단수 자산(pdf_cover/pdf_contents) 신규 투입(POST) 또는 교체(PUT).
    *
-   * 게이트 순서(설계서 §6.1~6.2):
+   * 게이트 순서:
    *  ① 테넌트 스코프 404 → ② FINALIZED 게이트(409 ERR_BOOK_NOT_DRAFT, 전 자산 변경 진입)
    *  → ③ creationType×asset_type 호환(422 ERR_ASSET_INCOMPATIBLE)
    *  → ④ 기존재 판정: POST 기존재=409 ERR_ASSET_ALREADY_EXISTS / PUT 미존재=404 ERR_ASSET_NOT_FOUND
@@ -466,7 +466,7 @@ export class BooksService {
     return this.toAssetView(saved);
   }
 
-  /** FINALIZED 게이트 — DRAFT 아니면 409 ERR_BOOK_NOT_DRAFT (AD-3). */
+  /** FINALIZED 게이트 — DRAFT 아니면 409 ERR_BOOK_NOT_DRAFT. */
   private assertDraft(book: Book): void {
     if (book.status !== 'DRAFT') {
       throw new PartnerApiException(
@@ -532,7 +532,7 @@ export class BooksService {
           `파일 '${input.fileId}' 을(를) 찾을 수 없습니다`,
         );
       }
-      // 자기 파일이나 업로드 미확정(presigned complete 전) = 409(설계서 §3.3)
+      // 자기 파일이나 업로드 미확정(presigned complete 전) = 409
       if (file.status !== 'ready') {
         throw new PartnerApiException(
           ErrV1.ERR_FILE_NOT_READY,

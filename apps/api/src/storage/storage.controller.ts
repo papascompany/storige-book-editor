@@ -157,11 +157,10 @@ export class StorageController {
     // category 는 강제로 'uploads' — 게스트가 임의 디렉토리 쓰기 방지
     const saved = await this.storageService.saveFile(file, 'uploads');
 
-    // 업로드를 files 테이블에 정식 등록하고 응답 id 를 DB 레코드 id 로 통일.
-    // 종전에는 물리 파일명 uuid 만 반환해, 이 id 를 fileId 로 소비하는 라우트
-    // (validate·fix-bleed 의 filesService.findById)가 전부 FILE_NOT_FOUND 로
-    // 깨지는 통합 균열이 있었다(≤50MB 첨부 경로, 2026-07-13 E2E 적발).
-    // >50MB presigned 경로는 원래 files 레코드를 만들므로 이제 두 경로 시맨틱 일치.
+    // 업로드를 files 테이블에 정식 등록하고 응답 id 를 DB 레코드 id 로 통일한다.
+    // 이 id 를 fileId 로 소비하는 라우트(validate·fix-bleed 의 filesService.findById)가
+    // 레코드를 찾을 수 있어야 하기 때문이다(≤50MB 첨부 경로).
+    // >50MB presigned 경로도 files 레코드를 만들므로 두 경로 시맨틱이 같다.
     const record = await this.filesService.registerExternalFile(saved.url, {
       fileType: (file.mimetype ?? '').toLowerCase().includes('pdf')
         ? FileType.CONTENT
@@ -360,8 +359,7 @@ export class StorageController {
   @ApiOperation({ summary: 'Delete a design file — 관리자 전용' })
   @ApiResponse({ status: 200, description: 'Design file deleted successfully' })
   @ApiResponse({ status: 403, description: '권한 없음 (관리자만)' })
-  // SEC-004: 과거 가드 부재로 유효 JWT 가진 임의 사용자가 디자인 파일을 비가역 삭제(fs.unlink)
-  // 가능했음. POST upload(ADMIN/MANAGER)와 동일 역할 가드로 잠금. 정당 콜러 0건(dead client).
+  // 디자인 파일 삭제(fs.unlink, 비가역)는 POST upload(ADMIN/MANAGER)와 동일 역할 가드로 제한한다.
   async deleteDesignFile(@Param('filename') filename: string) {
     const url = `/storage/designs/${filename}`;
     await this.storageService.deleteFileByUrl(url);
@@ -379,7 +377,7 @@ export class StorageController {
   // EditSessionVersion.thumbnailUrl에 URL을 저장한다.
   //
   // 모바일은 TOUCH_ENV 가드로 캡처를 스킵하므로 이 엔드포인트는 데스크톱에서만 호출됨.
-  // 별도 cleanup cron은 1차 도입 안 함 (LRU 20 trim과 함께 orphan 허용 — P2 follow-up).
+  // 별도 cleanup cron은 없다 (LRU 20 trim과 함께 orphan 허용).
   // ============================================================================
   @Post('upload/thumbnails')
   @Public()

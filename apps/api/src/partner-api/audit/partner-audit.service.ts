@@ -19,7 +19,7 @@ export interface PartnerAuditRecord {
 }
 
 /**
- * v1 호출 감사 기록기 (설계서 §2.9).
+ * v1 호출 감사 기록기.
  *
  * fire-and-forget: 감사 기록 실패가 파트너 응답을 지연/실패시키지 않는다.
  * (본문/헤더/키 값은 기록하지 않음 — 시크릿 로그 금지 규약)

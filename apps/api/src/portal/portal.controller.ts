@@ -21,7 +21,7 @@ import { PortalRequestUser, PortalService } from './portal.service';
 
 /**
  * /api/portal/sites/:siteId — 파트너 포털 v0 SITE_ADMIN 셀프 표면
- * (S2-4, D-7a 보수 스코프: 계정은 운영자 초대(operators CRUD) 전제 — 가입 없음).
+ * (계정은 운영자 초대(operators CRUD) 전제 — 가입 없음).
  *
  * 인가 3중 스택(전부 기존 재사용 — additive):
  *  ① JwtAuthGuard — admin 로그인 JWT (Bearer/httpOnly 쿠키)

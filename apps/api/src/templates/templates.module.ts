@@ -19,7 +19,7 @@ import { TemplateSetLibraryCategory } from './entities/template-set-library-cate
 import { ProductTemplateSet } from './entities/product-template-set.entity';
 import { Product } from '../products/entities/product.entity';
 
-// Bookmoa 카테고리 조건부 import
+// 파트너 쇼핑몰 카테고리 DB 조건부 import
 const bookmoaImports: DynamicModule[] = [];
 const bookmoaProviders: Provider[] = [];
 
@@ -48,7 +48,7 @@ if (process.env.BOOKMOA_DB_PASSWORD) {
       Product,
       FormatPreset,
     ]),
-    // Bookmoa 카테고리 (상품명 조회용) - 조건부 로드
+    // 파트너 쇼핑몰 카테고리 (상품명 조회용) - 조건부 로드
     ...bookmoaImports,
   ],
   controllers: [
@@ -64,7 +64,7 @@ if (process.env.BOOKMOA_DB_PASSWORD) {
     CategoriesService,
     ProductTemplateSetsService,
     FormatPresetsService,
-    // Bookmoa category repository (조건부)
+    // 파트너 쇼핑몰 category repository (조건부)
     ...bookmoaProviders,
   ],
   exports: [

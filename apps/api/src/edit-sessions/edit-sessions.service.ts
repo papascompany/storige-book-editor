@@ -131,7 +131,7 @@ export function memberSeqnoOf(userId: unknown): number {
 }
 
 /**
- * P2-b(2026-10-18) 세션 산출 회차. `metadata.revision` 이 0 이상의 정수가 아니면 0 으로 본다.
+ * 세션 산출 회차. `metadata.revision` 이 0 이상의 정수가 아니면 0 으로 본다.
  * 완료(complete)마다, 그리고 파트너 v1 synthesize 재합성마다 1 올린다.
  */
 export function sessionRevisionOf(metadata: Record<string, any> | null | undefined): number {
@@ -144,10 +144,10 @@ export function nextSessionRevision(metadata: Record<string, any> | null | undef
 }
 
 /**
- * D9(2026-10-19): 검증 잡 orderOptions.bleed 의 기본값(세션 metadata.bleed 가 없을 때).
+ * 검증 잡 orderOptions.bleed 의 기본값(세션 metadata.bleed 가 없을 때).
  * 상품 프로파일(템플릿셋 → 세션 스냅샷) 이 있는 세트에서 템플릿셋 cropMarkEnabled 가 true 가 아니거나 bleedMm 이 0 이면 0,
  * 그 밖(프로파일 NULL·템플릿셋 없음·도련 세트)은 종전 기본 3. 프로파일 검증 경고는 여기서 내지 않는다(deriveSheetValidationRules 가 냄).
- * 2026-10-25: 재단선 세트(cropMarkEnabled true, bleedMm 이 0 보다 큰 수)는 3 대신 세트 bleedMm — 편집기 완료 PDF 의
+ * 재단선 세트(cropMarkEnabled true, bleedMm 이 0 보다 큰 수)는 3 대신 세트 bleedMm — 편집기 완료 PDF 의
  * 도련(재단선 세트만 세트 bleedMm)과 같은 값. 킬스위치 VALIDATION_BLEED_FROM_TEMPLATE_SET=off 면 종전 3.
  * 재단선 세트라도 bleedMm 이 수가 아니거나 0 이하이면 종전 3. 그 밖의 분기는 종전과 같다.
  */
@@ -175,7 +175,7 @@ export function duplexSplitRevisionRequestId(revision: number): string {
 }
 
 /**
- * P2-c(2026-10-18) sheet-map 잡의 request_id — `sheet-map-r{revision}`(36자 이내). duplex-split 과 같은 회차 카운터
+ * sheet-map 잡의 request_id — `sheet-map-r{revision}`(36자 이내). duplex-split 과 같은 회차 카운터
  * (metadata.revision)를 쓰되 접두사가 달라 같은 회차의 두 모드 잡이 (session_id, pdf_file_id, request_id) 멱등 인덱스에서
  * 충돌하지 않는다. 편집 완료 자동 잡·파트너 v1 synthesize 재합성이 같은 형식을 쓴다.
  */
@@ -184,11 +184,11 @@ export function sheetMapRevisionRequestId(revision: number): string {
 }
 
 /**
- * P2-b 보안 리뷰(2026-10-18) — 세션 `metadata` 는 클라이언트 자유형(얕은 병합)이지만 아래 키는 서버가 소유한다:
+ * 세션 `metadata` 는 클라이언트 자유형(얕은 병합)이지만 아래 키는 서버가 소유한다:
  *  - `launch`   : 파트너 v1 런처 스탬프(via/env/requestId/launchedAt) — deliverables/synthesize 의 사이트·env 판정 근거
  *  - `revision` : 산출 회차(complete·재합성마다 서버가 +1) — 재합성 requestId 멱등 키
- *  - `production` : 운영자 제작 메모(P2-e, 서버/운영 콘솔만) + `production.sheetMap`(완료 시 sheet-map 발행 실패 기록, 아래)
- *  - `productProfile` : 템플릿셋 상품 프로파일 스냅샷 — 보안 리뷰 security-2(2026-10-19): 클라이언트가 쓰면 NULL 세트에서
+ *  - `production` : 운영자 제작 메모(서버/운영 콘솔만) + `production.sheetMap`(완료 시 sheet-map 발행 실패 기록, 아래)
+ *  - `productProfile` : 템플릿셋 상품 프로파일 스냅샷 — 클라이언트가 쓰면 NULL 세트에서
  *    copies 상한·sheet-map 모드를 스스로 정의할 수 있어 서버가 소유한다. 세션 생성·metadata PATCH·완료 때 서버가 템플릿셋
  *    현재 프로파일로 (재)기록하고, 세트 프로파일이 NULL 이거나 템플릿셋이 없으면(NotFound) 키를 제거한다
  *    (stampProductProfileSnapshot). 그 밖의 일시적 조회 실패 때만 기존(서버 기록) 값을 유지한다 — resolveSessionProductProfile
@@ -209,9 +209,9 @@ export function mergeSessionMetadata(
 }
 
 /**
- * 완료 시 sheet-map 발행 실패 기록(api-sheetmap-3, 2026-10-19) — 서버 소유 키 `metadata.production.sheetMap`.
- * 종전에는 buildSheetMap(SheetMapError: PAGE_COUNT_MISMATCH 등)·createSheetMapJob 실패를 로그만 남기고 삼켜 파트너
- * deliverables 가 'complete'·시트 없음으로 보였다. 이제 실패를 기록하고(완료는 유지) deliverables 가 'failed' +
+ * 완료 시 sheet-map 발행 실패 기록 — 서버 소유 키 `metadata.production.sheetMap`.
+ * buildSheetMap(SheetMapError: PAGE_COUNT_MISMATCH 등)·createSheetMapJob 실패를 삼키지 않고 기록하며(완료는 유지)
+ * 파트너 deliverables 가 'failed' +
  * errorCode/errorDetail 로 노출한다. 다음 발행(재완료·재합성)이 성공하면 키를 지운다. 그 밖의 production 키는 건드리지 않는다.
  */
 export const SHEET_MAP_FAILURE_METADATA_KEY = 'sheetMap';
@@ -262,7 +262,7 @@ export interface PartnerVisibleSynthJobRow {
   createdAt: Date;
   completedAt: Date | null;
   /**
-   * P2-c(2026-10-18, additive) worker_jobs.options — 파트너 v1 deliverables 가 `mode==='sheet-map'` 잡의 `sheets`
+   * (additive) worker_jobs.options — 파트너 v1 deliverables 가 `mode==='sheet-map'` 잡의 `sheets`
    * (API 가 발행 시 저장한 SheetSpec[])를 그대로 싣는 데 쓴다. 파싱 실패·NULL 은 null.
    */
   options?: { mode?: string; sheets?: SheetSpec[]; [key: string]: unknown } | null;
@@ -290,7 +290,7 @@ export class EditSessionsService {
   ) {}
 
   /**
-   * security-2(2026-10-19): `metadata.productProfile` 을 템플릿셋 현재 프로파일로 (재)기록한다.
+   * `metadata.productProfile` 을 템플릿셋 현재 프로파일로 (재)기록한다.
    *  - templateSetId 없음 → 키 제거(클라이언트가 보낸 값은 버린다).
    *  - 템플릿셋 프로파일 있음 → 그 값으로 덮어쓴다(기존 키 위치 유지).
    *  - 템플릿셋 프로파일 NULL → 키 제거(세트를 NULL 로 되돌리면 진행 중 세션도 현행 동작으로 복귀 — 롤백 약속).
@@ -332,7 +332,7 @@ export class EditSessionsService {
   }
 
   /**
-   * api-sheetmap-3: sheet-map 발행 실패를 `metadata.production.sheetMap` 에 기록(로그 error). 저장 실패는 warn(무중단).
+   * sheet-map 발행 실패를 `metadata.production.sheetMap` 에 기록(로그 error). 저장 실패는 warn(무중단).
    */
   private async recordSheetMapFailure(session: EditSessionEntity, error: unknown, scope: string): Promise<void> {
     const code = error instanceof SheetMapError ? error.code : 'SHEET_MAP_JOB_FAILED';
@@ -360,7 +360,7 @@ export class EditSessionsService {
   }
 
   /**
-   * B49: 세션의 출력재현 스냅샷(metadata.spread.spec)을 템플릿 권위 스펙(spreadConfig.spec)과 대조.
+   * 세션의 출력재현 스냅샷(metadata.spread.spec)을 템플릿 권위 스펙(spreadConfig.spec)과 대조.
    * 책등은 동적이라 제외하고 표지 가로/세로·날개 기하만 검증. 권위 미해결(레거시/비스프레드/스펙부재) 시 빈 배열(통과).
    */
   private async compareSpreadWithTemplateAuthority(
@@ -386,16 +386,16 @@ export class EditSessionsService {
   /**
    * 내지 펼침면(regionScope='inner') 세트의 **content.pdf 실제 페이지 크기**를 해석한다.
    *
-   * 배경(2026-08-03 E2E 실측): 포토북 내지 세트의 content.pdf 는 '1페이지 = 1펼침면'(D-1 결정)이라
-   * 실제 페이지가 `pageWidthMm×2 × pageHeightMm` 인데, 검증 잡의 기대 크기는 templateSet 판형
-   * (= 내지 한 면)이라 정상 PDF 가 항상 SIZE_MISMATCH 로 오검증됐다.
+   * 배경: 포토북 내지 세트의 content.pdf 는 '1페이지 = 1펼침면'이라
+   * 실제 페이지가 `pageWidthMm×2 × pageHeightMm` 이다. 검증 잡의 기대 크기를 templateSet 판형
+   * (= 내지 한 면)으로 두면 정상 PDF 가 SIZE_MISMATCH 로 오검증된다.
    *   `페이지 크기가 맞지 않습니다. (기대: 210x297mm, 현재: 420x297mm)`
    *
-   * [표지 spread → 내지 spread] 결합 세트(W8 N-API-3)도 지원한다 — 첫 spread 가 아니라
+   * [표지 spread → 내지 spread] 결합 세트도 지원한다 — 첫 spread 가 아니라
    * regionScope='inner' 인 spread 템플릿을 찾는다. 해석 결과는 호출부에서 **content 잡에만** 적용한다
    * (표지 잡 옵션 무접촉).
    *
-   * 반환(N-API-3b 에서 3분기로 확장 — 쪽 단위 판정이 '판정 실패'와 '내지 spread 없음'을 구분):
+   * 반환(3분기 — 쪽 단위 판정이 '판정 실패'와 '내지 spread 없음'을 구분):
    *  - { kind: 'inner-spread', size } : 내지 펼침면 세트(content.pdf 1쪽 = 펼침면)
    *  - { kind: 'none' }   : 템플릿셋 미연결·내지 spread 없는 세트(표지 spread 만·비스프레드) → 기존 폴백(무회귀)
    *  - { kind: 'unknown' }: 내지 spread 인데 치수 무효이거나 조회 예외 → 크기는 기존 폴백, 쪽 규칙 미주입
@@ -438,10 +438,10 @@ export class EditSessionsService {
   /**
    * 편집 세션 생성
    *
-   * 인쇄 워크플로우 v1 Phase 4 (2026-05-19):
+   * 게스트 세션:
    * - dto.asGuest=true → guestToken (uuid) + guestExpiresAt (NOW + 24h) 자동 발급.
-   * - 결정 3-1: EVENT evt_purge_expired_guest_sessions (1h 주기) 가 만료 시 DELETE.
-   * - 결정 3-6: 회원 전환은 저장(편집완료) 시점에 별도 흐름. 본 메서드는 발급만.
+   * - EVENT evt_purge_expired_guest_sessions (1h 주기) 가 만료 시 DELETE.
+   * - 회원 전환은 저장(편집완료) 시점에 별도 흐름. 본 메서드는 발급만.
    */
   async create(dto: CreateEditSessionDto): Promise<EditSessionEntity> {
     // 게스트 모드: orderSeqno/memberSeqno 미전송 시 0 / null. token 발급.
@@ -449,7 +449,7 @@ export class EditSessionsService {
     const guestToken = isGuest ? randomUUID() : null;
     const guestExpiresAt = isGuest ? new Date(Date.now() + 24 * 60 * 60 * 1000) : null;
 
-    // security-2: metadata.productProfile 은 서버 소유 — 클라이언트 값 대신 템플릿셋 현재 프로파일을 기록(NULL 세트는 키 없음).
+    // metadata.productProfile 은 서버 소유 — 클라이언트 값 대신 템플릿셋 현재 프로파일을 기록(NULL 세트는 키 없음).
     const metadata = await this.stampProductProfileSnapshot(dto.metadata, dto.templateSetId, 'create');
 
     // coverFileId/contentFileId는 @RelationId(read-only). ManyToOne relation을 통해 set.
@@ -463,7 +463,7 @@ export class EditSessionsService {
       canvasData: dto.canvasData,
       metadata,
       callbackUrl: dto.callbackUrl,
-      siteId: (dto as any).siteId || null, // Phase C-2 — JWT siteId 자동 주입
+      siteId: (dto as any).siteId || null, // JWT siteId 자동 주입
       guestToken,
       guestExpiresAt,
     });
@@ -501,7 +501,7 @@ export class EditSessionsService {
   }
 
   /**
-   * Phase C-3 — 사이트 ID로 세션 목록 조회 (admin 사이트별 필터)
+   * 사이트 ID로 세션 목록 조회 (admin 사이트별 필터)
    */
   async findBySiteId(siteId: string): Promise<EditSessionEntity[]> {
     return this.sessionRepository.find({
@@ -526,8 +526,8 @@ export class EditSessionsService {
       .where('session.orderSeqno = :orderSeqno', { orderSeqno })
       .andWhere('session.deletedAt IS NULL');
 
-    // P2c 테넌트 격리: 호출자 site 세션 + 레거시 NULL(시스템공유)만 노출. 타 테넌트 세션·PDF URL 차단.
-    // (order_seqno 는 사이트별 네임스페이스가 없어, 미대조 시 교차 열람 가능했음.)
+    // 테넌트 격리: 호출자 site 세션 + 레거시 NULL(시스템공유)만 노출. 타 테넌트 세션·PDF URL 차단.
+    // (order_seqno 는 사이트별 네임스페이스가 없어 site 대조가 필요하다.)
     // worker 역할(내부 워커)·caller 미지정(내부 호출)은 바이패스.
     // 사이트 미지정(NULL) 세션 중 게스트 세션(guest_token 보유)은 포함하지 않는다.
     if (caller && caller.role !== 'worker' && caller.siteId) {
@@ -539,7 +539,7 @@ export class EditSessionsService {
 
     const sessions = await qb.orderBy('session.createdAt', 'DESC').getMany();
 
-    // DB-001(2026-06-22): 세션 루프 내 최신 SYNTHESIZE 잡 조회(N+1)를 윈도우함수 1회 배치로 치환.
+    // 세션별 최신 SYNTHESIZE 잡은 윈도우함수 1회 배치로 조회한다(세션 루프 내 N+1 조회 없음).
     // 세션별 created_at DESC 최신 1건(group-wise max)을 ROW_NUMBER()=1 로 정확히 보존
     // (MariaDB 11.2 윈도우함수 지원). 미존재 세션은 Map 미수록 → 기존 getRawOne undefined 와 동일.
     // SESSION_JOB_OUTPUT_LOOKUP 이 꺼져 있으면(기본) 조회하지 않고 편집기 원본 파일을 돌려준다.
@@ -682,11 +682,11 @@ export class EditSessionsService {
   }
 
   /**
-   * [Stage 3 W4] EDITOR_SESSION 승격용 — 세션 + 최신 SYNTHESIZE 산출 파일(URL) 조회(조회 전용).
+   * EDITOR_SESSION 승격용 — 세션 + 최신 SYNTHESIZE 산출 파일(URL) 조회(조회 전용).
    *
    * resolveFiles(워커 COMPLETED 출력 우선, 없으면 에디터 원본 fallback) 재사용 — URL 만 반환.
    * ⚠️ 소유/NULL-site/status 게이트는 호출측(BooksService 승격)이 caller site 컨텍스트로
-   *    수행한다(본 메서드는 조립만 — AD-1: 세션 상태 변경 없음). worker_jobs 는 조회만.
+   *    수행한다(본 메서드는 조립만 — 세션 상태 변경 없음). worker_jobs 는 조회만.
    */
   async getPromotionArtifact(
     id: string,
@@ -719,7 +719,7 @@ export class EditSessionsService {
   /**
    * 고객 첨부 내지 PDF "리더 스프레드" 임포지션 미리보기 (2026-06-16).
    *
-   * 외부(bookmoa-mobile 등)가 "이 PDF가 책으로 묶이면 펼침면이 이렇게 보입니다"를
+   * 외부 호출자(파트너 앱 등)가 "이 PDF가 책으로 묶이면 펼침면이 이렇게 보입니다"를
    * 그리기 위한 표시용 데이터를 조회한다. 부수효과 없음 — 재렌더/잡 생성 금지.
    *
    * 동작:
@@ -741,7 +741,7 @@ export class EditSessionsService {
     caller?: { siteId?: string; role?: string },
   ): Promise<ImpositionPreviewResponseDto> {
     const session = await this.findById(id);
-    // P2c 테넌트 격리: 타 site 세션 미리보기 차단(NULL=레거시/공유 허용, worker/내부호출 바이패스).
+    // 테넌트 격리: 타 site 세션 미리보기 차단(NULL=레거시/공유 허용, worker/내부호출 바이패스).
     // findById 의 not-found 404 와 **동일한 응답**으로 던져 존재 오라클을 차단.
     if (
       caller &&
@@ -792,11 +792,10 @@ export class EditSessionsService {
   /**
    * 세션 업데이트
    *
-   * 인쇄 워크플로우 v1 Phase 4 (2026-05-19):
    * - 게스트 세션(`guestToken` 보유)은 토큰 검증된 게스트 경로(`opts.guestVerified`) 또는
    *   staff 만 변경할 수 있다(2026-09-29). 회원 세션은 소유자만 변경한다.
    * - PDF 첨부 / 검증 결과 / 페이지수 필드(`contentPdf*`) 갱신 지원.
-   * - 결정 3-3: PDF 첨부 시 `canvasData` 동시 수정은 클라가 막아야 함 (API 는 1차 가드만).
+   * - PDF 첨부(replace 모드) 시 `canvasData` 동시 수정은 클라가 막아야 함 (API 는 1차 가드만).
    */
   /** 운영자(staff) 역할 — admin-app UserRole(대문자)·shop JWT(소문자) 모두 대소문자 무관 */
   static isStaffRole(role: string | null | undefined): boolean {
@@ -812,7 +811,7 @@ export class EditSessionsService {
    * findById 의 not-found 와 **동일한** 404 SESSION_NOT_FOUND 로 차단한다(존재 오라클 방지).
    * staff(admin/manager/super_admin)·worker 는 전 테넌트 운영 주체로 예외, caller 미지정(내부 호출)·
    * user.siteId 또는 session.siteId 부재(레거시 JWT/구 세션)는 기존 동작대로 통과.
-   * ⚠️ 같은 회사의 다중 site(예: bookmoa PHP ↔ bookmoa-mobile)는 서로의 세션을 볼 수 없게 된다 — 오너 결정(8/23).
+   * ⚠️ 같은 회사의 다중 site(예: 웹 쇼핑몰 ↔ 모바일 앱)도 서로의 세션을 볼 수 없다.
    */
   /**
    * 테넌트 범위 판정(순수) — assertTenantScope 와 목록 라우트 필터가 공유.
@@ -974,8 +973,8 @@ export class EditSessionsService {
       !op && !staff && isGuest && opts?.guestVerified !== true &&
       EditSessionsService.isStaffRole(caller?.role) && typeof caller?.adminUserId === 'string';
 
-    // Phase 4 결정 3-3: PDF 첨부 ↔ 편집 배타(replace 모드).
-    // P0-2 (2026-06-02): underlay 모드는 PDF를 배경으로 깔고 그 위 편집을 허용 → 배타 완화.
+    // PDF 첨부 ↔ 편집 배타(replace 모드).
+    // underlay 모드는 PDF를 배경으로 깔고 그 위 편집을 허용 → 배타 완화.
     // (부수효과 없는 검사 — 운영자 감사 기록보다 먼저 판정한다.)
     if (dto.canvasData !== undefined) {
       const effectiveMode =
@@ -1042,7 +1041,7 @@ export class EditSessionsService {
 
     // 캔버스 데이터 업데이트
     if (dto.canvasData !== undefined) {
-      // P1-4 (2026-08-22): 덮어쓰기 직전 스냅샷 — 실패해도 저장은 계속(로깅만)
+      // 덮어쓰기 직전 스냅샷 — 실패해도 저장은 계속(로깅만)
       // 운영자 쓰기는 created_by 를 남기지 않는다(NaN → null). 운영자는 감사 기록으로 식별한다.
       try {
         await this.snapshotBeforeOverwrite(session, dto.canvasData, op ? Number.NaN : userId);
@@ -1055,7 +1054,7 @@ export class EditSessionsService {
     // 메타데이터 병합 — 서버 소유 키(launch·revision·production·productProfile)는 클라이언트 값 무시(mergeSessionMetadata)
     if (dto.metadata !== undefined) {
       session.metadata = mergeSessionMetadata(session.metadata, dto.metadata);
-      // security-2: productProfile 스냅샷은 서버가 템플릿셋 현재값으로 재기록(NULL 세트 = 키 제거)
+      // productProfile 스냅샷은 서버가 템플릿셋 현재값으로 재기록(NULL 세트 = 키 제거)
       session.metadata =
         (await this.stampProductProfileSnapshot(session.metadata, session.templateSetId, `update ${id}`)) ??
         session.metadata;
@@ -1078,7 +1077,7 @@ export class EditSessionsService {
       session.contentFile = dto.contentFileId ? ({ id: dto.contentFileId } as any) : null;
     }
 
-    // ── Phase 4 (2026-05-19) — 고객 첨부 내지 PDF 필드 ──
+    // ── 고객 첨부 내지 PDF 필드 ──
     if (dto.contentPdfFileId !== undefined) {
       session.contentPdfFileId = dto.contentPdfFileId;
       // PDF 를 비우면 검증 결과도 클리어 (재첨부 시 새 검증 결과로 덮어씀)
@@ -1093,7 +1092,7 @@ export class EditSessionsService {
     if (dto.contentPdfValidationResult !== undefined) {
       session.contentPdfValidationResult = dto.contentPdfValidationResult;
     }
-    // P0-2: 첨부 모드(replace|underlay). PDF 제거 시 모드도 클리어.
+    // 첨부 모드(replace|underlay). PDF 제거 시 모드도 클리어.
     if (dto.contentPdfMode !== undefined) {
       session.contentPdfMode = dto.contentPdfMode;
     }
@@ -1108,10 +1107,10 @@ export class EditSessionsService {
   }
 
   // ───────────────────────────────────────────────────────────────
-  // P1-4 (2026-08-22) — canvasData 덮어쓰기 직전 스냅샷 (file_edit_session_versions)
+  // canvasData 덮어쓰기 직전 스냅샷 (file_edit_session_versions)
   //
-  // 구조 원인: 프로덕션 /embed 세션 모델(file_edit_sessions)은 update() 가 canvasData 를
-  // 그대로 덮어써 절단(R2)·오저장이 영구화됐다. 레거시 edit_sessions 의 버전 테이블은
+  // 구조: 프로덕션 /embed 세션 모델(file_edit_sessions)은 update() 가 canvasData 를
+  // 그대로 덮어쓴다(절단·오저장도 그대로 남는다). 레거시 edit_sessions 의 버전 테이블은
   // 이 모델과 무관(프로덕션 0행). 여기서 **이전 값**을 보존해 복구 경로를 연다.
   // ───────────────────────────────────────────────────────────────
   /** 세션당 통상(autosave) 스냅샷 최소 간격 */
@@ -1405,9 +1404,9 @@ export class EditSessionsService {
   }
 
   /**
-   * 게스트 세션 마이그레이션 — 인쇄 워크플로우 v1 Phase 6-B (2026-05-19).
+   * 게스트 세션 마이그레이션.
    *
-   * 결정 3-6: 회원 전환은 저장(편집완료) 시점에만. 본 메서드는 로그인 직후 호출되어
+   * 회원 전환은 저장(편집완료) 시점에만. 본 메서드는 로그인 직후 호출되어
    * 게스트 세션을 해당 회원 소유로 흡수.
    *
    * 보안:
@@ -1418,12 +1417,12 @@ export class EditSessionsService {
    * - WHERE guest_token = ? → memberSeqno 채움
    * - guestToken / guestExpiresAt NULL 처리 (EVENT 가 더 이상 삭제 안 함)
    *
-   * ── 테넌시 불변식 (2026-07-30) ────────────────────────────────────────────
-   * I-2: **non-null siteId 는 어떤 경로에서도 덮어쓰지 않는다.** 본 메서드는
+   * ── 테넌시 불변식 ────────────────────────────────────────────────────────
+   * ①: **non-null siteId 는 어떤 경로에서도 덮어쓰지 않는다.** 본 메서드는
    *      memberSeqno/guestToken/guestExpiresAt 만 쓴다. NULL 을 채우지도 않는다 —
    *      "guestToken 보유"는 세션 **소유** 증명이지 **발사 테넌트** 증명이 아니라서
    *      여기서 caller 의 siteId 를 찍으면 그게 곧 테넌트 위조 통로가 된다.
-   * I-3: 세션 siteId 와 caller siteId 가 **둘 다 non-null 이고 불일치**하면
+   * ②: 세션 siteId 와 caller siteId 가 **둘 다 non-null 이고 불일치**하면
    *      **요청 전체를 거부**한다(부분 흡수·조용한 스킵·조용한 덮어쓰기 전부 금지).
    *
    * callerSiteId 가 null 인 경우(예: siteId 를 담지 않던 구형 refreshToken)는
@@ -1451,7 +1450,7 @@ export class EditSessionsService {
       return { migratedCount: 0, sessionIds: [] };
     }
 
-    // I-3 — 교차 site 흡수 거부(요청 전체).
+    // 불변식 ② — 교차 site 흡수 거부(요청 전체).
     if (callerSiteId) {
       const foreign = sessions.filter((s) => s.siteId && s.siteId !== callerSiteId);
       if (foreign.length > 0) {
@@ -1480,7 +1479,7 @@ export class EditSessionsService {
 
     const sessionIds: string[] = [];
     for (const session of live) {
-      // ⚠️ I-2 — session.siteId 는 읽지도 쓰지도 않는다.
+      // ⚠️ 불변식 ① — session.siteId 는 읽지도 쓰지도 않는다.
       session.memberSeqno = memberSeqno as any;
       session.guestToken = null;
       session.guestExpiresAt = null;
@@ -1495,7 +1494,7 @@ export class EditSessionsService {
   }
 
   /**
-   * 내 세션 목록 — 인쇄 워크플로우 v1 Phase 6-C (2026-05-19).
+   * 내 세션 목록.
    *
    * 로그인 사용자 본인 세션을 최근순 200건 반환.
    * 게스트 토큰 보유 세션은 제외 (회원만의 영구 보관 작업).
@@ -1512,7 +1511,7 @@ export class EditSessionsService {
   /**
    * 내 세션 목록 — 경량(summary) 모드 (2026-06-11).
    *
-   * bookmoa-mobile '편집보관함' 등 모바일 목록 UI 용. findMyRecent 와 동일 조회 후:
+   * 모바일 앱 '편집보관함' 등 목록 UI 용. findMyRecent 와 동일 조회 후:
    *  - canvasData 제외 — 세션당 수백KB~MB 라 목록 응답에 부적합.
    *  - templateSetName(template_sets.name) 추가 — 단일 IN 쿼리 배치 조회(세션당 N+1 금지).
    *  - thumbnailUrl(coverFile.thumbnailUrl) 평탄화 추가.
@@ -1648,31 +1647,28 @@ export class EditSessionsService {
   /**
    * 세션 완료 처리
    *
-   * 인쇄 워크플로우 v1 Phase 5 (2026-05-19):
    * - 게스트 세션도 complete 호출 가능 (userId=0 통과)
    * - 기존 SPREAD / 일반 흐름은 그대로 유지 (PHP 영향 0).
    *
-   * ⚠️ [주석 정정 2026-08-13] 이 메서드는 **compose-mixed 잡을 발행하지 않는다**.
-   *   이전 주석은 "contentPdfFileId / endpaperConfig / coverEditable=false 가 있으면
-   *   compose-mixed 잡 enqueue 분기" 라고 적었으나, 본문에 그런 분기는 없다.
-   *   본문이 실제로 하는 일은 아래가 전부다(로직 무변경, 주석만 실제 동작에 정렬):
+   * ⚠️ 이 메서드는 **compose-mixed 잡을 발행하지 않는다**
+   *   (contentPdfFileId / endpaperConfig / coverEditable 값과 무관).
+   *   본문이 실제로 하는 일은 아래가 전부다:
    *     1) 책 세션(mode===SPREAD 또는 metadata.spread)이면 스프레드 스냅샷 검증
    *        (기본 SOFT — env SPREAD_SNAPSHOT_HARD_FAIL='true' 일 때만 차단)
    *     2) status=COMPLETE / completedAt 저장
    *     3) mode !== SPREAD 인 경우에만 createValidationJobs + applyPdfOutputMode
    *     4) 모든 경로에서 createInnerPdfImpositionJob (내부 opt-in 게이트, 기본 no-op)
    *   합본(표지+앞면지+내지+뒷면지)은 **외부 호출자가 명시적으로 호출**하는
-   *   `POST /api/worker-jobs/compose-mixed` (worker-jobs.controller.ts:281-288, @Public)
-   *   에서만 발행된다 — 세션 완료가 자동으로 발행하지 않는다는 사실은 그대로다.
+   *   `POST /api/worker-jobs/compose-mixed` (WorkerJobsController.createComposeMixed, @Public)
+   *   에서만 발행된다 — 세션 완료는 자동으로 발행하지 않는다.
    *
-   * ℹ️ [보강 2026-08-13 G7] 세션 자산으로부터의 자동 조립은 이제 **구현돼 있다**
-   *   (이전 판본 주석의 '미구현' 서술 정정). 단 위치는 이 메서드가 아니라
+   * ℹ️ 세션 자산으로부터의 자동 조립은 **구현돼 있다**. 단 위치는 이 메서드가 아니라
    *   compose-mixed 라우트다 — 요청 body 의 `assembleFromSession === true` 일 때에 한해
    *   worker-jobs.service.ts 가 이 세션에서 표지(coverFile)·내지(contentPdfFileId 우선,
    *   없으면 contentFile)·면지 매수·판형·callbackUrl·siteId 를 도출해 빈 필드만 채운다
-   *   (assembleComposeInputFromSession, worker-jobs.service.ts:1223 / 분기 게이트 :1567).
-   *   달라진 것은 compose-mixed 쪽뿐이고, **이 complete() 의 동작은 변함이 없다**:
-   *   여전히 잡 발행은 호출자 트리거이며, 자동조립도 그 호출 안에서 일어난다.
+   *   (WorkerJobsService.assembleComposeInputFromSession / 분기 게이트 createComposeMixedJob).
+   *   **이 complete() 는 compose-mixed 를 발행하지 않는다**:
+   *   잡 발행은 호출자 트리거이며, 자동조립도 그 호출 안에서 일어난다.
    *   인가는 그 경로에만 붙는다(검증된 shop-session siteId ↔ session.siteId 일치 +
    *   주문 스코프, 실패 시 404 SESSION_NOT_FOUND). 미전달/false 면 기존 경로 그대로다.
    */
@@ -1711,14 +1707,14 @@ export class EditSessionsService {
     // 스프레드 책 스냅샷 검증.
     // 게이트: session.mode===SPREAD(PHP/worker 합성 경로) 또는 metadata.spread 존재(편집기 책 완료 경로).
     //   편집기는 책 완료 시에도 mode 를 'both'/'cover' 로 보내 SessionMode.SPREAD 가 안 걸리므로
-    //   metadata.spread 존재로 편집기 책 완료를 포착한다(P0-1 이 metadata.spread 를 채움).
+    //   metadata.spread 존재로 편집기 책 완료를 포착한다(편집기가 책 완료 시 metadata.spread 를 채움).
     // 기본 SOFT: 누락/불일치를 경고·기록만(throw 금지) → 기존 주문 무중단.
-    //   env SPREAD_SNAPSHOT_HARD_FAIL='true' 일 때만 HARD(차단)로 승격(P0-3 이후).
+    //   env SPREAD_SNAPSHOT_HARD_FAIL='true' 일 때만 HARD(차단)로 승격.
     const isBookSession =
       session.mode === SessionMode.SPREAD || !!session.metadata?.spread;
     if (isBookSession) {
       const validation = this.validateSpreadSnapshot(session);
-      // B49: 스냅샷 spec 을 템플릿 권위 기하(표지 가로/세로·날개, 책등 제외)와 대조해 병합.
+      // 스냅샷 spec 을 템플릿 권위 기하(표지 가로/세로·날개, 책등 제외)와 대조해 병합.
       const authorityMismatches = await this.compareSpreadWithTemplateAuthority(session);
       if (authorityMismatches.length > 0) {
         validation.ok = false;
@@ -1746,10 +1742,10 @@ export class EditSessionsService {
 
     session.status = SessionStatus.COMPLETE;
     session.completedAt = new Date();
-    // P2-b(2026-10-18) 산출 회차 — 완료할 때마다 1 증가(런처 세션은 launch 시 0 으로 시작). 파트너 v1
+    // 산출 회차 — 완료할 때마다 1 증가(런처 세션은 launch 시 0 으로 시작). 파트너 v1
     // deliverables.revision · synthesize 재합성 회차의 단일 원천. 그 밖의 소비처 없음(additive).
     session.metadata = { ...(session.metadata ?? {}), revision: nextSessionRevision(session.metadata) };
-    // security-2: 완료 시에도 productProfile 스냅샷을 템플릿셋 현재값으로 재기록(NULL 세트 = 키 제거) — 검증 잡·sheet-map
+    // 완료 시에도 productProfile 스냅샷을 템플릿셋 현재값으로 재기록(NULL 세트 = 키 제거) — 검증 잡·sheet-map
     // 발행·파트너 deliverables 가 모두 서버 기록값만 보게 한다.
     session.metadata =
       (await this.stampProductProfileSnapshot(session.metadata, session.templateSetId, `complete ${id}`)) ??
@@ -1761,7 +1757,7 @@ export class EditSessionsService {
     // 스프레드 모드는 자동 검증 잡 발행을 스킵.
     // 표지(펼침면)는 일반 사이즈 검증(±1mm)에서 SIZE_MISMATCH가 나기 때문이며,
     // 실제 합성/검증은 PHP가 worker-jobs/synthesize/external 또는 spread 전용
-    // 흐름을 호출하는 시점에 수행 (NEW_DEV_PLAN §3 PHP 무변경 정책과 정합).
+    // 흐름을 호출하는 시점에 수행 (PHP 연동 경로 무변경).
     if (completed.mode !== SessionMode.SPREAD) {
       await this.createValidationJobs(completed);
       // 단일/낱장 상품의 PDF 출력 모드(TemplateSet.pdfOutputMode) 적용.
@@ -1774,7 +1770,7 @@ export class EditSessionsService {
       );
     }
 
-    // P4 (2026-06-10) — 고객 업로드 내지 PDF 작업사이즈 자동 임포지션 (opt-in).
+    // 고객 업로드 내지 PDF 작업사이즈 자동 임포지션 (opt-in).
     // 마스터 게이트: TemplateSet.cropMarkEnabled === true 인 세션만 변환 잡 발행.
     //   cropMarkEnabled !== true → 완전 no-op(현행 보존). 기본 false 라 배포 무변경.
     // 메서드 내부에서 모든 게이트/예외를 처리하므로 spread 포함 모든 경로에서 안전 호출.
@@ -1784,7 +1780,7 @@ export class EditSessionsService {
   }
 
   /**
-   * P4 — 고객 업로드 내지 PDF 작업사이즈 자동 임포지션 잡 발행 (2026-06-10, opt-in).
+   * 고객 업로드 내지 PDF 작업사이즈 자동 임포지션 잡 발행 (opt-in).
    *
    * 대상: 고객이 첨부한 내지 PDF (session.contentPdfFileId). 편집기 산출 PDF(coverFileId/
    * contentFileId)는 대상이 아니다(convert 미경유 정책 유지).
@@ -1793,14 +1789,14 @@ export class EditSessionsService {
    *   - cropMarkEnabled !== true            → 발행 안 함(현행 100% 보존). 기본 false.
    *   - contentPdfFileId 없음               → 발행 안 함(첨부 내지 없음).
    *   - underlay 모드(표시전용)              → 발행 안 함. 최종 인쇄는 원본 PDF 그대로라
-   *                                            임포지션 무의미(엔티티 주석 §content_pdf_mode).
+   *                                            임포지션 무의미(엔티티 contentPdfMode 주석).
    *   - templateSet 미연결/조회실패/workSize 무효 → 발행 안 함(best-effort).
    *
    * 동작: convert 잡을 발행하되 convertOptions 에 editSize(=작업사이즈=trim+bleed*2),
    * sizeToleranceMm 만 주입한다. mode 는 주입하지 않음 → 워커 convert() 의 resolveMode 가
    * 실측 vs editSize±tol 비교로 자체결정(동일=passthrough / 큼=innerfit / 작음=center).
    *
-   * 결과 되연결(P4 콜백, 2026-06-10): 본 잡에 editSessionId + convertOptions.purpose=
+   * 결과 되연결(임포지션 완료 콜백): 본 잡에 editSessionId + convertOptions.purpose=
    * 'inner-imposition' 마커를 심는다. 워커 변환 완료 → updateJobStatus(COMPLETED) 시
    * worker-jobs.service.relinkImposedInnerPdf 가 결과 PDF 를 File 로 등록하고
    * session.contentPdfFileId 를 그 결과로 재포인팅한다(원본은 잡 inputFileUrl/별도 File 로 보존).
@@ -1879,7 +1875,7 @@ export class EditSessionsService {
       const job = await this.workerJobsService.createConversionJob({
         fileId: session.contentPdfFileId,
         siteId: session.siteId ?? undefined,
-        // P4 결과 콜백 — 잡↔세션 연결 + 임포지션 식별 마커.
+        // 임포지션 결과 콜백 — 잡↔세션 연결 + 임포지션 식별 마커.
         //  · editSessionId: 완료 콜백(updateJobStatus)이 세션을 역참조할 수 있게 edit_session_id 컬럼 세팅.
         //  · convertOptions.purpose='inner-imposition': updateJobStatus 가 "임포지션 잡"임을 판별하는 마커
         //    (이 마커가 없는 convert 잡=admin 자동수정 등은 콜백 개입 0 → 기존 동작 무영향).
@@ -1970,9 +1966,9 @@ export class EditSessionsService {
         );
       }
 
-      // P2-c(2026-10-18): 상품 프로파일 output.mode='sheet-map' 이 pdfOutputMode 보다 우선한다(설계 §6.2 — 시트 매핑이
+      // 상품 프로파일 output.mode='sheet-map' 이 pdfOutputMode 보다 우선한다(시트 매핑이
       // 이기면 duplex-split 잡은 만들지 않는다). 프로파일 원천은 sheet-validation-rules 와 같다(템플릿셋 우선, 없으면
-      // 세션 스냅샷). 매핑 실패(SheetMapError)·잡 생성 실패는 완료를 막지 않되 production.sheetMap 에 기록한다(api-sheetmap-3).
+      // 세션 스냅샷). 매핑 실패(SheetMapError)·잡 생성 실패는 완료를 막지 않되 production.sheetMap 에 기록한다.
       // 킬스위치 SHEET_MAP_OUTPUT_ENABLED=off 면 프로파일을 보지 않고 종전 pdfOutputMode 경로로 떨어진다.
       if (isSheetMapOutputEnabled()) {
         const profile = resolveSessionProductProfile({
@@ -1990,8 +1986,8 @@ export class EditSessionsService {
           const revision = sessionRevisionOf(session.metadata);
           const pageCount = resolveSessionPageCount(session);
           try {
-            // P2-d: 사진인화 세트는 metadata.items 의 매수를 시트 copies/label 로 주입(그 외 세트는 무변경).
-            // items 는 캔버스 수·upload.maxPhotos 상한으로 자른다(security-1).
+            // 사진인화 세트는 metadata.items 의 매수를 시트 copies/label 로 주입(그 외 세트는 무변경).
+            // items 는 캔버스 수·upload.maxPhotos 상한으로 자른다.
             const sheets = applyPhotoItemsToSheets(
               buildSheetMap(profile, pageCount),
               readSessionPhotoItems(profile, session.metadata, pageCount),
@@ -2014,7 +2010,7 @@ export class EditSessionsService {
             );
             await this.clearSheetMapFailure(session, 'pdfOutputMode');
           } catch (e) {
-            // api-sheetmap-3: 삼키지 않고 기록 — 파트너 deliverables 가 'failed' + errorCode/errorDetail 로 노출한다.
+            // 삼키지 않고 기록 — 파트너 deliverables 가 'failed' + errorCode/errorDetail 로 노출한다.
             await this.recordSheetMapFailure(session, e, 'pdfOutputMode');
           }
           return;
@@ -2041,9 +2037,8 @@ export class EditSessionsService {
         sessionId: session.id,
         pdfFileId: session.coverFileId,
         // 멱등성 키: 세션+파일에 고정(완료당 1회). 재완료 시 동일 키 → 멱등 히트.
-        // 2026-10-18(P2-b 런처 e2e 실측): 종전 키 `duplex-split-<세션uuid>-<파일uuid>`(86자)는 `worker_jobs.request_id VARCHAR(36)`
-        // 에 들어가지 못해 strict 모드에서 "Data too long" 으로 잡 생성이 조용히 실패했다(분리 잡이 만들어진 적 없음).
-        // 멱등 유일성은 UNIQUE (session_id, pdf_file_id, request_id). 보안 리뷰(2026-10-18 #6): 고정 태그는 FAILED 잡에도
+        // 키는 `worker_jobs.request_id VARCHAR(36)` 안에 들어가야 한다(세션·파일 uuid 를 이어 붙이면 넘친다).
+        // 멱등 유일성은 UNIQUE (session_id, pdf_file_id, request_id). 고정 태그는 FAILED 잡에도
         // 멱등 히트해 재완료로 복구가 불가하므로, complete() 가 올린 회차로 `duplex-split-r<revision>` 을 쓴다(재완료 = 새 회차 잡).
         // 런처 재합성(requestDuplexSplitResynthesis)도 같은 형식·같은 카운터라 회차 간 충돌이 없다.
         requestId: duplexSplitRevisionRequestId(sessionRevisionOf(session.metadata)),
@@ -2064,7 +2059,7 @@ export class EditSessionsService {
   }
 
   /**
-   * 세션의 파트너 가시 최신 SYNTHESIZE 잡 1건(created_at DESC) — P2-b 파트너 v1 deliverables 용(2026-10-18).
+   * 세션의 파트너 가시 최신 SYNTHESIZE 잡 1건(created_at DESC) — 파트너 v1 deliverables 용.
    * findByOrderExternal 의 윈도우함수 배치 쿼리와 같은 조건(잡 사이트 = 세션 사이트(NULL 끼리 포함),
    * partnerVisibleSynthJobSql)을 단일 세션으로 좁힌 것. SESSION_JOB_OUTPUT_LOOKUP 게이트는 적용하지 않는다
    * (그 플래그는 기존 external 조회·책 승격의 파일 치환 여부만 다룬다). 조회 전용 — 상태 변경 없음.
@@ -2119,7 +2114,7 @@ export class EditSessionsService {
   }
 
   /**
-   * P2-b 파트너 v1 `POST /api/v1/sessions/:id/synthesize` — duplex-split 재합성(2026-10-18).
+   * 파트너 v1 `POST /api/v1/sessions/:id/synthesize` — duplex-split 재합성.
    *
    * 완료 상태·템플릿셋 pdfOutputMode·coverFileId 게이트(v1 에러 코드)는 호출측(PartnerSessionsService)이
    * 끝낸 뒤 부른다. 여기서는 세션을 다시 읽어 사이트·launch.env 스코프를 방어적으로 재확인하고
@@ -2149,7 +2144,7 @@ export class EditSessionsService {
   }
 
   /**
-   * P2-c 파트너 v1 synthesize — 프로파일 `output.mode='sheet-map'` 세션의 시트 매핑 재합성(2026-10-18).
+   * 파트너 v1 synthesize — 프로파일 `output.mode='sheet-map'` 세션의 시트 매핑 재합성.
    *
    * 스코프·완료 검사·회차 +1 은 duplex-split 재합성과 같은 prepareResynthesis 를 쓴다. 프로파일 원천은 편집 완료
    * 자동 잡(applyPdfOutputMode)과 같다(템플릿셋 우선, 없으면 세션 스냅샷; 템플릿셋 조회 실패 = 스냅샷만).
@@ -2188,7 +2183,7 @@ export class EditSessionsService {
 
     const pageCount = resolveSessionPageCount(session);
     try {
-      // P2-d: 사진인화 세트는 metadata.items 의 매수를 시트 copies/label 로 주입(그 외 세트는 무변경). items 상한은 security-1.
+      // 사진인화 세트는 metadata.items 의 매수를 시트 copies/label 로 주입(그 외 세트는 무변경). items 는 캔버스 수·upload.maxPhotos 상한으로 자른다.
       const sheets = applyPhotoItemsToSheets(
         buildSheetMap(profile, pageCount),
         readSessionPhotoItems(profile, session.metadata, pageCount),
@@ -2210,14 +2205,14 @@ export class EditSessionsService {
       await this.clearSheetMapFailure(session, 'partner-v1');
       return { jobId: job.id, revision };
     } catch (e) {
-      // api-sheetmap-3: 재합성 실패도 같은 키에 기록한 뒤 그대로 올린다(호출측이 v1 코드로 변환).
+      // 재합성 실패도 같은 키에 기록한 뒤 그대로 올린다(호출측이 v1 코드로 변환).
       await this.recordSheetMapFailure(session, e, 'partner-v1');
       throw e;
     }
   }
 
   /**
-   * 재합성 공통 전처리(P2-c 에서 추출, 동작 불변): 세션 재조회 → 사이트·launch.env 스코프(불일치 = 404 SESSION_NOT_FOUND,
+   * 재합성 공통 전처리: 세션 재조회 → 사이트·launch.env 스코프(불일치 = 404 SESSION_NOT_FOUND,
    * 존재 은닉) → 완료·coverFileId 게이트(400 SESSION_NOT_COMPLETE) → `metadata.revision` +1 저장.
    * 반환 세션의 coverFileId 는 게이트를 지나 non-null 이다. 잡 생성이 실패해도 revision 은 올라가 있다(잡 없는 회차 허용).
    */
@@ -2252,15 +2247,15 @@ export class EditSessionsService {
    * 스프레드 책 스냅샷 무결성 검증.
    *
    * 검증 항목(하드 승격 시 차단 사유):
-   *  - metadata.spine: spineWidthMm 유한수 ≥ 0(S7: 0 = 책등 없는 책, 유효) +
+   *  - metadata.spine: spineWidthMm 유한수 ≥ 0(0 = 책등 없는 책, 유효) +
    *    pageCount/paperType/bindingType/formulaVersion 4필드 truthy
-   *    (S7 예외: spineWidthMm===0 이고 bindingType 이 perfect/hardcover 가 아니면 paperType 생략 허용)
+   *    (예외: spineWidthMm===0 이고 bindingType 이 perfect/hardcover 가 아니면 paperType 생략 허용)
    *  - metadata.spread: spec/totalWidthMm/totalHeightMm/dpi 4필드 truthy
    *
    * 모드:
    *  - SOFT(기본): 누락/불일치를 mismatches 에 누적하고 logger.warn 만(throw 금지) → 완료 무중단.
    *  - HARD: env SPREAD_SNAPSHOT_HARD_FAIL='true' 일 때, mismatches 가 있으면 BadRequestException 으로 차단.
-   * 검증 로직은 하나로 유지하고 throw 여부만 토글 → P0-3 이후 ENV 만 켜서 hard 승격(인쇄사고 방지).
+   * 검증 로직은 하나로 유지하고 throw 여부만 토글 → ENV 만 켜서 hard 승격(인쇄사고 방지).
    *
    * @returns SpreadValidationResult — 호출측이 session.metadata.spreadValidation 에 기록.
    */
@@ -2268,7 +2263,7 @@ export class EditSessionsService {
     const mismatches: string[] = [];
 
     const spine = session.metadata?.spine;
-    // S7: paperType 은 spineWidthMm===0 이고 bindingType 이 공식제본(perfect/hardcover, 대소문자 무시)이
+    // paperType 은 spineWidthMm===0 이고 bindingType 이 공식제본(perfect/hardcover, 대소문자 무시)이
     // 아닐 때만(스프링·중철 등) 생략 가능. 동일 predicate: editor buildSpreadSnapshots,
     // packages/types SpineSnapshot.paperType 주석, worker PdfSynthesizerService.validateSpreadSnapshot.
     const paperTypeOptional =
@@ -2279,7 +2274,7 @@ export class EditSessionsService {
     if (!spine) {
       mismatches.push('SPINE_MISSING: metadata.spine 누락');
     } else if (
-      // S7: 0mm(스프링 표지펼침면 등 책등 없는 책)는 유효 — truthy 검사로 0 을 거르지 않는다.
+      // 0mm(스프링 표지펼침면 등 책등 없는 책)는 유효 — truthy 검사로 0 을 거르지 않는다.
       typeof spine.spineWidthMm !== 'number' ||
       !Number.isFinite(spine.spineWidthMm) ||
       spine.spineWidthMm < 0 ||
@@ -2332,7 +2327,7 @@ export class EditSessionsService {
    */
   private async createValidationJobs(session: EditSessionEntity): Promise<void> {
     try {
-      // templateSet 은 ①size 폴백(C+ G2)과 ②cropMark 주입(2026-06-10) 둘 다에 쓰인다.
+      // templateSet 은 ①size 폴백과 ②cropMark 주입 둘 다에 쓰인다.
       // 조회 실패해도 세션 완료는 계속(기존 try/catch 패턴 유지).
       let templateSet: Awaited<ReturnType<TemplateSetsService['findOne']>> | null = null;
       if (session.templateSetId) {
@@ -2347,7 +2342,7 @@ export class EditSessionsService {
 
       // 2026-10-17(낱장 분류 검증): 낱장 판정(spine/wing/spread 템플릿 유무)용 템플릿 타입 1회 조회.
       // 킬스위치 off·템플릿셋 미연결·조회 실패는 null → 레거시(sheet 키 미주입). 완료는 계속.
-      // 2026-10-24 T3c(C1): 킬스위치는 프로파일 NULL 세트의 낱장 규칙만 끈다. 상품 프로파일 세트(templateSet.productProfile,
+      // 킬스위치는 프로파일 NULL 세트의 낱장 규칙만 끈다. 상품 프로파일 세트(templateSet.productProfile,
       // 없으면 세션 스냅샷 — deriveSheetValidationRules 와 같은 resolveSessionProductProfile 판정)는
       // off 여도 규칙을 유지한다 — 끄면 캘린더 26 이 종전 cover 1·2·4 규칙으로 PAGE_COUNT_INVALID.
       // 판정 경고는 deriveSheetValidationRules 가 내므로 여기서는 warn 을 넘기지 않는다(중복 방지).
@@ -2374,20 +2369,19 @@ export class EditSessionsService {
       }
 
       // 내지 펼침면 세트 여부/크기 해석 (내지 spread 가 없는 세트는 kind 'none' → 기존 폴백).
-      // 결과는 아래 R-195 블록 뒤에서 content 잡 옵션에만 적용한다.
+      // 결과는 아래 편집기 스프레드 검증 매핑 블록 뒤에서 content 잡 옵션에만 적용한다.
       const innerLayout = await this.resolveInnerSpreadContentSizeMm(session);
 
       // Get order options from metadata or use defaults
-      // expectedOrientation(워커 R3 방향검증)은 워커 측 DTO(validation-result.dto.ts /
+      // expectedOrientation(워커 방향검증)은 워커 측 DTO(validation-result.dto.ts /
       // validation.processor.ts)에만 정의된 필드 — API CreateValidationJobDto 미정의라
       // 로컬 확장 타입으로 주입한다. 이 경로는 서비스 내부 직호출이며 orderOptions 는
       // DB job.options·Bull 페이로드에 스프레드 복사로 필드 보존 전달됨(worker-jobs.service.ts).
       const orderOptions: CreateValidationJobDto['orderOptions'] & {
         expectedOrientation?: 'portrait' | 'landscape';
       } = {
-        // C+ G2(2026-07-11): metadata.size 부재 시 A4 하드코드 대신 templateSet 판형으로 폴백.
-        // A4 고정 디폴트는 비-A4 상품 세션의 생성 PDF 를 SIZE_MISMATCH 로 오검증했고
-        // (FIXABLE→VALIDATED 매핑이 마스킹), 게이팅 ON 시 session.failed 로 flip 하는 원인.
+        // metadata.size 부재 시 A4 하드코드 대신 templateSet 판형으로 폴백.
+        // A4 고정 디폴트면 비-A4 상품 세션의 생성 PDF 가 SIZE_MISMATCH 로 오검증된다.
         // templateSet 까지 없을 때만 최후 A4 폴백(레거시 동일).
         // 내지 펼침면 크기는 여기(표지·내지 공유)가 아니라 아래에서 content 잡에만 적용한다.
         size:
@@ -2407,8 +2401,8 @@ export class EditSessionsService {
             : session.metadata?.pages || 1,
         binding: session.metadata?.binding || 'perfect',
         // ?? (|| 아님): 도련無(bleed=0) 상품의 명시적 0 을 보존한다.
-        // || 사용 시 0 이 3 으로 덮여 작업사이즈가 trim+6mm 로 오산정→정상 PDF 가 SIZE_MISMATCH 로 오검증(R2).
-        // D9(2026-10-19): metadata.bleed 미기재 시 기본 3 은 종전대로이되, 상품 프로파일 세트(사진인화 chemical 등)에서
+        // || 사용 시 0 이 3 으로 덮여 작업사이즈가 trim+6mm 로 오산정→정상 PDF 가 SIZE_MISMATCH 로 오검증된다.
+        // metadata.bleed 미기재 시 기본 3 은 종전대로이되, 상품 프로파일 세트(사진인화 chemical 등)에서
         // 템플릿셋이 재단선 없음(cropMarkEnabled≠true) 또는 bleedMm 0 이면 0 — 도련 없는 세트의 완료 PDF 가 BLEED_MISSING
         // (expected 3, actual 0) 경고를 받지 않도록. 프로파일 NULL 세트는 종전(3) 그대로.
         // 2026-10-25: 재단선 세트(cropMarkEnabled true, bleedMm > 0)는 세트 bleedMm(킬스위치 VALIDATION_BLEED_FROM_TEMPLATE_SET).
@@ -2417,10 +2411,10 @@ export class EditSessionsService {
         paperThickness: session.metadata?.paperThickness,
       };
 
-      // ── 내지 판형 방향 정합 (2026-07-14, 오너 규격표 스펙) ──
+      // ── 내지 판형 방향 정합 (내지 판형 규격표 기준) ──
       // templateSet.width/height = 오리엔트된 판형 권위(가로 A4 세트=297×210).
-      // metadata.size 는 bookmoa /embed 원본으로 미오리엔트 전달 실측 이력(R-13)이 있어,
-      // 가로 상품에서 정상 가로 PDF 가 SIZE_MISMATCH 로 오검증됐다(G-A).
+      // 호스트가 /embed 로 넘긴 metadata.size 는 방향이 맞춰지지 않은 채 올 수 있어,
+      // 그대로 쓰면 가로 상품에서 정상 가로 PDF 가 SIZE_MISMATCH 로 오검증된다.
       // 워커 validatePageSize 는 축별 엄격 비교를 유지한다(스왑 허용 금지 —
       // 방향 오업로드 마스킹 + fix-bleed innerfit 축소 사고 방지). 방향 정합은
       // 기준값 유도측(여기)에서만 확정: templateSet 판형과 "정확히 W↔H 스왑 관계"인
@@ -2441,7 +2435,7 @@ export class EditSessionsService {
           Math.abs(sizeHeight - tsWidth) < AXIS_EPS
         ) {
           orderOptions.size = { width: tsWidth, height: tsHeight };
-          // warn 레벨 유지 — bookmoa 전달값 교정 계측용(정규화 빈도·원본값 추적)
+          // warn 레벨 유지 — 호스트 전달값 교정 계측용(정규화 빈도·원본값 추적)
           this.logger.warn(
             `[validation-jobs] session ${session.id} orderOptions.size 방향 정규화: ` +
               `${sizeWidth}×${sizeHeight} → ${tsWidth}×${tsHeight}mm ` +
@@ -2461,9 +2455,9 @@ export class EditSessionsService {
 
       // ── 블리드 / 재단선 / 사이즈 허용오차 + 재단/작업 사이즈 주입 (2026-06-10) ──
       // ⚠️ 마스터 게이트(cropMarkEnabled===true) 통과 세션만 주입.
-      //   P4 워커 validatePageSize 가 이 필드를 실제 사용(tolerance '?? 1' / workSize 케이스)하므로
-      //   게이트 없이 주입하면 모든 templateSet 세션의 검증 허용오차가 1mm→0.2mm 로 좁아지는
-      //   회귀가 발생(실제 발생 → 본 게이트로 수정). off 세션 = 필드 미주입 = 워커 현행(1mm).
+      //   워커 validatePageSize 가 이 필드를 실제 사용(tolerance '?? 1' / workSize 케이스)하므로
+      //   게이트 없이 주입하면 모든 templateSet 세션의 검증 허용오차가 1mm→0.2mm 로 좁아진다.
+      //   off 세션 = 필드 미주입 = 워커 현행(1mm).
       if (templateSet?.cropMarkEnabled === true) {
         const bleedMm = templateSet.bleedMm ?? 3;
         const trimWidth = templateSet.width;
@@ -2480,7 +2474,7 @@ export class EditSessionsService {
         };
       }
 
-      // ── R-195(2026-09-28): 편집기 스프레드 책 — 주문 제본·실제 내지 쪽수·표지 책등 기하 연결 ──
+      // ── 편집기 스프레드 책 — 주문 제본·실제 내지 쪽수·표지 책등 기하 연결 ──
       // 근거·안전 원칙은 editor-spread-validation-options.ts 머리말. 스프레드 스냅샷이 없는 세션은
       // null → 아래 두 잡 모두 현행 orderOptions 그대로. 비상 차단: EDITOR_SPREAD_VALIDATION_MAPPING=off.
       let coverOrderOptions = orderOptions;
@@ -2518,17 +2512,17 @@ export class EditSessionsService {
         }
       }
 
-      // ── 내지 펼침면 세트(W8 N-API-3): content 기대 크기·방향 = 펼침면 — **content 잡에만** 적용 ──
+      // ── 내지 펼침면 세트: content 기대 크기·방향 = 펼침면 — **content 잡에만** 적용 ──
       // content.pdf 1페이지가 '펼침면'이라 세트 판형(한 면)이 아니라 펼침면 크기가 기대값이다.
       // 해석되면 metadata.size 보다도 우선(서버 권위). 방향도 실제 content 페이지(펼침면) 기준 —
       // 세로 판형(210×297)의 펼침면은 420×297 = 가로라 판형 기준 'portrait' 를 두면 정상 PDF 가
       // ORIENTATION_MISMATCH 경고로 집계된다. 표지 잡(coverOrderOptions)은 건드리지 않는다 —
       // [표지 spread → 내지 spread] 결합 세트의 표지 기대 크기·방향은 판형 기준 그대로.
-      // R-195 플래그(EDITOR_SPREAD_VALIDATION_MAPPING)와 무관하게 적용(overrides.content 에 size 키 없음).
-      // 2026-11-04: 재단선 세트(위 cropMarkEnabled 게이트가 trimSize/workSize 를 한 면 판형으로 실은 경우)는
+      // EDITOR_SPREAD_VALIDATION_MAPPING 플래그와 무관하게 적용(overrides.content 에 size 키 없음).
+      // 재단선 세트(위 cropMarkEnabled 게이트가 trimSize/workSize 를 한 면 판형으로 실은 경우)는
       // 재단·작업 사이즈도 펼침면 기준(2W×H, (2W+2b)×(H+2b))으로 함께 바꾼다 — content.pdf 의 TrimBox 가
-      // 펼침면이라 한 면 trimSize 와 비교하면 정상 산출물이 TRIMBOX_SIZE_MISMATCH(비차단) 경고를 받았다
-      // (운영 실측 2026-11-04). 표지 잡·워커 비교 로직·pageMultiple 산식은 바꾸지 않는다.
+      // 펼침면이라 한 면 trimSize 와 비교하면 정상 산출물이 TRIMBOX_SIZE_MISMATCH(비차단) 경고를 받는다.
+      // 표지 잡·워커 비교 로직·pageMultiple 산식은 바꾸지 않는다.
       if (innerLayout.kind === 'inner-spread') {
         const { width: iw, height: ih } = innerLayout.size;
         const spreadTrimMm = contentOrderOptions.trimSize ? { width: iw, height: ih } : undefined;
@@ -2544,9 +2538,9 @@ export class EditSessionsService {
         };
       }
 
-      // ── N-API-3b(2026-10-06): 편집기 실효 쪽 단위 → content PDF 쪽 단위 pageMultiple(중철은 pageCountMax) ──
+      // ── 편집기 실효 쪽 단위 → content PDF 쪽 단위 pageMultiple(중철은 pageCountMax) ──
       // 근거는 editor-spread-validation-options.ts deriveEditorContentPageRules. content 잡에만 적용하고
-      // binding·pages·size 는 바꾸지 않는다. 비상 차단: EDITOR_CONTENT_PAGE_RULES=off (R-195 플래그와 독립).
+      // binding·pages·size 는 바꾸지 않는다. 비상 차단: EDITOR_CONTENT_PAGE_RULES=off (EDITOR_SPREAD_VALIDATION_MAPPING 과 독립).
       if (isEditorContentPageRulesOn()) {
         try {
           const rules = deriveEditorContentPageRules({
@@ -2577,12 +2571,12 @@ export class EditSessionsService {
 
       // ── 2026-10-17(낱장 분류 검증): 낱장(single 세트, spine/wing/spread 없음) → 두 잡 모두 productKind='sheet' ──
       // 판정 근거는 sheet-validation-rules.ts 머리말. 워커는 sheet 분기에서 actualPages === pages 정확 비교
-      // 뒤 바로 return 하므로, 위 N-API-3b 가 content 잡에 pageMultiple 을 실어도 공존해 무해하다(무접촉).
+      // 뒤 바로 return 하므로, 위 쪽 단위 주입이 content 잡에 pageMultiple 을 실어도 공존해 무해하다(무접촉).
       // null = 레거시(키 미주입 = 현행 byte-identical). 비상 차단: EDITOR_SHEET_VALIDATION_RULES=off.
-      // 2026-10-17 P1-e: 상품 프로파일(templateSet.productProfile > 세션 스냅샷)이 고정 캔버스 수를 주면
+      // 상품 프로파일(templateSet.productProfile > 세션 스냅샷)이 고정 캔버스 수를 주면
       // 두 잡의 `pages` 를 그 값으로 바꾼다(캘린더 26). expectedPages 는 orderOptions 키로 보내지 않는다.
       // 프로파일 세트는 coverSpine='none' 도 함께 실린다(sheetOptions 스프레드) — 워커 cover 슬롯 spine 게이트 우회.
-      // 2026-10-24 T3c(C1): 게이트 = 플래그 on 또는 상품 프로파일 세트(위 profileRulesOn).
+      // 게이트 = 플래그 on 또는 상품 프로파일 세트(위 profileRulesOn).
       if (profileRulesOn) {
         const sheetRules = deriveSheetValidationRules({
           session,
@@ -2722,12 +2716,12 @@ export class EditSessionsService {
       completedAt: session.completedAt,
       createdAt: session.createdAt,
       updatedAt: session.updatedAt,
-      siteId: session.siteId, // Phase C-3
-      // ── 인쇄 워크플로우 v1 Phase 4 (2026-05-19) ──
+      siteId: session.siteId,
+      // ── 고객 첨부 내지 PDF · 게스트 세션 ──
       contentPdfFileId: session.contentPdfFileId,
       contentPdfPageCount: session.contentPdfPageCount,
       contentPdfValidationResult: session.contentPdfValidationResult,
-      contentPdfMode: session.contentPdfMode, // P0-2
+      contentPdfMode: session.contentPdfMode,
       guestToken: session.guestToken,
       guestExpiresAt: session.guestExpiresAt,
     };

@@ -64,7 +64,7 @@ function maskAuthCode(code: string): string {
 export const PORTAL_TEST_KEY_ACTIVE_LIMIT_DEFAULT = 20;
 
 /**
- * 파트너 포털 v0 (S2-4, D-7a 보수 스코프 — 이메일 인증 가입 제외).
+ * 파트너 포털 v0 (이메일 인증 가입 없음).
  *
  * SITE_ADMIN 셀프서브 표면의 도메인 로직:
  *  - 인가: TenantGuard(멤버십) 위에 **해당 site 의 per-site 역할이 SITE_ADMIN** 인지

@@ -8,7 +8,7 @@ import { FileEntity } from './entities/file.entity';
 import { resolveFileEnvNumber } from './file-cron-env';
 
 /**
- * FileOrphanService — P1 고아 파일 누적방어 cron (2026-06-19).
+ * FileOrphanService — 고아 파일 누적방어 cron.
  *
  * 미참조(주문/세션/워커잡 무연결) 업로드 잔재를 보수적으로 강등.
  *  - 후보: FilesService.findOrphanCandidates (다중 NOT EXISTS AND, grace 경과).
@@ -52,7 +52,7 @@ export class FileOrphanService {
     this.envDryRun = this.config.get<string>('FILE_ORPHAN_DRY_RUN', '1') !== '0';
   }
 
-  /** 기동 스냅샷용 — env 계층 값(관리자 보존정책 합성 전). OPS-S4-N2 */
+  /** 기동 스냅샷용 — env 계층 값(관리자 보존정책 합성 전). */
   getEnvFlags(): { enabled: boolean; dryRun: boolean } {
     return { enabled: this.envEnabled, dryRun: this.envDryRun };
   }

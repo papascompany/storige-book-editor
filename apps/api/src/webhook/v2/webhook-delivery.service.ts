@@ -44,7 +44,7 @@ import { decryptWebhookSecret, signWebhookV2 } from './webhook-secret.crypto';
  *  - Content-Type: application/json (payload 는 생성 시점 바이트 스냅샷 재전송)
  *  - X-Storige-Event: <event>
  *  - X-Storige-Delivery: <whd_...> (delivery uid — 수신측 dedupe 키)
- *  - X-Storige-Signature-HMAC: t=<unixsec>,v1=<hex> — WH-001 정본 형식,
+ *  - X-Storige-Signature-HMAC: t=<unixsec>,v1=<hex> — v1 HMAC 서명과 같은 형식,
  *    사이트별 secret. 레거시 base64 X-Storige-Signature 는 **미전송**(HMAC 전용).
  *
  * 재시도: 인라인 최초 1회 → 실패 시 전용 Bull 큐(webhook-delivery)로
@@ -60,7 +60,7 @@ export interface WebhookDeliveryJobData {
 }
 
 /**
- * [P2-1] 파트너 대면 마지막 실패 사유 코드 — 수신측 응답 **본문은 뷰에 절대
+ * 파트너 대면 마지막 실패 사유 코드 — 수신측 응답 **본문은 뷰에 절대
  * 포함하지 않는다**(SSRF 반출 채널 축소: 내부망 응답이 파트너 API 로 새는 것 차단).
  * 본문 원문(lastResponse)은 DB 에만 저장(운영 진단용).
  *  - HTTP_ERROR: 수신측이 비-2xx 상태코드로 응답 (lastStatusCode 참조)
@@ -76,7 +76,7 @@ export interface WebhookDeliveryView {
   isTest: boolean;
   attempts: number;
   lastStatusCode: number | null;
-  /** [P2-1] 응답 본문 대신 간략 사유 코드만 노출 (성공/미시도 = null) */
+  /** 응답 본문 대신 간략 사유 코드만 노출 (성공/미시도 = null) */
   lastFailureReason: WebhookDeliveryFailureReason | null;
   nextRetryAt: Date | null;
   deliveredAt: Date | null;
@@ -142,7 +142,7 @@ export class WebhookDeliveryService {
       return { delivered: false };
     }
 
-    // env 통합(S2-1 정합화): test env 로 도달한 발신은 delivery.isTest 플래그와
+    // env 통합: test env 로 도달한 발신은 delivery.isTest 플래그와
     // 페이로드 `isTest: true` 를 함께 반영 — 수신측이 test/live 를 페이로드만으로
     // 구분 가능. live env 페이로드 바이트는 현행 그대로(불변식) 유지.
     // (잡 완료 발신 경로는 env 컨텍스트가 없어 live 고정 — worker-jobs 주석 참조)
@@ -237,7 +237,7 @@ export class WebhookDeliveryService {
       );
       return false;
     }
-    // [P1-2] 인큐 실패(Redis 순단 등)가 dispatch 전체를 터뜨리면 호출측의
+    // 인큐 실패(Redis 순단 등)가 dispatch 전체를 터뜨리면 호출측의
     // 마지막 save 가 스킵돼 delivery 행이 미완 상태로 남는다 — 여기서 삼켜
     // RETRYING 행 저장을 보장한다. 죽은 체인은 stale 판정(manualRetry)으로 복구.
     try {
@@ -353,7 +353,7 @@ export class WebhookDeliveryService {
       return false;
     }
 
-    // HMAC identifier — WH-001 데이터 규약 승계(jobId ?? sessionId), 테스트/무식별
+    // HMAC identifier — v1 HMAC 데이터 규약 승계(jobId ?? sessionId), 테스트/무식별
     // 페이로드는 delivery uid 폴백(수신측 문서화: X-Storige-Delivery 와 동일값).
     let identifier = delivery.uid;
     let timestamp = '';
@@ -533,14 +533,14 @@ export class WebhookDeliveryService {
   /**
    * POST /api/v1/webhooks/deliveries/:uid/retry — 수동 재발송.
    *
-   * 재진입 허용(§1.5 + P1-2 stale 복구):
+   * 재진입 허용(stale 복구 포함):
    *  - EXHAUSTED (기존 규약)
    *  - PENDING/RETRYING 인데 stale — 예정 재시도 시각(nextRetryAt, PENDING 은
    *    createdAt)에서 10분 이상 경과. 인큐 실패/프로세스 중단으로 체인이 죽은
    *    행의 복구 경로. 진행 중 정상 행(미경과)은 여전히 409.
    * 그 외 409 ERR_DELIVERY_NOT_RETRYABLE.
    *
-   * [렌즈2 P2-1] 이중 POST race 원자화 — 관측 상태 조건부 UPDATE(CAS,
+   * 이중 POST race 원자화 — 관측 상태 조건부 UPDATE(CAS,
    * WHERE id+status)로 재진입을 선점한다. 동시 요청 중 한쪽만 affected=1.
    */
   async manualRetry(
@@ -565,7 +565,7 @@ export class WebhookDeliveryService {
       );
     }
 
-    // PENDING 재진입(§1.5) — 관측 상태 CAS 로 선점 후 인라인 1회 + 실패 시 새 체인.
+    // PENDING 재진입 — 관측 상태 CAS 로 선점 후 인라인 1회 + 실패 시 새 체인.
     // config 재생성(새 id) 대비 최신 config 로 갱신.
     const claimed = await this.deliveryRepository.update(
       { id: delivery.id, status: delivery.status },
@@ -603,7 +603,7 @@ export class WebhookDeliveryService {
   // ── 내부 ─────────────────────────────────────────────────────────────
 
   /**
-   * [P1-2] 수동 재발송 허용 판정 — EXHAUSTED 또는 stale PENDING/RETRYING.
+   * 수동 재발송 허용 판정 — EXHAUSTED 또는 stale PENDING/RETRYING.
    * stale 기준: 예정 재시도 시각 + WEBHOOK_MANUAL_RETRY_STALE_MS 경과.
    * (엔티티에 updatedAt 컬럼이 없어 PENDING(nextRetryAt=null)은 createdAt 폴백 —
    * PENDING 이 10분 넘게 남아 있다는 것 자체가 dispatch 중단의 증거)
@@ -648,7 +648,7 @@ export class WebhookDeliveryService {
       isTest: delivery.isTest,
       attempts: delivery.attempts,
       lastStatusCode: delivery.lastStatusCode,
-      // [P2-1] lastResponse(수신측 응답 본문)는 파트너 뷰 비노출 — 사유 코드만.
+      // lastResponse(수신측 응답 본문)는 파트너 뷰 비노출 — 사유 코드만.
       // DB 저장 자체는 유지(운영 진단용).
       lastFailureReason: this.deriveFailureReason(delivery),
       nextRetryAt: delivery.nextRetryAt,
@@ -665,7 +665,7 @@ export class WebhookDeliveryService {
     return view;
   }
 
-  /** [P2-1] 마지막 실패의 간략 사유 코드 — 성공(DELIVERED)/미시도 = null */
+  /** 마지막 실패의 간략 사유 코드 — 성공(DELIVERED)/미시도 = null */
   private deriveFailureReason(
     delivery: WebhookDelivery,
   ): WebhookDeliveryFailureReason | null {

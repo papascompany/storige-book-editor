@@ -11,7 +11,7 @@ import { PartnerRateLimitedException } from '../http/partner-api.exceptions';
 import { PartnerRequest, resolvePartnerEnv } from '../http/request-context';
 
 /**
- * per-API-Key 레이트리밋 (설계서 §5.2) — ThrottlerGuard 커스텀.
+ * per-API-Key 레이트리밋 — ThrottlerGuard 커스텀.
  *
  * - 트래커 = `siteId:env:keyFingerprint`(키 원문 미사용 — SHA-256 앞 16자).
  *   env 는 인증 컨텍스트(test/live 카운터 분리, sites 키는 live).
@@ -61,7 +61,7 @@ export class PartnerRateLimitGuard extends ThrottlerGuard {
     return true;
   }
 
-  /** 키 단위 식별자 — siteId:env:keyFingerprint (설계서 §5.2, 키 원문 비저장) */
+  /** 키 단위 식별자 — siteId:env:keyFingerprint (키 원문 비저장) */
   private buildTracker(req: PartnerRequest): string {
     const user = req.user;
     if (user?.siteId && user.apiKey) {
