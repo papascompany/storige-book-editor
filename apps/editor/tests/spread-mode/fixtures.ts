@@ -265,10 +265,11 @@ export async function openSpreadEditor(page: Page, options?: {
 export const test = base.extend<{
   spreadPage: Page
 }>({
-  spreadPage: async ({ page }, use) => {
+  // Playwright fixture 제공 콜백 — 이름이 use 이면 react-hooks 규칙이 React use() 로 오인한다
+  spreadPage: async ({ page }, provide) => {
     await setupSpreadMocks(page)
     await openSpreadEditor(page)
-    await use(page)
+    await provide(page)
   },
 })
 

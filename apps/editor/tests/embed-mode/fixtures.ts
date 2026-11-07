@@ -273,8 +273,9 @@ export async function openEmbedEditor(page: Page, options?: {
 export const test = base.extend<{
   embedPage: Page
 }>({
-  embedPage: async ({ page }, use) => {
-    await use(page)
+  // Playwright fixture 제공 콜백 — 이름이 use 이면 react-hooks 규칙이 React use() 로 오인한다
+  embedPage: async ({ page }, provide) => {
+    await provide(page)
   },
 })
 
