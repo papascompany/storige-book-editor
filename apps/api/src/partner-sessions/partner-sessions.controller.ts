@@ -12,7 +12,7 @@ import {
 } from './dto/partner-session-deliverables.dto';
 
 /**
- * Partner API v1 — 1-call 런처(P2-b, 2026-10-18) 컨트롤러.
+ * Partner API v1 — 1-call 런처 컨트롤러.
  * 정본: docs/PRODUCT_MODE_ARCHITECTURE_DESIGN_2026-10-16.md §8.1
  * 글로벌 prefix 'api' → 최종 경로 /api/v1/sessions/* (v1 모듈 배치 규약).
  *

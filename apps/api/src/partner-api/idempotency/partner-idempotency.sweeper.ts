@@ -5,7 +5,7 @@ import { LessThan, Repository } from 'typeorm';
 import { PartnerIdempotencyKey } from '../entities/partner-idempotency-key.entity';
 
 /**
- * 멱등 캐시 TTL sweep (설계서 §4.1 — 24h TTL, 일 1회 sweep cron).
+ * 멱등 캐시 TTL sweep (24h TTL, 일 1회 sweep cron).
  *
  * expires_at 인덱스(idx_idem_expires) 기반 만료 행 일괄 삭제.
  * claim 경로도 만료 행을 지연 삭제하므로 sweep 은 잔여물 정리용.

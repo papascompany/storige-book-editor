@@ -41,8 +41,8 @@ export function streamJobOutput(
   }
 
   // outputFileUrl 형식: '/storage/temp/converted_xxx.pdf' 또는 'storage/...'
-  // 해석+경계 가드는 공유 헬퍼로 — 종전 인라인 startsWith(base) 검사는 형제 접두사
-  // (/app/storage-evil)를 통과시키는 결함이 있었다(감사 §8 ⑦, files.service 와 동일 로직 통합).
+  // 해석+경계 가드는 공유 헬퍼로 — 형제 접두사 경로(/app/storage-* 등)도 경계 밖으로 판정한다
+  // (files.service 와 동일 로직).
   const storageBase = process.env.STORAGE_PATH || '/app/storage';
   const resolvedPath = resolveStoragePath(outputFileUrl, storageBase);
   if (!resolvedPath) {
@@ -75,7 +75,7 @@ export function streamJobOutput(
   // 파일이 지워지면(보존정책 sweep 등) unhandled 'error' 로 응답이 매달린다 — 헤더 전송 전이면
   // JSON 에러, 전송 중이면 소켓을 끊어 불완전 다운로드가 완결로 오인되지 않게 한다.
   // 라벨은 err.code 로 분기한다 — ENOENT(삭제 레이스)만 404 로, EACCES/EIO 같은 I/O 장애를
-  // '파일이 사라졌다'로 오분류하면 운영 진단이 은폐된다(적대 리뷰 지적, files.controller 는 500).
+  // '파일이 사라졌다'로 오분류하면 운영 진단이 은폐된다(files.controller 는 500).
   const stream = fs.createReadStream(resolvedPath);
   res.on('close', () => stream.destroy());
   stream.on('error', (err: NodeJS.ErrnoException) => {
@@ -83,7 +83,7 @@ export function streamJobOutput(
     if (!res.headersSent) {
       // 스트리밍용으로 걸어둔 헤더를 정리한다 — Express res.json() 은 기설정 Content-Type 을
       // 덮지 않아, 정리 없이는 에러 JSON 이 application/pdf + attachment(+옛 Content-Length)로
-      // 나가 다운로더가 에러 본문을 .pdf 로 저장한다(적대 리뷰 실증, 3라우트 공통 일괄 수정).
+      // 나가 다운로더가 에러 본문을 .pdf 로 저장한다(3라우트 공통).
       res.removeHeader('Content-Type');
       res.removeHeader('Content-Disposition');
       res.removeHeader('Content-Length');

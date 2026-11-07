@@ -20,16 +20,16 @@ export class Product {
   @Column({ length: 255 })
   title: string;
 
-  // ─── Bookmoa-style 메타 (2026-05-03 추가) ─────────────────────────
+  // ─── 쇼핑몰 연동형 메타 ───────────────────────────────────────────
   // Admin UI에서 사용하는 사용자 노출용 필드. title과 별도로 관리되며,
-  // 누락 시 title을 fallback으로 사용. bookmoa 외부 쇼핑몰 매핑용.
+  // 누락 시 title을 fallback으로 사용. 외부 쇼핑몰 매핑용.
   // TypeORM은 `string | null` union type을 인식 못하므로 explicit type 필수.
 
-  /** 상품 코드 (Bookmoa 측 식별자, 예: BOOK-A4-20P) */
+  /** 상품 코드 (외부 쇼핑몰 측 식별자, 예: BOOK-A4-20P) */
   @Column({ type: 'varchar', length: 100, nullable: true })
   code: string;
 
-  /** 카테고리 ID (Bookmoa 카테고리 트리) */
+  /** 카테고리 ID (외부 쇼핑몰 카테고리 트리) */
   @Column({ name: 'category_id', type: 'varchar', length: 36, nullable: true })
   categoryId: string;
 
@@ -39,7 +39,7 @@ export class Product {
   // ──────────────────────────────────────────────────────────────────
 
   @Column({ length: 255, nullable: true })
-  productId: string; // External product ID (e.g., WowPress)
+  productId: string; // External product ID (외부 연동 상품 ID)
 
   @Column({ type: 'text', nullable: true })
   description: string;
@@ -84,8 +84,8 @@ export class Product {
   isActive: boolean;
 
   /**
-   * 북모아 등 외부 쇼핑몰에서 에디터 진입 시 `width`, `height` URL 파라미터로
-   * 인쇄물 사이즈를 동적으로 override 할 수 있도록 허용. (옵션 C)
+   * 외부 쇼핑몰에서 에디터 진입 시 `width`, `height` URL 파라미터로
+   * 인쇄물 사이즈를 동적으로 override 할 수 있도록 허용.
    * - false (기본): templateSetId / sizeno 로만 사이즈 결정
    * - true: ?width=148&height=210 (mm) 으로 워크스페이스 사이즈를 직접 지정 가능
    *
@@ -105,8 +105,8 @@ export class Product {
   @OneToMany(() => ProductSize, (size) => size.product)
   sizes: ProductSize[];
 
-  // P2 멀티테넌시 (2026-06-17) — 소속 site. NULL = 시스템공유(hybrid). additive nullable(비파괴).
-  // 조회 스코핑은 QueryScope(P2b)에서 적용. 인덱스는 마이그레이션 SQL에서 생성.
+  // 멀티테넌시 — 소속 site. NULL = 시스템공유(hybrid). additive nullable(비파괴).
+  // 조회 스코핑은 QueryScope에서 적용. 인덱스는 마이그레이션 SQL에서 생성.
   @Column({ name: 'site_id', type: 'varchar', length: 36, nullable: true })
   siteId: string | null;
 

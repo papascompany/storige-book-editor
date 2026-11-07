@@ -8,9 +8,9 @@ import {
 import { WebhookDeliveryStatus } from '../v2/webhook-v2.constants';
 
 /**
- * webhook_deliveries — v2 발송 이력(delivery store, 설계서 §2.8).
+ * webhook_deliveries — v2 발송 이력(delivery store).
  *
- * 상태 흐름(§1.5):
+ * 상태 흐름:
  *   PENDING ─2xx→ DELIVERED
  *      └─실패→ RETRYING ─(백오프 1/5/30분, 최대 3회)→ DELIVERED
  *                  └─3회 소진→ EXHAUSTED ─(수동 retry API)→ PENDING(재진입)

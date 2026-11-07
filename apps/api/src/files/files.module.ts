@@ -18,7 +18,7 @@ import { SettingsModule } from '../settings/settings.module';
     TypeOrmModule.forFeature([FileEntity]),
     ConfigModule,
     SettingsModule, // StorageConfigService (저장 드라이버/보존정책 런타임 설정)
-    // S3-A안(2026-08-28, D1 승인): presigned complete 의 옵션형 site 스탬프 —
+    // presigned complete 의 옵션형 site 스탬프 —
     // OptionalShopJwtGuard 가 shop-session JWT **서명을 검증**하는 데 사용.
     // AuthModule 이 JwtModule 을 export 하지 않으므로 edit-sessions 와 동일 패턴으로
     // 자체 등록한다. JWT_SECRET 미설정 시 verify throw → 스탬프 없이 NULL(fail-closed).

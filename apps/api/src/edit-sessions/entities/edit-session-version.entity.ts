@@ -24,11 +24,11 @@ import { EditSessionEntity } from './edit-session.entity';
 export type EditSessionVersionReason = 'autosave' | 'shrink' | 'restore' | 'staff-baseline';
 
 /**
- * `file_edit_sessions`(프로덕션 /embed 경로) 의 canvasData 덮어쓰기 직전 스냅샷 (P1-4, 2026-08-22).
+ * `file_edit_sessions`(프로덕션 /embed 경로) 의 canvasData 덮어쓰기 직전 스냅샷.
  *
- * 배경: 동화책 R2(시드 반감→자동저장이 서버 영구 덮어씀)에서 드러난 구조 원인 —
- * 레거시 `edit_sessions` 에만 버전 테이블(`edit_session_versions`)이 있고, 실제 프로덕션
- * 세션 모델(`file_edit_sessions`)은 `update()` 가 canvasData 를 그대로 덮어써 복구 불가였다.
+ * 배경: 레거시 `edit_sessions` 에만 버전 테이블(`edit_session_versions`)이 있고, 실제 프로덕션
+ * 세션 모델(`file_edit_sessions`)은 `update()` 가 canvasData 를 그대로 덮어쓴다 — 이 테이블이
+ * 덮어쓰기 직전 값을 보존해 복구 경로를 제공한다.
  *
  * 정책(경량):
  * - `EditSessionsService.update()` 에서 canvasData 가 실제로 바뀔 때 **이전 값**을 저장한다

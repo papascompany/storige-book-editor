@@ -9,7 +9,7 @@ import { PartnerV1SuccessEnvelope } from '@storige/types';
 import { PaginatedResult } from './pagination';
 
 /**
- * v1 성공 봉투 인터셉터 (설계서 §3.1) — 필드 4종 고정
+ * v1 성공 봉투 인터셉터 — 필드 4종 고정
  * {success, message, data, pagination}.
  *
  * 핸들러 반환값을 data 로 감싼다. 목록 라우트는 PaginatedResult(작업 6)를

@@ -14,7 +14,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { User } from './user.entity';
 
 /**
- * P1 멀티테넌시 (2026-06-17) — 사용자 ↔ 사이트 역할 매핑(다대다 조인).
+ * 멀티테넌시 — 사용자 ↔ 사이트 역할 매핑(다대다 조인).
  *
  * 한 계정이 여러 site 를 서로 다른 역할(SITE_ADMIN / SITE_MANAGER)로 운영할 수 있게 한다.
  * - 전역 관리자(User.role = SUPER_ADMIN | ADMIN)는 이 테이블에 행이 **없어도** 전역 접근

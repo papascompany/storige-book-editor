@@ -3,28 +3,28 @@ import { IsString, IsOptional, IsBoolean, IsObject, IsArray, IsNumber, IsUUID } 
 /**
  * Product 생성 DTO
  *
- * 2026-05-03 v2 업데이트: Admin UI 호환 필드 추가 (name/code/categoryId/price/templateSetId).
+ * Admin UI 호환 필드: name/code/categoryId/price/templateSetId.
  *
  * 두 가지 사용 시나리오 지원:
- *  1. **Bookmoa-style 상품 (Admin UI 사용)**: name + code + categoryId + price → 사용자 노출용 메타데이터
- *  2. **Storige-style 상품 (외부 wowpress 등)**: title + template + editorTemplates → 에디터 프리셋
+ *  1. **쇼핑몰 연동형 상품 (Admin UI 사용)**: name + code + categoryId + price → 사용자 노출용 메타데이터
+ *  2. **Storige-style 상품 (외부 연동)**: title + template + editorTemplates → 에디터 프리셋
  *
  * 두 모델은 호환 가능 — `title`이 없으면 `name`을 자동 매핑 (역도 마찬가지).
  */
 export class CreateProductDto {
-  // ─── Bookmoa-style 필드 (Admin UI / bookmoa 연동, 2026-05-03 추가) ───────
+  // ─── 쇼핑몰 연동형 필드 (Admin UI / 외부 쇼핑몰 연동) ─────────────────
 
-  /** 상품명 — Bookmoa-style. title 미설정 시 이 값으로 자동 매핑 */
+  /** 상품명 — 쇼핑몰 연동형. title 미설정 시 이 값으로 자동 매핑 */
   @IsOptional()
   @IsString()
   name?: string;
 
-  /** 상품 코드 (예: BOOK-A4-20P) — Bookmoa 외부 쇼핑몰 매핑용 */
+  /** 상품 코드 (예: BOOK-A4-20P) — 외부 쇼핑몰 매핑용 */
   @IsOptional()
   @IsString()
   code?: string;
 
-  /** 카테고리 ID — Bookmoa 카테고리 트리 매핑용 */
+  /** 카테고리 ID — 외부 쇼핑몰 카테고리 트리 매핑용 */
   @IsOptional()
   @IsUUID()
   categoryId?: string;
@@ -48,7 +48,7 @@ export class CreateProductDto {
 
   @IsOptional()
   @IsString()
-  productId?: string; // External product ID (e.g., WowPress)
+  productId?: string; // External product ID (외부 연동 상품 ID)
 
   @IsOptional()
   @IsString()
@@ -107,7 +107,7 @@ export class CreateProductDto {
   isActive?: boolean;
 
   /**
-   * 옵션 C — 외부 쇼핑몰이 width/height URL 파라미터로 사이즈 override 허용 여부.
+   * 외부 쇼핑몰이 width/height URL 파라미터로 사이즈 override 허용 여부.
    */
   @IsOptional()
   @IsBoolean()

@@ -143,10 +143,10 @@ export class AuthController {
   }
 
   /**
-   * AUTH-001 stage1(2026-06-23): admin(1st-party) httpOnly 쿠키 이원화.
+   * admin(1st-party) httpOnly 쿠키 이원화.
    * ⚠️ 비파괴 — body 토큰(accessToken/refreshToken)은 그대로 반환하므로 기존 Bearer/localStorage
-   * 흐름(admin 프론트)은 변경 없이 동작한다. 쿠키는 *추가* 발급일 뿐이며, 프론트가 쿠키 기반으로
-   * 전환(withCredentials, localStorage 제거)하는 stage1b 이전까지는 미사용 상태로 둔다.
+   * 흐름(admin 프론트)은 변경 없이 동작한다. 쿠키는 *추가* 발급이며, 프론트가 쿠키 기반으로
+   * 전환(withCredentials, localStorage 제거)하기 전까지는 Bearer 가 주 경로다.
    * 쿠키 옵션은 shop-session(createShopSession)과 동일 — admin↔api 는 동일 site(서브도메인)라 sameSite=lax 로 전송됨.
    */
   private setAdminAuthCookies(res: Response, tokens: AuthTokens): void {
@@ -205,7 +205,7 @@ export class AuthController {
   }
 
   /**
-   * P3a: admin UI 가 GET /auth/me 로 현재 사용자(role + siteRoles)를 하이드레이션한다.
+   * admin UI 가 GET /auth/me 로 현재 사용자(role + siteRoles)를 하이드레이션한다.
    * editor 는 위 POST 를 그대로 사용(공존) — 기존 동작 무변경.
    */
   @ApiBearerAuth()

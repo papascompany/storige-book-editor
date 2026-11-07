@@ -17,7 +17,7 @@ import {
 } from './webhook-secret.crypto';
 
 /**
- * 웹훅 v2 config CRUD + 발신용 config 조회(캐시) — 설계서 §1.5 라우트 20~22.
+ * 웹훅 v2 config CRUD + 발신용 config 조회(캐시).
  *
  * - secret 은 생성/회전 응답에서만 1회 노출(원문 미보관 — secret_enc 만 저장).
  * - url 은 기존 발신 경로와 동일한 SSRF allowlist 를 통과해야 한다
@@ -251,7 +251,7 @@ export class WebhookConfigService {
 
   /**
    * SSRF 방어 — 기존 발신 allowlist(env 정적 + sites 동적)와 동일 규약.
-   * 통과 못하면 422 ERR_WEBHOOK_URL_FORBIDDEN (설계서 §3.3).
+   * 통과 못하면 422 ERR_WEBHOOK_URL_FORBIDDEN.
    */
   private async assertUrlAllowed(rawUrl: string): Promise<void> {
     const forbidden = (detail: string) =>

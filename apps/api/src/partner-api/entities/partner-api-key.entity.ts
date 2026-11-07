@@ -16,7 +16,7 @@ export type PartnerApiKeyStatus = 'active' | 'grace' | 'revoked';
  *
  * 현행 sites.editor_auth_code/worker_auth_code(평문·단일 env)는 **무접촉 유지** —
  * v1 키는 이 테이블에서만 발급한다. 조회 폴백은 v1 전용 PartnerApiKeyGuard 에만
- * 실장하고 공용 ApiKeyGuard 는 불변(§2.1/§7.1 — env 스코프 우회 차단, AD-1).
+ * 실장하고 공용 ApiKeyGuard 는 불변(env 스코프 우회 차단).
  *
  * 키 보안 3종:
  *  - 해시 저장: key_hash = SHA-256(원문) hex. 평문 컬럼 없음.
@@ -24,7 +24,7 @@ export type PartnerApiKeyStatus = 'active' | 'grace' | 'revoked';
  *  - 오버랩 회전: rotate 시 구 키 status='grace' + grace_until=now+72h,
  *    만료 배치(@Cron)가 grace 만료분을 revoked 로 승격.
  *
- * - FK 제약 없음(컬럼+인덱스만) — 기존 테이블 무접촉 원칙(§2 공통).
+ * - FK 제약 없음(컬럼+인덱스만) — 기존 테이블 무접촉 원칙.
  * - prod 는 synchronize=false — migrations/20260715_c_add_partner_api_keys.sql 수동 실행.
  */
 @Entity('partner_api_keys')
@@ -38,7 +38,7 @@ export class PartnerApiKey {
   @Column({ name: 'site_id', type: 'varchar', length: 36 })
   siteId: string;
 
-  /** 환경 스코프 — 키·멱등·감사·웹훅에 일관 적용(§7.3 논리 분리) */
+  /** 환경 스코프 — 키·멱등·감사·웹훅에 일관 적용(test/live 논리 분리) */
   @Column({ type: 'enum', enum: ['test', 'live'], default: 'test' })
   env: PartnerEnv;
 

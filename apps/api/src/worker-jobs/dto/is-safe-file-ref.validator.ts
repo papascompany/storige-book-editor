@@ -5,11 +5,10 @@ import {
 } from 'class-validator';
 
 /**
- * 외부 http(s) URL 직접 입력을 거부하는 검증기 (SSRF/미인증 큐적재 방어, P0-1, 2026-06-22).
+ * 외부 http(s) URL 직접 입력을 거부하는 검증기 (SSRF/미인증 큐적재 방어).
  *
- * compose-mixed/render-pages 는 @Public(게스트 호출)이라, *Url 필드에 임의 외부 URL 을
- * 넣어 워커가 내부망을 페치하게 만드는 SSRF·미인증 DoS 벡터가 된다. 워커단 SSRF 필터
- * (url-safety.ts)와 더불어 API 경계에서 외부 URL 자체를 1차 거부한다(심층방어).
+ * compose-mixed/render-pages 는 @Public(게스트 호출)이라, 워커단 SSRF 필터
+ * (url-safety.ts)와 더불어 API 경계에서 *Url 필드의 외부 URL 자체를 1차 거부한다(심층방어).
  *
  * 허용: null/undefined(빈 면지·미지정), /storage/...·절대 로컬경로·상대경로,
  *       api://<fileId>(워커 내부 다운로드 마커). → downloadToTempFile 의 안전분기와 정합.

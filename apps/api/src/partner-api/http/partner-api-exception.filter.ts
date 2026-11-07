@@ -27,8 +27,8 @@ import {
 } from '../partner-api.constants';
 
 /**
- * v1 스코프 전역 예외 필터 (설계서 §3.2) — @PartnerV1Controller 조합 데코레이터로
- * 컨트롤러 단위 바인딩. 기존 /api·/external 라우트의 에러 shape 는 무접촉(AD-1).
+ * v1 스코프 전역 예외 필터 — @PartnerV1Controller 조합 데코레이터로
+ * 컨트롤러 단위 바인딩. 기존 /api·/external 라우트의 에러 shape 는 무접촉.
  *
  * 처리 경로:
  *  1) 멱등 재전달 신호 — 최초 응답 스냅샷을 status 포함 그대로 재전달
@@ -47,7 +47,7 @@ export class PartnerApiExceptionFilter implements ExceptionFilter {
     const requestId = ensureRequestId(req);
     const startedAt = ensureStartedAt(req);
 
-    // 1) 멱등 재전달 — 스냅샷 그대로 (설계서 §4.1: HTTP status 포함 재전달)
+    // 1) 멱등 재전달 — 스냅샷 그대로 (HTTP status 포함 재전달)
     if (exception instanceof PartnerIdempotentReplaySignal) {
       const body = exception.body as Partial<PartnerV1ErrorEnvelope> | null;
       this.recordAudit(req, requestId, startedAt, exception.statusCode,
@@ -59,7 +59,7 @@ export class PartnerApiExceptionFilter implements ExceptionFilter {
 
     const { status, envelope } = buildErrorEnvelope(exception, requestId);
 
-    // 429 — 모든 429 응답 경로에 Retry-After(초) 헤더 필수 (설계서 §5.2).
+    // 429 — 모든 429 응답 경로에 Retry-After(초) 헤더 필수.
     // per-Key 가드(PartnerRateLimitedException) 유래는 실측값을 사용하고,
     // 그 외 429(전역 per-IP ThrottlerGuard 의 ThrottlerException 등)는 가드가
     // 이미 세팅한 헤더를 보존하되 없으면 폴백 60초를 부착한다.

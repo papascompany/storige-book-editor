@@ -1,7 +1,7 @@
 import { createHash } from 'crypto';
 
 /**
- * canonical JSON(오브젝트 키 재귀 정렬) SHA-256 — 멱등 request_hash (설계서 §4.1).
+ * canonical JSON(오브젝트 키 재귀 정렬) SHA-256 — 멱등 request_hash.
  *
  * 키 순서만 다른 동일 본문은 동일 hash 가 되어 재전달 대상이 되고,
  * 실질 값이 다르면 422 ERR_IDEMPOTENCY_KEY_MISMATCH 로 거부된다.

@@ -54,7 +54,7 @@ if (process.env.BOOKMOA_DB_PASSWORD) {
       ],
     }),
 
-    // P2-10 구조화 로깅 (Pino → JSON stdout → Promtail → Loki)
+    // 구조화 로깅 (Pino → JSON stdout → Promtail → Loki)
     LoggerModule.forRoot({
       pinoHttp: {
         // production: JSON 한 줄, development: pretty
@@ -112,7 +112,7 @@ if (process.env.BOOKMOA_DB_PASSWORD) {
           host: config.get('REDIS_HOST', 'localhost'),
           port: config.get('REDIS_PORT', 6379),
         },
-        // BQ-01/EH-006(2026-06-22): 완료/실패 잡을 무제한 보관하면 Redis 메모리가 계속 증가.
+        // 완료/실패 잡을 무제한 보관하면 Redis 메모리가 계속 증가.
         // 개수 기반 보존(완료 1000·실패 5000건)으로 상한. ⚠️ attempts/backoff 는 미설정 —
         // 합성/변환/콜백이 비멱등이라 재시도 시 중복 산출물·중복 웹훅 위험(멱등키 도입 후 재논의).
         defaultJobOptions: {
@@ -162,7 +162,7 @@ if (process.env.BOOKMOA_DB_PASSWORD) {
     // Edit sessions
     EditSessionsModule,
 
-    // Partner API v1 파사드 (/api/v1/* — AD-1: 기존 표면 무접촉)
+    // Partner API v1 파사드 (/api/v1/* — 기존 표면 무접촉)
     PartnerApiModule,
 
     // Partner API v1 — BookSpecs 판형 마스터 (읽기 전용)
@@ -171,10 +171,10 @@ if (process.env.BOOKMOA_DB_PASSWORD) {
     // Partner API v1 — Books 도서 aggregate (/api/v1/books)
     BooksModule,
 
-    // Partner API v1 — 1-call 런처 (P2-b 2026-10-18 — /api/v1/sessions/*)
+    // Partner API v1 — 1-call 런처 (/api/v1/sessions/*)
     PartnerSessionsModule,
 
-    // 파트너 포털 v0 — SITE_ADMIN 셀프서브 (/api/portal/* — S2-4, D-7a 보수 스코프)
+    // 파트너 포털 v0 — SITE_ADMIN 셀프서브 (/api/portal/*)
     PortalModule,
 
     // Storige 관리자 편집데이터 관리 (/api/admin/edit-data/* — 2026-09-29, 관리자 전용)

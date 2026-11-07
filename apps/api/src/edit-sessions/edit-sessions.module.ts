@@ -25,7 +25,7 @@ import { PartnerOperatorAuditWriter } from '../auth/partner-operator/partner-ope
       PartnerOperatorAuditLogEntity,
     ]),
     forwardRef(() => WorkerJobsModule),
-    // B49: 완료 시 metadata.spread 스펙을 템플릿 권위(spreadConfig.spec)와 대조하기 위해 TemplateSetsService 사용
+    // 완료 시 metadata.spread 스펙을 템플릿 권위(spreadConfig.spec)와 대조하기 위해 TemplateSetsService 사용
     TemplatesModule,
     // 게스트 세션 siteId 스탬프(2026-07-30) — OptionalShopJwtGuard 가 shop-session JWT
     // **서명을 검증**하는 데 사용. AuthModule 이 JwtModule 을 export 하지 않으므로 동일

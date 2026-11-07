@@ -21,7 +21,7 @@ import { TemplateSetsService } from './template-sets.service';
 import { Public } from '../auth/decorators/public.decorator';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { RolesGuard } from '../auth/guards/roles.guard';
-// P3b 멀티테넌시 — 쓰기 라우트는 SITE_ADMIN 허용 + TenantGuard(명시 siteId 멤버십)
+// 멀티테넌시 — 쓰기 라우트는 SITE_ADMIN 허용 + TenantGuard(명시 siteId 멤버십)
 // + 서비스 레벨 assertSiteInScope(행 소유권)의 3중 스택.
 import { TenantGuard } from '../auth/guards/tenant.guard';
 import { UserRole } from '@storige/types';
@@ -137,7 +137,7 @@ export class TemplateSetsController {
   }
 
   // ─────────────────────────────────────────────────────
-  // 방향(orientation) 페어링 + 파생 (2026-07-14, 오너 승인 설계)
+  // 방향(orientation) 페어링 + 파생
   // ─────────────────────────────────────────────────────
 
   @Post(':id/pair')
@@ -192,7 +192,7 @@ export class TemplateSetsController {
   @ApiBearerAuth()
   @ApiOperation({
     summary:
-      '반대 방향 세트 파생 (page류 변환 복제 + is_active=0 초안 + 즉시 대칭 페어링. includeCover 시 spread(full)만 면 단위 변환 이월 — 트랙 C)',
+      '반대 방향 세트 파생 (page류 변환 복제 + is_active=0 초안 + 즉시 대칭 페어링. includeCover 시 spread(full)만 면 단위 변환 이월)',
   })
   @ApiResponse({ status: 201, description: '파생 성공' })
   @ApiResponse({ status: 400, description: '정사각 판형 — 파생 무의미' })

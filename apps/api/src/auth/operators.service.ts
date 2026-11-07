@@ -29,7 +29,7 @@ export interface OperatorView {
 }
 
 /**
- * P3a 멀티테넌시 — 사이트 운영자(SITE_ADMIN/SITE_MANAGER) 계정·배정 관리.
+ * 멀티테넌시 — 사이트 운영자(SITE_ADMIN/SITE_MANAGER) 계정·배정 관리.
  * 전역 admin(컨트롤러 @Roles(ADMIN))만 호출. user_site_roles 에 쓰는 유일한 경로.
  * 안전: 모든 변경 대상은 '운영자(site role User)'로 한정 → 전역 admin 계정은 이 API 로 조작 불가.
  */

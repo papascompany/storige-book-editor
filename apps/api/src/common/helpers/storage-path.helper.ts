@@ -1,7 +1,7 @@
 import * as path from 'path';
 
 /**
- * 스토리지 경로 해석 + 경계 가드 (감사 §8 ⑦, 2026-08-01)
+ * 스토리지 경로 해석 + 경계 가드
  *
  * outputFileUrl(스토리지 상대 URL `/storage/...`·`storage/...`, 절대경로, 또는 베어 상대경로)을
  * storage 루트 안의 파일시스템 절대경로로 해석한다. 루트 **밖**이면 null.

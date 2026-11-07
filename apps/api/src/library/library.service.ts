@@ -242,7 +242,7 @@ export class LibraryService {
       query.andWhere('background.isActive = :isActive', { isActive });
     }
 
-    // P2b: 라이브러리=hybrid(시스템공유 site_id=NULL). includeNull=true → 공유 에셋 전 사이트 노출.
+    // 라이브러리=hybrid(시스템공유 site_id=NULL). includeNull=true → 공유 에셋 전 사이트 노출.
     if (scope) applySiteScope(query, 'background', scope, { includeNull: true });
 
     return await query.orderBy('background.name', 'ASC').getMany();
@@ -303,7 +303,7 @@ export class LibraryService {
       query.andWhere('clipart.isActive = :isActive', { isActive });
     }
 
-    // P2b: 라이브러리=hybrid. includeNull=true → 시스템공유 클립아트 전 사이트 노출.
+    // 라이브러리=hybrid. includeNull=true → 시스템공유 클립아트 전 사이트 노출.
     if (scope) applySiteScope(query, 'clipart', scope, { includeNull: true });
 
     return await query.orderBy('clipart.name', 'ASC').getMany();
@@ -379,7 +379,7 @@ export class LibraryService {
       query.andWhere('shape.isActive = :isActive', { isActive });
     }
 
-    // P2b: 라이브러리=hybrid. includeNull=true → 시스템공유 도형 전 사이트 노출.
+    // 라이브러리=hybrid. includeNull=true → 시스템공유 도형 전 사이트 노출.
     if (scope) applySiteScope(query, 'shape', scope, { includeNull: true });
 
     return await query.orderBy('shape.name', 'ASC').getMany();
@@ -440,7 +440,7 @@ export class LibraryService {
       query.andWhere('frame.isActive = :isActive', { isActive });
     }
 
-    // P2b: 라이브러리=hybrid. includeNull=true → 시스템공유 프레임 전 사이트 노출.
+    // 라이브러리=hybrid. includeNull=true → 시스템공유 프레임 전 사이트 노출.
     if (scope) applySiteScope(query, 'frame', scope, { includeNull: true });
 
     return await query.orderBy('frame.name', 'ASC').getMany();
@@ -501,7 +501,7 @@ export class LibraryService {
       query.andWhere('category.isActive = :isActive', { isActive });
     }
 
-    // P2b: 라이브러리 카테고리=hybrid. includeNull=true → 시스템공유 카테고리 전 사이트 노출.
+    // 라이브러리 카테고리=hybrid. includeNull=true → 시스템공유 카테고리 전 사이트 노출.
     if (scope) applySiteScope(query, 'category', scope, { includeNull: true });
 
     return await query

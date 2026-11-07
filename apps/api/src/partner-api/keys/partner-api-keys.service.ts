@@ -55,7 +55,7 @@ export class PartnerApiKeysService {
     return createHash('sha256').update(plaintextKey).digest('hex');
   }
 
-  /** 원문 생성 — `sk_{env}_{48hex}` (외부 노출 접두 체계, §2 공통) */
+  /** 원문 생성 — `sk_{env}_{48hex}` (외부 노출 접두 체계) */
   private generatePlaintextKey(env: PartnerEnv): string {
     return `sk_${env}_${randomBytes(24).toString('hex')}`;
   }
@@ -141,7 +141,7 @@ export class PartnerApiKeysService {
   }
 
   /**
-   * 원문 키 검증 — v1 PartnerApiKeyGuard 폴백 전용 (§7.1: 공용 ApiKeyGuard 무접촉).
+   * 원문 키 검증 — v1 PartnerApiKeyGuard 폴백 전용 (공용 ApiKeyGuard 무접촉).
    *
    * 유효 조건: 해시 일치 AND (status='active' OR (status='grace' AND grace_until 미래)).
    * revoked / grace 만료는 null(401 처리 위임) — 만료 판정은 요청 시각 기준이라

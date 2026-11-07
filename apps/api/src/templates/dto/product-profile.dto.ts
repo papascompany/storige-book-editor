@@ -1,5 +1,5 @@
 /**
- * ProductProfileDto — 템플릿셋 `productProfile`(P1 캘린더, 2026-10-17 / P2-d 사진인화 `photoPrint`, 2026-10-19) 검증 DTO.
+ * ProductProfileDto — 템플릿셋 `productProfile`(캘린더 / 사진인화 `photoPrint`) 검증 DTO.
  *
  * 전역 ValidationPipe 가 `whitelist + forbidNonWhitelisted` 라서 ProductProfile 의 모든 중첩 객체를
  * class 로 등재해야 admin 저장이 400 이 되지 않는다. 필드별 형식은 class-validator 데코레이터로,
@@ -227,19 +227,19 @@ export class CalendarDisplayOptionsDto implements CalendarDisplayOptions {
   @IsBoolean()
   solarTerms: boolean;
 
-  /** 2026-10-17 오너 결정: 임시공휴일·선거일(데이터 temporary)은 기본 미표시, 고객 선택. 생략 = false. */
+  /** 임시공휴일·선거일(데이터 temporary)은 기본 미표시, 고객 선택. 생략 = false. */
   @ApiPropertyOptional({ example: false, description: '임시공휴일·선거일(공표분) 표기 — 생략/false 는 법정 공휴일만' })
   @IsOptional()
   @IsBoolean()
   temporaryHolidays?: boolean;
 
-  /** v1.26(오너 답 Q3, 2026-10-24): 연달력(그리드 variant 'year') 연도 제목 표시. 생략 = true. */
+  /** v1.26: 연달력(그리드 variant 'year') 연도 제목 표시. 생략 = true. */
   @ApiPropertyOptional({ example: true, description: "연달력 연도 제목 표시(v1.26) — 생략 = 표시. 템플릿 그리드 style.showTitle=false 면 표시 안 함" })
   @IsOptional()
   @IsBoolean()
   yearTitle?: boolean;
 
-  /** v1.27(T4, 오너 결정 D4 2026-10-24): 잡절(삼복 — 초복·중복·말복) 날짜 칸 문구 표시. 생략 = false. */
+  /** v1.27: 잡절(삼복 — 초복·중복·말복) 날짜 칸 문구 표시. 생략 = false. */
   @ApiPropertyOptional({ example: false, description: "잡절(초복·중복·말복) 표기(v1.27) — 생략/false 는 표시 안 함. 월 그리드 칸 문구에만" })
   @IsOptional()
   @IsBoolean()
@@ -278,7 +278,7 @@ export class CalendarYearPolicyDto implements CalendarYearPolicy {
 }
 
 /**
- * v1.29(설계 C10, 오너 결정 D5): 캘린더 스킨 1건. 형식·유일·'default' 금지·개수 상한은 types
+ * v1.29: 캘린더 스킨 1건. 형식·유일·'default' 금지·개수 상한은 types
  * `validateProductProfile` 이 단일 출처로 검사한다(여기는 whitelist 등재와 기본 형식만).
  */
 export class CalendarSkinDto implements CalendarSkin {
@@ -369,7 +369,7 @@ export class CalendarProfileDto implements CalendarProfile {
   skins?: CalendarSkinDto[];
 }
 
-// ─── 사진인화(P2-d) ──────────────────────────────────────────────────────────
+// ─── 사진인화 ────────────────────────────────────────────────────────────────
 
 export class PhotoPrintSizeDto implements PhotoPrintSize {
   @ApiProperty({ example: '4x6', description: "사이즈 코드(호스트·매니페스트 식별용). 영숫자·'_'·'-' 1~32자" })
@@ -461,7 +461,7 @@ export class PhotoPrintProfileDto implements PhotoPrintProfile {
   @IsIn(PHOTO_PRINT_COMPOSITIONS)
   composition: PhotoPrintComposition;
 
-  @ApiProperty({ type: [PhotoPrintSizeDto], description: `P2 는 정확히 ${PHOTO_PRINT_SIZES_PER_PROFILE}개(1세션 1사이즈)` })
+  @ApiProperty({ type: [PhotoPrintSizeDto], description: `정확히 ${PHOTO_PRINT_SIZES_PER_PROFILE}개(1세션 1사이즈)` })
   @IsArray()
   @ArrayMinSize(PHOTO_PRINT_SIZES_PER_PROFILE)
   @ArrayMaxSize(PHOTO_PRINT_SIZES_PER_PROFILE)
@@ -492,7 +492,7 @@ export class PhotoPrintProfileDto implements PhotoPrintProfile {
 }
 
 export class ProductOutputPolicyDto implements ProductOutputPolicy {
-  @ApiProperty({ enum: PRODUCT_OUTPUT_MODES, example: 'single-pdf', description: "single-pdf(P1, 편집기 산출 그대로) | sheet-map(P2, API buildSheetMap → worker 'sheet-map')" })
+  @ApiProperty({ enum: PRODUCT_OUTPUT_MODES, example: 'single-pdf', description: "single-pdf(편집기 산출 그대로) | sheet-map(API buildSheetMap → worker 'sheet-map')" })
   @IsIn(PRODUCT_OUTPUT_MODES)
   mode: ProductOutputMode;
 
@@ -539,7 +539,7 @@ export class ProductProfileDto implements ProductProfile {
   @Type(() => CalendarProfileDto)
   calendar?: CalendarProfileDto;
 
-  @ApiPropertyOptional({ type: PhotoPrintProfileDto, description: "kind='photo-print' 필수, 그 외 금지(P2-d)" })
+  @ApiPropertyOptional({ type: PhotoPrintProfileDto, description: "kind='photo-print' 필수, 그 외 금지" })
   @IsOptional()
   @ValidateNested()
   @Type(() => PhotoPrintProfileDto)

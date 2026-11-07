@@ -41,18 +41,14 @@ import { UserRole } from '@storige/types';
 /**
  * 레거시 편집 세션 컨트롤러 (edit_sessions 테이블).
  *
- * SEC-1 (2026-06-13): 전 라우트가 @Public + X-User-Id 헤더 신뢰 구조였던 것을
- * JWT(글로벌 JwtAuthGuard) + RolesGuard(ADMIN/MANAGER) 로 전환.
+ * 전 라우트를 JWT(글로벌 JwtAuthGuard) + RolesGuard(ADMIN/MANAGER) 로 보호한다.
  *
- * 판단 근거 (VPS nginx 전 기간 로그, 2026-04-28 ~ 06-13, 약 11만 라인):
- * - /api/editor/* 호출 총 40건 — 전부 내부(admin 검토 화면 32건 + 운영자 curl/스캐너 8건).
- * - 외부/고객 소비자 0건. 라이브 편집기(/embed)는 /edit-sessions(file_edit_sessions)만 사용.
- * - 컨트롤러 제거 대신 가드 전환을 택한 이유: /edit-sessions 는 다른 도메인
- *   (주문/파일 기반)이라 admin 검토 워크플로우(status=review 목록·history·status 전환)의
- *   1:1 대체가 불가 — 제거 시 admin 검토 기능 회귀.
+ * - admin 검토 워크플로우(status=review 목록·history·status 전환)가 사용한다.
+ * - 라이브 편집기(/embed)는 /edit-sessions(file_edit_sessions)만 사용한다.
+ *   /edit-sessions 는 주문/파일 기반의 다른 도메인이라 이 컨트롤러를 대체하지 않는다.
  *
- * X-User-Id 헤더는 잠금/감사(modifiedBy) 용도로 유지되지만,
- * 이제 인증된 ADMIN/MANAGER 만 도달 가능하므로 IDOR 표면이 제거됨.
+ * X-User-Id 헤더는 잠금/감사(modifiedBy) 용도로 쓰며,
+ * 인증된 ADMIN/MANAGER 만 도달 가능하다.
  */
 @ApiTags('Editor')
 @ApiBearerAuth()

@@ -22,7 +22,7 @@ export class UploadFileDto {
   type: FileType;
 
   @ApiPropertyOptional({
-    description: 'bookmoa 주문 번호',
+    description: '파트너 쇼핑몰 주문 번호',
     example: 12345,
   })
   @IsOptional()
@@ -31,7 +31,7 @@ export class UploadFileDto {
   orderSeqno?: number;
 
   @ApiPropertyOptional({
-    description: 'bookmoa 회원 번호',
+    description: '파트너 쇼핑몰 회원 번호',
     example: 123,
   })
   @IsOptional()

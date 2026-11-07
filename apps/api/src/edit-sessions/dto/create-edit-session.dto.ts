@@ -3,7 +3,7 @@ import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { SessionMode } from '../entities/edit-session.entity';
 
 export class CreateEditSessionDto {
-  @ApiPropertyOptional({ example: 12345, description: '주문 번호 (게스트는 0 또는 미전송 — Phase 4)' })
+  @ApiPropertyOptional({ example: 12345, description: '주문 번호 (게스트는 0 또는 미전송)' })
   @IsOptional()
   @IsNumber()
   orderSeqno?: number;
@@ -14,11 +14,11 @@ export class CreateEditSessionDto {
   memberSeqno?: number;
 
   /**
-   * 인쇄 워크플로우 v1 Phase 4 (2026-05-19) — 게스트 세션 진입 플래그.
+   * 게스트 세션 진입 플래그.
    * true 면 API 측에서 guestToken (uuid) + guestExpiresAt (NOW + 24h) 자동 발급.
-   * 결정 3-1: 24시간 후 EVENT evt_purge_expired_guest_sessions 가 자동 DELETE.
+   * 24시간 후 EVENT evt_purge_expired_guest_sessions 가 자동 DELETE.
    */
-  @ApiPropertyOptional({ example: true, description: '게스트 세션 진입 — Phase 4' })
+  @ApiPropertyOptional({ example: true, description: '게스트 세션 진입' })
   @IsOptional()
   @IsBoolean()
   asGuest?: boolean;
@@ -54,11 +54,11 @@ export class CreateEditSessionDto {
 
   @ApiPropertyOptional({ example: 'https://shop.example.com/api/callback', description: 'Worker 완료 콜백 URL' })
   @IsOptional()
-  // SEC-009: http/https 절대 URL 만 허용.
+  // http/https 절대 URL 만 허용.
   @IsUrl({ protocols: ['http', 'https'], require_tld: false, require_protocol: true })
   callbackUrl?: string;
 
-  /** Phase C-2 — 호출 컨트롤러에서 JWT siteId 자동 주입 */
+  /** 호출 컨트롤러에서 JWT siteId 자동 주입 */
   @IsOptional()
   @IsUUID()
   siteId?: string;

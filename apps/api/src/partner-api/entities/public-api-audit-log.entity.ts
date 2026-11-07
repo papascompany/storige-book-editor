@@ -1,7 +1,7 @@
 import { Column, CreateDateColumn, Entity, Index, PrimaryColumn } from 'typeorm';
 
 /**
- * public_api_audit_logs — v1 호출 감사 (설계서 §2.9).
+ * public_api_audit_logs — v1 호출 감사.
  *
  * - 본문/헤더는 저장하지 않는다(PII·시크릿 유입 차단).
  * - request_id 는 봉투 requestId 와 동일값 — 지원 문의 상호 참조 키.

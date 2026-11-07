@@ -7,7 +7,7 @@ import {
 import { UserRole } from '@storige/types';
 
 /**
- * P1 멀티테넌시 (2026-06-17) — 테넌트(site) 접근 스코핑 가드.
+ * 멀티테넌시 — 테넌트(site) 접근 스코핑 가드.
  *
  * 요청에 명시된 site(param/query/body 의 siteId)가 현재 사용자가 권한을 가진 site 인지 강제한다.
  * - **전역 관리자**(role = SUPER_ADMIN | ADMIN): 모든 site 통과 (dual-mode — 기존 admin 무변경).

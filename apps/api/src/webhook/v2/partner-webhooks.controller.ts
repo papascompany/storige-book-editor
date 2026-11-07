@@ -24,18 +24,18 @@ import {
 import { DeliveryListQueryDto, PutWebhookConfigDto } from './dto/webhook-v1.dto';
 
 /**
- * Partner API v1 — Webhooks (설계서 §1.5 라우트 20~26).
+ * Partner API v1 — Webhooks.
  *
  * @PartnerV1Controller 조합 데코레이터가 v1 표준 스택을 일괄 바인딩:
- * @Public+PartnerApiKeyGuard(Bearer/X-API-Key)+RateLimit+에러필터(§3.2)
- * +감사→멱등(POST+Idempotency-Key 자동)→봉투(§3.1). 핸들러는 순수 데이터만
+ * @Public+PartnerApiKeyGuard(Bearer/X-API-Key)+RateLimit+에러필터
+ * +감사→멱등(POST+Idempotency-Key 자동)→봉투. 핸들러는 순수 데이터만
  * 반환(이중 래핑 금지). 신규 v1 컨트롤러 — partner-v1-guarded.spec 의
  * V1_CONTROLLERS 목록에 등재됨(미등재 시 red 게이트).
  *
  * v1 웹훅 = v2 서명(HMAC 사이트별 secret) 전용 신규 표면 — 기존 v1(base64)
- * 발신 경로·바이트는 불변(동결). 기존 파트너 전환은 D-7c 게이트 선행.
+ * 발신 경로·바이트는 불변(동결). 기존 파트너는 config 를 직접 등록할 때만 전환된다.
  *
- * env: S2-1 파트너 키 env 모델과 통합 — resolvePartnerEnv(req.user) 로
+ * env: 파트너 키 env 모델과 통합 — resolvePartnerEnv(req.user) 로
  * 인증 키의 env 를 그대로 스코프한다(sites 레거시 키·미스탬프 구간=live).
  * test 키로 등록한 config/발송 이력은 env='test' 로 완전 격리된다.
  */

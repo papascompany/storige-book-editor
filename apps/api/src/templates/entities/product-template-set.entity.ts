@@ -12,7 +12,7 @@ import {
 import { TemplateSet } from './template-set.entity';
 
 /**
- * 북모아 상품 - 스토리지 템플릿셋 연결 테이블
+ * 파트너 쇼핑몰 상품 - 스토리지 템플릿셋 연결 테이블
  * 하나의 상품(sortcode)에 여러 템플릿셋을 연결할 수 있음 (1:N)
  */
 @Entity('product_template_sets')
@@ -25,14 +25,14 @@ export class ProductTemplateSet {
   id: string;
 
   /**
-   * 북모아 카테고리(상품) 코드
+   * 파트너 쇼핑몰 카테고리(상품) 코드
    * 예: "001001001"
    */
   @Column({ type: 'varchar', length: 20 })
   sortcode: string;
 
   /**
-   * 북모아 규격 번호 (선택)
+   * 파트너 쇼핑몰 규격 번호 (선택)
    * NULL이면 해당 카테고리의 모든 규격에 적용
    */
   @Column({ name: 'prdt_stan_seqno', type: 'int', nullable: true })
@@ -63,8 +63,8 @@ export class ProductTemplateSet {
   @Column({ name: 'is_active', type: 'boolean', default: true })
   isActive: boolean;
 
-  // P2 멀티테넌시 (2026-06-17) — 소속 site. NULL = 시스템공유(hybrid). additive nullable(비파괴).
-  // 조회 스코핑은 QueryScope(P2b)에서 적용. 인덱스는 마이그레이션 SQL에서 생성.
+  // 멀티테넌시 — 소속 site. NULL = 시스템공유(hybrid). additive nullable(비파괴).
+  // 조회 스코핑은 QueryScope에서 적용. 인덱스는 마이그레이션 SQL에서 생성.
   @Column({ name: 'site_id', type: 'varchar', length: 36, nullable: true })
   siteId: string | null;
 

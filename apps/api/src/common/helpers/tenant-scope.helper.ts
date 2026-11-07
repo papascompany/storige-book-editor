@@ -3,7 +3,7 @@ import { SelectQueryBuilder, ObjectLiteral } from 'typeorm';
 import { UserRole } from '@storige/types';
 
 /**
- * P1 멀티테넌시 (2026-06-17) — 테넌트(site) 쿼리 스코핑 헬퍼.
+ * 멀티테넌시 — 테넌트(site) 쿼리 스코핑 헬퍼.
  *
  * site-scoped 엔티티 조회에 `WHERE site_id IN (...허용 site) [OR site_id IS NULL(시스템공유)]`
  * 를 자동으로 주입해, service 마다 수동 필터를 작성하다 누락하는 위험을 제거한다.

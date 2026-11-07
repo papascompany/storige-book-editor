@@ -165,7 +165,7 @@ export class StorageService {
   }
 
   // Helper method to get full file path from URL
-  // SEC-5: path.resolve 후 storage 루트 격리 — `../`, 인코딩된 세그먼트 등을 통한
+  // path.resolve 후 storage 루트 격리 — `../`, 인코딩된 세그먼트 등을 통한
   // path traversal 로 storage 루트 밖 파일 접근을 차단한다.
   getFilePathFromUrl(url: string): string {
     // Handle both old (/storage/category/file) and new (/storage/files/category/file) URL formats

@@ -1,5 +1,5 @@
 /**
- * 표지 spread 방향 파생 순수 변환 유틸 — 트랙 C (2026-07-23).
+ * 표지 spread 방향 파생 순수 변환 유틸.
  *
  * NestJS/TypeORM/fabric 의존 없음(순수 함수) — spread-orientation-derive.spec.ts 대상.
  * 내지 파생(orientation-derive.util.ts)의 원칙을 승계하되, 표지는 [뒤|책등|앞](+날개)
@@ -270,7 +270,7 @@ export function transformSpreadCanvasDataOrientation(
     if (metaSystem === 'spreadGuide' || metaSystem === 'dimensionLabel') continue;
     // (b) 레거시 잔재(IDML/수동 주입 — 일반 객체로 직렬화된 spread 가이드·치수 라벨):
     //     SpreadPlugin 이 로드 시 항상 재생성하므로 drop 이 정정이다. 좁은 패턴만 매칭(오탐 방어)
-    //     — d765713a 실덤프에서 확인된 형상(§7-3): line 'spread-guide-N' / 무id 'N.Nmm' text.
+    //     — 실제 저장 데이터에서 확인된 형상: line 'spread-guide-N' / 무id 'N.Nmm' text.
     if (obj.type === 'line' && objId !== undefined && objId.startsWith('spread-guide-')) {
       reviewNotes.push(`DROPPED_LEGACY_GUIDE: line ${objId}`);
       continue;

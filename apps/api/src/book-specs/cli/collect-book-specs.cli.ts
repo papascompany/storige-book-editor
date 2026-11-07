@@ -5,9 +5,8 @@
  * 기존 데이터(template_sets 자유입력 width/height + productSpecs,
  * paper_types·binding_types 계수)를 읽어 book_specs 후보 행을 정규화 추출하고
  * JSON + INSERT SQL 을 stdout 으로만 출력한다.
- * 실제 시드는 오너가 산출물을 검토·승인한 후 수동 실행한다
- * (설계서 PARTNER_PLATFORM_API_V1_DESIGN §9-6, 로드맵 §8-9 —
- *  자유입력 데이터라 자동 승인 불가).
+ * 실제 시드는 운영자가 산출물을 검토·승인한 후 수동 실행한다
+ * (자유입력 데이터라 자동 승인 불가).
  *
  * 실행 (apps/api 에서, DB 접속 가능한 환경):
  *   pnpm collect:book-specs            # 사람이 읽는 리포트 + SQL

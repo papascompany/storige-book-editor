@@ -43,27 +43,27 @@ export class CreateValidationJobDto {
   orderOptions: {
     size: { width: number; height: number };
     pages: number;
-    // R-44: bookmoa canonical 코드 hardcover/spiral additive('spring' 은 레거시 표기 보존)
+    // canonical 제본 코드 hardcover/spiral additive('spring' 은 레거시 표기 보존)
     binding: 'perfect' | 'saddle' | 'spring' | 'spiral' | 'hardcover';
     bleed: number;
     paperThickness?: number;
     /** 책등 폭(mm) — /products/spine/calculate 권위 값. 있으면 워커가 직접 사용(bindingMargin 포함) */
     spineWidthMm?: number;
     /**
-     * R-44: 내지 지종 라벨/코드(bookmoa productMeta.innerPaper 그대로 가능 — aliases 흡수).
+     * 내지 지종 라벨/코드(파트너 상품 메타의 내지 지종 값 그대로 가능 — aliases 흡수).
      * cover+perfect/hardcover 잡이면 서버가 이 값으로 spine 재계산해 spineWidthMm 을 덮어씀.
      */
     paperType?: string;
-    /** R-44: 표지 spine 검증 허용오차(mm) 파트너 오버라이드. 미전달 시 워커 기본값 */
+    /** 표지 spine 검증 허용오차(mm) 파트너 오버라이드. 미전달 시 워커 기본값 */
     spineToleranceMm?: number;
-    /** R-44: 서버 주입 시 'server' 스탬프(injectServerSpine) — 워커/감사 판별용 */
+    /** 서버 주입 시 'server' 스탬프(injectServerSpine) — 워커/감사 판별용 */
     spineSource?: 'server' | 'client';
-    /** R-44: 서버가 덮어쓰기 전 클라 원본 spineWidthMm(대조 계측 보존) */
+    /** 서버가 덮어쓰기 전 클라 원본 spineWidthMm(대조 계측 보존) */
     clientSpineWidthMm?: number;
-    /** R-53: spine 미해석 사유 서버 스탬프(UNMAPPED_PAPER/V1_FALLBACK) — 워커 경고 details.reason */
+    /** spine 미해석 사유 서버 스탬프(UNMAPPED_PAPER/V1_FALLBACK) — 워커 경고 details.reason */
     spineUnresolvedReason?: 'UNMAPPED_PAPER' | 'V1_FALLBACK';
     /**
-     * S6: 표지 레이아웃(additive). 'separate'=앞/뒤 낱장 2쪽 표지 — 워커가 단일 판형
+     * 표지 레이아웃(additive). 'separate'=앞/뒤 낱장 2쪽 표지 — 워커가 단일 판형
      * (W×H+도련) 검증, 책등/스프레드 기대치 생략, 서버 spine 주입도 하지 않음.
      * 미전송·'spread'·무효값=현행 스프레드 동작.
      */
@@ -72,15 +72,15 @@ export class CreateValidationJobDto {
     wingEnabled?: boolean;
     /** 날개 한쪽 폭(mm) */
     wingWidthMm?: number;
-    /** 사방 블리드 mm (2026-06-10, P1) — 워커는 받기만(optional), 검증/변환 실제 사용은 P4 */
+    /** 사방 블리드 mm — 워커 검증/변환 입력(optional) */
     bleedMm?: number;
-    /** 재단선 마커 표기 ON/OFF (2026-06-10, P1) */
+    /** 재단선 마커 표기 ON/OFF */
     cropMarkEnabled?: boolean;
-    /** 업로드 PDF 사이즈 검증 허용오차 mm (2026-06-10, P1) */
+    /** 업로드 PDF 사이즈 검증 허용오차 mm */
     sizeToleranceMm?: number;
-    /** 재단(완성) 사이즈 = 템플릿셋 판형 mm (2026-06-10, P1). 워커 수신 필드명 일치 */
+    /** 재단(완성) 사이즈 = 템플릿셋 판형 mm. 워커 수신 필드명 일치 */
     trimSize?: { width: number; height: number };
-    /** 작업 사이즈 = 재단 + 사방 블리드*2 mm (2026-06-10, P1). 워커 수신 필드명 일치 */
+    /** 작업 사이즈 = 재단 + 사방 블리드*2 mm. 워커 수신 필드명 일치 */
     workSize?: { width: number; height: number };
     /**
      * 내지 페이지수 배수(데이터 주도 계약, 2026-06-25) — 파트너가 제본별 값 전달(무선=2/양장=4/중철=4/스프링=8 등).
@@ -91,7 +91,7 @@ export class CreateValidationJobDto {
     pageCountMax?: number;
     /** 제본별 페이지수 하한(무선 32 등). 미제공 시 미검사. 위반=경고(비차단). */
     pageCountMin?: number;
-    /** bookmoa 주문 번호 — 검증/합성 완료 웹훅 echo-back용 (WH-005). bookmoa order.id와 1:1 매핑. */
+    /** 파트너 주문 번호 — 검증/합성 완료 웹훅 echo-back용. 파트너 주문 ID와 1:1 매핑. */
     orderSeqno?: number;
     /**
      * 2026-10-17(낱장 분류 검증): 상품 분류(additive). 'sheet' = 낱장 계열(단면 1·양면 2·N장 낱장) —
@@ -106,7 +106,7 @@ export class CreateValidationJobDto {
      */
     pageStep?: number;
     /**
-     * 2026-10-17 P1-e(상품 프로파일): 표지 책등 없음(additive). 'none' = cover 슬롯 파일이 책등 없는 단일 판형
+     * 상품 프로파일: 표지 책등 없음(additive). 'none' = cover 슬롯 파일이 책등 없는 단일 판형
      * (캘린더 단일 PDF 등 프로파일 세트) — 워커가 binding 과 무관하게 스프레드 표지 게이트를 건너뛰고
      * validatePageSize/validateBleed 를 수행하며 validateSpine(SPINE_* 경고·오류)을 생략, 서버 spine 주입도 하지 않음.
      * 미전송·무효값 = 현행(binding 기준) 동작. 편집기 완료 세션은 서버가 파생(sheet-validation-rules.ts).
@@ -127,11 +127,11 @@ export class CreateValidationJobDto {
   };
 
   @ApiPropertyOptional({
-    example: 'https://bookmoa.com/api/webhook/validation',
+    example: 'https://shop.example.com/api/webhook/validation',
     description: '검증 완료/실패 시 콜백 URL (editSessionId 없이 서버 간 통신에 사용)',
   })
   @IsOptional()
-  // SEC-009: http/https 절대 URL 만 허용(file://·상대경로 등 차단). SSRF 1차 방어는
+  // http/https 절대 URL 만 허용(file://·상대경로 등 차단). SSRF 1차 방어는
   // WebhookService.isAllowedCallbackUrl(allowlist) — 여기선 입력 형식 위생.
   @IsUrl({ protocols: ['http', 'https'], require_tld: false, require_protocol: true })
   callbackUrl?: string;
@@ -146,7 +146,7 @@ export class CreateValidationJobDto {
   siteId?: string;
 
   /**
-   * [S2-5] 인증 컨텍스트 env — 호출 컨트롤러가 @CurrentSite().env 로 주입.
+   * 인증 컨텍스트 env — 호출 컨트롤러가 @CurrentSite().env 로 주입.
    * ⚠️ 의도적으로 validation 데코레이터 없음(비화이트리스트): body 로 보내면
    * forbidNonWhitelisted 400 — 호출자가 test env 를 자가선언할 수 없다.
    * 'test' 면 서비스가 options.isTest=true 자동 스탬프(external 라우트는 live=no-op,
@@ -167,7 +167,7 @@ export class CreateValidationJobDto {
 }
 
 export class CreateConversionJobDto {
-  @ApiPropertyOptional({ example: 'uuid', description: '편집 세션 ID (P4 임포지션 결과 콜백 역참조용)' })
+  @ApiPropertyOptional({ example: 'uuid', description: '편집 세션 ID (임포지션 결과 콜백 역참조용)' })
   @IsOptional()
   @IsUUID()
   editSessionId?: string;
@@ -217,7 +217,7 @@ export class CreatePageCountFixJobDto {
   @IsNumber()
   targetMultiple: number;
 
-  @ApiPropertyOptional({ example: 'https://bookmoa.com/api/webhook/fix', description: '완료 콜백 URL(선택)' })
+  @ApiPropertyOptional({ example: 'https://shop.example.com/api/webhook/fix', description: '완료 콜백 URL(선택)' })
   @IsOptional()
   @IsUrl({ protocols: ['http', 'https'], require_tld: false, require_protocol: true })
   callbackUrl?: string;
@@ -229,14 +229,14 @@ export class CreatePageCountFixJobDto {
 }
 
 /**
- * 배경제거(컷아웃) 잡 DTO — S-P2A-B (2026-08-05, D-6a=B·D-12a=C).
+ * 배경제거(컷아웃) 잡 DTO.
  *
  * 원본 이미지 파일 1장의 배경을 제거한 PNG(알파)를 워커(=rembg 사이드카)가 만든다.
  * 비동기 — 반환 WorkerJob(jobId) 폴링(`GET /worker-jobs/:id/cutout-status`). 원본 파일 보존.
  *
  * ⚠️ 이 라우트는 `@Public`(게스트 편집기) = **body 는 무인증 임의 입력**이다.
  *   - siteId 는 의도적으로 **필드로 두지 않는다** — 스탬프 근거는 원본 file.siteId 승계뿐이라
- *     클라이언트가 임의 테넌트를 주장할 통로 자체가 없다(edit-sessions guest F-1 선례).
+ *     클라이언트가 임의 테넌트를 주장할 통로 자체가 없다(edit-sessions guest 생성과 같은 규칙).
  *   - maxLongEdge(추론 픽셀 캡)도 클라 입력을 받지 않는다 — 서버가 CUTOUT_MAX_LONG_EDGE 로
  *     권위 결정한다(무인증 컴퓨트에 임의 해상도 상한을 허용하면 캡이 무의미해진다).
  */
@@ -292,7 +292,7 @@ export class CreateSynthesisJobDto {
   @IsNotEmpty()
   spineWidth: number;
 
-  @ApiPropertyOptional({ example: 'ORD-2024-12345', description: '북모아 주문 번호' })
+  @ApiPropertyOptional({ example: 'ORD-2024-12345', description: '파트너 주문 번호' })
   @IsOptional()
   @IsString()
   orderId?: string;
@@ -302,9 +302,9 @@ export class CreateSynthesisJobDto {
   @IsIn(['high', 'normal', 'low'])
   priority?: 'high' | 'normal' | 'low';
 
-  @ApiPropertyOptional({ example: 'https://bookmoa.com/api/webhook/synthesis', description: '완료 시 콜백 URL' })
+  @ApiPropertyOptional({ example: 'https://shop.example.com/api/webhook/synthesis', description: '완료 시 콜백 URL' })
   @IsOptional()
-  // SEC-009: http/https 절대 URL 만 허용.
+  // http/https 절대 URL 만 허용.
   @IsUrl({ protocols: ['http', 'https'], require_tld: false, require_protocol: true })
   callbackUrl?: string;
 
@@ -331,14 +331,14 @@ export class CreateSynthesisJobDto {
   @IsUUID()
   siteId?: string;
 
-  /** [S2-5] 인증 컨텍스트 env — CreateValidationJobDto.partnerEnv 주석 참조(비화이트리스트·declare 필수) */
+  /** 인증 컨텍스트 env — CreateValidationJobDto.partnerEnv 주석 참조(비화이트리스트·declare 필수) */
   declare partnerEnv?: PartnerEnv;
 
   /** books finalization 역참조 마커 — CreateValidationJobDto.finalizationId 주석 참조 */
   declare finalizationId?: string;
 
   /**
-   * 내지 기대 재단(X1, content-trim.ts) — 내부 호출(BookFinalizationsService, bookSpec 출처)만 전달한다.
+   * 내지 기대 재단(content-trim.ts) — 내부 호출(BookFinalizationsService, bookSpec 출처)만 전달한다.
    * finalizationId 와 같이 비화이트리스트 `declare` 라 요청 본문에 실리면 400 이다.
    */
   declare contentTrim?: ContentTrim;
@@ -374,8 +374,8 @@ export class UpdateJobStatusDto {
   /**
    * 잡 결과(자유 형식 객체). `@IsObject()` 만 걸고 @ValidateNested 는 없다 —
    * 즉 중첩 키는 whitelist 대상이 아니라 그대로 통과한다.
-   * (2026-08-05 확인: 워커 CUTOUT 콜백의 `CutoutJobResult`(cutoutUrl/inputWidth/…)도
-   *  전역 ValidationPipe(forbidNonWhitelisted)를 그대로 통과 — WK-1 유형 재발 없음.)
+   * (워커 CUTOUT 콜백의 `CutoutJobResult`(cutoutUrl/inputWidth/…)도
+   *  전역 ValidationPipe(forbidNonWhitelisted)를 그대로 통과한다.)
    */
   @ApiPropertyOptional()
   @IsOptional()
@@ -388,10 +388,9 @@ export class UpdateJobStatusDto {
   errorMessage?: string;
 
   /**
-   * WK-1 (2026-06-13) — 세분화 에러 코드 (예: 'PAGE_COUNT_MISMATCH').
-   * 워커 split/duplex-split/spread 실패 경로가 DomainError.code 를 보내는데,
-   * 전역 ValidationPipe(forbidNonWhitelisted)가 DTO 미정의 필드를 400 으로
-   * 거부해 FAILED 상태 업데이트 자체가 실패하던 구멍을 막는다.
+   * 세분화 에러 코드 (예: 'PAGE_COUNT_MISMATCH').
+   * 워커 split/duplex-split/spread 실패 경로가 DomainError.code 를 보낸다 — DTO 에 정의돼 있어야
+   * 전역 ValidationPipe(forbidNonWhitelisted)가 FAILED 상태 업데이트를 400 으로 거부하지 않는다.
    * 엔티티 컬럼(error_code)은 기존재 — Object.assign 경유로 그대로 저장된다.
    */
   @ApiPropertyOptional({ example: 'PAGE_COUNT_MISMATCH', description: '세분화 에러 코드 (DomainError.code)' })
@@ -399,7 +398,7 @@ export class UpdateJobStatusDto {
   @IsString()
   errorCode?: string;
 
-  /** WK-1 — 에러 상세 정보 (JSON). 엔티티 컬럼(error_detail) 기존재. */
+  /** 에러 상세 정보 (JSON). 엔티티 컬럼(error_detail) 기존재. */
   @ApiPropertyOptional({
     example: { expected: 4, got: 3 },
     description: '에러 상세 정보 (JSON)',

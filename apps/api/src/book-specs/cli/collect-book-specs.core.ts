@@ -121,7 +121,7 @@ export function collectBookSpecCandidates(
   paperTypes: PaperTypeRow[],
 ): CollectResult {
   const bindingByCode = new Map(bindingTypes.map((b) => [b.code, b]));
-  // 기본 용지: 본문(body) 카테고리의 최우선 sort_order (계수 검토는 오너 몫)
+  // 기본 용지: 본문(body) 카테고리의 최우선 sort_order (계수는 운영자가 검토)
   const defaultBodyPaper =
     [...paperTypes]
       .filter((p) => p.category === 'body' && p.is_active === 1)
@@ -243,7 +243,7 @@ function sqlString(value: string | null): string {
   return `'${value.replace(/'/g, "''")}'`;
 }
 
-/** 시드 SQL 초안 생성 — 출력 전용, 실행은 오너 승인 후 수동 */
+/** 시드 SQL 초안 생성 — 출력 전용, 실행은 운영자 승인 후 수동 */
 export function toInsertSql(c: BookSpecCandidate): string {
   const spineFormula = JSON.stringify({ paperCode: c.defaultPaperCode, bindingCode: c.bindingType });
   return (

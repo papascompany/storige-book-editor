@@ -40,7 +40,7 @@ import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { Public } from '../auth/decorators/public.decorator';
 import { ApiKeyGuard } from '../auth/guards/api-key.guard';
 import { OptionalShopJwtGuard } from '../auth/guards/optional-shop-jwt.guard';
-// P3b 멀티테넌시 — siteId 목록 분기에서 사이트 운영자(siteRoles) 멤버십 판정.
+// 멀티테넌시 — siteId 목록 분기에서 사이트 운영자(siteRoles) 멤버십 판정.
 import { getTenantScope } from '../common/helpers/tenant-scope.helper';
 import {
   CurrentSite,
@@ -114,7 +114,7 @@ export class EditSessionsController {
       });
     }
 
-    // Patch D (2026-05-03): JWT에 allowedOrderSeqnos가 있으면 dto.orderSeqno 검증
+    // JWT에 allowedOrderSeqnos가 있으면 dto.orderSeqno 검증
     // 없으면 (호환 모드) 기존 동작 유지 — DTO 값 신뢰
     if (
       Array.isArray(user?.allowedOrderSeqnos) &&
@@ -128,7 +128,7 @@ export class EditSessionsController {
       });
     }
 
-    // Phase C-2 — JWT의 siteId 자동 주입 (없으면 NULL — 기존 호환)
+    // JWT의 siteId 자동 주입 (없으면 NULL — 기존 호환)
     // 고객아이디 스냅샷 (2026-06-11): shop-session JWT 의 memberId(email)/memberName 을
     // metadata.member 로 자동 기록 — admin 세션/삭제 리스트에서 "고객아이디"를 사람이 읽을 수
     // 있게 노출하기 위함 (member_seqno 는 UUID 해시라 식별 불가). 클라이언트 변경 불필요.
@@ -148,25 +148,22 @@ export class EditSessionsController {
   }
 
   /**
-   * 게스트(비로그인) 편집 세션 생성 — 인쇄 워크플로우 v1 Phase 4 (2026-05-19).
+   * 게스트(비로그인) 편집 세션 생성.
    *
-   * 결정 3-1: guestToken (uuid) + guestExpiresAt (NOW + 24h) 자동 발급.
-   *           EVENT evt_purge_expired_guest_sessions 가 1h 주기로 만료 세션 DELETE.
-   * 결정 3-6: 회원 전환은 저장(편집완료) 시점에만. 본 endpoint 는 발급만.
+   * guestToken (uuid) + guestExpiresAt (NOW + 24h) 자동 발급.
+   * EVENT evt_purge_expired_guest_sessions 가 1h 주기로 만료 세션 DELETE.
+   * 회원 전환은 저장(편집완료) 시점에만. 본 endpoint 는 발급만.
    *
    * 클라이언트는 응답의 guestToken 을 sessionStorage 에 저장하고,
    * 이후 PATCH /edit-sessions/guest/:id 호출 시 X-Guest-Token 헤더로 전송.
    *
-   * 🔒 F-1 (2026-07-30): 본 라우트는 @Public — 즉 body 는 **무인증 임의 입력**이다.
+   * 🔒 본 라우트는 @Public — 즉 body 는 **무인증 임의 입력**이다.
    *   CreateEditSessionDto 는 siteId 를 노출하고 service 는 `dto.siteId || null` 로 저장하므로,
-   *   override 가 없으면 누구나 `POST /edit-sessions/guest {"siteId":"<피해자 site>"}` 로
-   *   임의 테넌트 스탬프 세션을 심을 수 있었다("NULL-site fail-closed" 안전판의 우회 통로).
-   *   → dto.siteId 는 **무조건 버린다**. 스탬프 근거는 오직 아래 I-1(검증된 JWT)뿐이다.
+   *   클라이언트가 보낸 dto.siteId 는 **무조건 버린다**. 스탬프 근거는 오직 아래 검증된 JWT 뿐이다.
    *
-   * 🏷️ siteId 스탬프 (2026-07-30) — I-1:
+   * 🏷️ siteId 스탬프:
    *   전역 JwtAuthGuard 는 @Public 에서 단락하므로 편집기가 Bearer 를 실어 보내도
-   *   req.user 가 비어 siteId 를 잃었다(= 회원 전환 후에도 승격 404 의 근본 원인).
-   *   OptionalShopJwtGuard 가 @Public 을 유지한 채 **서명 검증된** shop-session JWT
+   *   req.user 가 비어 있다. OptionalShopJwtGuard 가 @Public 을 유지한 채 **서명 검증된** shop-session JWT
    *   에서만 테넌트를 복원한다. 토큰 없음/위조/만료/site 없음 → **NULL 유지**.
    *
    *   ⚠️ NULL 세션이 승격에서 404 로 거부되는 것은 결함이 아니라 설계된 fail-closed 다
@@ -176,7 +173,7 @@ export class EditSessionsController {
   @Post('guest')
   @Public()
   @UseGuards(OptionalShopJwtGuard)
-  @ApiOperation({ summary: '게스트 편집 세션 생성 (Phase 4)' })
+  @ApiOperation({ summary: '게스트 편집 세션 생성' })
   @ApiResponse({ status: 201, description: '세션 생성 성공', type: EditSessionResponseDto })
   async createGuest(
     @Body() dto: CreateEditSessionDto,
@@ -195,12 +192,8 @@ export class EditSessionsController {
     const derivedSiteId =
       user?.source === 'shop' && typeof user?.siteId === 'string' ? user.siteId : undefined;
 
-    // 🔒 F-5 (2026-07-30): 게스트 라우트에도 회원 라우트(Patch D)와 동일한 주문 스코프 가드.
-    //   종전에는 이 검사가 없어 `allowedOrderSeqnos:[111]` 토큰으로 `orderSeqno:222` 세션을
-    //   만들 수 있었고(회원 라우트는 403), 그 세션이 NULL-site 라 승격 404 로 자연 차단됐다.
-    //   siteId 스탬프가 붙으면서 그 결과물이 **승격 가능**해지므로 같은 커밋에서 함께 막는다.
-    //   교차테넌트는 아니지만(공격자도 그 site 의 정당한 고객), 파트너가 orderSeqno 로 세션을
-    //   찾아 승격하는 운용이면 타 고객 주문에 남의 PDF 가 붙는다.
+    // 🔒 게스트 라우트에도 회원 라우트와 동일한 주문 스코프 가드 — 토큰의 allowedOrderSeqnos 밖
+    //   orderSeqno 로는 세션을 만들 수 없다(403 ORDER_NOT_ALLOWED).
     //   ⚠️ 게스트는 orderSeqno 가 선택이므로 **명시한 경우에만** 검증한다(미지정은 기존대로 통과).
     //   allowedOrderSeqnos 가 없는 토큰도 기존대로 통과 — 회원 라우트의 호환 모드와 동일.
     if (
@@ -235,21 +228,17 @@ export class EditSessionsController {
   }
 
   /**
-   * 게스트 세션 업데이트 (canvasData / contentPdf*) — 인쇄 워크플로우 v1 Phase 4.
+   * 게스트 세션 업데이트 (canvasData / contentPdf*).
    *
    * X-Guest-Token 헤더로 본인 세션임을 증명한 후 update 호출(토큰은 헤더로만 받는다).
    * 소유 증명 후 userId=0 + `guestVerified: true` 로 service 호출 — 게스트 세션 변경은
    * 이 경로(토큰 검증) 또는 staff 만 허용된다(2026-09-29).
    *
-   * 🔒 F-3 (2026-07-30): 종전 `if (guestTokenQuery && …)` 는 **토큰을 아예 안 보내면
-   *   소유 검사를 통째로 건너뛰었다** — 세션 UUID 만 알면 누구나 남의 게스트 세션
-   *   canvasData 를 덮어쓸 수 있었다. 그 세션이 이제 siteId 스탬프를 받아 인쇄 자산
-   *   승격 경로에 올라타므로, 이 구멍을 연 채로 승격을 열면 안 된다.
-   *   → 토큰 미전송은 403 GUEST_TOKEN_REQUIRED(fail-closed).
+   * 🔒 토큰 미전송은 403 GUEST_TOKEN_REQUIRED(fail-closed) — 소유 증명 없이는 변경할 수 없다.
    */
   @Patch('guest/:id')
   @Public()
-  @ApiOperation({ summary: '게스트 세션 업데이트 (Phase 4)' })
+  @ApiOperation({ summary: '게스트 세션 업데이트' })
   @ApiResponse({ status: 200, description: '세션 업데이트 성공', type: EditSessionResponseDto })
   @ApiResponse({ status: 403, description: '게스트 토큰 미전송/불일치 또는 만료' })
   async updateGuest(
@@ -264,7 +253,7 @@ export class EditSessionsController {
   }
 
   /**
-   * 게스트 세션 소유 증명(F-3 fail-closed). updateGuest·findOneGuest·guest versions 공용.
+   * 게스트 세션 소유 증명(fail-closed). updateGuest·findOneGuest·guest versions 공용.
    * 검증을 통과한 세션을 반환한다(반환값을 쓰지 않는 호출자는 종전과 동일).
    *
    * ⚠️ 순서 고정 — 소유 증명을 **조회보다 먼저** 요구한다.
@@ -315,11 +304,11 @@ export class EditSessionsController {
     return this.editSessionsService.toResponseDto(session);
   }
 
-  // ─── P1-4 (2026-08-22) 게스트 세션 스냅샷 목록/복원 — @Get(':id/…') 보다 먼저 선언 ───
+  // ─── 게스트 세션 스냅샷 목록/복원 — @Get(':id/…') 보다 먼저 선언 ───
 
   @Get('guest/:id/versions')
   @Public()
-  @ApiOperation({ summary: '게스트 세션 canvasData 스냅샷 목록 (P1-4)' })
+  @ApiOperation({ summary: '게스트 세션 canvasData 스냅샷 목록' })
   @ApiResponse({ status: 403, description: '게스트 토큰 미전송/불일치 또는 만료' })
   async listGuestVersions(
     @Param('id', ParseUUIDPipe) id: string,
@@ -331,7 +320,7 @@ export class EditSessionsController {
 
   @Post('guest/:id/versions/:vid/restore')
   @Public()
-  @ApiOperation({ summary: '게스트 세션 스냅샷 복원 (P1-4) — 복원 직전 상태는 restore 스냅샷으로 보존' })
+  @ApiOperation({ summary: '게스트 세션 스냅샷 복원 — 복원 직전 상태는 restore 스냅샷으로 보존' })
   @ApiResponse({ status: 200, type: EditSessionResponseDto })
   @ApiResponse({ status: 403, description: '게스트 토큰 미전송/불일치 또는 만료' })
   @ApiResponse({ status: 404, description: '세션/스냅샷 없음' })
@@ -346,15 +335,15 @@ export class EditSessionsController {
   }
 
   /**
-   * 게스트 세션 → 회원 마이그레이션 — 인쇄 워크플로우 v1 Phase 6-B (2026-05-19).
+   * 게스트 세션 → 회원 마이그레이션.
    *
-   * 결정 3-6: 저장(편집완료) 시점의 로그인 직후 호출. 본인 인증된 상태에서만 흡수.
+   * 저장(편집완료) 시점의 로그인 직후 호출. 본인 인증된 상태에서만 흡수.
    *
    * Body: { guestToken: string }
    * Response: { migratedCount, sessionIds[] }
    */
   @Post('guest/migrate')
-  @ApiOperation({ summary: '게스트 세션을 회원 세션으로 마이그레이션 (Phase 6)' })
+  @ApiOperation({ summary: '게스트 세션을 회원 세션으로 마이그레이션' })
   @ApiResponse({ status: 200, description: '마이그레이션 결과' })
   async migrateGuestToMember(
     @Body() body: { guestToken?: string },
@@ -377,7 +366,7 @@ export class EditSessionsController {
         message: 'guestToken 이 필요합니다.',
       });
     }
-    // I-3 (2026-07-30): 호출자 테넌트를 넘겨 교차 site 흡수를 서비스에서 거부한다.
+    // 호출자 테넌트를 넘겨 교차 site 흡수를 서비스에서 거부한다.
     // caller siteId 가 없으면(레거시 리프레시 토큰 등) null → 서비스가 허용 + warn.
     return this.editSessionsService.migrateGuestSessions(
       body.guestToken,
@@ -387,18 +376,18 @@ export class EditSessionsController {
   }
 
   /**
-   * 내 세션 목록 — 인쇄 워크플로우 v1 Phase 6-C (2026-05-19).
+   * 내 세션 목록.
    *
    * 로그인 사용자 본인의 최근 세션 200건. /my-works UI 가 사용.
    *
-   * summary 경량 모드 (2026-06-11) — bookmoa-mobile '편집보관함' 목록용:
+   * summary 경량 모드 — 모바일 '편집보관함' 목록용:
    *  - ?summary=1|true 시 canvasData 제외 + templateSetName/thumbnailUrl 추가.
    *  - 개별 @Query 원시(string) 파라미터라 전역 ValidationPipe(whitelist/
    *    forbidNonWhitelisted)의 DTO 화이트리스트 검사 대상이 아님 →
-   *    기존 무파라미터 호출(bookmoa/editor /my-works)과 100% 호환.
+   *    기존 무파라미터 호출(파트너·editor /my-works)과 100% 호환.
    */
   @Get('my')
-  @ApiOperation({ summary: '내 편집 세션 목록 (Phase 6)' })
+  @ApiOperation({ summary: '내 편집 세션 목록' })
   @ApiQuery({
     name: 'summary',
     required: false,
@@ -538,7 +527,7 @@ export class EditSessionsController {
   /**
    * 고객 첨부 내지 PDF "리더 스프레드" 임포지션 미리보기 — 외부 API Key 인증 (2026-06-16).
    *
-   * bookmoa-mobile 등 외부 호출자가 "이 내지 PDF가 책으로 묶이면 펼침면이
+   * 파트너 앱 등 외부 호출자가 "이 내지 PDF가 책으로 묶이면 펼침면이
    * 이렇게 보입니다"를 그리기 위한 표시용 데이터를 조회한다.
    *
    * ⚠️ 부수효과 없는 순수 조회 — 재렌더/잡 생성 안 함(GET).
@@ -607,7 +596,7 @@ export class EditSessionsController {
   @ApiOperation({ summary: '편집 세션 목록 조회' })
   @ApiQuery({ name: 'orderSeqno', required: false, description: '주문 번호' })
   @ApiQuery({ name: 'memberSeqno', required: false, description: '회원 번호' })
-  @ApiQuery({ name: 'siteId', required: false, description: '사이트 ID (Phase C-3)' })
+  @ApiQuery({ name: 'siteId', required: false, description: '사이트 ID' })
   @ApiResponse({
     status: 200,
     description: '세션 목록',
@@ -616,7 +605,7 @@ export class EditSessionsController {
   async findSessions(
     @Query('orderSeqno') orderSeqno?: string,
     @Query('memberSeqno') memberSeqno?: string,
-    @Query('siteId') siteId?: string, // Phase C-3
+    @Query('siteId') siteId?: string,
     @CurrentUser() user?: any,
   ): Promise<EditSessionListResponseDto> {
     let sessions;
@@ -656,8 +645,8 @@ export class EditSessionsController {
             `[SEC-005] orderSeqno=${reqOrder} 조회: 권한 미보유 + memberSeqno 불일치로 ${before}건 전부 필터됨 ` +
             `(member=${selfSeqno}, site=${user?.siteId}). 호스트 shop-session orderSeqno 주입 점검 필요.`;
           this.logger.warn(sec005Msg);
-          // ⓕ(2026-06-23): 수동 grep → Sentry 알림 자동화. 데이터 고아화 인접 신호이므로
-          // 운영자에게 능동 통지. 모든 SEC-005 를 단일 이슈로 묶고(setFingerprint) 발생건은
+          // Sentry 알림. 데이터 고아화 인접 신호이므로
+          // 운영자에게 능동 통지. 이 경보 전체를 단일 이슈로 묶고(setFingerprint) 발생건은
           // 태그/extra 로 구분 → 알림 폭주 없이 호스트별 비준수 추적. DSN 미설정 시 silent no-op.
           Sentry.withScope((scope) => {
             scope.setLevel('warning');
@@ -727,7 +716,7 @@ export class EditSessionsController {
 
     // 테넌트 격리(2026-08-23): 모든 분기 공통 — 비-staff 는 자기 site(+레거시 NULL) 세션만.
     // orderSeqno/memberSeqno 는 site 별 번호공간이라 동일 번호의 타 site 세션이 섞일 수 있다
-    // (:id 계열 assertTenantScope·/external P2c 와 동일 규칙).
+    // (:id 계열 assertTenantScope·/external 과 동일 규칙).
     sessions = this.filterTenantScope(sessions, user, 'list');
 
     // 주문권한 목록의 게스트 세션: 사이트가 지정된 세션만 포함한다(사이트 미지정 게스트 세션은 목록에서 제외).
@@ -810,11 +799,11 @@ export class EditSessionsController {
     return this.respond(session, user);
   }
 
-  // ─── P1-4 (2026-08-22) 회원 세션 스냅샷 목록/상세/복원 — 소유자 또는 admin/manager ───
+  // ─── 회원 세션 스냅샷 목록/상세/복원 — 소유자 또는 admin/manager ───
 
   @Get(':id/versions')
   @PartnerOperatorAllowed()
-  @ApiOperation({ summary: '세션 canvasData 스냅샷 목록 (P1-4) — canvasData 제외 경량' })
+  @ApiOperation({ summary: '세션 canvasData 스냅샷 목록 — canvasData 제외 경량' })
   @ApiResponse({ status: 403, description: '권한 없음' })
   @ApiResponse({ status: 404, description: '세션을 찾을 수 없음' })
   async listVersions(
@@ -827,7 +816,7 @@ export class EditSessionsController {
 
   @Get(':id/versions/:vid')
   @PartnerOperatorAllowed()
-  @ApiOperation({ summary: '세션 스냅샷 상세 (canvasData 포함) (P1-4)' })
+  @ApiOperation({ summary: '세션 스냅샷 상세 (canvasData 포함)' })
   @ApiResponse({ status: 403, description: '권한 없음' })
   @ApiResponse({ status: 404, description: '세션/스냅샷 없음' })
   async getVersion(
@@ -851,7 +840,7 @@ export class EditSessionsController {
 
   @Post(':id/versions/:vid/restore')
   @PartnerOperatorAllowed()
-  @ApiOperation({ summary: '세션 스냅샷 복원 (P1-4) — 복원 직전 상태는 restore 스냅샷으로 보존' })
+  @ApiOperation({ summary: '세션 스냅샷 복원 — 복원 직전 상태는 restore 스냅샷으로 보존' })
   @ApiResponse({ status: 200, type: EditSessionResponseDto })
   @ApiResponse({ status: 403, description: '권한 없음' })
   @ApiResponse({ status: 404, description: '세션/스냅샷 없음' })
@@ -1012,7 +1001,7 @@ export class EditSessionsController {
    * JWT 의 siteId 와 세션의 siteId 가 모두 존재하면서 불일치하면 404 SESSION_NOT_FOUND 로
    * 차단한다(memberSeqno 는 site 별 독립 번호공간이므로 타 site 의 같은 seqno 회원이 소유자로
    * 오판되는 교차 테넌트 접근 봉합). findById 의 not-found 404 와 **동일 응답**으로 던져
-   * 존재 오라클을 차단(getImpositionPreview P2c 패턴과 동일 문구). staff 는 전 테넌트 운영자로
+   * 존재 오라클을 차단(getImpositionPreview 패턴과 동일 문구). staff 는 전 테넌트 운영자로
    * 예외, user.siteId 또는 session.siteId 가 없으면(레거시 JWT/구 세션) 기존 동작대로 통과.
    */
   private async assertOwnerOrStaff(id: string, user: any): Promise<void> {
@@ -1033,7 +1022,7 @@ export class EditSessionsController {
 
   /**
    * 목록 라우트 테넌트 필터 — caller 범위 밖 세션을 조용히 제외(404 대신 누락). 제외분이 있으면
-   * warn 로그(호스트가 잘못된 site 키/JWT 로 접근하는 신호 — Sentry 알림은 SEC-005 와 달리 두지 않음).
+   * warn 로그(호스트가 잘못된 site 키/JWT 로 접근하는 신호 — 주문 조회 전부 필터 경보와 달리 Sentry 알림은 두지 않음).
    */
   private filterTenantScope<T extends { siteId?: string | null }>(
     sessions: T[],

@@ -48,8 +48,7 @@ export class BookmoaController {
   @UseGuards(RolesGuard)
   @Roles(UserRole.ADMIN, UserRole.MANAGER)
   @ApiBearerAuth()
-  // SEC-006: Admin 상품코드 자동완성 전용 — 과거 전역 JWT만 통과해 고객 토큰으로도 북모아
-  // 카테고리 DB 조회 가능했음. 관리자 역할로 제한(editor/외부 콜러 0건).
+  // Admin 상품코드 자동완성 전용 — 관리자 역할로 제한한다.
   @ApiOperation({ summary: '북모아 카테고리 목록 조회 (관리자 전용)' })
   @ApiQuery({ name: 'search', required: false, description: '검색어 (카테고리명 또는 sortcode)' })
   @ApiQuery({ name: 'depth', required: false, description: '카테고리 깊이 (1, 2, 3)' })

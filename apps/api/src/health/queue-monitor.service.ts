@@ -66,7 +66,7 @@ export class QueueMonitorService implements OnModuleInit, OnModuleDestroy {
     'pdf-validation': { prevFailed: 0, lastBacklogAlertAt: 0, lastFailedAlertAt: 0 },
     'pdf-conversion': { prevFailed: 0, lastBacklogAlertAt: 0, lastFailedAlertAt: 0 },
     'pdf-synthesis': { prevFailed: 0, lastBacklogAlertAt: 0, lastFailedAlertAt: 0 },
-    // 컷아웃(2026-08-05 S-P2A-B) — 큐 미주입이면 queueMap 이 순회하지 않아 no-op.
+    // 컷아웃 — 큐 미주입이면 queueMap 이 순회하지 않아 no-op.
     [CUTOUT_QUEUE_NAME]: { prevFailed: 0, lastBacklogAlertAt: 0, lastFailedAlertAt: 0 },
   };
 
@@ -81,7 +81,7 @@ export class QueueMonitorService implements OnModuleInit, OnModuleDestroy {
     private readonly cutoutQueue?: Queue,
   ) {}
 
-  /** 기동 스냅샷용 — QUEUE_MONITOR_ENABLED 유효값. OPS-S4-N2 */
+  /** 기동 스냅샷용 — QUEUE_MONITOR_ENABLED 유효값. */
   isEnabled(): boolean {
     return this.enabled;
   }

@@ -9,14 +9,12 @@ import { WorkerJobType } from '@storige/types';
 import { WorkerJob } from './entities/worker-job.entity';
 
 /**
- * CutoutOutputsRetentionService — 컷아웃 산출물 보존기간 정리 (2026-08-05, S-P2A-B 샤드2).
+ * CutoutOutputsRetentionService — 컷아웃 산출물 보존기간 정리.
  *
- * **왜 이 슬라이스에 함께 넣는가**: 컷아웃 생성 라우트는 `@Public`(무인증)이고 워커가
- * `/app/storage/cutouts/<jobId>/` 에 PNG 를 직접 write 한다. 정리 주체가 없으면
- * **무인증 디스크 소진 경로**가 열린 채로 배포된다(프로덕션 디스크는 이미 85% 사용 실측).
- * "기존 content-pdf-guides 도 정리가 없다"는 것은 완화 근거가 아니라 두 번째 사고 지점이다.
+ * 컷아웃 생성 라우트는 `@Public`(무인증)이고 워커가 `/app/storage/cutouts/<jobId>/` 에
+ * PNG 를 직접 write 하므로, 디스크 소진을 막기 위해 보존기간이 지난 산출물을 정리한다.
  *
- * 구현 방식은 TestJobOutputsRetentionService(S2-5) 선례를 그대로 따른다:
+ * 구현 방식은 TestJobOutputsRetentionService 선례를 그대로 따른다:
  *  - 워커에는 @nestjs/schedule 이 없고, API 가 동일 ./storage 볼륨을 rw 마운트한다.
  *  - 산출물은 files 테이블을 경유하지 않으므로 FileRetentionService 를 재사용할 수 없다.
  *

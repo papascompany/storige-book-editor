@@ -21,7 +21,7 @@ export class CreateShopSessionDto {
   phpSessionId?: string;
 
   /**
-   * 주문 컨텍스트 (선택, 2026-05-03 Patch D 도입)
+   * 주문 컨텍스트 (선택)
    *
    * 전달되면 JWT 페이로드에 포함되어 EditSession 생성 시 추가 검증에 활용.
    * - 단일 주문 시나리오: orderSeqno 한 개

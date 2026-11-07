@@ -8,11 +8,11 @@ import { CUTOUT_QUEUE_NAME } from '@storige/types';
 import { FileEntity } from '../files/entities/file.entity';
 
 /**
- * Prometheus 메트릭 수집 서비스 (P2-8 옵션 C 하이브리드)
+ * Prometheus 메트릭 수집 서비스 (하이브리드)
  *
  * - Node.js 기본 메트릭 (CPU, 메모리, GC, event loop) → prom-client default
  * - Bull 큐 메트릭 (waiting, active, completed, failed, delayed, backlog) → 30초마다 갱신
- * - Worker 잡 처리 카운터/히스토그램은 Sentry tracing이 이미 수집 중 (옵션 C 분담)
+ * - Worker 잡 처리 카운터/히스토그램은 Sentry tracing이 수집
  */
 @Injectable()
 export class MetricsService implements OnModuleInit, OnModuleDestroy {
@@ -34,7 +34,7 @@ export class MetricsService implements OnModuleInit, OnModuleDestroy {
     @InjectQueue('pdf-conversion') private conversionQueue: Queue,
     @InjectQueue('pdf-synthesis') private synthesisQueue: Queue,
     @InjectRepository(FileEntity) private fileRepository: Repository<FileEntity>,
-    // 컷아웃 큐(2026-08-05 S-P2A-B). @Optional 인 이유는 health.controller 주석 참조 —
+    // 컷아웃 큐. @Optional 인 이유는 health.controller 주석 참조 —
     // 미주입이면 image-cutout 시계열만 비고, 나머지 메트릭은 그대로 수집된다.
     @Optional()
     @InjectQueue(CUTOUT_QUEUE_NAME)

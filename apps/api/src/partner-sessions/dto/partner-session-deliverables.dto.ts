@@ -1,7 +1,7 @@
 import type { PhotoItem, ProductCompleteSummary, ProductBackRotation, ProductDuplexFlip, SheetSpec } from '@storige/types';
 
 /**
- * Partner API v1 — 1-call 런처(P2-b, 2026-10-18) 산출물 조회·재합성 응답 shape.
+ * Partner API v1 — 1-call 런처 산출물 조회·재합성 응답 shape.
  * 정본: docs/PRODUCT_MODE_ARCHITECTURE_DESIGN_2026-10-16.md §8.1
  *
  * 내부 UUID 중 sessionId·jobId·fileId 는 호출 측이 후속 라우트(파일 다운로드·잡 조회)에 쓰므로 노출한다.
@@ -37,9 +37,9 @@ export interface PartnerSessionFileView {
   /** role='sheet' — 세트 순번(0-base, 편집기 페이지 순서). sheet-map 잡은 SheetSpec.index 와 같다 */
   sheetIndex?: number;
   pageCount?: number;
-  /** P2-c(additive) role='sheet' + sheet-map 잡만 — 해당 시트 SheetSpec.copies(명시된 경우) */
+  /** (additive) role='sheet' + sheet-map 잡만 — 해당 시트 SheetSpec.copies(명시된 경우) */
   copies?: number;
-  /** P2-c(additive) role='sheet' + sheet-map 잡만 — 해당 시트 SheetSpec.label(명시된 경우) */
+  /** (additive) role='sheet' + sheet-map 잡만 — 해당 시트 SheetSpec.label(명시된 경우) */
   label?: string;
   /** ISO 8601 */
   generatedAt?: string;
@@ -70,12 +70,12 @@ export interface PartnerSessionDeliverablesView {
   calendar: PartnerSessionCalendarView | null;
   files: PartnerSessionFileView[];
   /**
-   * P2-c(2026-10-18, additive) 최신 파트너 가시 합성 잡이 `options.mode==='sheet-map'` 일 때만 — API 가 잡 발행 시
+   * (additive) 최신 파트너 가시 합성 잡이 `options.mode==='sheet-map'` 일 때만 — API 가 잡 발행 시
    * 저장한 시트 앞/뒤 매핑(SheetSpec[], 0-base 페이지·회전·단면 null). duplex-split·잡 없음이면 키 없음.
    */
   sheets?: SheetSpec[];
   /**
-   * P2-d(2026-10-19, additive) kind='photo-print' 세트(검증된 프로파일)만 — 세션 `metadata.items` 를 `readPhotoItems` 로
+   * (additive) kind='photo-print' 세트(검증된 프로파일)만 — 세션 `metadata.items` 를 `readPhotoItems` 로
    * 정제한 사진 항목(copies 는 프로파일 범위로 클램프, sizeCode 는 sizes[0].code). sheet-map 세트의 `files[].copies/label`
    * 원천이기도 하다. NULL 세트·캘린더·낱장 세트는 키 없음(응답 바이트 동일).
    */

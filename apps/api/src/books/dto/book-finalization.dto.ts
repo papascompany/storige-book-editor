@@ -21,7 +21,7 @@ export interface BookFinalizationView {
   /** 확정 페이지 수 — COMPLETED 시 채움 */
   pageCount: number | null;
   /**
-   * [P1-2] 워커 validate 를 건너뛰고 최종화(예정)됨 — book_spec 미연결 or pageCount
+   * 워커 validate 를 건너뛰고 최종화(예정)됨 — book_spec 미연결 or pageCount
    * 미확정으로 대조 판형이 없어 조건부 validate 를 skip 했을 때 true(§6.3 조건부 계약).
    * 파트너는 이 플래그로 미검증 FINALIZED 를 인지하고 자체 게이팅한다.
    */

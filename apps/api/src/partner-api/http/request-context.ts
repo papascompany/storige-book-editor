@@ -36,7 +36,7 @@ export interface PartnerRequest extends Request {
   user?: PartnerAuthUser;
 }
 
-/** requestId 발급/재사용 — `req_` prefix + uuid 24자 (설계서 §3.2) */
+/** requestId 발급/재사용 — `req_` prefix + uuid 24자 */
 export function ensureRequestId(req: PartnerRequest): string {
   if (typeof req.partnerRequestId === 'string' && req.partnerRequestId) {
     return req.partnerRequestId;
@@ -61,7 +61,7 @@ export function resolvePartnerEnv(user: PartnerAuthUser | undefined): PartnerEnv
   return user?.env ?? PARTNER_ENV_LIVE;
 }
 
-/** 쿼리스트링 제거한 실경로 (경로 파라미터 실값 포함 — 설계서 §2.2 path 규약) */
+/** 쿼리스트링 제거한 실경로 (경로 파라미터 실값 포함 — 멱등 키·감사 기록의 path 규약) */
 export function requestPath(req: PartnerRequest): string {
   const url = req.originalUrl || req.url || '';
   const qIndex = url.indexOf('?');

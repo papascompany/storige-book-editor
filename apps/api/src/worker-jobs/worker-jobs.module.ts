@@ -13,7 +13,7 @@ import { WorkerJob } from './entities/worker-job.entity';
 import { FilesModule } from '../files/files.module';
 import { WebhookModule } from '../webhook/webhook.module';
 import { TemplatesModule } from '../templates/templates.module';
-// R-44(2026-07-21) — 표지 검증 잡 생성 시 서버 spine 재계산 주입(SpineService).
+// 표지 검증 잡 생성 시 서버 spine 재계산 주입(SpineService).
 import { ProductsModule } from '../products/products.module';
 import { EditSessionEntity } from '../edit-sessions/entities/edit-session.entity';
 // 최종화 콜백 역참조(BookFinalizationsService) — 순환 모듈 forwardRef.
@@ -34,8 +34,8 @@ import { OptionalShopJwtGuard } from '../auth/guards/optional-shop-jwt.guard';
       {
         name: 'pdf-synthesis',
       },
-      // 컷아웃(배경제거, 2026-08-05 S-P2A-B) — pdf-conversion 공유가 아니라 **별도 큐**다.
-      // 추론 피크 메모리가 인쇄 파이프라인을 동반 실패시키지 않도록 격리한다(스파이크 §5-1).
+      // 컷아웃(배경제거) — pdf-conversion 공유가 아니라 **별도 큐**다.
+      // 추론 피크 메모리가 인쇄 파이프라인을 동반 실패시키지 않도록 격리한다.
       // 컨슈머는 워커의 rembg 사이드카 호출 프로세서(동시성 1).
       {
         name: CUTOUT_QUEUE_NAME,
@@ -45,7 +45,7 @@ import { OptionalShopJwtGuard } from '../auth/guards/optional-shop-jwt.guard';
     WebhookModule,
     // fix-bleed(2026-07-13) — templateSet 권위 editSize 산출(TemplateSetsService).
     TemplatesModule,
-    // R-44 — SpineService(표지 잡 spine 서버 재계산). 순환 없음(products 는 독립 모듈).
+    // SpineService(표지 잡 spine 서버 재계산). 순환 없음(products 는 독립 모듈).
     ProductsModule,
     // 최종화 콜백 역참조 — BookFinalizationsService 주입(순환 모듈 forwardRef).
     forwardRef(() => BooksModule),
@@ -62,8 +62,8 @@ import { OptionalShopJwtGuard } from '../auth/guards/optional-shop-jwt.guard';
     }),
   ],
   controllers: [WorkerJobsController],
-  // WK-4 — 고아 잡 스위퍼 cron (ScheduleModule.forRoot() 는 app.module 기존재)
-  // S2-5 — test env 잡 산출물 24h retention cron (매시 37분, 대상=options.isTest 잡 한정)
+  // 고아 잡 스위퍼 cron (ScheduleModule.forRoot() 는 app.module 기존재)
+  // test env 잡 산출물 24h retention cron (매시 37분, 대상=options.isTest 잡 한정)
   providers: [
     WorkerJobsService,
     WorkerJobsSweeperService,

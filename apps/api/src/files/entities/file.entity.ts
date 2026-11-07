@@ -17,7 +17,7 @@ export enum FileType {
 
 /**
  * 파일 메타데이터 엔티티
- * bookmoa와 storige에서 공유하는 파일 정보를 저장합니다.
+ * 파트너 쇼핑몰과 storige에서 공유하는 파일 정보를 저장합니다.
  */
 @Entity('files')
 export class FileEntity {
@@ -76,7 +76,7 @@ export class FileEntity {
   uploadToken: string | null;
 
   /**
-   * 보존 만료 시각 (2026-06-13). null=영구보관(기본, bookmoa 등 보호).
+   * 보존 만료 시각 (2026-06-13). null=영구보관(기본, 파트너 쇼핑몰 파일 등 보호).
    * 테넌트가 주문 이행 후 설정 → FileRetentionService cron 이 만료분 하드삭제.
    */
   @Index('idx_files_expires_at')
@@ -110,8 +110,8 @@ export class FileEntity {
   @Column({ type: 'json', nullable: true })
   metadata: Record<string, any> | null;
 
-  // P2 멀티테넌시 (2026-06-17) — 소속 site. NULL = 시스템공유(hybrid). additive nullable(비파괴).
-  // 조회 스코핑은 QueryScope(P2b)에서 적용. 인덱스는 마이그레이션 SQL에서 생성.
+  // 멀티테넌시 — 소속 site. NULL = 시스템공유(hybrid). additive nullable(비파괴).
+  // 조회 스코핑은 QueryScope에서 적용. 인덱스는 마이그레이션 SQL에서 생성.
   @Column({ name: 'site_id', type: 'varchar', length: 36, nullable: true })
   siteId: string | null;
 

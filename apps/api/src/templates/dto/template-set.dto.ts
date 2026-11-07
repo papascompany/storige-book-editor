@@ -19,7 +19,7 @@ import { TemplateSetType, TemplateRef, EditorMode, EditorMenuKey, ALL_EDITOR_MEN
 import { ProductProfileDto } from './product-profile.dto';
 
 /**
- * 면지 구성 DTO — 인쇄 워크플로우 v1 Phase 3 (2026-05-19).
+ * 면지 구성 DTO.
  */
 export class EndpaperConfigDto {
   @ApiProperty({ minimum: 0, maximum: 6, example: 2, description: '앞면지 개수 (0~6)' })
@@ -44,7 +44,7 @@ export class EndpaperConfigDto {
 }
 
 /**
- * 포토북 페이지 가변 가격 메타 DTO (Phase 2 §8).
+ * 포토북 페이지 가변 가격 메타 DTO.
  * storige 는 가격 계산을 하지 않는다 — 본 메타 + pageCount 를 파트너 장바구니에 emit 만 한다.
  */
 export class PhotobookPricingDto {
@@ -70,7 +70,7 @@ export class PhotobookPricingDto {
 }
 
 /**
- * 싸바리(caseBind) geometry DTO — D-4 커버 3종 (2026-07-06, C-4 Track 3).
+ * 싸바리(caseBind) geometry DTO — 커버 3종.
  * 하드커버 wrap 출력 사이즈 산출용 3필드 (mm).
  */
 export class CoverCaseBindDto {
@@ -101,7 +101,7 @@ export class CoverReadyMadeDto {
 }
 
 /**
- * 커버 종류별 설정 DTO — D-4. NULL=미사용(기존 셋 비파괴).
+ * 커버 종류별 설정 DTO. NULL=미사용(기존 셋 비파괴).
  */
 export class CoverFinishingDto {
   @ApiPropertyOptional({ description: '형압(화면 표시)', default: false })
@@ -163,7 +163,7 @@ export class TemplateRefDto implements TemplateRef {
  * 템플릿셋 생성 DTO
  */
 export class CreateTemplateSetDto {
-  /** P3b 멀티테넌시 — 소유 사이트. 전역 admin 미지정=시스템 공유(null), 사이트 운영자는
+  /** 멀티테넌시 — 소유 사이트. 전역 admin 미지정=시스템 공유(null), 사이트 운영자는
    *  resolveScopedSiteId 가 자기 site 로 강제(타 site 는 TenantGuard/헬퍼가 403). */
   @ApiPropertyOptional({ description: '소유 사이트 ID (미지정: 전역=시스템공유, 사이트운영자=자기 site)' })
   @IsOptional()
@@ -264,14 +264,14 @@ export class CreateTemplateSetDto {
   @IsIn(ALL_EDITOR_MENU_KEYS, { each: true })
   enabledMenus?: EditorMenuKey[] | null;
 
-  // ── 인쇄 워크플로우 v1 Phase 3 (2026-05-19) ──
+  // ── 면지 구성 ──
   @ApiPropertyOptional({ type: EndpaperConfigDto, description: '면지 구성 (null=면지 없음)', nullable: true })
   @IsOptional()
   @ValidateNested()
   @Type(() => EndpaperConfigDto)
   endpaperConfig?: EndpaperConfigDto | null;
 
-  // ── 포토북 가격 메타 (Phase 2 §8) — PHOTOBOOK 전용, storige 는 emit 만 ──
+  // ── 포토북 가격 메타 — PHOTOBOOK 전용, storige 는 emit 만 ──
   @ApiPropertyOptional({ type: PhotobookPricingDto, description: '포토북 페이지 가변 가격 메타 (null=미사용)', nullable: true })
   @IsOptional()
   @ValidateNested()
@@ -288,11 +288,11 @@ export class CreateTemplateSetDto {
   @IsString()
   coverPreviewImage?: string | null;
 
-  // ── D-4 커버 3종 메타 (2026-07-06, C-4 Track 3) — additive nullable ──
+  // ── 커버 3종 메타 — additive nullable ──
   @ApiPropertyOptional({
     example: 'hardcover_wrap',
     description:
-      "커버 종류 코드. 시드 3종 'hardcover_wrap'|'softcover_variable_spine'|'ready_made' + 자유 코드 확장 가능(고정 enum 금지, D-4). null=미사용",
+      "커버 종류 코드. 시드 3종 'hardcover_wrap'|'softcover_variable_spine'|'ready_made' + 자유 코드 확장 가능(고정 enum 금지). null=미사용",
     nullable: true,
   })
   @IsOptional()
@@ -306,7 +306,7 @@ export class CreateTemplateSetDto {
   @Type(() => CoverConfigDto)
   coverConfig?: CoverConfigDto | null;
 
-  // ── 상품별 편집 모드 프로파일 (P1 캘린더, 2026-10-17) — additive nullable, null=기존 동작 ──
+  // ── 상품별 편집 모드 프로파일 — additive nullable, null=기존 동작 ──
   @ApiPropertyOptional({
     type: ProductProfileDto,
     nullable: true,
@@ -360,7 +360,7 @@ export class CreateTemplateSetDto {
  * 템플릿셋 수정 DTO
  */
 export class UpdateTemplateSetDto {
-  /** P3b — 소유 사이트 재배정(전역 admin 큐레이션용). 사이트 운영자는 자기 site 간 이동만 가능. */
+  /** 소유 사이트 재배정(전역 admin 큐레이션용). 사이트 운영자는 자기 site 간 이동만 가능. */
   @ApiPropertyOptional({ description: '소유 사이트 ID 재배정' })
   @IsOptional()
   @IsString()
@@ -463,14 +463,14 @@ export class UpdateTemplateSetDto {
   @IsIn(ALL_EDITOR_MENU_KEYS, { each: true })
   enabledMenus?: EditorMenuKey[] | null;
 
-  // ── 인쇄 워크플로우 v1 Phase 3 (2026-05-19) ──
+  // ── 면지 구성 ──
   @ApiPropertyOptional({ type: EndpaperConfigDto, nullable: true })
   @IsOptional()
   @ValidateNested()
   @Type(() => EndpaperConfigDto)
   endpaperConfig?: EndpaperConfigDto | null;
 
-  // 포토북 가격 메타 (Phase 2 §8) — 수정 시에도 영속되도록 UpdateDto 에 포함
+  // 포토북 가격 메타 — 수정 시에도 영속되도록 UpdateDto 에 포함
   @ApiPropertyOptional({ type: PhotobookPricingDto, nullable: true })
   @IsOptional()
   @ValidateNested()
@@ -487,7 +487,7 @@ export class UpdateTemplateSetDto {
   @IsString()
   coverPreviewImage?: string | null;
 
-  // ── D-4 커버 3종 메타 (2026-07-06) — 수정 시에도 영속되도록 UpdateDto 에 포함 ──
+  // ── 커버 3종 메타 — 수정 시에도 영속되도록 UpdateDto 에 포함 ──
   @ApiPropertyOptional({ example: 'hardcover_wrap', nullable: true, description: '커버 종류 코드(자유 확장). null=미사용' })
   @IsOptional()
   @IsString()
@@ -500,7 +500,7 @@ export class UpdateTemplateSetDto {
   @Type(() => CoverConfigDto)
   coverConfig?: CoverConfigDto | null;
 
-  // ── 상품별 편집 모드 프로파일 (P1 캘린더, 2026-10-17) — 수정 시에도 영속. null=기존 동작 ──
+  // ── 상품별 편집 모드 프로파일 — 수정 시에도 영속. null=기존 동작 ──
   @ApiPropertyOptional({ type: ProductProfileDto, nullable: true })
   @IsOptional()
   @ValidateNested()
@@ -550,7 +550,7 @@ export class UpdateTemplateSetDto {
  * 템플릿셋 조회 쿼리 DTO
  */
 export class TemplateSetQueryDto {
-  /** P3b — 테넌트 스위처 필터. 전역 admin: 해당 site 로 필터. 사이트 운영자: applySiteScope
+  /** 테넌트 스위처 필터. 전역 admin: 해당 site 로 필터. 사이트 운영자: applySiteScope
    *  와 교집합이라 자기 site 외 값은 빈 결과(유출 없음). */
   @ApiPropertyOptional({ description: '사이트 ID 필터 (테넌트 스위처)' })
   @IsOptional()

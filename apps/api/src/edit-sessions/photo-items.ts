@@ -1,5 +1,5 @@
 /**
- * photo-items.ts — 사진인화(P2-d, 2026-10-19) 세션 `metadata.items` → 시트 매핑 `copies`/`label` 주입(순수 함수).
+ * photo-items.ts — 사진인화 세션 `metadata.items` → 시트 매핑 `copies`/`label` 주입(순수 함수).
  *
  * 설계: docs/PRODUCT_MODE_ARCHITECTURE_DESIGN_2026-10-16.md §3·§6.3, 계약 v1.25 ④. `buildSheetMap` 결과(SheetSpec[])의
  * 앞면 페이지(front.page)와 항목의 `canvasIndex` 가 같은 시트에만 `copies` 와 `label('사진 N')` 을 넣는다 —
@@ -18,7 +18,7 @@ export function formatPhotoSheetLabel(item: Pick<PhotoItem, 'index'>): string {
 }
 
 /**
- * 세션이 가질 수 있는 사진 항목 수 상한(보안 리뷰 security-1, 2026-10-19).
+ * 세션이 가질 수 있는 사진 항목 수 상한.
  * - `upload.maxPhotos`(프로파일 검증으로 1 이상 정수) 를 기본 상한으로 쓴다.
  * - `canvasCount`(세션 캔버스 수, resolveSessionPageCount) 가 1 이상이면 `resolvePhotoItemCount`(chemical N / digital ceil(N/2))
  *   와의 최솟값. 캔버스 수를 모르면(0·미지정) maxPhotos 만 적용한다.

@@ -3,7 +3,7 @@ import { ErrV1, PartnerV1ErrorItem } from '@storige/types';
 
 /**
  * v1 표준 예외 — errorCode(ERR_* 카탈로그) + errors[] + fieldErrors 를 실어
- * PartnerApiExceptionFilter 가 에러 봉투(§3.2)로 직렬화한다.
+ * PartnerApiExceptionFilter 가 에러 봉투로 직렬화한다.
  *
  * v1 핸들러/가드/인터셉터는 가급적 이 예외(또는 하위 클래스)를 던진다.
  * 일반 HttpException 은 필터의 status→ERR_* 폴백 매핑을 탄다.
@@ -20,7 +20,7 @@ export class PartnerApiException extends HttpException {
   }
 }
 
-/** 429 — Retry-After 헤더(초)를 필터가 부착 (설계서 §5.2) */
+/** 429 — Retry-After 헤더(초)를 필터가 부착 */
 export class PartnerRateLimitedException extends PartnerApiException {
   constructor(readonly retryAfterSeconds: number) {
     super(

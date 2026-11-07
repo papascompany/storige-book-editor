@@ -21,12 +21,12 @@ export interface JwtPayload {
   source?: string; // 'shop' for partner shop sessions
   name?: string;
   permissions?: string[];
-  /** Patch D (2026-05-03): 주문 컨텍스트 — 명시 시 EditSession 생성 시 검증 */
+  /** 주문 컨텍스트 — 명시 시 EditSession 생성 시 검증 */
   allowedOrderSeqnos?: number[];
   /** 사이트 컨텍스트 — shop-session 발급 시 X-API-Key의 site 정보를 토큰에 포함 */
   siteId?: string;
   siteName?: string;
-  /** P1 멀티테넌시 (2026-06-17): admin 로그인 토큰의 사이트별 역할(SITE_ADMIN/SITE_MANAGER).
+  /** 멀티테넌시: admin 로그인 토큰의 사이트별 역할(SITE_ADMIN/SITE_MANAGER).
    *  없으면(전역 관리자/고객) 미포함 → TenantGuard 가 전역 접근으로 간주(dual-mode). */
   siteRoles?: SiteRoleClaim[];
   /** 운영자 대리 편집(2026-09-29, ADDITIVE) — partner-operator.types.ts PartnerOperatorClaims 참조 */
@@ -67,10 +67,10 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
     private partnerOperatorGrants?: PartnerOperatorGrantService,
   ) {
     super({
-      // AUTH-001 stage1(2026-06-23): Bearer 우선 + httpOnly 쿠키(storige_access) 폴백 다중 extractor.
+      // Bearer 우선 + httpOnly 쿠키(storige_access) 폴백 다중 extractor.
       // ⚠️ 비파괴 — Bearer 헤더 클라이언트는 1순위로 그대로 동작(기존 admin/임베드 무영향).
       // 쿠키는 *추가* 인증경로일 뿐(XSS 시 토큰 탈취 표면 축소를 위한 httpOnly 전환 기반).
-      // 프론트 쿠키 전환(localStorage→쿠키)은 별도 단계(stage1b) — 본 변경은 서버측만.
+      // 프론트 쿠키 전환(localStorage→쿠키)은 프론트 쪽 몫이며, 여기서는 서버측 추출만 한다.
       jwtFromRequest: ExtractJwt.fromExtractors([
         ExtractJwt.fromAuthHeaderAsBearerToken(),
         (req: { cookies?: Record<string, string> }) =>
@@ -129,9 +129,9 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
       throw new UnauthorizedException('User not found');
     }
 
-    // P1 멀티테넌시 — 토큰의 site 역할 클레임을 req.user.siteRoles 로 노출(TenantGuard 스코핑용).
+    // 멀티테넌시 — 토큰의 site 역할 클레임을 req.user.siteRoles 로 노출(TenantGuard 스코핑용).
     // DB 재조회 없이 토큰 기반(효율). 없으면 빈 배열 = 전역 관리자/고객(dual-mode).
-    // ⚠️ siteRoles 는 발급 시점 스냅샷 — 민감 라우터(P3)는 필요 시 DB user_site_roles 재검증 권장.
+    // ⚠️ siteRoles 는 발급 시점 스냅샷 — 민감 라우터는 필요 시 DB user_site_roles 재검증 권장.
     user.siteRoles = payload.siteRoles ?? [];
 
     return user;

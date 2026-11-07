@@ -62,7 +62,7 @@ type SessionMetadata = Record<string, unknown> & {
 };
 
 /**
- * Partner API v1 — 1-call 런처(P2-b, 2026-10-18).
+ * Partner API v1 — 1-call 런처.
  * 정본: docs/PRODUCT_MODE_ARCHITECTURE_DESIGN_2026-10-16.md §8.1
  *
  * 기존 파트너 v1 스택(@PartnerV1Controller) 위에서 편집 세션 생성 + 편집기 토큰 발급을 한 번에 하고,
@@ -202,7 +202,7 @@ export class PartnerSessionsService {
     if (dto.items !== undefined) metadata.items = dto.items;
     if (dto.calendar !== undefined) metadata.calendar = normalizeLaunchCalendar(dto.calendar);
     if (dto.externalPhotos !== undefined) metadata.externalPhotos = dto.externalPhotos;
-    // 템플릿셋 프로파일 스냅샷 — 검증 권위는 템플릿셋. security-2(2026-10-19): productProfile 은 서버 소유 키라
+    // 템플릿셋 프로파일 스냅샷 — 검증 권위는 템플릿셋. productProfile 은 서버 소유 키라
     // EditSessionsService.create/update/complete 가 템플릿셋 현재값으로 다시 기록하고 클라이언트 PATCH 는 무시된다.
     if (templateSet.productProfile) metadata.productProfile = templateSet.productProfile;
 
@@ -324,7 +324,7 @@ export class PartnerSessionsService {
    * outputFiles[].type 'set' → role 'sheet'(sheetIndex=setIndex), 'pages' → role 'single'. 서명 대상 밖
    * (/storage/outputs/ 아님) 산출물은 싣지 않는다. 산출물 없는 완료 잡(JOB_OUTPUT_NOT_READY/NOT_SIGNABLE)은 빈 목록.
    * 서명 시크릿 미설정(503 SIGNED_URL_NOT_CONFIGURED)은 그대로 올린다(fail-closed → ERR_SERVICE_UNAVAILABLE).
-   * P2-c: sheet-map 잡(`sheets` 전달)은 role 'sheet' 항목에 `sheets[setIndex]` 의 copies/label 을 더한다(additive).
+   * sheet-map 잡(`sheets` 전달)은 role 'sheet' 항목에 `sheets[setIndex]` 의 copies/label 을 더한다(additive).
    */
   private async buildJobFiles(
     site: CurrentSitePayload,
@@ -393,9 +393,9 @@ export class PartnerSessionsService {
   }
 
   /**
-   * P2-d(2026-10-19): kind='photo-print' 세트(검증된 프로파일 — buildProductView 와 같은 값)만 세션 `metadata.items` 를
+   * kind='photo-print' 세트(검증된 프로파일 — buildProductView 와 같은 값)만 세션 `metadata.items` 를
    * `readPhotoItems(…, profile.photoPrint)` 로 정제해 싣는다. 그 외 세트·프로파일 무효는 null(응답에 키 없음).
-   * 항목 수는 세션 캔버스 수(사진 수)·upload.maxPhotos 를 넘지 않는다(security-1).
+   * 항목 수는 세션 캔버스 수(사진 수)·upload.maxPhotos 를 넘지 않는다.
    */
   private buildItemsView(
     session: EditSessionEntity,
@@ -427,7 +427,7 @@ export class PartnerSessionsService {
     const templateSet = session.templateSetId
       ? await this.findTemplateSetForSite(site, session.templateSetId)
       : null;
-    // P2-c(2026-10-18): ① 상품 프로파일(템플릿셋 우선, 없으면 세션 스냅샷 — buildProductView 와 같은 우선순위)
+    // ① 상품 프로파일(템플릿셋 우선, 없으면 세션 스냅샷 — buildProductView 와 같은 우선순위)
     // output.mode='sheet-map' → 시트 매핑 재합성(킬스위치 SHEET_MAP_OUTPUT_ENABLED 가 켜진 경우만)
     // ② 아니면 템플릿셋 pdfOutputMode='duplex-split' → 종전 duplex-split 재합성 ③ 아니면 422.
     const sheetMapTarget =
@@ -449,7 +449,7 @@ export class PartnerSessionsService {
       );
     }
 
-    // 보안 리뷰(2026-10-18 #3): Idempotency-Key 없이 연타하면 호출마다 회차·잡·웹훅이 늘어난다 —
+    // Idempotency-Key 없이 연타하면 호출마다 회차·잡·웹훅이 늘어난다 —
     // 파트너 가시 최신 합성 잡이 아직 진행 중이면 새 잡을 만들지 않고 그 잡과 현재 회차를 돌려준다(멱등 재사용).
     const inFlight = await this.editSessionsService.findLatestPartnerVisibleSynthJob(session.id);
     if (inFlight && SYNTH_IN_FLIGHT_STATUSES.has(String(inFlight.status))) {
@@ -562,7 +562,7 @@ function toIso(value: Date | string | null | undefined): string | null {
 
 /**
  * launch body `calendar` → 편집기가 읽는 세션 메타 형식.
- * 설계안 §8.1 의 `{ startYm: 'YYYY-MM' }` 를 `{ startYear, startMonth }` 로 풀어 기록한다(편집기 `readCalendarSessionMeta`
+ * launch 입력의 `{ startYm: 'YYYY-MM' }` 를 `{ startYear, startMonth }` 로 풀어 기록한다(편집기 `readCalendarSessionMeta`
  * 는 정수 startYear/startMonth 만 복원하므로 startYm 그대로 두면 시작연월 요청이 무시된다). 이미 startYear/startMonth 가
  * 있으면 그대로 두고, 그 밖의 키(dataVersion 등)는 보존한다. 변환 시 anniversaries 가 배열이 아니면 [] 로 채운다(편집기 복원 조건).
  * 형식이 맞지 않는 startYm 은 제거하지 않고 그대로 남긴다(기록 전용).

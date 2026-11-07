@@ -3,7 +3,7 @@ import { ErrV1, PartnerV1ErrorEnvelope, PartnerV1ErrorItem } from '@storige/type
 import { PartnerApiException } from './partner-api.exceptions';
 
 /**
- * 예외 → v1 에러 봉투(§3.2) 직렬화 헬퍼.
+ * 예외 → v1 에러 봉투 직렬화 헬퍼.
  *
  * PartnerApiExceptionFilter(응답)와 멱등 인터셉터(결정적 4xx 스냅샷 저장)가
  * 공유한다 — 두 경로의 봉투 바이트가 항상 동일하도록 단일 구현.

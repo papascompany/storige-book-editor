@@ -82,7 +82,7 @@ export const REQUIRED_PATHS: string[] = [
   '/api/v1/books/{uid}/photos',
   '/api/v1/books/{uid}/finalization',
   '/api/v1/books/{uid}/pdf',
-  // P2-b — 1-call 런처(2026-10-18, 설계안 §8.1)
+  // 1-call 런처
   '/api/v1/sessions/launch',
   '/api/v1/sessions/{id}/deliverables',
   '/api/v1/sessions/{id}/synthesize',

@@ -7,21 +7,21 @@
  *
  * 좌표 규약(reference_coordinate_convention):
  * - canvasData top-level width/height = 판형 메타(mm). 객체 left/top = 중앙원점 px@150dpi.
- * - 오너 승인 설계(2026-07-14) ④: 파생 시 객체의 크기·회전·스타일·잠금·z순서·requiredEdit 는
+ * - 파생 시 객체의 크기·회전·스타일·잠금·z순서·requiredEdit 는
  *   유지하고 "위치만" 축별 비율 재배치 — left×(newW/oldW), top×(newH/oldH).
  *
  * workspace 계열 처리 방침(실코드 근거 — notes 요구사항):
- * - id='workspace' rect: 저장 canvasData 에 포함되는 실객체다(픽스처 MA-348 확인).
- *   WorkspacePlugin.afterLoad(packages/canvas-core/src/plugins/WorkspacePlugin.ts:575~)는
+ * - id='workspace' rect: 저장 canvasData 에 포함되는 실객체다(픽스처 canvasdata_ma348.json 확인).
+ *   WorkspacePlugin.afterLoad(packages/canvas-core/src/plugins/WorkspacePlugin.ts)는
  *   로드된 workspace 가 "있으면 그대로" clipPath 로 사용하고, 없을 때만 _options.size 로
  *   만든 폴백을 복원한다(IDML/PSD 변환 템플릿 구제용 — "일반 템플릿은 canvasData 에
  *   workspace 가 포함" 주석). 즉 재생성되지 않으므로 drop 금지 — 치수 변환(W↔H 스왑)한다.
  * - cut-border / crop-marks / safe-zone-border: WorkspacePlugin 이 afterLoad 마다
  *   createOrUpdateCutBorder/createOrUpdateSafeSize 로 재생성하며 생성 시
- *   excludeFromExport:true (WorkspacePlugin.ts:1259·1363·safe-zone-border 생성부) —
+ *   excludeFromExport:true (WorkspacePlugin createOrUpdateCutBorder·createOrUpdateSafeSize 생성부) —
  *   정상 저장물에는 아예 직렬화되지 않는다. 발견 시(레거시/변환기 잔재) drop.
  * - center-guideline-h / center-guideline-v: RulerPlugin 이 재생성 + excludeFromExport:true
- *   (RulerPlugin.ts:170~186) — 동일하게 drop.
+ *   (RulerPlugin.initCenterGuidelines) — 동일하게 drop.
  */
 import type { CanvasData, FabricObject } from '@storige/types';
 

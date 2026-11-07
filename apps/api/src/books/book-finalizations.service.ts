@@ -93,9 +93,9 @@ function isDuplicateKeyError(err: unknown): boolean {
  *  - COMPLETED → 기존 결과 200 재전달.
  *  - FAILED → 새 attempt 행(attempt+1).
  *
- * 재사용(AD-1, 무접촉): 워커 validate/synthesize 잡·files.registerExternalFile·
+ * 재사용(무접촉): 워커 validate/synthesize 잡·files.registerExternalFile·
  * BookSpecsService.assertPageRules(public 추출)·webhook v2 발신. 신규는
- * book_finalizations 상태머신 + 콜백 역참조(#4)뿐.
+ * book_finalizations 상태머신 + 워커 콜백 역참조뿐.
  *
  * creationType 지원 범위:
  *  - PDF_UPLOAD: 표지/내지 PDF → synthesize. 완전 구현.
@@ -173,9 +173,9 @@ export class BookFinalizationsService {
     const spec = await this.resolveValidatableSpec(book);
 
     // ⑦ 새 attempt 행(FAILED 후 재호출이면 attempt+1). 착수 시점에 plan 을 스냅샷하고
-    //   (렌즈2 P2-3 TOCTOU — 진행 중 자산 교체와 무관하게 이번 attempt 고정) validate skip
-    //   여부(P1-2 미검증 표식)를 확정한다. 삽입은 (book_id, attempt) 유니크 CAS — 무키·상이
-    //   Idempotency-Key 동시 2 POST 의 패자는 dup-key → 409(렌즈1 P2-2 / 렌즈2 P2-3 동시성).
+    //   (TOCTOU 방지 — 진행 중 자산 교체와 무관하게 이번 attempt 고정) validate skip
+    //   여부(미검증 표식)를 확정한다. 삽입은 (book_id, attempt) 유니크 CAS — 무키·상이
+    //   Idempotency-Key 동시 2 POST 의 패자는 dup-key → 409.
     const attempt = (latest?.attempt ?? 0) + 1;
     let fin = this.finalizationRepo.create({
       uid: `${BOOK_FINALIZATION_UID_PREFIX}${randomUUID().replace(/-/g, '')}`,
@@ -192,8 +192,8 @@ export class BookFinalizationsService {
     //   (pdf-validator.service 는 size/pages 를 널가드 없이 접근). 따라서 book_spec 연결 +
     //   pageCount 확정 시에만 validate(판형 대조) → VALIDATING. 미연결/미확정이면 대조 판형이
     //   없어 validate 를 건너뛰고(validation_skipped=true) 바로 합성/완료로 진행(파트너 자산
-    //   as-is). 이 조건부-validate 계약은 개정된 §6.3 정본을 따른다 — 미검증 FINALIZED 허용은
-    //   오너 결정 D-9(orders 자동진입 전 차단 게이트, §9)로 분리돼 있다.
+    //   as-is). 이 조건부-validate 계약은 §6.3 을 따른다 — 미검증 FINALIZED 는
+    //   validationSkipped=true 로 표시된다.
     if (spec) {
       const validateJob = await this.workerJobsService.createValidationJob({
         fileId: plan.validateFileId,
@@ -284,7 +284,7 @@ export class BookFinalizationsService {
     }
   }
 
-  // ── 워커 콜백(#4) — updateJobStatus 종결 훅 ───────────────────────────
+  // ── 워커 콜백 — updateJobStatus 종결 훅 ───────────────────────────────
 
   /**
    * options.finalizationId 마커 잡의 종결(COMPLETED/FIXABLE/FAILED) 시 상태머신 전진.
@@ -307,7 +307,7 @@ export class BookFinalizationsService {
 
     const succeeded = job.status === WorkerJobStatus.COMPLETED;
 
-    // [렌즈2 P2-4] 전이 예외 격리 — advanceAfterValidation/completeFromCompose 가 throw 하면
+    // 전이 예외 격리 — advanceAfterValidation/completeFromCompose 가 throw 하면
     //   (createSynthesisJob·registerExternalFile·도서 확정 쓰기 실패 등) 미격리 시 워커 PATCH 가
     //   500 이 되고 finalization 은 진행 중 상태로 잔류 → 재시도 시 compose 중복. 여기서 FAILED
     //   전이로 상태머신을 종결시켜 교착을 차단한다(호출측 worker-jobs 도 try/catch 로 이중 방어).
@@ -373,7 +373,7 @@ export class BookFinalizationsService {
     fin: BookFinalization,
     validateJob: WorkerJob,
   ): Promise<void> {
-    // [렌즈2 P2-3] 착수 시점 스냅샷을 쓴다 — validate 대상과 동일 자산으로 compose(재조회 금지).
+    // 착수 시점 스냅샷을 쓴다 — validate 대상과 동일 자산으로 compose(재조회 금지).
     //   assertDraft 가 진행 중(DRAFT) 자산 교체를 허용하더라도 이번 attempt 는 착수 시점 자산에
     //   고정(validate=구자산·compose=신자산 불일치 차단). 구 행(스냅샷 null)은 resolvePlan 폴백.
     const plan = fin.planSnapshot ?? (await this.resolvePlan(book));
@@ -612,7 +612,7 @@ export class BookFinalizationsService {
       pageCount: fin.pageCount ?? null,
       outputFileId: fin.outputFileId ?? null,
       errorCode: fin.errorCode ?? null,
-      validationSkipped: fin.validationSkipped ?? false, // [P1-2] 미검증 FINALIZED 인지
+      validationSkipped: fin.validationSkipped ?? false, // 미검증 FINALIZED 인지
       timestamp: new Date().toISOString(),
     };
     try {
@@ -665,7 +665,7 @@ export class BookFinalizationsService {
     }
 
     if (book.creationType === 'EDITOR_SESSION') {
-      // 승격(W4)이 세션 병합 산출을 pdf_contents(+선택 pdf_cover)로 연결.
+      // 승격이 세션 병합 산출을 pdf_contents(+선택 pdf_cover)로 연결.
       const contents = byType('pdf_contents');
       if (!contents?.fileId) {
         throw this.assetsIncomplete(

@@ -1,5 +1,5 @@
 /**
- * W1 (2026-09-25) — X-API-Key 역할(role) 판정의 단일 원천.
+ * X-API-Key 역할(role) 판정의 단일 원천.
  *
  * `role === 'worker'` 는 테넌트 스코프를 통째로 건너뛰는 **신뢰 내부 워커** 표지다.
  * 소비처(전부 바이패스): files.service `assertSiteAccess` · worker-jobs.service 2곳 ·

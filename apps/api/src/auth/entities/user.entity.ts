@@ -36,7 +36,7 @@ export class User {
   updatedAt: Date;
 
   /**
-   * P1 멀티테넌시 — 이 계정이 운영하는 site 별 역할 매핑(DB 관계).
+   * 멀티테넌시 — 이 계정이 운영하는 site 별 역할 매핑(DB 관계).
    * (런타임 JWT 클레임은 SiteRoleClaim[] 형태로 req.user.siteRoles 에 별도로 실린다.)
    * 전역 관리자(SUPER_ADMIN/ADMIN)는 비어 있어도 전역 접근(dual-mode).
    * eager 아님 — 로그인/토큰 발급 시 relations:['siteRoleAssignments'] 로 명시 로드.

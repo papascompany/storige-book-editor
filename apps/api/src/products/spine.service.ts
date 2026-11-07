@@ -18,8 +18,8 @@ export interface SpineCalculationResult {
   warnings: Array<{ code: string; message: string }>;
   formula: string;
   /**
-   * R-44: 적용 공식 버전.
-   * - 'v2' = bookmoa SSOT 정합 공식(무선 홀수보정·무마진 / 양장 ceil+합지4+min8)
+   * 적용 공식 버전.
+   * - 'v2' = 파트너 쇼핑몰 책등 계산식(SSOT) 정합 공식(무선 홀수보정·무마진 / 양장 ceil+합지4+min8)
    * - 'v1' = legacy 선형식((p/2)×thickness+margin) — v2 두께 미보유 지종(기존 8코드 등)
    */
   formulaVersion: 'v1' | 'v2';
@@ -43,12 +43,12 @@ export class SpineService {
   /**
    * 책등 너비 계산.
    *
-   * R-44 v2 (2026-07-21): binding 별 공식 분기 — bookmoa SSOT(spine-calc) 자구 정합.
+   * v2: binding 별 공식 분기 — 파트너 쇼핑몰 SSOT(spine-calc) 자구 정합.
    *  - perfect  : 홀수 +1 보정 → round2(effPages × mm/페이지). margin 무가산.
    *  - hardcover: ceil(toFixed3(p/2 × mm/장)) + 합지 4, 최소 8. 정수 mm. margin 무시.
    *  - saddle/spiral 및 v2 두께 미보유 지종(legacy 8코드): v1 선형식 유지(무회귀).
-   * 지종 해석은 code → aliases → 정규화(공백·말미 g 제거) 순 — bookmoa 한글
-   * 라벨("미색모조80"·"아르떼(UW)130")이 404 로 무음 실패하던 결함(G-6) 해소.
+   * 지종 해석은 code → aliases → 정규화(공백·말미 g 제거) 순 — 파트너 한글
+   * 라벨("미색모조80"·"아르떼(UW)130")도 지종으로 해석한다.
    */
   async calculate(dto: CalculateSpineDto): Promise<SpineCalculationResult> {
     const bindingType = await this.bindingTypeRepo.findOne({
@@ -60,7 +60,7 @@ export class SpineService {
 
     // binding-aware 해석: 같은 지종명이 무선표/양장표 양쪽 행으로 존재할 수 있어
     // (예: "미색모조80" 양장행 ↔ "미색모조 80g" 무선행) 요청 binding 에 필요한
-    // 두께 컬럼 보유 행을 우선한다 — bookmoa perfect+"미색모조80" 가 양장행에
+    // 두께 컬럼 보유 행을 우선한다 — perfect+"미색모조80" 가 양장행에
     // 정확일치로 걸려 v1 로 오폴백하는 갭 방지.
     const prefer =
       bindingType.code === 'perfect'
@@ -99,7 +99,7 @@ export class SpineService {
     // ── v2: hardcover ────────────────────────────────────────────
     const perSheet = customPerSheet ?? this.toNum(paperType?.thicknessPerSheetMm);
     if (bindingType.code === 'hardcover' && perSheet != null) {
-      // SSOT 유효성(p≥12·4의배수)은 비차단 경고로 표현(D-3 기본 정책) —
+      // SSOT 유효성(p≥12·4의배수)은 비차단 경고로 표현 —
       // 산술 자체는 어떤 p 에도 정의되므로 값은 항상 반환한다.
       if (dto.pageCount % 4 !== 0 || dto.pageCount < 12) {
         warnings.push({
@@ -159,7 +159,7 @@ export class SpineService {
   ): Promise<PaperTypeEntity | null> {
     if (!input) return null;
 
-    // 결정적 정렬(F12): 무선표(sortOrder 100+)·양장표(200+)가 동일 alias('모조70' 등)를
+    // 결정적 정렬: 무선표(sortOrder 100+)·양장표(200+)가 동일 alias('모조70' 등)를
     // 공유할 때 prefer 미지정(saddle/spiral) 경로의 tie-break 를 DB 반환 순서가 아닌
     // sortOrder 로 고정 — 동순위 충돌 시 항상 무선행(legacy thickness=perPage×2 규약) 승자.
     const all = await this.paperTypeRepo.find({
@@ -251,7 +251,7 @@ export class SpineService {
       name: pt.name,
       thickness: Number(pt.thickness),
       category: pt.category,
-      // R-44 v2 additive — 소비자(편집기/bookmoa)가 공식 버전 판별 가능
+      // v2 additive — 소비자(편집기/파트너 쇼핑몰)가 공식 버전 판별 가능
       thicknessPerPageMm: this.toNum(pt.thicknessPerPageMm) ?? undefined,
       thicknessPerSheetMm: this.toNum(pt.thicknessPerSheetMm) ?? undefined,
     }));

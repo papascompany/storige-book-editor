@@ -20,7 +20,7 @@ import {
  * 내부 UUID(id)·siteId 는 외부 view 에 비노출(§2.0 접두 체계).
  */
 
-/** POST /api/v1/books body (설계서 §1 표 #4) */
+/** POST /api/v1/books body */
 export class CreateBookDto {
   @ApiProperty({ enum: BOOK_CREATION_TYPES, description: '생성 유형 4종(필수)' })
   @IsIn(BOOK_CREATION_TYPES as unknown as string[])
@@ -80,7 +80,7 @@ export class CreateBookDto {
   partnerRef?: string;
 }
 
-/** GET /api/v1/books 쿼리 (설계서 §1 표 #5 — status/creationType 필터 + 페이지네이션) */
+/** GET /api/v1/books 쿼리 (status/creationType 필터 + 페이지네이션) */
 export class BookListQueryDto {
   @ApiPropertyOptional({ enum: BOOK_STATUSES, description: '상태 필터' })
   @IsOptional()

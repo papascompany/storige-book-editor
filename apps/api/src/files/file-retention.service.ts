@@ -14,7 +14,7 @@ import { resolveFileEnvNumber } from './file-cron-env';
  *  2) purgeSoftDeleted (@Cron 47분): deleted_at < now - GRACE(기본 48h) → hardDelete
  *     (R2 객체 + DB 행 영구삭제). 복구창 만료분만.
  *
- * **불변식**: 대상 선정은 불변(expires_at NULL=영구보관, bookmoa 보호). 즉시영구→2단계로 '방식'만 변경.
+ * **불변식**: 대상 선정은 불변(expires_at NULL=영구보관, 파트너 쇼핑몰 파일 보호). 즉시영구→2단계로 '방식'만 변경.
  * dryRun(admin/env) 존중 — 첫 배포는 dryRun=ON 권장(후보 로그만 확인).
  */
 @Injectable()

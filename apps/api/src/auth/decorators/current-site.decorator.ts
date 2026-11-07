@@ -10,7 +10,7 @@ export interface CurrentSitePayload {
   /** 사이트 파일 보존 기간(일). null/0=영구. 업로드 시 expires_at 적용용. */
   retentionDays?: number | null;
   /**
-   * [S2-5] 인증 컨텍스트 env — resolvePartnerEnv(req.user) 해석값.
+   * 인증 컨텍스트 env — resolvePartnerEnv(req.user) 해석값.
    * 공용 ApiKeyGuard(sites 키)는 req.user.env 를 스탬프하지 않으므로 항상 'live'.
    * 'test' 는 partner_api_keys test 키 인증 경로(PartnerApiKeyGuard)에서만 가능 —
    * 잡 생성 external 라우트는 공용 가드 전용이라 'test' 에 도달하지 않는다.
@@ -43,7 +43,7 @@ export const CurrentSite = createParamDecorator(
       role: user.role,
       apiKey: user.apiKey,
       retentionDays: user.retentionDays ?? null,
-      // [S2-5] env 해석 단일 지점 재사용 — 미스탬프(sites 키)=live
+      // env 해석 단일 지점 재사용 — 미스탬프(sites 키)=live
       env: resolvePartnerEnv(user),
     };
   },

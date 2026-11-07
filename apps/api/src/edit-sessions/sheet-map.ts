@@ -1,5 +1,5 @@
 /**
- * sheet-map.ts — ProductProfile `output.mode='sheet-map'` 상품의 시트 앞/뒤 매핑(P2-a, 2026-10-18, 순수 함수).
+ * sheet-map.ts — ProductProfile `output.mode='sheet-map'` 상품의 시트 앞/뒤 매핑(순수 함수).
  *
  * 설계: docs/PRODUCT_MODE_ARCHITECTURE_DESIGN_2026-10-16.md §6.3. 편집기 산출 단일 PDF(캔버스 순서, 0-base)를
  * 물리 시트 `SheetSpec[]` 로 바꾼다. 매핑은 API 단독 권위이며 편집기·세션 metadata 가 보낸 값은 쓰지 않는다 —

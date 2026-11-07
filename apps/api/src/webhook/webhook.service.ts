@@ -45,7 +45,7 @@ export class WebhookService {
   private readonly logger = new Logger(WebhookService.name);
 
   /**
-   * 허용된 webhook 호스트 목록 (Patch E, 2026-05-03)
+   * 허용된 webhook 호스트 목록
    *
    * 환경변수 `WEBHOOK_ALLOWED_HOSTS` (콤마 구분) 우선, 없으면 기본값 사용.
    * SSRF 방어 — 임의 URL로 webhook 전송 금지.
@@ -85,7 +85,7 @@ export class WebhookService {
    * 기존 파트너/기존 배포의 타이밍에 영향 0. 호출측(worker-jobs)이
    * callbackUrl 부재 시 발신 스킵 판정을 보강하는 용도.
    *
-   * [S2-5] env 파라미터 additive — isTest 잡의 게이트 판정은 test env config 로.
+   * env 파라미터 additive — isTest 잡의 게이트 판정은 test env config 로.
    * 미전달=live(기존 호출 전부 동일 SQL — webhook-v1-invariance.spec 고정).
    */
   async hasV2Config(
@@ -145,7 +145,7 @@ export class WebhookService {
    * 1/5/30분 재시도)로 발송하고 여기서 반환한다 — **config 가 없는 사이트
    * (기존 파트너 전원)는 아래 기존 경로를 바이트/헤더/타이밍 그대로 탄다.**
    * v2 비활성(WEBHOOK_CONFIG_ENC_KEY 미설정) 시엔 config 조회조차 없다.
-   * 기존 파트너의 v2 전환(D-7c 게이트)은 파트너가 v1 API 로 config 를 직접
+   * 기존 파트너의 v2 전환은 파트너가 v1 API 로 config 를 직접
    * 등록할 때만 일어난다 — 코드가 전환을 강제하는 경로 없음.
    */
   async sendCallback(
@@ -155,9 +155,9 @@ export class WebhookService {
     receipt?: WebhookSendReceipt,
   ): Promise<boolean> {
     if (context?.siteId && this.webhookDeliveryService) {
-      // env 규약(S2-1 정합화): context.env 는 v1 라우트 경유 발신에서
+      // env 규약: context.env 는 v1 라우트 경유 발신에서
       // resolvePartnerEnv(req.user) 값이 전달된다.
-      // [S2-5] 잡 완료 발신(worker-jobs)은 잡 생성 시 스탬프된 options.isTest 를
+      // 잡 완료 발신(worker-jobs)은 잡 생성 시 스탬프된 options.isTest 를
       // env='test' 로 되해석해 전달(jobWebhookEnv) — isTest 아닌 잡은 env 미전달
       // =live 폴백(기존 발신 바이트 불변).
       const v2 = await this.webhookDeliveryService.tryDispatchForSite(
@@ -216,7 +216,7 @@ export class WebhookService {
         await new Promise(resolve => setTimeout(resolve, 2000)); // 2초 대기
         const retryResponse = await axios.post(callbackUrl, payload, {
           timeout: 10000,
-          // WH-001: 재시도 경로도 서명 헤더를 포함(기존엔 누락돼 수신측 검증 불가했음).
+          // 재시도 경로도 서명 헤더를 포함한다(수신측 검증 가능).
           headers: { ...this.buildHeaders(payload), 'X-Storige-Retry': '1' },
         });
         if (retryResponse.status >= 200 && retryResponse.status < 300) {
@@ -234,7 +234,7 @@ export class WebhookService {
   /**
    * 공통 웹훅 헤더 구성. 기존 base64 서명(X-Storige-Signature)은 그대로 유지하고(계약 호환),
    * WEBHOOK_SECRET 이 설정된 경우에만 위조 불가한 HMAC 서명(X-Storige-Signature-HMAC)을
-   * 추가로 함께 보낸다(WH-001, 비파괴). 수신측은 HMAC 헤더로 점진 전환 가능.
+   * 추가로 함께 보낸다(비파괴). 수신측은 HMAC 헤더로 점진 전환 가능.
    */
   private buildHeaders(payload: WebhookPayload): Record<string, string> {
     const headers: Record<string, string> = {
@@ -259,7 +259,7 @@ export class WebhookService {
 
   /**
    * 서명용 페이로드 식별자 — jobId(합성/검증) 우선, sessionId(세션), finalizationUid
-   * (book.finalization.*, W3 additive) 순. 기존 발신 3종(jobId/sessionId)의 식별자
+   * (book.finalization.*, additive) 순. 기존 발신 3종(jobId/sessionId)의 식별자
    * 선택은 불변 — book.finalization.* 만 신규 분기(webhook-v1-invariance 게이트 보존).
    */
   private payloadIdentifier(payload: WebhookPayload): string {
@@ -270,7 +270,7 @@ export class WebhookService {
   }
 
   /**
-   * WH-001 — HMAC-SHA256(WEBHOOK_SECRET) 위조 불가 서명. 포맷 `t=<unixsec>,v1=<hex>`
+   * HMAC-SHA256(WEBHOOK_SECRET) 위조 불가 서명. 포맷 `t=<unixsec>,v1=<hex>`
    * (Stripe 호환 스타일, PLATFORM_WORKER_INTEGRATION 문서 규약과 정합).
    * WEBHOOK_SECRET 미설정 시 undefined → 헤더 미전송(현행 동작 100% 보존, 비파괴).
    * 수신측 검증: 동일 `t.payloadIdentifier:event:timestamp` 를 같은 비밀키로 HMAC 후 비교.

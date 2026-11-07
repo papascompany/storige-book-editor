@@ -19,8 +19,7 @@
  *    함께 갱신하라** — 갱신 누락은 partner-openapi-surface.spec.ts 가 FS 전수 스캔 대조로
  *    red 처리한다(컨트롤러가 스펙에서 조용히 빠지는 회귀를 막는 게이트).
  *
- * ⚠️ /api/docs 접근 정책(공개 서빙)은 이 스크립트와 무관하게 무변경 —
- *    변경은 설계서 §9-3 오너 결정 사안.
+ * ⚠️ /api/docs 접근 정책(공개 서빙)은 이 스크립트와 무관하다.
  */
 import 'reflect-metadata';
 import { writeFileSync } from 'fs';

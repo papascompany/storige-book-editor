@@ -468,7 +468,7 @@ export class WorkerJobsController {
   // ============================================================================
 
   /**
-   * 분리 합성 작업 생성 (★ v1.1.4 설계서)
+   * 분리 합성 작업 생성
    * 단일 PDF에서 표지/내지를 분리
    */
   @Post('split-synthesize')
@@ -498,7 +498,7 @@ export class WorkerJobsController {
    * ── 자동조립 opt-in ───────────────────────────────────────────────────────
    * body.assembleFromSession=true 일 때만 서버가 세션에서 표지/내지/면지/판형을 도출한다.
    * 그 경로에만 인가가 걸리므로 `@Public` 은 **유지**하고(CONTRACT_FREEZE §2 동결 계약,
-   * contract-freeze.spec.ts:65 auth:'public'), 컷아웃 라우트 선례와 동일하게
+   * contract-freeze.spec.ts createComposeMixed 항목 auth:'public'), 컷아웃 라우트와 동일하게
    * additive `OptionalShopJwtGuard` 로 검증된 shop-session 의 테넌트만 복원한다.
    * 토큰이 없거나 위조면 가드는 그대로 통과시키고(401 없음) 자동조립만 404 로 막힌다.
    * 수동 경로(URL 직접 공급)는 본문에 editSessionId 가 있을 때만 세션 연결 확인
@@ -507,7 +507,7 @@ export class WorkerJobsController {
    * 🔒 주문 스코프: 토큰에 `allowedOrderSeqnos` 가 있으면 자동조립 대상 세션의 orderSeqno 가
    *    그 목록에 있어야 한다(같은 사이트의 다른 주문 세션 조립 차단, 불일치는 404). 목록이 없는
    *    토큰은 주문 검사 없이 통과한다. 값은 가드가 서명 검증된 JWT 에서 복원해 준다
-   *    (optional-shop-jwt.guard.ts:70-75).
+   *    (OptionalShopJwtGuard.canActivate).
    *
    * 🔒 세션 소유: shop 호출자의 자동조립은 게스트 세션이면 X-Guest-Token 헤더 일치, 회원 세션이면
    *    양의 회원 번호 일치 또는 주문권한 일치를 요구한다(실패는 같은 404 SESSION_NOT_FOUND).
@@ -515,12 +515,12 @@ export class WorkerJobsController {
    * 🔒 테넌트 스탬프: 이 라우트가 `@Public` 인 이상 **body.siteId 는 인가 주체가
    *    아니다**. 여기서 복원한 caller 가 잡 스탬프의 유일한 검증 근거이며, 서비스가
    *    `resolveComposeMixedSiteId` 로 대조해 불일치·부재면 NULL 스탬프한다(400 없음).
-   *    다른 라우트(:139·190·224·461)는 `@CurrentSite()` 서버 도출값이라 이 문제가 없다.
+   *    다른 잡 생성 라우트는 `@CurrentSite()` 서버 도출값이라 이 문제가 없다.
    */
   @Post('compose-mixed')
   @Public()
   // ⚠️ OptionalApiKeySiteGuard 는 **절대 throw 하지 않는다** — 무인증 게스트 호출이 그대로
-  //    통과해야 `auth:'public'` 동결(contract-freeze.spec.ts:136)이 유지된다. ApiKeyGuard 로
+  //    통과해야 `auth:'public'` 동결(contract-freeze.spec.ts)이 유지된다. ApiKeyGuard 로
   //    바꾸면 게스트가 401 로 파손되고 동결 계약도 깨진다.
   @UseGuards(OptionalShopJwtGuard, OptionalApiKeySiteGuard)
   @ApiOperation({ summary: 'Compose-mixed 잡 생성' })

@@ -15,7 +15,7 @@ import {
  * Partner API v1 — BookSpecs (판형 마스터) GET 3종.
  *
  * 정본: docs/PARTNER_PLATFORM_API_V1_DESIGN_2026-07-07.md §1.2
- * 글로벌 prefix 'api' → 최종 경로 /api/v1/book-specs (설계서 모듈 배치 규약).
+ * 글로벌 prefix 'api' → 최종 경로 /api/v1/book-specs (v1 모듈 배치 규약).
  *
  * v1 표준 스택 — @PartnerV1Controller 조합 데코레이터가 일괄 바인딩:
  *   @Public(전역 JwtAuthGuard 우회) + PartnerApiKeyGuard(Bearer/X-API-Key 병행)
@@ -27,7 +27,7 @@ import {
  *   — 읽기 전용 마스터 조회라 heavy(업로드/최종화 100/min) 대상 아님.
  *
  * v1 은 읽기 전용 — 검증측(워커) 상수·로직 무접촉. 기존 @Public spine
- * 3라우트(POST /products/spine/calculate 등)는 무접촉 병존(AD-1).
+ * 3라우트(POST /products/spine/calculate 등)는 무접촉 병존.
  */
 @ApiTags('partner-v1')
 @ApiSecurity('api-key')
@@ -68,7 +68,7 @@ export class BookSpecsController {
   @ApiResponse({
     status: 422,
     description:
-      'ERR_PAGE_COUNT_OUT_OF_RANGE — pageMin/Max/Increment 위반 (설계서 §3.3, errors[].code 세분)',
+      'ERR_PAGE_COUNT_OUT_OF_RANGE — pageMin/Max/Increment 위반 (errors[].code 세분)',
   })
   @ApiResponse({ status: 404, description: 'ERR_BOOK_SPEC_NOT_FOUND' })
   async calculatedSize(
