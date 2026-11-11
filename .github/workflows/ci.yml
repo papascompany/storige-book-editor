@@ -210,7 +210,7 @@ jobs:
           pnpm --filter @storige/editor typecheck
           pnpm --filter @storige/editor test
 
-      # editor lint 스크립트는 --max-warnings 74 이다(기준선 경고 74·오류 0).
+      # editor lint 스크립트는 --max-warnings 73 이다(기준선 경고 73·오류 0).
       # 경고가 늘거나 error 가 생기면 실패한다.
       - name: editor lint
         run: pnpm --filter @storige/editor lint

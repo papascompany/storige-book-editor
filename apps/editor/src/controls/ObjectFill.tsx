@@ -291,12 +291,8 @@ export default function ObjectFill() {
     [activeSelection, canvas]
   )
 
-  // Don't render if no selection
-  if (!activeSelection || activeSelection.length === 0) {
-    return null
-  }
-
   // Don't render if using certain effects
+  // hook 은 조기 반환보다 먼저 호출해야 렌더마다 hook 개수가 같다(선택 없음 ↔ 있음 전환 시 React 오류 방지).
   const usingEffect = useMemo(() => {
     if (!activeSelection || !Array.isArray(activeSelection) || activeSelection.length === 0) {
       return false
@@ -312,6 +308,11 @@ export default function ObjectFill() {
       (selectionType === SelectionType.text && effects.includes('emboss'))
     )
   }, [activeSelection, selectionType])
+
+  // Don't render if no selection
+  if (!activeSelection || activeSelection.length === 0) {
+    return null
+  }
 
   if (usingEffect) {
     return null
