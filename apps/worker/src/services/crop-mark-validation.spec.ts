@@ -99,6 +99,46 @@ function cropOpts(cropMarkEnabled = true): ValidationOptions {
   };
 }
 
+/**
+ * 편집기 양장 싸바리 전개 표지의 완료 검증 잡이 받는 orderOptions(API 주입 형태 — 판형 210x210, 책등 8,
+ * 도련 0, 재단선 세트 opt-in). 기대 전개 = (210+8)*2+8+40 = 484 x (210+8)+40 = 258.
+ */
+function hardcoverWrapCoverOpts(
+  extra: Partial<ValidationOptions['orderOptions']> = {},
+): ValidationOptions {
+  return {
+    fileType: 'cover',
+    orderOptions: {
+      size: { width: 210, height: 210 },
+      pages: 16,
+      binding: 'hardcover',
+      spineWidthMm: 8,
+      bleed: 0,
+      cropMarkEnabled: true,
+      sizeToleranceMm: 0.2,
+      trimSize: { width: 210, height: 210 },
+      ...extra,
+    },
+  };
+}
+
+/** 무선 표지(148x210, 책등 8, 도련 3 → 전개 310 x 216) — 제외 범위가 양장 전개만인지 대조용. */
+function perfectCoverOpts(): ValidationOptions {
+  return {
+    fileType: 'cover',
+    orderOptions: {
+      size: { width: 148, height: 210 },
+      pages: 16,
+      binding: 'perfect',
+      spineWidthMm: 8,
+      bleed: 3,
+      bleedMm: 3,
+      cropMarkEnabled: true,
+      sizeToleranceMm: 0.2,
+    },
+  };
+}
+
 const CROP_CODES = [
   WarningCode.TRIMBOX_MISSING,
   WarningCode.TRIMBOX_SIZE_MISMATCH,
@@ -254,6 +294,81 @@ describe('crop mark 검증 (C-2a)', () => {
     });
   });
 
+  describe('양장 싸바리 전개 표지 — crop mark 검증 비적용 (킬스위치 ON + opt-in)', () => {
+    beforeEach(() => {
+      cfg.CROP_MARK_VALIDATION = true;
+    });
+
+    it('TrimBox 없는 싸바리 전개 표지(484x258) → crop 경고 0 + cropMarkSkipReason, 전개식은 통과', async () => {
+      const p = await writePdf(await buildPdf({ pageWmm: 484, pageHmm: 258, pages: 1 }));
+      const r = await service.validate(p, hardcoverWrapCoverOpts());
+      expect(cropWarnings(r)).toHaveLength(0);
+      expect(r.metadata.cropMarkSkipReason).toBe('HARDCOVER_WRAP');
+      expect(r.metadata.hasCropMarkGeometry).toBeUndefined();
+      expect(r.metadata.trimBox).toBeUndefined();
+      expect(r.errors).toHaveLength(0);
+      expect(r.isValid).toBe(true);
+      expect(r.metadata.spineSize).toBe(8);
+    });
+
+    it('싸바리 전개 표지라도 전개 규격이 틀리면 책등 검증은 종전대로 동작한다(crop 경고만 비적용)', async () => {
+      const p = await writePdf(await buildPdf({ pageWmm: 470, pageHmm: 258, pages: 1 }));
+      const r = await service.validate(p, hardcoverWrapCoverOpts());
+      expect(cropWarnings(r)).toHaveLength(0);
+      expect(r.metadata.cropMarkSkipReason).toBe('HARDCOVER_WRAP');
+      expect(r.errors.map((e) => e.code)).toContain('SPINE_SIZE_MISMATCH');
+    });
+
+    it("양장이라도 낱장 표지(coverLayout 'separate')는 종전대로 TRIMBOX_MISSING", async () => {
+      const p = await writePdf(await buildPdf({ pageWmm: 210, pageHmm: 210, pages: 1 }));
+      const r = await service.validate(p, hardcoverWrapCoverOpts({ coverLayout: 'separate' }));
+      expect(cropWarnings(r).map((w) => w.code)).toEqual([WarningCode.TRIMBOX_MISSING]);
+      expect(r.metadata.cropMarkSkipReason).toBeUndefined();
+      expect(r.metadata.hasCropMarkGeometry).toBe(false);
+    });
+
+    it("양장이라도 책등 없음(coverSpine 'none')은 종전대로 TRIMBOX_MISSING", async () => {
+      const p = await writePdf(await buildPdf({ pageWmm: 210, pageHmm: 210, pages: 1 }));
+      const r = await service.validate(p, hardcoverWrapCoverOpts({ coverSpine: 'none' }));
+      expect(cropWarnings(r).map((w) => w.code)).toEqual([WarningCode.TRIMBOX_MISSING]);
+      expect(r.metadata.cropMarkSkipReason).toBeUndefined();
+    });
+
+    it('무선 표지는 종전대로 TRIMBOX_MISSING (제외는 양장 전개만)', async () => {
+      const p = await writePdf(await buildPdf({ pageWmm: 310, pageHmm: 216, pages: 1 }));
+      const r = await service.validate(p, perfectCoverOpts());
+      expect(cropWarnings(r).map((w) => w.code)).toEqual([WarningCode.TRIMBOX_MISSING]);
+      expect(r.metadata.cropMarkSkipReason).toBeUndefined();
+    });
+
+    it('양장 전개 표지에 TrimBox 가 있어도 crop 검증은 하지 않는다(메타 trimBox 미기록)', async () => {
+      const p = await writePdf(
+        await buildPdf({
+          pageWmm: 484,
+          pageHmm: 258,
+          pages: 1,
+          trimBoxMm: { x: 0, y: 0, width: 484, height: 258 },
+        }),
+      );
+      const r = await service.validate(p, hardcoverWrapCoverOpts());
+      expect(cropWarnings(r)).toHaveLength(0);
+      expect(r.metadata.cropMarkSkipReason).toBe('HARDCOVER_WRAP');
+      expect(r.metadata.trimBox).toBeUndefined();
+    });
+
+    it('킬스위치 OFF 또는 opt-in 없음이면 cropMarkSkipReason 도 남기지 않는다(기본 경로 불변)', async () => {
+      const p = await writePdf(await buildPdf({ pageWmm: 484, pageHmm: 258, pages: 1 }));
+      cfg.CROP_MARK_VALIDATION = false;
+      const rOff = await service.validate(p, hardcoverWrapCoverOpts());
+      expect(rOff.metadata.cropMarkSkipReason).toBeUndefined();
+
+      cfg.CROP_MARK_VALIDATION = true;
+      const rNoOptIn = await service.validate(p, hardcoverWrapCoverOpts({ cropMarkEnabled: false }));
+      expect(rNoOptIn.metadata.cropMarkSkipReason).toBeUndefined();
+      expect(cropWarnings(rNoOptIn)).toHaveLength(0);
+    });
+  });
+
   // OFF(pdf-lib) ↔ 경량(qpdf) 파리티 — qpdf 미설치 CI 는 skip.
   (qpdfAvailable() ? describe : describe.skip)('OFF ↔ 경량 경로 파리티', () => {
     beforeEach(() => {
@@ -305,5 +420,20 @@ describe('crop mark 검증 (C-2a)', () => {
         expect(on.isValid).toBe(off.isValid);
       },
     );
+
+    it('싸바리 전개 표지(TrimBox 없음) — 양 경로 모두 crop 경고 0·cropMarkSkipReason 동일', async () => {
+      const p = await writePdf(await buildPdf({ pageWmm: 484, pageHmm: 258, pages: 1 }));
+      const off = await service.validate(p, hardcoverWrapCoverOpts());
+      const on: ValidationResultDto = await (
+        service as unknown as {
+          validateLightweight(u: string, o: ValidationOptions): Promise<ValidationResultDto>;
+        }
+      ).validateLightweight(p, hardcoverWrapCoverOpts());
+      expect(cropWarnings(off)).toHaveLength(0);
+      expect(cropWarnings(on)).toHaveLength(0);
+      expect(on.metadata.cropMarkSkipReason).toBe('HARDCOVER_WRAP');
+      expect(on.metadata.cropMarkSkipReason).toBe(off.metadata.cropMarkSkipReason);
+      expect(on.isValid).toBe(off.isValid);
+    });
   });
 });

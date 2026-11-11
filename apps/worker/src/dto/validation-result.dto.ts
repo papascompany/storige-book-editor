@@ -206,6 +206,11 @@ export interface PdfMetadata {
   trimBox?: { width: number; height: number };
   /** C-2a: 재단 기하(TrimBox) 명시 선언 여부 — crop mark 검증 수행 시에만 기록 */
   hasCropMarkGeometry?: boolean;
+  /**
+   * 2026-11-11: crop mark 검증을 건너뛴 이유 — 양장 싸바리 전개 표지(`'HARDCOVER_WRAP'`: 사방 감싸기 여분이
+   * 있어 재단 기하 개념이 없고 규격은 책등 전개식이 판정)일 때만 기록. 그 밖에는 키 없음(additive).
+   */
+  cropMarkSkipReason?: 'HARDCOVER_WRAP';
   /** R3: 최대 페이지 평균 TAC(%) — ink_cov 측정 성공 시에만 기록 */
   maxTacPercent?: number;
   /** R3: 적용된 TAC 한계(%) — ink_cov 측정 성공 시에만 기록 */

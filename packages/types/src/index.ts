@@ -1042,6 +1042,8 @@ export interface WorkerPdfMetadata {
   trimBox?: { width: number; height: number };
   /** C-2a: 재단 기하(TrimBox) 명시 선언 여부 — crop mark 검증 수행 시에만 기록 */
   hasCropMarkGeometry?: boolean;
+  /** 2026-11-11: crop mark 검증을 건너뛴 이유 — 양장 싸바리 전개 표지('HARDCOVER_WRAP')일 때만 기록 (additive) */
+  cropMarkSkipReason?: 'HARDCOVER_WRAP';
   /** R3 (2026-08-11): 최대 페이지 평균 TAC(%) — GS ink_cov 측정 성공 시에만 기록 (additive) */
   maxTacPercent?: number;
   /** R3: 적용된 TAC 경고 한계(%) — 측정 성공 시에만 기록 (additive) */

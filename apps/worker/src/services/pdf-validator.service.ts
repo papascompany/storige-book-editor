@@ -274,7 +274,7 @@ export class PdfValidatorService {
       // 게이트 통과 전에는 박스 추출조차 하지 않아 기본 경로 행동 변화 0.
       // ⚠️ pdf-lib page.getTrimBox() 는 부재 시 CropBox/MediaBox 로 폴백하므로
       //    '명시 존재' 판별을 위해 page.node 직독(extractFirstPageBoxesPdfLib)을 쓴다.
-      if (this.isCropMarkValidationEnabled(options)) {
+      if (this.shouldValidateCropMarks(options, metadata)) {
         this.validateCropMarks(
           this.extractFirstPageBoxesPdfLib(firstPage),
           options,
@@ -927,7 +927,7 @@ export class PdfValidatorService {
       // C-2a: crop mark(재단 기하) 검증(경량 경로) — OFF 와 동일 게이트/위치(validatePageSize 직후).
       // 1차: qpdf 추출 박스. 비신뢰(pdfinfo 폴백·간접참조 미해석)면 pdf-lib 실페이지
       // (위 폴백 분기에서 로드된 경우에만 node 존재)로 재시도, 그것도 없으면 skip(오탐 방지).
-      if (this.isCropMarkValidationEnabled(options)) {
+      if (this.shouldValidateCropMarks(options, metadata)) {
         let cropBoxes = this.extractFirstPageBoxesQpdf(meta);
         if (!cropBoxes.authoritative && firstPage.node) {
           cropBoxes = this.extractFirstPageBoxesPdfLib(firstPage);
@@ -1569,6 +1569,39 @@ export class PdfValidatorService {
       options.orderOptions.cropMarkEnabled === true &&
       VALIDATION_CONFIG.CROP_MARK_VALIDATION
     );
+  }
+
+  /**
+   * 양장 싸바리 전개 표지인가 — 표지(cover)·binding 'hardcover' 이고 낱장 표지(coverLayout 'separate')·
+   * 책등 없음(coverSpine 'none')이 아닌 잡. validateSpine 의 양장 분기(전개식 (W+8)×2+spine+40 × (H+8)+40)가
+   * 규격을 판정하는 조건과 같다.
+   */
+  private isHardcoverWrapCover(options: ValidationOptions): boolean {
+    return (
+      options.fileType === 'cover' &&
+      options.orderOptions.binding === 'hardcover' &&
+      !this.isCoverSeparateLayout(options) &&
+      !this.isCoverSpineNone(options)
+    );
+  }
+
+  /**
+   * crop mark 검증 수행 여부 = 이중 게이트(isCropMarkValidationEnabled) + 적용 대상 판정.
+   *
+   * 2026-11-11: 양장 싸바리 전개 표지는 제외한다. 싸바리 전개 인쇄물은 사방에 보드를 감싸는 여분이
+   * 있어 재단 기하(TrimBox/BleedBox) 개념이 없고(validateSpine 양장 분기 — 도련 가산 없음), 편집기도
+   * 이 출력에는 TrimBox 를 넣지 않는다. 규격은 validateSpine 의 전개식이 판정하므로 TrimBox 부재가
+   * 정보 공백이 아닌데, 종전에는 재단선 세트의 편집기 양장 표지마다 TRIMBOX_MISSING(비차단)이 상시
+   * 발행됐다. 제외 시 `metadata.cropMarkSkipReason='HARDCOVER_WRAP'` 을 남긴다(additive — crop 경고·
+   * 메타가 없는 이유 추적용). 낱장 표지·책등 없음 표지는 단일 판형 경로라 종전대로 검증한다.
+   */
+  private shouldValidateCropMarks(options: ValidationOptions, metadata: PdfMetadata): boolean {
+    if (!this.isCropMarkValidationEnabled(options)) return false;
+    if (this.isHardcoverWrapCover(options)) {
+      metadata.cropMarkSkipReason = 'HARDCOVER_WRAP';
+      return false;
+    }
+    return true;
   }
 
   /** [llx, lly, urx, ury](pt) → 정규화 사각형(음수 폭/역순 좌표 방어). */
