@@ -16,6 +16,7 @@ import { useImageStore } from '@/stores/useImageStore'
 import { applyCoverMaterialLock } from '@/utils/objectPermissions'
 import { rehydrateCalendarGrids } from '@/utils/calendarRehydrate'
 import { resolveAssetUrl } from '@/utils/resolveAssetUrl'
+import { isEditorCanvasId } from '@/utils/editorCanvasId'
 import { TemplateReplaceModal } from '@/components/TemplatePanel/TemplateReplaceModal'
 
 /**
@@ -41,7 +42,8 @@ async function swapTemplateObjectIds(
       toFetch.push(t.id)
     }
   }
-  if (templateId && !linked.some((t) => t.id === templateId)) toFetch.push(templateId)
+  // 새로 추가한 페이지의 templateId 는 캔버스 id 라 서버에 없다 — 조회하지 않는다(종전엔 404 경고 1건).
+  if (templateId && !isEditorCanvasId(templateId) && !linked.some((t) => t.id === templateId)) toFetch.push(templateId)
   const fetched = await Promise.allSettled(toFetch.map((id) => templatesApi.getTemplate(id)))
   fetched.forEach((r, i) => {
     const objects = r.status === 'fulfilled' ? r.value?.canvasData?.objects : undefined

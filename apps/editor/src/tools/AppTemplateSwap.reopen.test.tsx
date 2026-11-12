@@ -14,6 +14,7 @@ vi.mock('@/utils/calendarRehydrate', () => ({ rehydrateCalendarGrids: vi.fn(asyn
 vi.mock('@/utils/objectPermissions', () => ({ applyCoverMaterialLock: vi.fn() }))
 
 import { fabric } from 'fabric'
+import { templatesApi } from '@/api/templates'
 import { TemplatePlugin } from '@storige/canvas-core'
 import AppTemplateSwap from './AppTemplateSwap'
 import { useAppStore } from '@/stores/useAppStore'
@@ -116,5 +117,39 @@ describe('AppTemplateSwap — 다시 연 세션(templateId=세트 원본, 캔버
     expect(after).toEqual(expect.arrayContaining(['workspace', 'c-bg', 'c-frame']))
     expect(new Set(after).size).toBe(after.length)
     expect(useEditorStore.getState().pages[0].templateId).toBe('tpl-c')
+  })
+
+  it('새로 추가한 페이지(templateId=캔버스 id)에서 교체해도 템플릿 상세를 조회하지 않는다', async () => {
+    const getTemplate = vi.mocked(templatesApi.getTemplate)
+    getTemplate.mockClear()
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+    const { canvas, plugin } = await reopenedCanvasInStateB()
+    act(() => {
+      useAppStore.setState({
+        canvas,
+        allCanvas: [canvas],
+        allEditors: [{}],
+        getPlugin: (name: string) => (name === 'TemplatePlugin' ? plugin : undefined),
+      } as never)
+      useSettingsStore.setState({ linkedPrintTemplates: [TPL_A, TPL_B, TPL_C], spreadConfig: null } as never)
+      useEditorStore.setState({
+        sessionId: null,
+        pages: [{ id: 'canvas2', templateId: 'canvas2', templateType: 'page' }],
+        currentPageIndex: 0,
+      } as never)
+    })
+    render(<AppTemplateSwap />)
+
+    fireEvent.click(screen.getByText('템플릿 C'))
+    await act(async () => {
+      fireEvent.click(screen.getByText('교체'))
+      for (let i = 0; i < 50 && !ids(canvas).includes('c-bg'); i++) await new Promise((r) => setTimeout(r, 10))
+    })
+
+    expect(getTemplate).not.toHaveBeenCalled()
+    expect(warn.mock.calls.filter((c) => String(c[0]).includes('[AppTemplateSwap]'))).toEqual([])
+    expect(ids(canvas)).toEqual(expect.arrayContaining(['workspace', 'c-bg', 'c-frame']))
+    expect(ids(canvas).filter((id) => id.startsWith('b-'))).toEqual([])
+    warn.mockRestore()
   })
 })
