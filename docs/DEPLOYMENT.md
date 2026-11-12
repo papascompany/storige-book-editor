@@ -1970,6 +1970,27 @@ npx vitest run src/calendar src/plugins/CalendarPlugin.test.ts   # 데이터·co
 1. `docker tag storige-api:rollback-pre-fix3-20261104 storige-api:latest`(worker 도 같은 방식) → `docker compose up -d --no-deps --no-build api worker` → `docker compose restart nginx` → `[FLAGS-CHECK]` 두 줄 ok 확인.
 2. 편집기·관리자: Vercel 직전 Production(`b805c460`, 번들은 `93d11eab` 과 동일) promote.
 3. `.env` 는 변경이 없어 복원 불요. DB 롤백 불요.
+
+### 2026-11-12 운영 반영 — 양장 싸바리 전개 표지의 재단 기하 검증 비적용 (worker 전용, CONTRACT v1.32)
+
+> master `6ab73407` → `11244d7c`(PR #24 fast-forward). worker 만 재빌드했다. 그 사이 master 의 api 변경(`2bdd633c`)은 주석·Swagger 설명 문자열뿐이라 api 이미지는 `6ab73407` 빌드를 유지한다(다음 api 배포 때 동승). 시각은 UTC.
+
+**범위**
+- worker — 재단선 검증 opt-in(`orderOptions.cropMarkEnabled:true`) 잡 가운데 양장 싸바리 전개 표지(`fileType:'cover'`·`binding:'hardcover'`, 낱장 표지 `coverLayout:'separate'`·책등 없음 `coverSpine:'none'` 제외)는 TrimBox/BleedBox 검증을 건너뛰고 결과 `metadata.cropMarkSkipReason:'HARDCOVER_WRAP'` 만 남긴다. 싸바리 전개 인쇄물은 사방 감싸기 여분이 있어 재단 기하 개념이 없고 편집기도 TrimBox 를 넣지 않으므로, 그 표지마다 나오던 비차단 `TRIMBOX_MISSING` 이 사라진다. 전개 규격 판정(`SPINE_SIZE_MISMATCH`)·무선 표지·내지·고객 업로드 PDF 의 재단 기하 검증은 종전 그대로. 킬스위치 `WORKER_CROP_MARK_VALIDATION` 뒤의 동작이라 OFF 환경에서는 아무 변화가 없다.
+- worker 이미지는 `packages/types` + `apps/worker` 만 담으므로 같은 구간의 canvas-core 변경(폰트 대체)은 worker 에 실리지 않는다.
+- 마이그레이션 0, `.env` 변경 0(FLAGS 토큰 수 worker 9 그대로).
+
+**편집기·관리자(Vercel)**
+- master push 05:52Z → production READY(editor·admin). 편집기 번들 변경은 `packages/types` 의 선택 키 1건뿐.
+
+**api·worker(VPS, `deploy@<VPS_HOST>`, `~/storige`)**
+- 0단계: 롤백 태그 `storige-worker:rollback-pre-trimboxwrap-20261112`(= 종전 latest `db5fd16738c5`). `.env` 변경이 없어 백업은 생략.
+- 반영: `git pull --ff-only origin master`(05:57:27Z, `11244d7c`) → `docker compose build worker`(05:57:27Z~05:58:21Z, 약 55초) → `docker compose up -d --no-deps worker`(05:58:33Z). api·nginx·mariadb 는 재기동하지 않았다.
+- 기동 확인: `[FLAGS-CHECK] worker ok n=9`, `Nest application successfully started`, worker error/fatal·warn 0, api health 200, 새 이미지 `fc7e684c31d7`. 운영 양장 표지 검증 잡은 배포 뒤 아직 없어(최근 표지 잡은 11-09 이후 무선만) `cropMarkSkipReason` 실측은 다음 양장 편집 완료 때 확인한다.
+
+**롤백**
+1. `docker tag storige-worker:rollback-pre-trimboxwrap-20261112 storige-worker:latest` → `docker compose up -d --no-deps --no-build worker` → `[FLAGS-CHECK] worker ok n=9` 확인.
+2. 편집기·관리자·api·`.env`·DB 는 변경이 없어 롤백 불요.
 ### 1. 컨테이너가 시작되지 않음
 
 ```bash
