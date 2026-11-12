@@ -10,6 +10,7 @@ import { templatesApi, type Template, type TemplateSet } from '@/api/templates'
 import { sessionsApi } from '@/api/sessions'
 import { useImageStore } from '@/stores/useImageStore'
 import { cn } from '@/lib/utils'
+import { isEditorCanvasId } from '@/utils/editorCanvasId'
 import { core, TemplatePlugin, type SpreadPlugin, type ImageProcessingPlugin } from '@storige/canvas-core'
 import type { TemplateType, TemplateSetType, SpreadSpec } from '@storige/types'
 
@@ -34,7 +35,12 @@ async function swapTemplateObjectIds(
       resolved += 1
     }
   }
-  if (templateId && !loaded.some((t) => t.id === templateId && Array.isArray(t.canvasData?.objects))) {
+  // 새로 추가한 페이지의 templateId 는 캔버스 id 라 서버에 없다 — 조회하지 않는다.
+  if (
+    templateId &&
+    !isEditorCanvasId(templateId) &&
+    !loaded.some((t) => t.id === templateId && Array.isArray(t.canvasData?.objects))
+  ) {
     try {
       const objects = (await templatesApi.getTemplate(templateId))?.canvasData?.objects
       if (Array.isArray(objects)) {

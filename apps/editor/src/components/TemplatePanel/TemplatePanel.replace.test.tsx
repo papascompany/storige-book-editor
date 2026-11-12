@@ -132,4 +132,18 @@ describe('TemplatePanel — replaceTemplate 인자(현재 템플릿 id 목록·�
     expect(options.currentTemplateIds).toEqual(['b-bg'])
     warn.mockRestore()
   })
+
+  it('새로 추가한 페이지(templateId=캔버스 id)는 상세를 조회하지 않고 목록에서 얻은 id 만으로 교체한다', async () => {
+    spies.getTemplates.mockResolvedValue([TPL_B])
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+    wire('canvas2')
+    await swapTo('템플릿 B')
+
+    expect(spies.getTemplate).not.toHaveBeenCalled()
+    expect(warn).not.toHaveBeenCalled()
+    expect(spies.replaceTemplate).toHaveBeenCalledTimes(1)
+    const options = spies.replaceTemplate.mock.calls[0][1] as { currentTemplateIds?: string[] }
+    expect(options.currentTemplateIds).toEqual(['b-bg'])
+    warn.mockRestore()
+  })
 })
