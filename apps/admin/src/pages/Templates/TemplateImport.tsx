@@ -66,7 +66,7 @@ const flattenCategories = (cats: CategoryNode[], level = 0): { label: string; va
 // 변환기 extractDesignPackage 와 동일한 브라우저 디코드 가능 집합)
 const UPLOAD_ACCEPT = '.idml,.psd,.zip,.jpg,.jpeg,.png,.gif,.webp,.bmp,.avif';
 
-// 모드 변경 재변환용으로 보관하는 IDML 원본 + 동반 이미지 컨텍스트(A5).
+// 모드 변경 재변환용으로 보관하는 IDML 원본 + 동반 이미지 컨텍스트.
 // zip 은 업로드 시 1회만 해제하고 여기 보관해 모드 전환마다 재해제하지 않는다.
 interface PendingIdml {
   buffer: ArrayBuffer | Uint8Array;
@@ -133,7 +133,7 @@ const dataUrlToFile = (dataUrl: string, fileName: string): File => {
  *
  * - dataURL 이미지가 없으면(순수 벡터 IDML 등) 입력 배열을 그대로 반환(업로드 0회).
  * - 여러 개여도 모두 처리 (flat-spine 의 spine/back/front 3장 포함). 순서·z-order 보존(map).
- * - A5 placed 복원 이미지(FULL 모드의 편집 가능 image 객체, id 'idml-<self>', 크롭 베이크
+ * - placed 복원 이미지(FULL 모드의 편집 가능 image 객체, id 'idml-<self>', 크롭 베이크
  *   PNG dataURL)도 같은 판정(type==='image' && src data:)에 걸려 함께 업로드·치환된다.
  *   FLAT 모드는 변환기에서 이미 아트워크 PNG 에 베이크되므로 기존 아트워크 업로드로 처리.
  * - 한 장이라도 업로드 실패 시 Promise.all 전체 reject → 호출자(saveMutation)가 에러를
@@ -171,7 +171,7 @@ export const TemplateImport = () => {
   const [convertError, setConvertError] = useState<string | null>(null);
   const [result, setResult] = useState<SpreadTemplateResult | SinglePageResult | null>(null);
   const [previewSvg, setPreviewSvg] = useState<string>('');
-  // 보안(감사 DEP-7 / CVE-2026-27013): previewSvg 는 신뢰할 수 없는 업로드
+  // previewSvg 는 신뢰할 수 없는 업로드
   // IDML/PSD 변환 결과이며 아래에서 dangerouslySetInnerHTML 로 라이브 DOM 에
   // 주입된다. 주입 전 화이트리스트 새니타이즈로 <script>/on*/javascript: 제거.
   const safePreviewSvg = useMemo(() => sanitizeSvgMarkup(previewSvg), [previewSvg]);

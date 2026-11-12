@@ -6,7 +6,7 @@ import { buildPartnerNoticeText, describeApiError } from './editDataHelpers';
 const { Paragraph } = Typography;
 
 /**
- * 파트너 사후 통지용 '통지 정보 복사' (2026-09-30, 3-B 운영 원칙) — 편집 세션 목록·삭제 리스트 공용.
+ * 파트너 사후 통지용 '통지 정보 복사' — 편집 세션 목록·삭제 리스트 공용.
  * 통지 정보는 목록 행이 아니라 복사 직전에 다시 읽은 값으로 만든다(편집기 탭에서 편집완료하면 파일 id 가 바뀐다).
  */
 export function usePartnerNoticeCopy(): {

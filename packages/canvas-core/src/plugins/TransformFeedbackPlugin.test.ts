@@ -1,4 +1,4 @@
-// TransformFeedbackPlugin — 실시간 치수/각도/좌표 피드백 테스트 (E1 §5-2)
+// TransformFeedbackPlugin — 실시간 치수/각도/좌표 피드백 테스트
 //
 // 증명 대상:
 //  ① mm 변환 정확성 (150dpi 표시 규약 — getUnitSize 0.1mm 반올림)

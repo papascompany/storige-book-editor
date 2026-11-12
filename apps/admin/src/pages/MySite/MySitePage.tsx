@@ -57,7 +57,7 @@ const KEY_STATUS_TAG: Record<
 };
 
 /**
- * 내 사이트 — 파트너 포털 v0 (S2-4, SITE_ADMIN 셀프 뷰).
+ * 내 사이트 — 파트너 포털 v0 (SITE_ADMIN 셀프 뷰).
  *
  * 전역 admin 의 기존 화면(기본설정/운영자 관리)은 무변경 — 이 페이지는
  * SITE_ADMIN 배정이 있는 운영자에게만 메뉴 노출된다(MainLayout 게이팅).

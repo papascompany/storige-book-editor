@@ -1,5 +1,5 @@
 /**
- * P3a 멀티테넌시 — admin 메뉴 게이팅용 권한 헬퍼.
+ * 멀티테넌시 — admin 메뉴 게이팅용 권한 헬퍼.
  *
  * 전역 관리자(SUPER_ADMIN/ADMIN/MANAGER)만 전역 전용 메뉴(운영자 관리·사이트 관리·
  * 저장소 설정)에 접근한다. 사이트 운영자(SITE_ADMIN/SITE_MANAGER)는 숨긴다.
@@ -18,7 +18,7 @@ export function isGlobalAdmin(role?: string): boolean {
 }
 
 /**
- * S2-4 파트너 포털 v0 — SITE_ADMIN 배정이 하나라도 있는지 (내 사이트 메뉴 게이팅).
+ * 파트너 포털 v0 — SITE_ADMIN 배정이 하나라도 있는지 (내 사이트 메뉴 게이팅).
  * 인자는 GET /auth/me 의 siteRoles 클레임(UserRole 은 string enum — 구조적 수용).
  */
 export function hasSiteAdminAssignment(

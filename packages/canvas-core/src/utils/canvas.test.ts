@@ -101,7 +101,7 @@ describe('Canvas lock state serialization configuration', () => {
     })
   })
 })
-// P2-d 사진인화 (2026-10-19): 실 core.extendFabricOption 등재 검사 — 미등재 시 저장 1회 왕복에 침묵 소실.
+// 사진인화: 실 core.extendFabricOption 등재 검사 — 미등재 시 저장 1회 왕복에 침묵 소실.
 import { core } from './canvas'
 
 describe('P2-d photo-print serialization keys in real core.extendFabricOption', () => {

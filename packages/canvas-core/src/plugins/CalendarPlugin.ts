@@ -14,18 +14,18 @@ import type { CalendarData, AnniversaryInput, AnniversaryTextStyle, DateKey, Mon
 import { buildMonthMatrix, buildYearMatrix, getMinorTermsForMonth } from '../calendar/core';
 
 /**
- * CalendarPlugin — 캘린더 날짜 그리드(`extensionType:'calendar-grid'`) 생성·재합성 (P1, 2026-10-17)
+ * CalendarPlugin — 캘린더 날짜 그리드(`extensionType:'calendar-grid'`) 생성·재합성
  *
  * - 그리드는 fabric.Group 하나. 내부 텍스트(fabric.Text)는 사용자가 개별 편집하지 않는다(그룹 해제는 GroupPlugin 이 차단).
  * - 월은 `extension.monthOffset`(시작연월 기준 상대 월, 선택) 또는 캔버스 위치(`ctx.canvasMonthOffset`)+`monthDelta` 로 정한다.
  *   시작연월을 바꾸면 그리드만 다시 그리고 사진·텍스트는 보존된다.
  * - lifecycle 훅(beforeSave/afterLoad)에 의존하지 않는다. 캔버스 로드 뒤 편집기가 `rehydrate(ctx)` 를 명시 호출한다.
- *   (임베드 저장 경로는 ServicePlugin.saveJSON 훅을 우회하기 때문 — 설계 §2.4)
+ *   (임베드 저장 경로는 ServicePlugin.saveJSON 훅을 우회하기 때문)
  * - 그룹 내부 텍스트는 인쇄 대상이므로 `meta.system` 을 붙이지 않는다(ServicePlugin.collectGlyphValidationTargets 가 그룹을 재귀 수집).
  * - 직렬화: 그룹·자식 모두 `extendFabricOption` 등재 속성(id/extensionType/extension/lockInfo/deleteable/movable/contentEditable …)만으로 왕복.
- * - variant 'year'(연달력, 설계 C8, v1.26): 시작연월·`yearSpan`·`yearDelta` 로 정한 첫 달부터 12개월을 날짜 숫자 + 요일/공휴일 색으로만 그린다.
+ * - variant 'year'(연달력, v1.26): 시작연월·`yearSpan`·`yearDelta` 로 정한 첫 달부터 12개월을 날짜 숫자 + 요일/공휴일 색으로만 그린다.
  *   캔버스 위치(monthOffset·monthDelta·canvasMonthOffset)는 쓰지 않고, 날짜 hitTest 대상이 아니다(기념일 폼 미진입). 그 밖 variant 는 rehydrate 가 건너뛴다.
- * - 기념일 문구 스타일(D1(b), T3b): `ctx.anniversaries[].style {fill, fontWeight}` 을 core 가 정제해 칸에 싣고('#rgb'/'#rrggbb'·'normal'|'bold'),
+ * - 기념일 문구 스타일: `ctx.anniversaries[].style {fill, fontWeight}` 을 core 가 정제해 칸에 싣고('#rgb'/'#rrggbb'·'normal'|'bold'),
  *   'month' 칸 문구에서 그 기념일 텍스트의 fill·fontWeight 로 쓴다. 문구 3개 제한·순서(공휴일 → 기념일 → 절기 → 잡절 → 음력)는 같다.
  */
 
@@ -80,7 +80,7 @@ export interface CalendarRenderContext {
   /**
    * `temporaryHolidays`(임시공휴일·선거일 표시)는 생략 시 false — 법정 공휴일만 휴일로 칠한다.
    * `yearTitle`('year' 연도 제목 표시)은 생략 시 true.
-   * `minorTerms`(잡절 — 초복·중복·말복 칸 문구, T4)는 생략 시 false. 'month' 칸 문구에만 쓰고 'mini'·'year' 는 문구를 그리지 않는다.
+   * `minorTerms`(잡절 — 초복·중복·말복 칸 문구)는 생략 시 false. 'month' 칸 문구에만 쓰고 'mini'·'year' 는 문구를 그리지 않는다.
    */
   show: { holidays: boolean; lunar: boolean; solarTerms: boolean; temporaryHolidays?: boolean; yearTitle?: boolean; minorTerms?: boolean };
   anniversaries: AnniversaryInput[];
@@ -364,7 +364,7 @@ class CalendarPlugin extends PluginBase {
       temporaryHolidays: ext.show?.temporaryHolidays ?? ctx.show.temporaryHolidays ?? false,
       minorTerms: ext.show?.minorTerms ?? ctx.show.minorTerms ?? false,
     };
-    // 잡절(삼복)은 옵션을 켠 경우만 조회 — 끄면(기본) 칸 문구·자식 구성이 종전과 같다(T4)
+    // 잡절(삼복)은 옵션을 켠 경우만 조회 — 끄면(기본) 칸 문구·자식 구성이 종전과 같다
     const minorTermByDate = new Map<DateKey, string>(
       show.minorTerms ? getMinorTermsForMonth(ym.year, ym.month, ctx.data).map((t) => [t.date, t.name]) : [],
     );
@@ -480,7 +480,7 @@ class CalendarPlugin extends PluginBase {
         let ny = y0 + pad + numberSize * 1.15;
         for (const note of notes.slice(0, 3)) {
           if (ny + smallSize > y0 + cellH) break;
-          // 기념일 문구 스타일(D1(b), T3b): 색은 fill, 굵게는 fontWeight — 스타일이 없으면 키를 더하지 않아 종전 렌더와 같다
+          // 기념일 문구 스타일: 색은 fill, 굵게는 fontWeight — 스타일이 없으면 키를 더하지 않아 종전 렌더와 같다
           const noteStyle = note.style;
           children.push(new fabric.Text(note.text, {
             ...textBase, id: `${id}-n-${cell.date}-${note.kind}`,

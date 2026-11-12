@@ -786,7 +786,7 @@ class FontPlugin extends PluginBase {
       const styleId = 'dynamic-font-faces'
       let style = document.getElementById(styleId) as HTMLStyleElement | null
 
-      // A-1: 이미 붙어 있는 CSS 와 완전히 동일하면 재기입도 정착 대기(rAF+300ms)도 건너뛴다.
+      // 이미 붙어 있는 CSS 와 완전히 동일하면 재기입도 정착 대기(rAF+300ms)도 건너뛴다.
       // @font-face 규칙은 textContent 대입 시점에 CSSOM 에 동기 반영되므로, 내용이 같다면
       // 앞서 만들어진 규칙이 그대로 유효하고 브라우저가 다시 파싱할 것도 없다.
       // createFontCSS 는 생성자에서만 호출되므로 이 분기가 걸리는 경우는 **같은 폰트 목록으로

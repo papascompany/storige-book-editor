@@ -1,5 +1,5 @@
 /**
- * 트랙 C G-2 — 기하 parity spec (2026-07-23).
+ * 기하 parity spec.
  *
  * @storige/types computeSpreadRegionRangesMm(mm 단일 소스, 표지 파생 유틸 소비)와
  * SpreadLayoutEngine.computeLayout(px, 편집기 소비)의 영역 시맨틱 드리프트 봉쇄.

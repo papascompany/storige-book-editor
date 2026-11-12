@@ -2,12 +2,12 @@
 import ContextMenuItem from './models/ContextMenuItem'
 
 /**
- * C6: 터치 롱프레스로 메뉴가 뜬 직후, 손을 떼는 순간 브라우저가 합성하는 mousedown 이
+ * 터치 롱프레스로 메뉴가 뜬 직후, 손을 떼는 순간 브라우저가 합성하는 mousedown 이
  * onClick(문서 클릭 히든)을 때려 메뉴가 즉시 닫히는 것을 막는 억제 창(ms).
  */
 const TOUCH_HIDE_SUPPRESS_MS = 400
 /**
- * C6: Android Chrome 은 롱프레스에 네이티브 contextmenu DOM 이벤트를 발화한다. 터치
+ * Android Chrome 은 롱프레스에 네이티브 contextmenu DOM 이벤트를 발화한다. 터치
  * 트리거가 이미 메뉴를 연 직후 이 이벤트가 메뉴를 재발화(이중)하는 것을 무시하는 창(ms).
  */
 const TOUCH_NATIVE_CTX_SUPPRESS_MS = 700
@@ -22,7 +22,7 @@ class ContextMenu {
 
   // flags
   shown: boolean = false
-  // C6: 터치 트리거 발화 시각 기준 억제 창(0 = 비활성, Date.now() 비교)
+  // 터치 트리거 발화 시각 기준 억제 창(0 = 비활성, Date.now() 비교)
   private suppressHideUntil: number = 0
   private suppressNativeContextmenuUntil: number = 0
 
@@ -95,7 +95,7 @@ class ContextMenu {
         (menu.onlyForActiveObject ? hasActiveObject : true)
     )
     if (available.length === 0) {
-      // 선재결함(C6 T-6 전제): available 0 인데 직전 성공 표시의 stale this.dom 이 남아
+      // available 0 인데 직전 성공 표시의 stale this.dom 이 남아
       // 있으면 show() 의 `if(!this.dom) return` 가드를 통과해 빈 곳에도 옛 메뉴가 재-append
       // 된다. dom 을 명시적으로 비워 show() 가 no-op 되게 한다(우클릭·터치 공통 수정).
       this.dom = null
@@ -133,7 +133,7 @@ class ContextMenu {
 
     this.shown = true
     this.container.appendChild(this.dom)
-    // C6-fix(2026-08-01): 표시 중에만 document 캡처 pointerdown 아웃사이드 해제를 부착.
+    // 표시 중에만 document 캡처 pointerdown 아웃사이드 해제를 부착.
     // (매 표시마다 재생성되는 submenu 인스턴스가 상시 document 리스너를 누적하지 않도록
     //  show/hide 수명주기에 묶는다. 동일 핸들러 재부착은 브라우저가 dedupe — 무해.)
     this.attachOutsideDismiss()
@@ -156,18 +156,18 @@ class ContextMenu {
   }
 
   /**
-   * C6: 좌표를 지정해 컨텍스트 메뉴를 여는 공개 진입점(터치 롱프레스 트리거용).
+   * 좌표를 지정해 컨텍스트 메뉴를 여는 공개 진입점(터치 롱프레스 트리거용).
    * 우클릭 경로(onContextmenu)와 동일하게 hideAll 후 show 하며(.context 는 position:fixed
-   * 라 x/y 는 뷰포트 좌표 = e.clientX/Y 와 동형), touch=true 면 손 떼는 합성 mousedown(T-5)·
-   * Android 네이티브 contextmenu 이중발화(T-3)를 무시하는 억제 창을 연다. available 메뉴가
+   * 라 x/y 는 뷰포트 좌표 = e.clientX/Y 와 동형), touch=true 면 손 떼는 합성 mousedown·
+   * Android 네이티브 contextmenu 이중발화를 무시하는 억제 창을 연다. available 메뉴가
    * 없으면 show 가 자연히 미표시(빈 곳 롱프레스 = 무동작).
    */
   showAt(x: number, y: number, opts?: { touch?: boolean }): boolean {
     this.hideAll()
     this.show(x, y)
     // 억제창은 **메뉴가 실제로 표시된 경우에만** arm 한다 — 빈 곳 롱프레스(미표시) 후
-    // 우클릭(button 2)이 억제 가드에 삼켜지는 것 방지(적대 리뷰). T-3(네이티브 contextmenu)·
-    // T-5(합성 mousedown) 억제창을 발화(표시) 시각 기준으로 연다.
+    // 우클릭(button 2)이 억제 가드에 삼켜지는 것 방지. 네이티브 contextmenu·
+    // 합성 mousedown 억제창을 발화(표시) 시각 기준으로 연다.
     if (opts?.touch && this.shown) {
       const now = Date.now()
       this.suppressHideUntil = now + TOUCH_HIDE_SUPPRESS_MS
@@ -179,7 +179,7 @@ class ContextMenu {
   }
 
   /**
-   * C6 (T-5 보강): 터치 손 뗌(release) 시점에 히든 억제창을 재-arm 한다. 합성 mousedown 은
+   * 터치 손 뗌(release) 시점에 히든 억제창을 재-arm 한다. 합성 mousedown 은
    * touchend 이후에 도착하므로, 표시 시각 기준 창(showAt)만으로는 오래 눌렀다 떼는 경우 창이
    * 만료돼 손 떼는 즉시 메뉴가 닫힌다. 트리거가 pointerup 에서 (메뉴가 열려 있을 때만) 호출.
    */
@@ -198,13 +198,13 @@ class ContextMenu {
   }
 
   /**
-   * C6-fix(2026-08-01 실측 결함 2건): 메뉴 밖 상호작용 해제를 document 캡처 pointerdown 으로 보강.
+   * 메뉴 밖 상호작용 해제를 document 캡처 pointerdown 으로 보강한다.
    * 기존 mousedown(onClick) 히든의 실측 사각지대:
    *  ① 터치 캔버스 탭 — fabric 이 touchstart 를 preventDefault 해 합성 mousedown 미발생 → 안 닫힘
    *  ② 캔버스 밖 UI(액션바 휴지통 등) — container(wrapperEl) 스코프 밖이라 이벤트 미도달 →
    *     삭제 확인 모달 위에 메뉴 잔류(버튼 가림)
    * pointerdown 은 터치 합성 마우스 이벤트와 달리 preventDefault 영향권 밖의 네이티브 선행
-   * 이벤트라 억제창(T-5)이 불필요하다(합성 재발화가 없음). 화면 어디를 누르든 닫히는
+   * 이벤트라 억제창이 불필요하다(합성 재발화가 없음). 화면 어디를 누르든 닫히는
    * 네이티브 컨텍스트 메뉴 관례로 동작하며, 마우스 우클릭 재표시 경로(onClick button 2 ·
    * onContextmenu)는 pointerdown 해제 직후 그대로 재표시되므로 무회귀.
    */
@@ -226,7 +226,7 @@ class ContextMenu {
   private onClick = (e: MouseEvent) => {
     if (!e.target) return
 
-    // C6 (T-5): 롱프레스 발화 직후 손 떼는 순간의 합성 mousedown 이 메뉴를 즉시 닫는 것 억제
+    // 롱프레스 발화 직후 손 떼는 순간의 합성 mousedown 이 메뉴를 즉시 닫는 것 억제
     if (Date.now() < this.suppressHideUntil) return
 
     const target = e.target as HTMLElement
@@ -243,7 +243,7 @@ class ContextMenu {
   private onContextmenu = (e: MouseEvent) => {
     if (!this.dom || !e.target) return
 
-    // C6 (T-3): 터치 트리거가 이미 연 직후의 Android 네이티브 contextmenu 이중발화 무시
+    // 터치 트리거가 이미 연 직후의 Android 네이티브 contextmenu 이중발화 무시
     if (Date.now() < this.suppressNativeContextmenuUntil) return
 
     const target = e.target as HTMLElement

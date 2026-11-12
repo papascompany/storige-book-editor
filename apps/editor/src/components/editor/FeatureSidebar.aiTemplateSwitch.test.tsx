@@ -1,5 +1,5 @@
 /**
- * W8-2b D4 — AI 패널 템플릿셋 전환.
+ * AI 패널 템플릿셋 전환.
  *
  * 잠그는 것:
  *   - 편집 중인 디자인(URL 에 sessionId·session_id, 또는 sessionId 없는 주문번호 진입이라도 같은 주소로
@@ -39,7 +39,7 @@ import { useToastStore } from '@/stores/useToastStore'
 
 const BASE = 'https://editor.example'
 
-describe('resolveAiTemplateSetSwitch (W8-2b D4)', () => {
+describe('resolveAiTemplateSetSwitch', () => {
   it('sessionId 가 있으면 전환하지 않고 고정 안내 문구', () => {
     expect(resolveAiTemplateSetSwitch(`${BASE}/embed?sessionId=s1&templateSetId=a`, 'b')).toEqual({
       kind: 'blocked',
@@ -67,7 +67,7 @@ describe('resolveAiTemplateSetSwitch (W8-2b D4)', () => {
   })
 })
 
-describe('FeatureSidebar AI 패널 — 편집 중인 디자인의 템플릿셋 전환 차단 (W8-2b D4)', () => {
+describe('FeatureSidebar AI 패널 — 편집 중인 디자인의 템플릿셋 전환 차단', () => {
   const initialPath = `${window.location.pathname}${window.location.search}${window.location.hash}`
 
   beforeEach(() => {

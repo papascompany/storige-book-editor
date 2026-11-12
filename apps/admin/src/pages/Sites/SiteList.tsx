@@ -32,7 +32,7 @@ import { withEditRetentionDays } from '../EditSessions/editDataHelpers';
 const { Title, Text } = Typography;
 
 /**
- * 기본설정 — 외부 사이트(테넌트) 관리 페이지 (Phase A).
+ * 기본설정 — 외부 사이트(테넌트) 관리 페이지.
  *
  * 운영팀이 admin에서:
  *  1. 사이트 등록 (자동 발급된 인증코드 받음)

@@ -1,13 +1,13 @@
 /**
- * 호스트(주문) 지정 책등 폭 — 순수 헬퍼 (R-195, 2026-09-28).
+ * 호스트(주문) 지정 책등 폭 — 순수 헬퍼.
  *
- * 파트너(bookmoa)가 주문의 책등 폭을 `/embed?spineWidthMm=`(snake `spine_width_mm`) 또는
+ * 파트너 사이트가 주문의 책등 폭을 `/embed?spineWidthMm=`(snake `spine_width_mm`) 또는
  * EditorConfig.options.spineWidthMm 으로 전달한다. 종전 편집기는 이 값을 무시하고 spineApi 로
  * 책등을 계산했다. 이 모듈은 스토어·캔버스에 의존하지 않는 판정만 모은다(단위 테스트 대상).
  *
  * 규약 요약:
  *  - 파라미터: 유한수 ≥ 0 만 수용('0' → 0). '', NaN, 음수 → undefined(비어있지 않은 무효값은 경고).
- *  - S5 정규화: paperType/bindingType 은 trim 후 '' 또는 '-' → undefined.
+ *  - 정규화: paperType/bindingType 은 trim 후 '' 또는 '-' → undefined.
  *  - 재편집 사다리: options/URL → metadata.orderOptions.spineWidthMm → metadata.appliedSpine
  *    (source==='host' 일 때만).
  *  - hostFixed = !(paperType && bindingType && hostSpine > 0) — 고정이면 편집 중 재계산 스킵.
@@ -23,7 +23,7 @@ export interface AppliedSpineSnapshot {
 }
 
 /**
- * S5: 용지/제본 코드 정규화. trim 후 '' 또는 '-'(호스트의 "미지정" 표기) → undefined.
+ * 용지/제본 코드 정규화. trim 후 '' 또는 '-'(호스트의 "미지정" 표기) → undefined.
  * 문자열이 아니면 undefined.
  */
 export function normalizeSpineCode(value: unknown): string | undefined {
@@ -81,8 +81,8 @@ export interface EffectiveSpineOptions {
 /**
  * 재편집 책등 옵션 사다리 (embed.tsx 에서 추출 — 순수 함수).
  *
- * - paperType/bindingType: options(URL/props) → metadata.orderOptions → metadata.spine(B38 스냅샷).
- *   각 단계 S5 정규화('-'·빈값은 미지정 취급 → 다음 단계로 폴백).
+ * - paperType/bindingType: options(URL/props) → metadata.orderOptions → metadata.spine(스냅샷).
+ *   각 단계 정규화('-'·빈값은 미지정 취급 → 다음 단계로 폴백).
  * - spineWidthMm: options(URL/props) → metadata.orderOptions.spineWidthMm(≥0) →
  *   metadata.appliedSpine.spineWidthMm (source==='host' 일 때만 — formula/template 값은
  *   호스트 지정이 아니므로 사다리에 올리지 않는다).
@@ -219,7 +219,7 @@ export function buildAppliedSpineSnapshot(input: {
  * 아트워크 제외)가 있는가.
  *
  * 배경: 폭 0 이면 computeLayout 이 spine 영역을 만들지 않는다. canvas-core
- * SpreadPlugin.repositionObjects 는 2026-09-28 교정 이후 이 경우 spine 객체를 자유 객체로
+ * SpreadPlugin.repositionObjects 는 이 경우 spine 객체를 자유 객체로
  * 강등하고 scene 위치(접지선)를 보존한다 — 오류는 없지만 책등 텍스트 등이 접지선 위에 남아
  * 인쇄된다. 그래서 편집기는 제품 정책으로 이 경우 0mm 적용을 차단한다(호출측 보고).
  */

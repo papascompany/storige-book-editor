@@ -5,7 +5,7 @@ import { useAppStore } from '@/stores/useAppStore'
 import type { CanvasHotkey, CanvasHotkeyCategory } from '@storige/canvas-core'
 
 /**
- * 키보드 단축키 도움말 모달 (C9 §6-2).
+ * 키보드 단축키 도움말 모달.
  *
  * 단축키 목록은 **editor.getRegisteredHotkeys() 로 자동 생성**된다 — canvas-core 플러그인이
  * 등록한 hotkeys 가 유일 소스이므로 하드코딩 카탈로그 드리프트가 없다. 플러그인 외부(앱 소유)

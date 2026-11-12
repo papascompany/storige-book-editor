@@ -164,7 +164,7 @@ describe('resolveInnerPageCutSizeMm — 낱장 내지 workspace cutSize', () => 
     expect(resolveInnerPageCutSizeMm(HARDCOVER_WRAP_MARGIN_MM, onMode)).toBe(2)
   })
 
-  it('P3 게이트 ON 세트(bleed 3 → 화면 cutSize 6): 내지 = 6, 표지 PDF 는 wrap 만(재단 마커 옵션 없음)', () => {
+  it('출력 게이트 ON 세트(bleed 3 → 화면 cutSize 6): 내지 = 6, 표지 PDF 는 wrap 만(재단 마커 옵션 없음)', () => {
     const p3 = resolveHardcoverWrapMode({ ...onInput, spec: { ...onInput.spec!, cutSizeMm: 3 * 2 } })
     expect(p3.mode).not.toBeNull()
     expect(p3.mode!.screenCutSizeMm).toBe(40)

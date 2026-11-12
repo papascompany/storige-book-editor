@@ -58,10 +58,10 @@ declare namespace fabric {
     movingPath?: fabric.Path
     fixed?: boolean
     alwaysTop?: boolean
-    // B1 (2026-07-04): 레이어별 편집권한 속성 — extendFabricOption 등재(직렬화)와 동기.
+    // 레이어별 편집권한 속성 — extendFabricOption 등재(직렬화)와 동기.
     /** false = 고객 이동/변형 잠금 (Part B, applyObjectPermissions 강제) */
     movable?: boolean
-    /** false = 고객 삭제 잠금 (P1-5, ObjectPlugin.del 가드) */
+    /** false = 고객 삭제 잠금 (ObjectPlugin.del 가드) */
     deleteable?: boolean
     /** false = 고객 내용편집 잠금 (텍스트 진입/사진틀 교체 차단) */
     contentEditable?: boolean
@@ -69,9 +69,9 @@ declare namespace fabric {
     printExclude?: boolean
     /** true = 레이어 순서 변경 잠금 (ObjectPlugin z-order/reorderObject 가드) */
     lockLayerOrder?: boolean
-    /** L7 (2026-07-11): true = 필수 편집 요소 — 고객 미편집 완료 시 비차단 경고 (텍스트·사진틀) */
+    /** true = 필수 편집 요소 — 고객 미편집 완료 시 비차단 경고 (텍스트·사진틀) */
     requiredEdit?: boolean
-    /** L7: true = 고객 편집 발생 마킹 (텍스트 text:changed 시 세팅, 세션 영속 판정) */
+    /** true = 고객 편집 발생 마킹 (텍스트 text:changed 시 세팅, 세션 영속 판정) */
     requiredEditTouched?: boolean
     /** LockPlugin 고급 잠금 메타 (lockedAt 은 JSON 왕복 후 string 가능) */
     lockInfo?: {

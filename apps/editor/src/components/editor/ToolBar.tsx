@@ -34,9 +34,9 @@ const ENABLE_FRAME_MENU = import.meta.env.VITE_ENABLE_FRAME_MENU !== 'false'
 const ENABLE_SMART_CODE_MENU = import.meta.env.VITE_ENABLE_SMART_CODE_MENU !== 'false'
 // Feature flag for AI panel (recommend + generate)
 const ENABLE_AI_PANEL = import.meta.env.VITE_ENABLE_AI_PANEL !== 'false'
-// Feature flag for calendar panel (P1 캘린더 2026-10-17) — 기본 on. 런타임 게이트는 productProfile kind=calendar.
+// Feature flag for calendar panel (캘린더) — 기본 on. 런타임 게이트는 productProfile kind=calendar.
 const ENABLE_CALENDAR = import.meta.env.VITE_ENABLE_CALENDAR !== 'false'
-// Feature flag for photo print panel (P2-d 사진인화 2026-10-19) — 기본 on. 런타임 게이트는 productProfile kind=photo-print.
+// Feature flag for photo print panel (사진인화) — 기본 on. 런타임 게이트는 productProfile kind=photo-print.
 const ENABLE_PHOTO_PRINT = import.meta.env.VITE_ENABLE_PHOTO_PRINT !== 'false'
 
 // Tool definitions - CLIPPING requires ImageProcessingPlugin (OpenCV)
@@ -54,9 +54,9 @@ const ALL_MENUS: AppMenu[] = [
   ...(ENABLE_IMAGE_PROCESSING ? [{ type: 'EDIT' as const, label: '편집도구', icon: Pencil }] : []),
   // AI 패널 (추천 + 생성) — 다른 메뉴 끝에 배치
   ...(ENABLE_AI_PANEL ? [{ type: 'AI' as const, label: 'AI', icon: Sparkles }] : []),
-  // P1 캘린더: 캘린더 세트(productProfile kind=calendar)에서만 노출 — 아래 필터의 런타임 게이트
+  // 캘린더: 캘린더 세트(productProfile kind=calendar)에서만 노출 — 아래 필터의 런타임 게이트
   ...(ENABLE_CALENDAR ? [{ type: 'CALENDAR' as const, label: '달력', icon: CalendarDays }] : []),
-  // P2-d 사진인화: 사진인화 세트(productProfile kind=photo-print)에서만 노출 — 아래 필터의 런타임 게이트
+  // 사진인화: 사진인화 세트(productProfile kind=photo-print)에서만 노출 — 아래 필터의 런타임 게이트
   ...(ENABLE_PHOTO_PRINT ? [{ type: 'PHOTO_PRINT' as const, label: '사진인화', icon: Printer }] : []),
 ]
 
@@ -77,9 +77,9 @@ export default function ToolBar({ horizontal = false }: ToolBarProps) {
   // - 배열: 그 키만 노출 (빈 배열 → 모든 도구 메뉴 숨김)
   // useEditorContents.loadTemplateSetEditor 가 templateSet.enabledMenus 를 store 에 저장.
   const enabledMenus = useSettingsStore((state) => state.enabledMenus)
-  // P1 캘린더: CALENDAR 메뉴는 productProfile kind=calendar 세트에서만(legacy null 세트는 enabledMenus 와 무관하게 숨김)
+  // 캘린더: CALENDAR 메뉴는 productProfile kind=calendar 세트에서만(legacy null 세트는 enabledMenus 와 무관하게 숨김)
   const isCalendarProduct = useSettingsStore((state) => state.productProfile?.kind === 'calendar')
-  // P2-d 사진인화: PHOTO_PRINT 메뉴는 productProfile kind=photo-print 세트에서만(legacy null 세트는 enabledMenus 와 무관하게 숨김)
+  // 사진인화: PHOTO_PRINT 메뉴는 productProfile kind=photo-print 세트에서만(legacy null 세트는 enabledMenus 와 무관하게 숨김)
   const isPhotoPrintProduct = useSettingsStore((state) => state.productProfile?.kind === 'photo-print')
   const coverMaterialLocked = useSettingsStore((state) => state.coverMaterialLocked)
   const hasCoverSlot = useSettingsStore((state) => state.hasCoverSlot)
@@ -145,14 +145,14 @@ export default function ToolBar({ horizontal = false }: ToolBarProps) {
     // edit mode (admin 편집 미리보기) 에서는 화이트리스트 무시하고 전체 노출.
     // 일반 사용자에게는 enabledMenus 적용.
     // 페브릭 표지(소재 잠금)는 표지 페이지에서만 배경 메뉴를 숨긴다.
-    // CALENDAR 는 editMode(관리자 템플릿 제작 — 그리드 배치 도구) 또는 캘린더 세트에서만 노출(P1-d 2026-10-17).
+    // CALENDAR 는 editMode(관리자 템플릿 제작 — 그리드 배치 도구) 또는 캘린더 세트에서만 노출.
     // legacy 고객 세트(프로파일 null·비 editMode)에는 여전히 숨긴다.
     // 캘린더 세트에서는 enabledMenus 화이트리스트를 존중한다(배열에 'CALENDAR' 없으면 숨김, null 이면 노출).
     const availableMenus = editMode
-      ? ALL_MENUS // 관리자 editMode 는 전부 노출 — CALENDAR 도 포함(템플릿에 날짜 그리드를 배치하는 저작 도구, P1 캘린더 의도된 예외)
+      ? ALL_MENUS // 관리자 editMode 는 전부 노출 — CALENDAR 도 포함(템플릿에 날짜 그리드를 배치하는 저작 도구 — 의도된 예외)
       : ALL_MENUS.filter((m) => {
           if (m.type === 'CALENDAR' && !isCalendarProduct) return false
-          // P2-d 사진인화: 사진인화 세트에서만, enabledMenus 화이트리스트는 아래 isAllowed 가 그대로 존중
+          // 사진인화: 사진인화 세트에서만, enabledMenus 화이트리스트는 아래 isAllowed 가 그대로 존중
           if (m.type === 'PHOTO_PRINT' && !isPhotoPrintProduct) return false
           if (!isAllowed(m.type)) return false
           if (coverMaterialLocked && isCoverPage && m.type === 'BACKGROUND') return false

@@ -1,15 +1,15 @@
 /**
- * calendar/skin.ts — 캘린더 스킨 적용 병합(순수 함수, 설계 C10 §3.3 · T7a, 2026-10-25)
+ * calendar/skin.ts — 캘린더 스킨 적용 병합(순수 함수)
  *
  * 캔버스 1장의 현재 JSON(`cur`)·지금 따르는 템플릿(`from`, 알 수 없으면 null)·새 스킨 템플릿(`to`)을 받아
  * 스킨을 입힌 캔버스 JSON 을 만든다. fabric 에 의존하지 않고 입력을 바꾸지 않는다(출력은 입력과 참조를 공유하지 않음).
  *
- * 규칙 요약(오너 결정 Q1 (a) 템플릿 전체 · Q2 (a) 면별 사진틀 수 같음 · Q3 (a) 문구는 문자열만):
+ * 규칙 요약(템플릿 전체 · 면별 사진틀 수 같음 · 문구는 문자열만):
  * - workspace: 현재 캔버스 것을 유지(도련 반영 크기 그대로 — 리사이즈는 편집기 후처리).
  * - 템플릿 유래 요소(top-level id ∈ 판정 집합, 또는 보조 판정)는 버리고 `to` 의 요소를 쓴다.
  *   보조 판정(판정 집합 밖)은 고객이 만들 수 없는 표지만 쓴다 — `deleteable:false`·템플릿 잠금(designer/admin)·날짜 그리드.
  *   extensionType(frame·background 등)만으로는 고객 요소로 둔다(고객도 라이브러리 틀·배경을 추가한다 — 오분류 시
- *   요소가 하나 더 남는 쪽으로 실패, 오너 Q2 '사진 손실 없음').
+ *   요소가 하나 더 남는 쪽으로 실패 — 사진 손실 없음).
  *   · 날짜 그리드는 버린다(`to` 의 그리드를 쓰고 내용은 세션 메타로 다시 그림).
  *   · 고객이 고친 템플릿 문구(`from` 의 같은 id 문구와 다름)는 문자열만 `to` 의 같은 id 문구로 옮긴다.
  *   · 사진틀은 `to` 의 틀로 바뀌고, 채운 사진은 아래 규칙으로 옮긴다.
@@ -18,7 +18,7 @@
  *   변환은 유지하고 clipPath 를 새 틀 이미지로 다시 만든다. 그 밖에는 `refills` 로 보낸다(편집기가 다시 채움, 자르기 초기화).
  *   대상 틀이 없으면 캔버스에서 빼고 보고한다(사진은 '내 업로드'에 남음).
  * - 고객 추가 요소: 원래 순서대로 맨 위에 둔다. 출력에 같은 id 가 있으면 새 id 로 바꾸고 참조도 고친다.
- * - 고객 배경(템플릿 유래가 아닌 extensionType 'background'): `keepCustomerBackground` 로 정한다(오너 결정 B2 (b)).
+ * - 고객 배경(템플릿 유래가 아닌 extensionType 'background'): `keepCustomerBackground` 로 정한다.
  *   true = 고객 배경을 workspace 바로 위에 두고 스킨 배경은 뺀다(편집기 addBackground 와 같이 배경은 하나 — 스킨 배경을 남기면
  *   고객 배경을 덮는다). false = 고객 배경을 빼고 보고(`removedCustomerBackgrounds`). 단 src 가 data URL 이면 '내 업로드'로
  *   되살릴 수 없어 false 여도 유지한다(`forcedKeepReason: 'data-url'`).
@@ -80,7 +80,7 @@ export interface SkinMergeOptions {
   /** 새 id 생성기(테스트 주입용). 기본 uuid v4 */
   createId?: () => string
   /**
-   * 고객 배경 처리(오너 결정 B2 (b)). true = '내 배경 유지'(workspace 바로 위, 스킨 배경 대체) ·
+   * 고객 배경 처리. true = '내 배경 유지'(workspace 바로 위, 스킨 배경 대체) ·
    * false(기본) = '스킨 배경 사용'(고객 배경 제거 + 보고). data URL 고객 배경은 false 여도 유지한다.
    */
   keepCustomerBackground?: boolean

@@ -32,7 +32,7 @@ export default function AppBackground() {
   const setContentsBrowser = useAppStore((state) => state.setContentsBrowser)
   const upload = useImageStore((state) => state.upload)
   const isCustomer = useIsCustomer()
-  // A1-4: 관리자(editMode) 템플릿 제작 화면에도 추천 콘텐츠(라이브러리) 섹션 노출
+  // 관리자(editMode) 템플릿 제작 화면에도 추천 콘텐츠(라이브러리) 섹션 노출
   const editMode = useSettingsStore((state) => state.currentSettings.editMode)
   const { setupAsset } = useEditorContents()
 
@@ -45,7 +45,7 @@ export default function AppBackground() {
   const [bgColor, setBgColor] = useState('#FFFFFF')
   const [lidColor, setLidColor] = useState('#FFFFFF')
 
-  // 추천 콘텐츠 데이터 파이프라인 공통화 (P3-b).
+  // 추천 콘텐츠 데이터 파이프라인 공통화.
   // ⚠️ 배경(library_backgrounds)은 tags 컬럼이 없어 태그칩 필터 불가 → enableTags:false.
   //    대신 이름 검색바를 추가해 다른 패널과 일관성을 맞춘다(enableSearch:true).
   const {
@@ -239,8 +239,8 @@ export default function AppBackground() {
   const handleApplyBgColor = useCallback(() => {
     if (applyBgColor(bgColor)) {
       // 시각적 confirm — workspace 업데이트 후 명시적 안내 (모바일 사용자 혼동 방지)
-      // showToast 호출은 stores/useToastStore에서 import 필요하지만 BB-Phase 3 외 트랙에서
-      // 이미 등록된 useToastStore를 사용. 여기는 silent로 두고 시각적 변화로만 확인.
+      // 토스트는 띄우지 않는다 —
+      // 여기는 silent 로 두고 시각적 변화로만 확인.
     }
   }, [applyBgColor, bgColor])
 
@@ -443,8 +443,8 @@ export default function AppBackground() {
           </AppSection>
         )}
 
-        {/* Recommended Contents — 배경은 tags 컬럼 부재로 태그칩 없이 이름 검색만 제공(P3-b) */}
-        {/* A1-4: isCustomer 게이트 완화 — 관리자(editMode)도 추천 섹션 사용(템플릿 제작 시 에셋 배치) */}
+        {/* Recommended Contents — 배경은 tags 컬럼 부재로 태그칩 없이 이름 검색만 제공 */}
+        {/* isCustomer 게이트 완화 — 관리자(editMode)도 추천 섹션 사용(템플릿 제작 시 에셋 배치) */}
         {(isCustomer || editMode) && (
         <AppSection
           id="app-background-recommended"

@@ -363,7 +363,7 @@ export const TemplateList = () => {
           spine: { label: '책등', color: 'orange' },
           wing: { label: '날개', color: 'purple' },
           spread: { label: '스프레드', color: 'magenta' },
-          // 인쇄 워크플로우 v1 Phase 3 (2026-05-19)
+          // 면지 템플릿
           endpaper: { label: '면지', color: 'gold' },
         };
         const typeInfo = typeLabels[type] || { label: type, color: 'default' };

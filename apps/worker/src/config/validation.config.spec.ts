@@ -1,5 +1,5 @@
 /**
- * C-2b: DEFAULT_* 상수 값 스냅샷 단언.
+ * DEFAULT_* 상수 값 스냅샷 단언.
  *
  * 이 상수들은 pdf-validator / pdf-converter 의 실효 폴백값으로 배선돼 있다.
  * 값이 바뀌면 라이브 파트너(검증 통과/실패 판정)가 즉시 영향을 받으므로,
@@ -16,7 +16,7 @@ import {
   DEFAULT_CROP_MARK_ENABLED,
 } from './validation.config';
 
-describe('validation.config DEFAULT_* 상수 값 고정 (C-2b)', () => {
+describe('validation.config DEFAULT_* 상수 값 고정', () => {
   it('DEFAULT_BLEED_MM 은 3 (구 pdf-validator 로컬 DEFAULT_BLEED 와 동일)', () => {
     expect(DEFAULT_BLEED_MM).toBe(3);
   });

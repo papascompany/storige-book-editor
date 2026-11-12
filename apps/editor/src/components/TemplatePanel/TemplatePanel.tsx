@@ -214,8 +214,8 @@ export const TemplatePanel = memo(function TemplatePanel({
       // 세션 업데이트
       setSession(updatedSession)
 
-      // ★ 라이브 캔버스 갱신(버그 수정): setSession 만으로는 store의 pages 만 바뀌고
-      //   화면의 Fabric 캔버스는 구 템플릿 그대로였다. 서버가 교체를 영속화했으므로
+      // ★ 라이브 캔버스 갱신: setSession 만으로는 store의 pages 만 바뀌고
+      //   화면의 Fabric 캔버스는 구 템플릿 그대로다. 서버가 교체를 영속화했으므로
       //   현재 캔버스에도 새 템플릿을 적용한다. TemplatePlugin.replaceTemplate 가
       //   워크스페이스(id='workspace')와 사용자 추가 객체(isUserAdded)를 보존하며
       //   템플릿 레이어만 교체한다.

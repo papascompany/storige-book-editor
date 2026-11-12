@@ -1,4 +1,4 @@
-// ImageDpiWarningPlugin — 배치 이미지 유효 DPI 실시간 경고 테스트 (R8)
+// ImageDpiWarningPlugin — 배치 이미지 유효 DPI 실시간 경고 테스트
 //
 // 증명 대상:
 //  ① computeEffectiveDpi 순수 함수 — 150dpi 표시 규약 환산·최악 축·무효 입력 null

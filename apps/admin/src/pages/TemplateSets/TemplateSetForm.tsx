@@ -103,9 +103,9 @@ const getFullThumbnailUrl = (url: string | null | undefined): string | null => {
   return resolved || null;
 };
 
-// D-4 커버 3종 시드 코드 (2026-07-06, C-4 Track 3).
-// ⚠️ 고정 enum 금지(오너 결정 D-4) — 아래는 셀렉트 시드일 뿐, 자유 코드 입력 가능(AutoComplete).
-// packages/types 반영은 Track 1 통합 시 치환(현재는 admin 로컬 상수).
+// 커버 3종 시드 코드.
+// ⚠️ 고정 enum 금지 — 아래는 셀렉트 시드일 뿐, 자유 코드 입력 가능(AutoComplete).
+// 코드 값은 packages/types 의 COVER_TYPE_SEED_CODES 와 같다(여기는 라벨을 붙인 admin 로컬 상수).
 const COVER_TYPE_SEED_OPTIONS = [
   { value: 'hardcover_wrap', label: '하드커버 (싸바리) — hardcover_wrap' },
   { value: 'softcover_variable_spine', label: '책등가변 소프트커버 — softcover_variable_spine' },
@@ -116,14 +116,14 @@ const COVER_TYPES_WITHOUT_CASEBIND = ['softcover_variable_spine', 'ready_made'];
 
 import { matchesSpreadCandidate } from './spreadCandidate';
 import { detectCaseBindOnHardcoverWrap } from './caseBindGuard';
-// P1 캘린더 (2026-10-17) — 상품 프로파일 JSON 섹션 + 캘린더 프리셋 7종
+// 캘린더 — 상품 프로파일 JSON 섹션 + 캘린더 프리셋 7종
 import { parseProductProfileJson, stringifyProductProfile } from './productProfileJson';
 import {
   CALENDAR_PROFILE_PRESETS,
   calendarPresetFormValues,
   findCalendarProfilePreset,
 } from './calendarProfilePresets';
-// P2-d 사진인화 (2026-10-19) — 사진인화 프리셋 4종(인화·인쇄 ①②③)
+// 사진인화 — 사진인화 프리셋 4종(인화·인쇄 ①②③)
 import {
   PHOTO_PRINT_PROFILE_PRESETS,
   findPhotoPrintProfilePreset,
@@ -352,9 +352,9 @@ export const TemplateSetForm = () => {
   const [form] = Form.useForm();
   const [templates, setTemplates] = useState<(TemplateRef & { template?: Template })[]>([]);
   const [isTemplateModalOpen, setIsTemplateModalOpen] = useState(false);
-  // P1 캘린더 프리셋 셀렉트(적용 버튼을 눌러야 폼 필드에 반영)
+  // 캘린더 프리셋 셀렉트(적용 버튼을 눌러야 폼 필드에 반영)
   const [calendarPresetKey, setCalendarPresetKey] = useState<string | undefined>(undefined);
-  // P2-d 사진인화 프리셋 셀렉트(적용 버튼을 눌러야 폼 필드에 반영)
+  // 사진인화 프리셋 셀렉트(적용 버튼을 눌러야 폼 필드에 반영)
   const [photoPrintPresetKey, setPhotoPrintPresetKey] = useState<string | undefined>(undefined);
 
   const isEditing = !!id;
@@ -463,13 +463,13 @@ export const TemplateSetForm = () => {
         canAddPage: templateSet.canAddPage,
         pageCountMin: templateSet.pageCountRange?.[0],
         pageCountMax: templateSet.pageCountRange?.[templateSet.pageCountRange.length - 1],
-        // S8 내지 증감 단위 (null/미설정 = 비움 = 제약 없음)
+        // 내지 증감 단위 (null/미설정 = 비움 = 제약 없음)
         pageStep: templateSet.pageStep ?? undefined,
         // 첨부 내지 PDF 빈 페이지 배수 채움 (opt-in)
         padToPageStep: templateSet.padToPageStep === true,
         customizeMenus,
         enabledMenus: menuList,
-        // 인쇄 워크플로우 v1 Phase 3 (2026-05-19) — 면지/표지편집/레더커버
+        // 면지/표지편집/레더커버
         useEndpaper: !!templateSet.endpaperConfig,
         endpaperFrontCount: templateSet.endpaperConfig?.frontCount ?? 0,
         endpaperBackCount: templateSet.endpaperConfig?.backCount ?? 0,
@@ -481,11 +481,11 @@ export const TemplateSetForm = () => {
         pdfOutputMode: templateSet.pdfOutputMode ?? 'duplex-merged',
         colorMode: templateSet.colorMode ?? 'rgb',
         libraryCategoryIds: templateSet.libraryCategoryIds ?? [],
-        // 블리드/재단선/허용오차 (P1: 저장+전달만, 워커 동작 무변경) — 공유 타입 미반영분은 any 로 로드
+        // 블리드/재단선/허용오차 — 공유 타입 미반영분은 any 로 로드
         bleedMm: (templateSet as any).bleedMm ?? 3,
         cropMarkEnabled: (templateSet as any).cropMarkEnabled ?? false,
         sizeToleranceMm: (templateSet as any).sizeToleranceMm ?? 0.2,
-        // D-4 커버 3종 메타 (2026-07-06) — 공유 타입 미반영분(Track 1 소유)은 any 로 로드. null=미사용.
+        // 커버 3종 메타 — 공유 타입 미반영분은 any 로 로드. null=미사용.
         coverType: (templateSet as any).coverType ?? undefined,
         caseBindBoardThicknessMm: (templateSet as any).coverConfig?.caseBind?.boardThicknessMm,
         caseBindTurnInMm: (templateSet as any).coverConfig?.caseBind?.turnInMm,
@@ -500,7 +500,7 @@ export const TemplateSetForm = () => {
         pricingMinPages: templateSet.pricing?.minPages ?? 16,
         pricingPageStep: templateSet.pricing?.pageStep ?? 2,
         pricingPerPageUnit: templateSet.pricing?.perPageUnit ?? 0,
-        // P1 캘린더 (2026-10-17) — 상품 프로파일 JSON. null/미설정=빈 textarea(기존 동작)
+        // 상품 프로파일 JSON. null/미설정=빈 textarea(기존 동작)
         productProfileJson: stringifyProductProfile(templateSet.productProfile ?? null),
       });
 
@@ -569,7 +569,7 @@ export const TemplateSetForm = () => {
       enabledMenus = ALL_EDITOR_MENU_KEYS.filter((k) => selected.has(k));
     }
 
-    // 인쇄 워크플로우 v1 Phase 3 (2026-05-19) — 면지/표지편집/레더커버
+    // 면지/표지편집/레더커버
     const endpaperConfig = values.useEndpaper
       ? {
           frontCount: Math.min(6, Math.max(0, Number(values.endpaperFrontCount ?? 0))),
@@ -579,10 +579,10 @@ export const TemplateSetForm = () => {
         }
       : null;
     const coverEditable = values.coverEditable !== false; // 기본 true
-    // 결정 3-5: coverEditable=false 일 때만 의미. 그 외엔 null 로 저장 (운영 데이터 깔끔 유지)
+    // coverEditable=false 일 때만 의미. 그 외엔 null 로 저장 (운영 데이터 깔끔 유지)
     const coverPreviewImage = !coverEditable ? (values.coverPreviewImage || null) : null;
 
-    // D-4 커버 3종 메타 (2026-07-06) — 코드 기반(자유 확장, 고정 enum 금지). 비우면 null=미사용(기존 동작).
+    // 커버 3종 메타 — 코드 기반(자유 확장, 고정 enum 금지). 비우면 null=미사용(기존 동작).
     const coverType: string | null =
       typeof values.coverType === 'string' && values.coverType.trim() ? values.coverType.trim() : null;
     // caseBind(싸바리 geometry)는 소프트커버/기성커버 시드 외 코드에서 입력값이 있을 때만 저장.
@@ -622,7 +622,7 @@ export const TemplateSetForm = () => {
           }
         : null;
 
-    // P1 캘린더 (2026-10-17) — 상품 프로파일 JSON. 빈 textarea=null(기존 동작). 폼 rule 이 먼저 막지만
+    // 상품 프로파일 JSON. 빈 textarea=null(기존 동작). 폼 rule 이 먼저 막지만
     // 제출 경로에서도 한 번 더 확인한다(서버 DTO 와 같은 validateProductProfile 단일 출처).
     const parsedProfile = parseProductProfileJson(values.productProfileJson);
     if (parsedProfile.errors.length > 0) {
@@ -649,7 +649,7 @@ export const TemplateSetForm = () => {
         : fixedProfileCount !== null
           ? [fixedProfileCount, fixedProfileCount]
           : undefined,
-      // S8 내지 증감 단위 — 비우면 null(제약 없음). 내지 추가 불가 셋은 미전송(기존 값 유지).
+      // 내지 증감 단위 — 비우면 null(제약 없음). 내지 추가 불가 셋은 미전송(기존 값 유지).
       pageStep: values.canAddPage
         ? values.pageStep != null && values.pageStep !== ''
           ? Math.max(1, Math.floor(Number(values.pageStep)))
@@ -667,20 +667,20 @@ export const TemplateSetForm = () => {
       endpaperConfig,
       coverEditable,
       coverPreviewImage,
-      // D-4 커버 3종 메타 (2026-07-06) — null=미사용, 기존 셋 동작 비파괴
+      // 커버 3종 메타 — null=미사용, 기존 셋 동작 비파괴
       coverType,
       coverConfig,
       contentPdfEditable: values.contentPdfEditable !== false, // 기본 true
       pdfOutputMode: values.pdfOutputMode || 'duplex-merged',
       colorMode: values.colorMode || 'rgb',
       libraryCategoryIds: values.libraryCategoryIds || [],
-      // 블리드(사방 mm)/재단선 마커/업로드 허용오차 (P1: 저장+전달만, 워커 동작 무변경)
+      // 블리드(사방 mm)/재단선 마커/업로드 허용오차
       bleedMm: values.bleedMm ?? 3,
       cropMarkEnabled: !!values.cropMarkEnabled,
       sizeToleranceMm: values.sizeToleranceMm ?? 0.2,
       // 포토북 페이지 가변 가격 메타 (2026-06-24) — PHOTOBOOK 만 사용, 그 외 null
       pricing,
-      // P1 캘린더 (2026-10-17) — 상품 프로파일. null=기존 동작(additive)
+      // 상품 프로파일. null=기존 동작(additive)
       productProfile,
     };
 
@@ -692,7 +692,7 @@ export const TemplateSetForm = () => {
       }
     };
 
-    // N-TD-2a (2026-10-06): hardcover_wrap 세트에 caseBind 가 남으면 편집기가 싸바리 편집 모드를 끈다.
+    // hardcover_wrap 세트에 caseBind 가 남으면 편집기가 싸바리 편집 모드를 끈다.
     // 오너 결정 — 하드 차단 없이 저장 전 확인만(기본 취소). 저장 데이터 구성은 위와 같다.
     const caseBindGuard = detectCaseBindOnHardcoverWrap({
       coverType: values.coverType,
@@ -864,7 +864,7 @@ export const TemplateSetForm = () => {
     (a) => a.status === 'mismatch',
   ).length;
 
-  // P1 캘린더 (2026-10-17) — 프로파일 고정 캔버스 수와 연결 템플릿 수 비교(저장은 막지 않고 경고만)
+  // 프로파일 고정 캔버스 수와 연결 템플릿 수 비교(저장은 막지 않고 경고만)
   const productProfileJsonWatch: string | undefined = Form.useWatch('productProfileJson', form);
   const profileTemplateCountWarning = useMemo((): string | null => {
     const { value } = parseProductProfileJson(productProfileJsonWatch);
@@ -1359,7 +1359,7 @@ export const TemplateSetForm = () => {
                       }
                     </Form.Item>
 
-                    {/* ===== 인쇄 워크플로우 v1 Phase 3 (2026-05-19) — 면지/표지/레더커버 ===== */}
+                    {/* ===== 면지/표지/레더커버 ===== */}
                     <Divider>면지 (EndPaper)</Divider>
 
                     <Form.Item
@@ -1565,7 +1565,7 @@ export const TemplateSetForm = () => {
 
                     {/* 재단 · 도련 · 허용오차 입력은 「기본 정보」의 규격 카드로 옮겼다(2026-10-24). */}
 
-                    {/* D-4 커버 종류 (2026-07-06, C-4 Track 3) — 공통 3종 시드 + 자유 코드 확장 */}
+                    {/* 커버 종류 — 공통 3종 시드 + 자유 코드 확장 */}
                     <Divider>커버 종류 (공통 3종 + 확장)</Divider>
 
                     <Form.Item
@@ -1815,7 +1815,7 @@ export const TemplateSetForm = () => {
                   </>
                 ),
               },
-              // P1 캘린더 (2026-10-17) — 상품 프로파일 JSON. 비우면 null=기존 동작(additive). P2-d 사진인화 프리셋 추가 후 라벨·안내는 kind 중립(D7).
+              // 상품 프로파일 JSON. 비우면 null=기존 동작(additive). 라벨·안내는 kind 중립.
               {
                 key: 'profile',
                 label: '상품 프로파일',

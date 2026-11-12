@@ -46,7 +46,7 @@ export interface SynthesisOptions {
   /** 출력 형식: merged(기본) 또는 separate */
   outputFormat?: 'merged' | 'separate';
   /**
-   * X1F-1: 잡 contentTrim 을 trimCropContextFromJob 으로 해석한 내지 정규화 컨텍스트.
+   * 잡 contentTrim 을 trimCropContextFromJob 으로 해석한 내지 정규화 컨텍스트.
    * 없으면 {}(모르는 경로).
    */
   contentTrimCtx?: TrimCropContext;
@@ -74,7 +74,7 @@ export class PdfSynthesizerService {
 
   /**
    * Synthesize cover and content PDFs (로컬 파일 경로 반환)
-   * 설계서 기준: Synthesizer는 파일 생성, Processor는 publish
+   * 역할 분담: Synthesizer는 파일 생성, Processor는 publish
    *
    * @param coverPdfUrl 표지 PDF URL
    * @param contentPdfUrl 내지 PDF URL
@@ -99,7 +99,7 @@ export class PdfSynthesizerService {
     }
 
     // 1. 다운로드 (source 경로)
-    // P0-6(2026-06-22): 경로를 try 밖에 선언해 예외 시 finally 에서 정리 가능하도록 한다.
+    // 경로를 try 밖에 선언해 예외 시 finally 에서 정리 가능하도록 한다.
     // 과거엔 try-finally 가 없어 GS/pdf-lib 예외 시 source 파일이 디스크에 잔류했고,
     // 호출자 catch 도 localResult=null 이라 cleanup 을 건너뛰어 누수가 영구화됐다.
     const sourceCoverPath = path.join(
@@ -116,10 +116,10 @@ export class PdfSynthesizerService {
     let succeeded = false;
 
     try {
-      // 트랙 B-(f): ON 이면 스트림 다운로드(상수메모리), OFF 면 기존 전체버퍼. 산출 파일 동일.
+      // LIGHTWEIGHT_SYNTHESIS ON 이면 스트림 다운로드(상수메모리), OFF 면 기존 전체버퍼. 산출 파일 동일.
       await this.downloadToPath(coverPdfUrl, sourceCoverPath, 'cover');
       await this.downloadToPath(contentPdfUrl, sourceContentPath, 'content');
-      // X1: 내지 입력(이미 임시 사본)의 재단선 영역 크롭 정규화 — 표지 제외.
+      // 내지 입력(이미 임시 사본)의 재단선 영역 크롭 정규화 — 표지 제외.
       await this.normalizeContentInPlaceCopy(
         sourceContentPath,
         options.logTag ?? 'merge',
@@ -289,7 +289,7 @@ export class PdfSynthesizerService {
     // perfect binding: 표지 전면 + 내지 전체 + 표지 후면
     // saddle stitch: 내지 페이지를 saddle stitch 순서로 재배열
 
-    // 트랙 B-(f): ON 이면 표지 구조 분석을 qpdf 메타(파일기반)로. OFF 면 pdf-lib load (불변).
+    // LIGHTWEIGHT_SYNTHESIS ON 이면 표지 구조 분석을 qpdf 메타(파일기반)로. OFF 면 pdf-lib load (불변).
     const lightweight = VALIDATION_CONFIG.LIGHTWEIGHT_SYNTHESIS;
     let coverPageCount: number;
     if (lightweight) {
@@ -312,12 +312,11 @@ export class PdfSynthesizerService {
     try {
       // 표지 구조에 따라 병합 순서 결정
       if (bindingType === 'saddle') {
-        // 중철 제본 (P4 v1, 2026-04-29):
+        // 중철 제본:
         //  - 표지: 입력 4 페이지 [앞표지, 앞표지 안쪽, 뒷표지 안쪽, 뒷표지]
         //          → 출력 펼침면 2 페이지 (외부 [뒷|앞], 내부 [뒷안 |앞안])
         //  - 내지: 변경 없음 (단일 페이지 그대로)
-        //  - saddle stitch 페이지 재배열은 추후 고객 요청 시 별도 작업
-        // 자세한 spec: .cursor/plans/saddle-stitch-spec.md
+        //  - saddle stitch 내지 페이지 재배열은 하지 않는다
 
         const composedCoverPath = path.join(
           this.storagePath,
@@ -469,10 +468,9 @@ export class PdfSynthesizerService {
   }
 
   /**
-   * Saddle stitch (중철) 표지 펼침면 2-up 합성 — P4 v1
+   * Saddle stitch (중철) 표지 펼침면 2-up 합성
    *
    * 입력 cover.pdf 4 페이지를 펼침면 2 페이지로 합성.
-   * 자세한 spec: `.cursor/plans/saddle-stitch-spec.md`
    *
    * 입력 페이지 순서 가정: [p1=앞표지, p2=앞표지 안쪽, p3=뒷표지 안쪽, p4=뒷표지]
    * 출력:
@@ -603,13 +601,13 @@ export class PdfSynthesizerService {
   }
 
   // ============================================================================
-  // Split Synthesis (단일 PDF 분리) - ★ v1.1.4 설계서
+  // Split Synthesis (단일 PDF 분리)
   // ============================================================================
 
   /**
    * PDF 문서에서 인덱스 기반으로 페이지 분리
    *
-   * ★ 설계서 v1.1.4 기준:
+   * ★ 구현 기준:
    * - pdfDoc을 직접 받아 I/O 최소화
    * - jobTempDir로 jobId scoped 임시 파일 (동시 작업 안전)
    * - cover.pdf, content.pdf 생성
@@ -670,7 +668,7 @@ export class PdfSynthesizerService {
     contentPath: string,
     outputPath: string,
   ): Promise<void> {
-    // 트랙 B-(f): ON 이면 qpdf 파일기반 병합(상수메모리·순서/치수/인쇄속성 무손실).
+    // LIGHTWEIGHT_SYNTHESIS ON 이면 qpdf 파일기반 병합(상수메모리·순서/치수/인쇄속성 무손실).
     if (VALIDATION_CONFIG.LIGHTWEIGHT_SYNTHESIS) {
       await qpdfMergePdfs([coverPath, contentPath], outputPath);
       const pageCount = (await extractPdfMetadataQpdf(outputPath)).pageCount;
@@ -741,19 +739,19 @@ export class PdfSynthesizerService {
       return new Uint8Array(buffer);
     }
 
-    // 그 외: HTTP/HTTPS URL — SSRF 가드(P0-1 M1): 내부망 페치 차단 + 리다이렉트 우회 차단.
+    // 그 외: HTTP/HTTPS URL — SSRF 가드: 내부망 주소를 거부하고 리다이렉트를 따르지 않는다.
     await assertSafeDownloadUrl(url);
     const response = await axios.get(url, {
       responseType: 'arraybuffer',
       maxRedirects: 0,
-      timeout: 60000, // EH-003: 무응답 외부 URL 로 워커 잡 무한대기 방지
+      timeout: 60000, // 무응답 외부 URL 로 워커 잡 무한대기 방지
     });
 
     return new Uint8Array(response.data);
   }
 
   /**
-   * 트랙 B-(f) — 빈(0페이지) PDF 1개 작성. ON 의 spread content 병합에서 내지가 0건일 때
+   * 빈(0페이지) PDF 1개 작성. ON 의 spread content 병합에서 내지가 0건일 때
    * OFF(`PDFDocument.create()+save()`, 0페이지)와 동일 산출을 내기 위함(qpdf 는 0건 병합 불가).
    */
   private async writeEmptyPdf(destPath: string): Promise<void> {
@@ -762,7 +760,7 @@ export class PdfSynthesizerService {
   }
 
   /**
-   * 트랙 B-(f) — url 을 destPath 에 확보한다.
+   * url 을 destPath 에 확보한다.
    *   ON (LIGHTWEIGHT_SYNTHESIS) : downloadToTempFile 로 스트림 다운로드(메모리 비경유) 후
    *                                destPath 로 복사. 로컬 원본도 동일하게 destPath 로 복사한다
    *                                (OFF 가 downloadFile→writeFile 로 destPath 파일을 만들던 것과 동일 산출).
@@ -819,7 +817,7 @@ export class PdfSynthesizerService {
   }
 
   // ============================================================================
-  // Spread Synthesis (스프레드 PDF 합성) - ★ v2.5 설계서
+  // Spread Synthesis (스프레드 PDF 합성)
   // ============================================================================
 
   /**
@@ -877,9 +875,9 @@ export class PdfSynthesizerService {
     const lightweight = VALIDATION_CONFIG.LIGHTWEIGHT_SYNTHESIS;
 
     const spreadPdfPath = path.join(jobTempDir, `spread_${spreadPdfFileId}.pdf`);
-    // SEC-008: /files/:id/external DTO 에 filePath 없음 → backend 무관하게 api://(API 가 local/s3 라우팅).
+    // /files/:id/external DTO 에 filePath 없음 → backend 무관하게 api://(API 가 local/s3 라우팅).
     const spreadSourceUrl = `api://${spreadFile.id}`;
-    // 트랙 B-(f): ON 이면 스트림 다운로드(상수메모리), OFF 면 기존 전체버퍼. 산출 파일 동일.
+    // LIGHTWEIGHT_SYNTHESIS ON 이면 스트림 다운로드(상수메모리), OFF 면 기존 전체버퍼. 산출 파일 동일.
     await this.downloadToPath(spreadSourceUrl, spreadPdfPath, 'spread');
 
     // 2-1. 스프레드 PDF 검증: 1페이지 + MediaBox 일치
@@ -951,9 +949,9 @@ export class PdfSynthesizerService {
 
       const contentPdfPath = path.join(jobTempDir, `content_${fileId}.pdf`);
       const contentSourceUrl = `api://${contentFile.id}`;
-      // 트랙 B-(f): ON 이면 스트림 다운로드(상수메모리), OFF 면 기존 전체버퍼. 산출 파일 동일.
+      // LIGHTWEIGHT_SYNTHESIS ON 이면 스트림 다운로드(상수메모리), OFF 면 기존 전체버퍼. 산출 파일 동일.
       await this.downloadToPath(contentSourceUrl, contentPdfPath, 'content');
-      // X1: 내지 입력(jobTempDir 사본) 재단선 영역 크롭 정규화 — 스프레드 표지 제외.
+      // 내지 입력(jobTempDir 사본) 재단선 영역 크롭 정규화 — 스프레드 표지 제외.
       await this.normalizeContentInPlaceCopy(contentPdfPath, 'spread');
       contentPdfPaths.push(contentPdfPath);
     }
@@ -1050,12 +1048,12 @@ export class PdfSynthesizerService {
   }
 
   /**
-   * X1 (2026-09-30): 합성 내지 입력의 재단선 영역 크롭 정규화.
+   * 합성 내지 입력의 재단선 영역 크롭 정규화.
    *
    * copyPath 는 이 서비스가 다운로드해 만든 **임시 사본**이어야 한다(스토리지 원본 아님).
    * 정규화는 별도 임시파일에 쓰고(normalizeTrimBoxFile 은 입력에 쓰지 않음), 적용된
    * 경우에만 그 결과로 copyPath 를 교체한다.
-   * - ctx 에 주문 재단·도련(contentTrim, X1F-1)이 있으면 '아는 경로': TrimBox ≈ 주문 재단(±tol)인
+   * - ctx 에 주문 재단·도련(contentTrim)이 있으면 '아는 경로': TrimBox ≈ 주문 재단(±tol)인
    *   내지를 TrimBox + 사방 주문 도련(주문 작업사이즈)으로 크롭한다. 이미 그 크기(±tol)면 무변경.
    * - ctx 가 {} 이면 '모르는 경로' 규칙(TrimBox 둘레 여백 ≥ 5mm·사방 균등 + 명시 BleedBox 바깥
    *   여백 ≥ 5mm 일 때만, 도련 = 명시 BleedBox 최소 여백 ≤ 3mm)으로만 크롭한다. BleedBox 부재·
@@ -1087,7 +1085,7 @@ export class PdfSynthesizerService {
         `${apiBaseUrl}/edit-sessions/${sessionId}`,
         {
           headers: { 'X-API-Key': process.env.WORKER_API_KEY },
-          timeout: 30000, // processor getFileById(EH-005)와 같은 값
+          timeout: 30000, // processor getFileById 와 같은 값
         },
       );
       return response.data;
@@ -1108,7 +1106,7 @@ export class PdfSynthesizerService {
     try {
       const response = await axios.get(`${apiBaseUrl}/files/${fileId}/external`, {
         headers: { 'X-API-Key': process.env.WORKER_API_KEY },
-        timeout: 30000, // processor getFileById(EH-005)와 같은 값
+        timeout: 30000, // processor getFileById 와 같은 값
       });
       return response.data;
     } catch (error: any) {
@@ -1118,7 +1116,7 @@ export class PdfSynthesizerService {
   }
 
   /**
-   * JD-2 (2026-10): spread 조회 실패 매핑 — 합성 큐 재시도 분류(processors/synthesis-retry)와 짝.
+   * spread 조회 실패 매핑 — 합성 큐 재시도 분류(processors/synthesis-retry)와 짝.
    * - 404 → null (호출부가 SESSION_NOT_FOUND / FILE_NOT_FOUND 로 즉시 실패)
    * - 408·425·429·5xx·응답 없음(네트워크·시간 초과) → DomainError(SERVICE_UNAVAILABLE) — 재시도 대상
    * - 그 밖의 4xx → null (재시도하지 않는 NOT_FOUND 실패, 기존 errorCode 유지)
@@ -1154,7 +1152,7 @@ export class PdfSynthesizerService {
     }
 
     const { spine } = session.metadata;
-    // S7: paperType 은 spineWidthMm===0 이고 bindingType 이 공식제본(perfect/hardcover, 대소문자 무시)이
+    // paperType 은 spineWidthMm===0 이고 bindingType 이 공식제본(perfect/hardcover, 대소문자 무시)이
     // 아닐 때만(스프링·중철 등) 생략 가능. 동일 predicate: editor buildSpreadSnapshots,
     // packages/types SpineSnapshot.paperType 주석, api EditSessionsService.validateSpreadSnapshot.
     const paperTypeOptional: boolean =
@@ -1162,7 +1160,7 @@ export class PdfSynthesizerService {
       !!spine.bindingType &&
       !['perfect', 'hardcover'].includes(String(spine.bindingType).toLowerCase());
     if (
-      // S7: spineWidthMm 은 유한수 ≥ 0 이면 유효(0 = 책등 없는 책) — truthy 검사로 0 을 거르지 않는다.
+      // spineWidthMm 은 유한수 ≥ 0 이면 유효(0 = 책등 없는 책) — truthy 검사로 0 을 거르지 않는다.
       typeof spine.spineWidthMm !== 'number' ||
       !Number.isFinite(spine.spineWidthMm) ||
       spine.spineWidthMm < 0 ||

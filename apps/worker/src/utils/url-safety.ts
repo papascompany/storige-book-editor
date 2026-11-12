@@ -1,11 +1,10 @@
 /**
- * SSRF 방어 — 워커가 임의 외부 URL 을 페치하기 전 안전성 검증 (P0-1, 2026-06-22).
+ * SSRF 방어 — 워커가 임의 외부 URL 을 페치하기 전 안전성 검증.
  *
  * downloadToTempFile 의 raw-URL 분기(api://·로컬경로가 아닌 임의 http(s) URL)는
- * 인증 없는 잡 적재(compose-mixed/render-pages @Public)와 맞물려, 공격자가
- * coverUrl/contentPdfUrl/fileUrl 에 http://169.254.169.254/... (AWS 메타데이터),
- * http://redis:6379, http://mariadb:3306, http://localhost:4000/api/... 등을 넣으면
- * 워커가 내부망을 페치하는 SSRF 가 가능했다.
+ * 잡 페이로드의 coverUrl/contentPdfUrl/fileUrl 을 그대로 받는다. 워커는 그 URL 이
+ * 내부망(클라우드 메타데이터 주소·도커 내부 서비스·localhost)을 가리키면
+ * 페치하지 않고 UnsafeDownloadUrlError 로 거부한다.
  *
  * 이 유틸은 raw-URL 다운로드 직전에 호출되어:
  *  - http/https 스킴만 허용(file://·gopher:// 등 거부)

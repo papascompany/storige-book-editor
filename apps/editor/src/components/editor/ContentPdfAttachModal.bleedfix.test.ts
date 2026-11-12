@@ -1,11 +1,11 @@
 /**
- * T3 적대검증 후속(2026-07-13) — ContentPdfAttachModal 도련 자동변환(fix-bleed) 로직 잠금.
+ * ContentPdfAttachModal 도련 자동변환(fix-bleed) 로직 잠금.
  *
  * 모달 컴포넌트에서 추출한 순수 헬퍼를 검증한다(컴포넌트 렌더 없이):
- *  - P1-3: shouldRunBleedFix — completed 한정 게이트(fixable/failed 미발화)
- *  - P1-2: pollBleedFixJob — COMPLETED+outputFileId=null 레이스 grace 재폴링
- *  - P1-1: pollBleedFixJob — isCancelled 신호 시 즉시 cancelled(추가 조회 중단)
- *  - P2-5: computeBleedFixPollLimit — 파일 크기 비례 폴링 상한(총 상한 200회≈5분)
+ *  - shouldRunBleedFix — completed 한정 게이트(fixable/failed 미발화)
+ *  - pollBleedFixJob — COMPLETED+outputFileId=null 레이스 grace 재폴링
+ *  - pollBleedFixJob — isCancelled 신호 시 즉시 cancelled(추가 조회 중단)
+ *  - computeBleedFixPollLimit — 파일 크기 비례 폴링 상한(총 상한 200회≈5분)
  */
 import { describe, it, expect } from 'vitest'
 import {
@@ -18,7 +18,7 @@ import {
 
 const MB = 1024 * 1024
 
-describe('computeBleedFixPollLimit (P2-5: 파일 크기 비례 폴링 상한)', () => {
+describe('computeBleedFixPollLimit (파일 크기 비례 폴링 상한)', () => {
   it('0 byte → 기본 40회(≈60s)', () => {
     expect(computeBleedFixPollLimit(0)).toBe(40)
   })
@@ -55,7 +55,7 @@ describe('computeBleedFixTargetSize (배너/마커 목표 작업 사이즈)', ()
   })
 })
 
-describe('shouldRunBleedFix (P1-3: completed 한정 게이트)', () => {
+describe('shouldRunBleedFix (completed 한정 게이트)', () => {
   const warn = { code: 'BLEED_MISSING', message: '도련 없음' }
 
   it('completed + BLEED_MISSING 경고 → true (불변식: 재단 사이즈 매치+도련 없음)', () => {
@@ -88,7 +88,7 @@ describe('shouldRunBleedFix (P1-3: completed 한정 게이트)', () => {
   })
 })
 
-describe('pollBleedFixJob (P1-1 취소 / P1-2 grace 재폴링)', () => {
+describe('pollBleedFixJob (취소 / grace 재폴링)', () => {
   const seq = (responses: Array<{ status: string; outputFileId?: string | null }>) => {
     let calls = 0
     const getJob = async () => {
@@ -108,7 +108,7 @@ describe('pollBleedFixJob (P1-1 취소 / P1-2 grace 재폴링)', () => {
     expect(outcome).toEqual({ kind: 'completed', outputFileId: 'file-fixed' })
   })
 
-  it('P1-2: COMPLETED+null 레이스 → grace 재폴링으로 outputFileId 회수(즉시 실패 판정 금지)', async () => {
+  it('COMPLETED+null 레이스 → grace 재폴링으로 outputFileId 회수(즉시 실패 판정 금지)', async () => {
     // API 가 status=COMPLETED 저장 → 별도 save 로 outputFileId 등록하는 2단계 쓰기 재현
     const { getJob, callCount } = seq([
       { status: 'COMPLETED', outputFileId: null },
@@ -120,7 +120,7 @@ describe('pollBleedFixJob (P1-1 취소 / P1-2 grace 재폴링)', () => {
     expect(callCount()).toBe(3) // 본폴링 1 + grace 2
   })
 
-  it('P1-2: grace 소진(5회)까지 null → completed-no-output (등록 실패 판정)', async () => {
+  it('grace 소진(5회)까지 null → completed-no-output (등록 실패 판정)', async () => {
     const { getJob, callCount } = seq([{ status: 'COMPLETED', outputFileId: null }])
     const outcome = await pollBleedFixJob(getJob, { maxAttempts: 10, intervalMs: 0 })
     expect(outcome).toEqual({ kind: 'completed-no-output' })
@@ -140,7 +140,7 @@ describe('pollBleedFixJob (P1-1 취소 / P1-2 grace 재폴링)', () => {
     expect(callCount()).toBe(3)
   })
 
-  it('P1-1: 폴링 중 취소 → cancelled + 이후 조회 중단', async () => {
+  it('폴링 중 취소 → cancelled + 이후 조회 중단', async () => {
     const { getJob, callCount } = seq([{ status: 'PROCESSING' }])
     let polled = 0
     const outcome = await pollBleedFixJob(
@@ -154,7 +154,7 @@ describe('pollBleedFixJob (P1-1 취소 / P1-2 grace 재폴링)', () => {
     expect(callCount()).toBe(2) // 취소 시점 이후 추가 GET 없음
   })
 
-  it('P1-1: grace 재폴링 중 취소 → cancelled', async () => {
+  it('grace 재폴링 중 취소 → cancelled', async () => {
     let polled = 0
     const outcome = await pollBleedFixJob(
       async () => {

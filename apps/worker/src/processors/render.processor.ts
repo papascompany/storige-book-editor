@@ -20,12 +20,12 @@ interface RenderPagesJobData {
  *
  * `pdf-conversion` 큐를 공유하되 'render-pdf-pages' 잡만 처리.
  * 표시전용 가이드라 우선순위가 낮고 N페이지 직렬 GS 호출이라 동시성 1 로 검증/변환을 방해하지 않음.
- * 이 큐의 failed 리스너(JD-4 stalled 한도 초과 기록)는 ConversionProcessor 한 곳에만 둔다.
+ * 이 큐의 failed 리스너(stalled 한도 초과 기록)는 ConversionProcessor 한 곳에만 둔다.
  */
 @Processor('pdf-conversion')
 export class RenderProcessor {
   private readonly logger = new Logger(RenderProcessor.name);
-  // WK-4 — 상태 업데이트 재시도 공유 서비스 (DI 대신 직접 생성 — 기존 스펙 생성자 고정)
+  // 상태 업데이트 재시도 공유 서비스 (DI 대신 직접 생성 — 기존 스펙 생성자 고정)
   private readonly jobStatusService = new JobStatusService();
 
   constructor(private readonly rendererService: PdfPageRendererService) {}
@@ -79,7 +79,7 @@ export class RenderProcessor {
   }
 
   /**
-   * WK-4: 무재시도 axios.patch → 공유 JobStatusService(재시도 5회·최대 30s 백오프,
+   * 무재시도 axios.patch → 공유 JobStatusService(재시도 5회·최대 30s 백오프,
    * 최종 실패 시 Sentry capture)로 대체. 페이로드 wire 포맷은 기존 그대로 유지.
    */
   private async updateJobStatus(

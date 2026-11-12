@@ -10,14 +10,14 @@ const execFileAsync = promisify(execFile);
 const logger = new Logger('AnnotationsQpdf');
 
 /**
- * R4a (2026-08-11) — 주석(Annotation)/양식(AcroForm) 검출.
+ * 주석(Annotation)/양식(AcroForm) 검출.
  *
  * 고객이 교정 코멘트(스티키노트·하이라이트·자유텍스트)나 폼 필드가 남은 PDF 를
  * 제출하는 사고 대응. 기반 ISO 15930(PDF/X)은 인쇄 영역 내 주석·폼을 금지한다.
  *
- * 도구: qpdf --json (R2 감사에서 채택 판정한 미활용 기능). 구현 규약은
+ * 도구: qpdf --json. 구현 규약은
  * pdf-metadata-qpdf.ts 와 동형(execFile+env 경로+타임아웃+경고 code 3 회수),
- * 실패는 null 흡수(R2/R3 규약 — 검출 실패가 검증을 방해하지 않는다).
+ * 실패는 null 흡수(검출 실패가 검증을 방해하지 않는다).
  *
  * 분류:
  *  - Link/Popup 서브타입은 집계에서 제외 — Link 는 인쇄 외형(appearance)이 없어
@@ -165,7 +165,7 @@ export async function detectAnnotationsQpdf(
 }
 
 // ============================================================
-// R4b (2026-08-11): 페이지 기하 이상 검출 — GWG R0002~R0006 슬라이스
+// 페이지 기하 이상 검출 — GWG R0002~R0006 슬라이스
 // ============================================================
 
 /**

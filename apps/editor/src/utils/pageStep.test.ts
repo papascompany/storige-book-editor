@@ -10,7 +10,7 @@ import {
   adjacentDeleteIndices,
 } from './pageStep'
 
-describe('pageStep 순수 헬퍼 (S8)', () => {
+describe('pageStep 순수 헬퍼', () => {
   it('normalizePageStep: >=2 정수만 유효, 나머지는 null(제약 없음)', () => {
     expect(normalizePageStep(2)).toBe(2)
     expect(normalizePageStep('4')).toBe(4)
@@ -76,7 +76,7 @@ describe('pageStep 순수 헬퍼 (S8)', () => {
     expect(livePhysicalPageCount({ canvasCount: 3, isSpreadMode: false })).toBe(3)
   })
 
-  it('livePhysicalPageCount: 표지+내지펼침면은 내지 캔버스 1장 = 2쪽(2026-09-28)', () => {
+  it('livePhysicalPageCount: 표지+내지펼침면은 내지 캔버스 1장 = 2쪽', () => {
     // 표지 1 + 펼침면 8장 = 16p (호스트 주문 pageCount 16 과 일치)
     expect(livePhysicalPageCount({ canvasCount: 9, isSpreadMode: true, regionScope: 'cover', pagesPerCanvas: 2 })).toBe(16)
     // 낱장 내지는 1 (기본값과 동일)

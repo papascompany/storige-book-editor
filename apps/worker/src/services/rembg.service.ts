@@ -4,19 +4,19 @@ import { v4 as uuidv4 } from 'uuid';
 import { DomainError, ErrorCodes } from '../common/errors';
 
 /**
- * rembg 사이드카 HTTP 클라이언트 (2026-08-05, S-P2A-B 샤드2 / D-12a=C).
+ * rembg 사이드카 HTTP 클라이언트.
  *
  * 배경: 워커 베이스 이미지가 Alpine(musl)이라 onnxruntime-node 계열은 설치는 되지만
- * 런타임 import 에서 터진다(스파이크 §1-1 실측). 따라서 배경제거 추론은 워커 프로세스가
+ * 런타임 import 에서 터진다(실측). 따라서 배경제거 추론은 워커 프로세스가
  * 아니라 **별도 rembg 컨테이너**가 HTTP 로 수행하고, 워커는 얇은 클라이언트만 갖는다.
  * ⚠️ 워커에 ML 네이티브 의존(onnxruntime/@imgly 등)을 추가하지 마라 — 컨테이너가 안 뜬다.
  *
  * SSRF 가드: 대상 URL 은 **오직 env(REMBG_URL/REMBG_ENDPOINT)** 에서만 만들어진다.
- * 잡 페이로드가 줄 수 있는 값은 모델 키뿐이고, 그마저 화이트리스트 정규식으로 걸러
- * 쿼리스트링·경로를 오염시키지 못하게 한다.
+ * 잡 페이로드가 줄 수 있는 값은 모델 키뿐이고, 그 키도 화이트리스트 정규식을 통과해야
+ * 요청에 실린다.
  */
 
-/** docker-compose 서비스명/포트 규약 — 실제 값은 compose(docker 트랙)가 env 로 주입 */
+/** docker-compose 서비스명/포트 규약 — 실제 값은 compose 가 env 로 주입 */
 const DEFAULT_REMBG_URL = 'http://rembg:7000';
 /** rembg FastAPI 서버의 배경제거 라우트 */
 const DEFAULT_REMBG_ENDPOINT = '/api/remove';
@@ -26,21 +26,21 @@ const DEFAULT_REMBG_TIMEOUT_MS = 120_000;
  * 워커측 기본 모델 키. 정본 기본값은 compose env(REMBG_MODEL)가 주입하지만,
  * env 미주입 환경에서도 **compose 기본값과 같은 모델**로 동작하도록 맞춰 둔다
  * (불일치 시 "모델이 바뀐 줄 모른 채 품질만 나빠지는" 관측 불가 상태가 된다).
- * ⚠️ 모델마다 라이선스가 다르다 — 상업 사용 가부는 D-12b 결정표를 따를 것.
- * u2net_human_seg = U-2-Net 계열 **인물 전용** — D-12b 재결정(2026-08-06 오너 QA 후).
+ * ⚠️ 모델마다 라이선스가 다르다 — 모델을 바꿀 때는 상업 사용 가부를 먼저 확인할 것.
+ * u2net_human_seg = U-2-Net 계열 **인물 전용**.
  * 같은 사진 실측에서 반투명 픽셀 24.2%(u2net) → 2.7% 로, 정장·셔츠가 지워지던 문제가 해소됐다.
  * ⚠️ birefnet 계열(MIT)로 되돌리지 말 것: 프로덕션 박스에서 cgroup OOM 한다(실측 RSS 3.13GB).
  * ⚠️ 사람이 아닌 피사체는 `isnet-general-use`(범용)를 잡 파라미터로 명시하는 쪽이 낫다.
  */
 const DEFAULT_REMBG_MODEL = 'u2net_human_seg';
 
-/** rembg 세션(모델) 키 허용 문자 — URL 오염 방지용 화이트리스트 */
+/** rembg 세션(모델) 키 허용 문자 화이트리스트 */
 const MODEL_KEY_PATTERN = /^[A-Za-z0-9._-]{1,64}$/;
 
 /**
- * CVE-2026-40086 방어선(2.0.75 에서 수정된 경로 순회) — `*_custom` 세션은
+ * `*_custom` 세션 키는 거부한다(CVE-2026-40086, rembg 2.0.75 에서 수정) — 이 세션은
  * 외부 가중치 경로를 그대로 열기 때문에 **요청을 조립하는 이쪽에서도** 막는다.
- * API 프로듀서의 화이트리스트만 믿으면, 큐에 잡을 넣는 다른 경로가 생기는 순간 방어가 사라진다.
+ * API 프로듀서의 화이트리스트와 별개로 워커가 한 번 더 검사한다.
  */
 const CUSTOM_SESSION_MARKER = '_custom';
 
@@ -72,7 +72,7 @@ export class RembgService {
   private readonly timeoutMs = Number(process.env.REMBG_TIMEOUT_MS) || DEFAULT_REMBG_TIMEOUT_MS;
   private readonly defaultModel = process.env.REMBG_MODEL || DEFAULT_REMBG_MODEL;
 
-  /** 잡이 요청한 모델 키 검증 + 기본값 폴백. 부적합하면 즉시 실패(URL 오염 차단). */
+  /** 잡이 요청한 모델 키 검증 + 기본값 폴백. 부적합하면 즉시 실패. */
   resolveModel(requested?: string): string {
     const key = (requested ?? '').trim() || this.defaultModel;
     if (!MODEL_KEY_PATTERN.test(key)) {
@@ -107,8 +107,8 @@ export class RembgService {
     // ⚠️ **model 은 반드시 바디 필드다.** rembg 의 `GET /api/remove` 는 model 을 쿼리로 받지만
     //    `POST /api/remove` 의 쿼리 파라미터는 bgc·extras 뿐이고 model 은 multipart 필드다
     //    (OpenAPI 실측, v2.0.77). 쿼리로 보내면 **에러 없이 무시되고 기본 모델(u2net)로 추론**돼
-    //    결과는 정상처럼 보이는데 CutoutJobResult.model 만 거짓이 된다 — 라이선스 감사 추적
-    //    (D-12b)이 통째로 틀어지는 조용한 실패라, 실기 스모크에서만 잡혔다.
+    //    결과는 정상처럼 보이는데 CutoutJobResult.model 만 거짓이 된다 — 라이선스 감사 추적이
+    //    통째로 틀어지는 조용한 실패다.
     const boundary = `----storige${uuidv4().replace(/-/g, '')}`;
     const modelPart = Buffer.from(
       `--${boundary}\r\n` +

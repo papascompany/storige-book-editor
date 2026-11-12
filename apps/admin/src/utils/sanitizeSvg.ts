@@ -1,14 +1,13 @@
 /**
  * sanitizeSvgMarkup — 의존성 없는 화이트리스트 기반 SVG 새니타이저.
  *
- * 배경(감사 DEP-7 / CVE-2026-27013): fabric <7.2.0 의 SVG export 가 Stored XSS 를
- * 유발할 수 있다. 본 코드베이스에서 export/변환 SVG 가 **라이브 DOM 에 그대로
+ * 적용 대상: export/변환 SVG 가 **라이브 DOM 에 그대로
  * 주입되는** 유일한 경로는 admin TemplateImport 의 미리보기
  * (`dangerouslySetInnerHTML={{ __html: previewSvg }}`)이며, 이 previewSvg 는
  * **신뢰할 수 없는 업로드 IDML/PSD** 를 변환한 결과(`buildPreviewSvg`)다.
  *
  * 그 외 export 경로(canvas.toSVG -> svg2pdf -> PDF, `<img src=blob:svg>` 폴백)는
- * 스크립트가 실행되지 않아 XSS 실효가 없다. 따라서 새니타이즈는 이 렌더 경계에만
+ * 스크립트가 실행되지 않는다. 따라서 새니타이즈는 이 렌더 경계에만
  * 적용한다.
  *
  * 입력은 우리가 생성한 SVG(알려진 요소/속성 집합)이므로 DOMPurify(~45KB) 대신
@@ -51,13 +50,13 @@ const SAFE_URL_RE = /^(?:data:image\/(?:png|jpeg|jpg|gif|webp|svg\+xml);|#|https
 const HREF_ATTRS = new Set(['href', 'xlink:href'])
 
 // URL 정규화: 제어문자(U+0000..U+0020) + 제로폭/방향마커(U+200B..U+200F) + BOM(U+FEFF)
-// 제거용. "java<TAB>script:" / 제로폭 삽입 류 스킴 우회를 차단한다. 리터럴 제어/제로폭
+// 제거용. 스킴 판정 전에 이 문자들을 지운다. 리터럴 제어/제로폭
 // 문자를 소스에 두면 no-irregular-whitespace/no-control-regex 에 걸리므로 코드포인트
 // 기반으로 RegExp 를 동적 생성한다.
 // eslint-disable-next-line no-control-regex -- 보안 목적의 의도적 제어문자 매칭
 const URL_STRIP_RE = new RegExp('[\\u0000-\\u0020\\u200B-\\u200F\\uFEFF]', 'g')
 
-/** 공백/제어문자를 정규화한 뒤 위험 스킴 여부를 판정(우회 방지). */
+/** 공백/제어문자를 정규화한 뒤 위험 스킴 여부를 판정. */
 function isSafeUrl(raw: string | null): boolean {
   if (!raw) return false
   const v = raw.replace(URL_STRIP_RE, '').toLowerCase()
@@ -77,7 +76,7 @@ function scrubAttributes(el: Element): void {
       el.removeAttribute(attr.name)
       continue
     }
-    // 2) style — url(javascript:...) / expression 등 우회 벡터 제거(미리보기에 불필요)
+    // 2) style 속성은 통째로 제거(미리보기에 불필요)
     if (name === 'style') {
       el.removeAttribute(attr.name)
       continue

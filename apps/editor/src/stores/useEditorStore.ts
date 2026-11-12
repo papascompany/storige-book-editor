@@ -45,33 +45,33 @@ interface EditorState {
   templateSetName: string | null
   canAddPage: boolean
   pageCountRange: number[]
-  // A13: 제본 방식(설정 시에만 제본별 최소/최대 페이지 가드 적용. null=제약 없음 — 비제본/미설정 상품 무영향)
+  // 제본 방식(설정 시에만 제본별 최소/최대 페이지 가드 적용. null=제약 없음 — 비제본/미설정 상품 무영향)
   bindingType: BindingType | null
   /**
-   * 호스트 쪽수 범위를 보낸 쪽(W5). min=true 면 제본 최소, max=true 면 제본 최대를 적용하지 않는다
+   * 호스트 쪽수 범위를 보낸 쪽. min=true 면 제본 최소, max=true 면 제본 최대를 적용하지 않는다
    * (키별 대체 — bindingPageBounds). 스프레드 로더만 설정하며 persist 하지 않는다.
    */
   hostPageLimitSides: HostPageLimitSides
   /**
    * 캔버스 1장이 담는 **물리 페이지 수**. 낱장 내지=1, 펼침면(2-up) 내지=2.
    * pageCountRange·제본 제약은 물리 페이지 기준이라, 펼침면 세션에서 캔버스 수를 그대로
-   * 비교하면 상한/하한이 정확히 절반으로 잘못 걸린다(2026-08-03).
+   * 비교하면 상한/하한이 정확히 절반으로 잘못 걸린다.
    */
   pagesPerCanvas: number
   /**
-   * S8 (2026-09-28): 내지 페이지 증감 단위(templateSet.pageStep, normalizePageStep 적용).
+   * 내지 페이지 증감 단위(templateSet.pageStep, normalizePageStep 적용).
    * null=제약 없음(기존 1장 단위). N 이면 물리 페이지 수가 N 의 배수가 되도록 한 번에 여러 장을
    * 추가/삭제하고, 배수가 아니면 편집완료를 차단한다(utils/pageStep).
    */
   pageStep: number | null
   /**
-   * 첨부 내지 PDF(underlay) 빈 페이지 배수 채움(templateSet.padToPageStep, 2026-09-28).
+   * 첨부 내지 PDF(underlay) 빈 페이지 배수 채움(templateSet.padToPageStep).
    * true 면 첨부 모달이 PDF 쪽수가 pageStep 배수가 아닐 때 서버(fix-pagecount/attach)로 끝에 빈 페이지를
    * 붙인 채움본을 만들어 첨부한다. pageStep=null 이면 무의미.
    */
   padToPageStep: boolean
   /**
-   * S8: pageStep 산정 기준(스프레드 여부·regionScope). 로더가 pageStep 과 함께 적재한다.
+   * pageStep 산정 기준(스프레드 여부·regionScope). 로더가 pageStep 과 함께 적재한다.
    * 추가/삭제 단위는 pages.length(= allCanvas 1:1)를 완료 가드와 **같은 산식**(pageStepMetric)으로
    * 환산해 계산한다 — 내지 TemplateType(PAGE/SPREAD)에 의존하지 않는다.
    */
@@ -112,14 +112,14 @@ interface EditorActions {
   getPageCount: () => number
   canDeletePage: (pageId: string) => boolean
   canAddMorePages: () => boolean
-  /** S8: '추가' 1회에 생성할 캔버스 수 (pageStep=null → 1) */
+  /** '추가' 1회에 생성할 캔버스 수 (pageStep=null → 1) */
   getPageAddUnit: () => number
-  /** S8: '삭제' 1회에 제거할 캔버스 수 (pageStep=null → 1) */
+  /** '삭제' 1회에 제거할 캔버스 수 (pageStep=null → 1) */
   getPageDeleteUnit: () => number
-  /** S8: 캔버스 1장 추가/삭제 시 가드 기준 증감 페이지 수 (내지 전용 펼침면=2, 그 외=1) */
+  /** 캔버스 1장 추가/삭제 시 가드 기준 증감 페이지 수 (내지 전용 펼침면=2, 그 외=1) */
   getPageStepPerCanvas: () => number
   /**
-   * S8: pageId 삭제 시 함께 지울 페이지 ID 목록(대상 포함, 삭제 단위만큼).
+   * pageId 삭제 시 함께 지울 페이지 ID 목록(대상 포함, 삭제 단위만큼).
    * 같은 타입·삭제 가능·비필수인 인접 페이지(뒤 → 앞 순)로 채운다. 부족하면 빈 배열.
    */
   getDeleteGroup: (pageId: string) => string[]
@@ -151,8 +151,8 @@ const initialState: EditorState = {
 }
 
 /**
- * 내지 캔버스 수(2026-09-28). 스프레드 세션은 페이지 유형이 아니라 **위치**로 센다 — 펼침면 내지는
- * TemplateType.SPREAD 라 유형으로 세면 0 이 되어 최소/최대 쪽수가 무력화됐다.
+ * 내지 캔버스 수. 스프레드 세션은 페이지 유형이 아니라 **위치**로 센다 — 펼침면 내지는
+ * TemplateType.SPREAD 라 유형으로 세면 0 이 되어 최소/최대 쪽수가 무력화된다.
  * 표지+내지 스프레드는 0번(표지)만 제외, 내지 전용 펼침면(regionScope='inner')은 전부 내지.
  * 단일 모드는 종전대로 PAGE 유형만 센다.
  */
@@ -360,7 +360,7 @@ export const useEditorStore = create<EditorState & EditorActions>()(
         if (!page.deleteable) return false
         if (page.required) return false
 
-        // S8: 증감 단위가 있으면 함께 지울 인접 페이지가 충분해야 한다(단위 미만 삭제 = 배수 깨짐).
+        // 증감 단위가 있으면 함께 지울 인접 페이지가 충분해야 한다(단위 미만 삭제 = 배수 깨짐).
         const unit = pageStep ? get().getPageDeleteUnit() : 1
         if (unit > 1 && get().getDeleteGroup(pageId).length !== unit) return false
 
@@ -369,12 +369,12 @@ export const useEditorStore = create<EditorState & EditorActions>()(
           const canvasCount = innerCanvasCount(get())
           // 펼침면 세션은 캔버스 1장 = 2p → 물리 페이지로 환산해 제약과 비교한다.
           const physicalCount = canvasCount * (pagesPerCanvas || 1)
-          // A13: 제본 최소페이지(무선 32p 등) — bindingType 설정 시에만 적용(null=제약 없음).
-          //   호스트 pageCountMin 이 있으면 제본 최소 대신 그 값(pageCountRange 최소)만 적용(W5 키별 대체).
+          // 제본 최소페이지(무선 32p 등) — bindingType 설정 시에만 적용(null=제약 없음).
+          //   호스트 pageCountMin 이 있으면 제본 최소 대신 그 값(pageCountRange 최소)만 적용(키별 대체).
           //   pageCountRange 최소와 제본 최소 중 큰 값 미만으로는 삭제 불가.
           const bindMin = bindingPageBounds(bindingType, hostPageLimitSides).minPages ?? 0
           const minCount = Math.max(pageCountRange[0] || 1, bindMin)
-          // 한 장(S8: 단위 unit 장) 지우면 pagesPerCanvas×unit 만큼 줄어든다 — 지운 뒤에도 최소를 만족해야 허용
+          // 한 장(단위 unit 장) 지우면 pagesPerCanvas×unit 만큼 줄어든다 — 지운 뒤에도 최소를 만족해야 허용
           return physicalCount - (pagesPerCanvas || 1) * unit >= minCount
         }
 
@@ -389,16 +389,16 @@ export const useEditorStore = create<EditorState & EditorActions>()(
         const canvasCount = innerCanvasCount(get())
         const per = pagesPerCanvas || 1
         const physicalCount = canvasCount * per
-        // A13: 제본 최대페이지(중철 64p 등) — bindingType 설정 시에만 적용(null=제약 없음).
-        //   호스트 pageCountMax 가 있으면 제본 최대 대신 그 값(pageCountRange 최대)만 적용(W5 키별 대체).
+        // 제본 최대페이지(중철 64p 등) — bindingType 설정 시에만 적용(null=제약 없음).
+        //   호스트 pageCountMax 가 있으면 제본 최대 대신 그 값(pageCountRange 최대)만 적용(키별 대체).
         const bindMax = bindingPageBounds(bindingType, hostPageLimitSides).maxPages ?? Infinity
         const maxCount = Math.min(pageCountRange[pageCountRange.length - 1] || 100, bindMax)
 
-        // 한 장(S8: 단위 unit 장) 추가하면 per×unit 만큼 늘어난다 — 추가 후에도 최대를 넘지 않아야 허용
+        // 한 장(단위 unit 장) 추가하면 per×unit 만큼 늘어난다 — 추가 후에도 최대를 넘지 않아야 허용
         return physicalCount + per * get().getPageAddUnit() <= maxCount
       },
 
-      // S8: 단위 산정은 완료 가드(livePhysicalPageCount)와 동일 산식 — 펼침면 내지(TemplateType.SPREAD)도
+      // 단위 산정은 완료 가드(livePhysicalPageCount)와 동일 산식 — 펼침면 내지(TemplateType.SPREAD)도
       // 캔버스로 세므로 "스토어는 0p, 가드는 6p" 같은 불일치로 배수에 도달 못 하는 일이 없다.
       getPageAddUnit: () => {
         const { pages, pageStep, pageStepBasis } = get()

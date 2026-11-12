@@ -1,4 +1,4 @@
-// GroupPlugin — calendar-grid 해제 차단·일반 그룹 해제 회귀·핫키 컨텍스트 은폐 (T2 그리드·기념일 안전성, 2026-10-22)
+// GroupPlugin — calendar-grid 해제 차단·일반 그룹 해제 회귀·핫키 컨텍스트 은폐
 //
 // 실 fabric(5.5.2 dist, node-canvas) 위에서 PhotoPrintPlugin.test 의 캔버스 스텁(history·active object)을 재사용한다.
 // group() 회귀는 PhotoPrintPlugin.test (9) 가 고정하므로 여기서는 unGroup/hideContext 만 다룬다.

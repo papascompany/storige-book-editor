@@ -6,7 +6,7 @@ import { computePdfPageOutputMm } from './pdfPageSize'
  * 입력은 embed.tsx 스프레드 완료가 표지 PDF 에 넘기는 size 객체 형태 그대로다:
  *   { width: totalWidthMm, height: totalHeightMm, cutSize: bleed, ...(printSize | markOpt) }
  */
-describe('computePdfPageOutputMm (R-195 coverOutput)', () => {
+describe('computePdfPageOutputMm (coverOutput)', () => {
   const content = { width: 432.5, height: 297, cutSize: 3 }
 
   it('재단마커 ON + 블리드 3 → 작업사이즈(콘텐츠 + 3×2), bleedMm 3', () => {

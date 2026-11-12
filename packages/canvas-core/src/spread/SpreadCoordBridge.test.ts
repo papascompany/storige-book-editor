@@ -120,7 +120,7 @@ describe('SpreadPlugin scene↔content 좌표 브리지', () => {
     expect(result.x).toBeGreaterThan(frontSceneRight) // content 값은 scene 범위를 벗어남(변환 필수 입증)
   })
 
-  it('[무결성 IB-1] 책등 리사이즈 후 back-cover 객체의 content 위치가 보존된다(drift 0)', () => {
+  it('[무결성] 책등 리사이즈 후 back-cover 객체의 content 위치가 보존된다(drift 0)', () => {
     const oldLayout = computeLayout(baseSpec) // 책등 10mm
     const oldOrigin = contentOrigin(oldLayout)
     const back = oldLayout.regions.find((r) => r.position === 'back-cover')!
@@ -134,7 +134,7 @@ describe('SpreadPlugin scene↔content 좌표 브리지', () => {
     const newLayout = computeLayout({ ...baseSpec, spineWidthMm: 20 })
     const newOrigin = contentOrigin(newLayout)
 
-    // ✅ 수정(IB-1): back-cover 도 computeObjectReposition 재배치 → content x 보존(영역 불변이므로)
+    // ✅ 수정: back-cover 도 computeObjectReposition 재배치 → content x 보존(영역 불변이므로)
     const result = computeObjectReposition(
       { regionRef: 'back-cover', anchor: reg.anchor },
       contentBR,

@@ -1,5 +1,5 @@
 /**
- * JD-2 (2026-10) — spread 합성의 세션·파일 조회 실패 매핑 고정.
+ * spread 합성의 세션·파일 조회 실패 매핑 고정.
  *
  * - 404 → null → SESSION_NOT_FOUND / FILE_NOT_FOUND(재시도 없음)
  * - 그 밖의 4xx → null(같은 NOT_FOUND 실패, 재시도 없음)

@@ -1,5 +1,5 @@
 /**
- * 관리자 편집 탭(adminEdit=session) URL fragment 토큰 전달 헬퍼 (2026-09-29, 순수 함수).
+ * 관리자 편집 탭(adminEdit=session) URL fragment 토큰 전달 헬퍼 (순수 함수).
  *
  * 관리자 화면은 편집기를 `/embed?sessionId=..&adminEdit=session#token=..&refreshToken=..` 로 연다.
  * fragment 는 서버·엣지 미들웨어·Referer 로 전송되지 않는다. 편집기는 토큰을 읽어 탭 저장소에

@@ -88,7 +88,7 @@ export class EditorErrorBoundary extends Component<Props, State> {
     if (isStaleChunkError(error)) {
       reloadOnceForStaleChunk()
     }
-    // EH-002: React 렌더 트리 크래시를 Sentry 로 전송(과거 누락). DSN 미설정 시 no-op 이라 안전.
+    // React 렌더 트리 크래시를 Sentry 로 전송. DSN 미설정 시 no-op 이라 안전.
     try {
       Sentry.captureException(error, {
         extra: { componentStack: info?.componentStack },

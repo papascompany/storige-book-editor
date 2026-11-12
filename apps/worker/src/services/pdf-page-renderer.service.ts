@@ -75,9 +75,9 @@ export class PdfPageRendererService {
     if (url.startsWith('/') || url.startsWith('./')) {
       return fs.readFile(url);
     }
-    // SSRF 가드(P0-1 M1): 내부망 페치 + 리다이렉트 우회 차단.
+    // SSRF 가드: 내부망 주소를 거부하고 리다이렉트를 따르지 않는다.
     await assertSafeDownloadUrl(url);
-    // EH-004: timeout 으로 무응답 URL 의 render-pdf-pages 잡 무한대기(큐 적체) 방지.
+    // timeout 으로 무응답 URL 의 render-pdf-pages 잡 무한대기(큐 적체) 방지.
     const res = await axios.get(url, { responseType: 'arraybuffer', maxRedirects: 0, timeout: 60000 });
     return Buffer.from(res.data);
   }
@@ -93,7 +93,7 @@ export class PdfPageRendererService {
     jobId: string,
     pageCount?: number,
   ): Promise<RenderPagesResult> {
-    // 트랙 B-(f): ON 이면 스트림 다운로드(상수메모리) + qpdf 페이지수. OFF 면 기존 전체버퍼+pdf-lib.
+    // LIGHTWEIGHT_SYNTHESIS ON 이면 스트림 다운로드(상수메모리) + qpdf 페이지수. OFF 면 기존 전체버퍼+pdf-lib.
     const lightweight = VALIDATION_CONFIG.LIGHTWEIGHT_SYNTHESIS;
 
     // GS 입력용 임시 PDF 디렉토리(ON/OFF 공통)
@@ -138,7 +138,7 @@ export class PdfPageRendererService {
       const pageImageUrls: string[] = [];
       for (let p = 1; p <= renderCount; p++) {
         const outPath = path.join(outDir, `page_${p}.png`);
-        // pdfToImage 는 페이지당 30s 타임아웃(WK-3, GS_RASTER_TIMEOUT_MS) + 페이지 상한으로 폭주 방지.
+        // pdfToImage 는 페이지당 30s 타임아웃(GS_RASTER_TIMEOUT_MS) + 페이지 상한으로 폭주 방지.
         await pdfToImage(inputPath, outPath, {
           page: p,
           resolution: this.dpi,

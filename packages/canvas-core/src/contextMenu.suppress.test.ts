@@ -1,14 +1,14 @@
 // @vitest-environment jsdom
 //
-// ContextMenu — showAt + 터치 이중발화 억제창 + stale-dom 수정 (C6 / E2 W3)
+// ContextMenu — showAt + 터치 이중발화 억제창 + stale-dom 수정
 //
 // ContextMenu 는 실제 DOM(document/appendChild)을 조작하므로 이 파일만 jsdom 환경.
 // 증명 대상:
 //  ① showAt(touch) 는 .context 를 clientX/Y(px)에 표시(position:fixed → 뷰포트 좌표 정합)
-//  ② T-5: showAt(touch) 직후 400ms 내 외부 mousedown(합성 탭)이 메뉴를 닫지 않음, 이후 정상 닫힘
-//  ③ T-3: showAt(touch) 직후 700ms 내 네이티브 contextmenu 가 메뉴를 재발화/재배치하지 않음
+//  ② showAt(touch) 직후 400ms 내 외부 mousedown(합성 탭)이 메뉴를 닫지 않음, 이후 정상 닫힘
+//  ③ showAt(touch) 직후 700ms 내 네이티브 contextmenu 가 메뉴를 재발화/재배치하지 않음
 //  ④ 데스크탑(touch 아님)은 억제창이 서지 않아 우클릭 경로 무회귀(즉시 닫힘)
-//  ⑤ T-6 stale-dom: 직전 표시 후 available 0(빈 곳) showAt → 옛 메뉴가 재출현하지 않음
+//  ⑤ stale-dom: 직전 표시 후 available 0(빈 곳) showAt → 옛 메뉴가 재출현하지 않음
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import ContextMenu from './contextMenu'
 
@@ -76,7 +76,7 @@ describe('ContextMenu.showAt — 표시/좌표', () => {
   })
 })
 
-describe('ContextMenu — T-5 합성 mousedown 억제창', () => {
+describe('ContextMenu — 합성 mousedown 억제창', () => {
   it('② showAt(touch) 400ms 내 외부 mousedown 은 메뉴를 닫지 않고, 이후엔 닫힌다', () => {
     const { container, cm } = setup(ITEMS, {})
     cm.showAt(100, 100, { touch: true })
@@ -96,7 +96,7 @@ describe('ContextMenu — T-5 합성 mousedown 억제창', () => {
   })
 })
 
-describe('ContextMenu — T-3 네이티브 contextmenu 억제창', () => {
+describe('ContextMenu — 네이티브 contextmenu 억제창', () => {
   it('③ showAt(touch) 700ms 내 contextmenu 는 재발화/재배치하지 않는다', () => {
     const { container, cm } = setup(ITEMS, {})
     cm.showAt(100, 100, { touch: true })
@@ -145,11 +145,11 @@ describe('ContextMenu — 데스크탑 우클릭 무회귀', () => {
   })
 })
 
-describe('ContextMenu — C6-fix 아웃사이드 pointerdown 해제 (2026-08-01 실측 결함 2건)', () => {
+describe('ContextMenu — 아웃사이드 pointerdown 해제', () => {
   // 실측 배경: ①터치 캔버스 탭은 fabric 의 touchstart preventDefault 로 합성 mousedown 이
   // 없어 기존 히든이 못 닫았고, ②캔버스 밖 UI(액션바)는 container 스코프 밖이라 이벤트가
   // 아예 안 왔다. document 캡처 pointerdown 해제가 둘 다 커버한다.
-  it('⑥ T-5 억제창 내에도 container 밖 요소 pointerdown 이 메뉴를 닫는다(합성 아님 → 억제 불필요)', () => {
+  it('⑥ 억제창 내에도 container 밖 요소 pointerdown 이 메뉴를 닫는다(합성 아님 → 억제 불필요)', () => {
     const { cm } = setup(ITEMS, {})
     cm.showAt(100, 100, { touch: true })
     expect(cm.shown).toBe(true)
@@ -210,7 +210,7 @@ describe('ContextMenu — C6-fix 아웃사이드 pointerdown 해제 (2026-08-01 
   })
 })
 
-describe('ContextMenu — T-6 stale-dom 수정', () => {
+describe('ContextMenu — stale-dom 수정', () => {
   it('⑤ 직전 표시 후 available 0 로 showAt → 옛 메뉴가 재출현하지 않는다', () => {
     // 1) active object 있는 상태로 표시
     const { container, cm, canvas } = setup(ITEMS, {})

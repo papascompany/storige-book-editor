@@ -11,7 +11,7 @@ import {
 } from '../utils/pointerShift'
 
 /**
- * PointerShiftGuardPlugin (P1-3, 2026-06-12)
+ * PointerShiftGuardPlugin
  *
  * 마우스 변환(_currentTransform) 진행 중에 "포인터→scene 매핑"이 프로그램적으로
  * 바뀌면(캔버스 요소 레이아웃 이동 / viewportTransform 패닝·줌 변경) fabric 이
@@ -37,7 +37,7 @@ import {
  * alt-팬은 객체 위에서 시작하면 fabric 이 drag 변환을 만들므로(altKey 차단 없음),
  * isDragging(DraggingPlugin 플래그) 중에는 보정을 스킵해 기존 팬 동작을 보존한다.
  *
- * 한계(적대 리뷰 2026-06-12): 보정 anchors(offsetX/ex/ey/lastX/lastY)는 fabric 5.5.2 의
+ * 한계: 보정 anchors(offsetX/ex/ey/lastX/lastY)는 fabric 5.5.2 의
  * dragHandler(offsetX)·rotationWithSnapping(ex/ey)만 소비한다. scale/skew/changeWidth 는
  * getLocalPoint(현재 포인터만 사용) 기반이라 변환 중 매핑 변화가 점프로 전이돼도 본
  * 보정으로는 못 막는다(무해·무효). 라이브 사고 경로(첫 선택 직후 변환)는 fabric 의
@@ -74,7 +74,7 @@ class PointerShiftGuardPlugin extends PluginBase {
 
       // alt-팬(DraggingPlugin isDragging) 중에는 보정 스킵 — 객체 위에서 시작한 alt-팬은
       // drag 변환이 살아 있는데, 여기서 매 move 의 팬을 보정하면 객체가 팬 경로 전체만큼
-      // scene 에서 끌려가는 오보정 회귀가 된다(적대 리뷰 major, 2026-06-12). 미보정 시
+      // scene 에서 끌려가는 오보정 회귀가 된다. 미보정 시
       // fabric 기존 의미(첫 이벤트 1회 점프 후 화면 고정 = 사실상 순수 팬)가 보존된다.
       if (canvas.isDragging === true) return
 

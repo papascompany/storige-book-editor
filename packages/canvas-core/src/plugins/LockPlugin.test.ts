@@ -55,7 +55,7 @@ function getLockInfo(obj: any): LockInfo {
     return lockInfo
   }
 
-  // L1① (2026-07-06): 위치고정(movable===false)은 잠금이 아님 — 실물과 동기.
+  // 위치고정(movable===false)은 잠금이 아님 — 실물과 동기.
   if (obj.movable === false) {
     return { isLocked: false, lockLevel: 'user' }
   }
@@ -536,13 +536,13 @@ describe('LockPlugin - Permission System', () => {
 })
 
 // ────────────────────────────────────────────────────────────────────────────
-// L1① (2026-07-06) 실물 회귀 스펙 — 미러가 아니라 실제 LockPlugin.prototype 검증.
+// 실물 회귀 스펙 — 미러가 아니라 실제 LockPlugin.prototype 검증.
 // getLockInfo 는 this 를 사용하지 않으므로 인스턴스 없이 프로토타입 호출로 검증한다
 // (fabric 캔버스 기동 불필요 — canvas.test.ts 미러 함정의 재발 방지).
 // ────────────────────────────────────────────────────────────────────────────
 import RealLockPlugin from './LockPlugin'
 
-describe('L1① 실물 getLockInfo — 위치고정(movable=false)은 잠금이 아니다', () => {
+describe('실물 getLockInfo — 위치고정(movable=false)은 잠금이 아니다', () => {
   const realGetLockInfo = (obj: unknown) =>
     (RealLockPlugin.prototype.getLockInfo as (o: unknown) => LockInfo).call(null, obj)
 

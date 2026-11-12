@@ -11,7 +11,7 @@ import { apiClient } from './client';
  * axios 1.x 는 AbortSignal 취소에 CanceledError(name='CanceledError',
  * code='ERR_CANCELED', __CANCEL__=true)를 던진다 — DOM 의 'AbortError' 가 **아니다**.
  * 그래서 `error.name !== 'AbortError'` 식 필터는 취소를 조용히 통과시켜 에러로 오분류한다
- * (2026-08-26 두 어댑터·전송후취소·이미취소 4케이스 실측).
+ * (두 어댑터·전송후취소·이미취소 4케이스 실측).
  * 타임아웃(code='ECONNABORTED')은 isCancel=false 라 이 판별식과 완전히 분리된다 —
  * "취소는 조용히, 타임아웃은 에러로" 를 이 한 함수로 판정한다.
  */

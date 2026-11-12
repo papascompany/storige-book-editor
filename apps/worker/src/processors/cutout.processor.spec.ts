@@ -13,7 +13,7 @@ jest.mock('axios');
 const mockedAxios = axios as jest.Mocked<typeof axios>;
 
 /**
- * 컷아웃 프로세서 스펙 (2026-08-05, S-P2A-B 샤드2).
+ * 컷아웃 프로세서 스펙.
  *
  * 네트워크는 타지 않는다 — rembg 사이드카는 provider 목킹, 상태보고 axios.patch 는 모듈 목킹.
  * sharp 만 실물을 쓰되 입력은 수천 픽셀급 단색 이미지라 밀리초 단위다(대용량 처리 없음).
@@ -309,7 +309,7 @@ describe('CutoutProcessor', () => {
     });
   });
 
-  it('허용 포맷 밖(예: TIFF)은 바이트 판정으로 거부한다 — DB MIME 라벨은 위조 가능', async () => {
+  it('허용 포맷 밖(예: TIFF)은 DB MIME 라벨과 무관하게 바이트 판정으로 거부한다', async () => {
     const tiff = await sharp({
       create: { width: 32, height: 32, channels: 3, background: { r: 1, g: 2, b: 3 } },
     })

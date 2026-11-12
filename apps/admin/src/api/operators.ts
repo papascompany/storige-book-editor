@@ -1,7 +1,7 @@
 import { axiosInstance } from '../lib/axios';
 
 /**
- * P3a 멀티테넌시 — 운영자(SITE_ADMIN/SITE_MANAGER) 관리 API 클라이언트.
+ * 멀티테넌시 — 운영자(SITE_ADMIN/SITE_MANAGER) 관리 API 클라이언트.
  *
  * 전역 admin(JWT, role=ADMIN) 전용. 응답 봉투 `{ success, data }` 를 벗겨 반환한다.
  * sites.ts 패턴 그대로(interface + xxxApi 객체 + axiosInstance).

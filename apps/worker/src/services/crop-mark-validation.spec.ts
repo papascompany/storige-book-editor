@@ -1,5 +1,5 @@
 /**
- * C-2a: crop mark(재단 기하) 검증 spec.
+ * crop mark(재단 기하) 검증 spec.
  *
  * 검증 대상:
  *   - 이중 게이트: orderOptions.cropMarkEnabled === true + env 킬스위치(기본 OFF).
@@ -158,7 +158,7 @@ function qpdfAvailable(): boolean {
   }
 }
 
-describe('crop mark 검증 (C-2a)', () => {
+describe('crop mark 검증', () => {
   const service = new PdfValidatorService();
   const cfg = VALIDATION_CONFIG as unknown as { CROP_MARK_VALIDATION: boolean };
   let tmpDir: string;

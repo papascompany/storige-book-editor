@@ -3,21 +3,21 @@ import { useUiPrefStore } from '@/stores/useUiPrefStore'
 import { useAppStore } from '@/stores/useAppStore'
 
 /**
- * §6-3: 스냅 설정(useUiPrefStore) → canvas-core 플러그인 setter 배선.
+ * 스냅 설정(useUiPrefStore) → canvas-core 플러그인 setter 배선.
  *
  * showRuler→ruler 배선이 EditorView 전용이라, 스냅 토글도 뷰마다 배선하지 않으면 /embed 등에서
- * 팝오버가 무반응이 된다(적대 리뷰 함정 a). 이 공유 훅을 EditorView·EmbeddedEditor·
+ * 팝오버가 무반응이 된다. 이 공유 훅을 EditorView·EmbeddedEditor·
  * TemplateEditorView 가 모두 호출한다.
  *
  * - allEditors 전체에 적용(스프레드/커버의 다중 에디터·페이지 누락 방지, 함정 c). allEditors 변화
  *   (페이지 추가)에도 재적용되도록 의존성에 포함.
  * - **중앙 스냅 토글은 RulerPlugin.setCenterSnapEnabled 와 SmartGuides.setCenterYieldEnabled 를
  *   함께 제어** — 중앙스냅 OFF 시 SmartGuides 가 중앙축을 룰러에 양보하던 것을 해제해, 중앙 근처가
- *   아무 스냅도 안 되는 데드존을 없앤다(적대 리뷰 함정 b).
+ *   아무 스냅도 안 되는 데드존을 없앤다.
  * - setter 는 순수 거동 게이트(early-return)라 직렬화·이벤트 바인딩·생성 순서 계약 무영향.
  */
 // 킬스위치: off 면 팝오버 UI 숨김(EditorHeader)뿐 아니라 이 배선도 강제 기본값(상시-ON)으로
-// 주입해 persist 된 OFF 상태를 무시한다 — 그래야 플래그가 거동까지 실제로 롤백한다(적대 리뷰).
+// 주입해 persist 된 OFF 상태를 무시한다 — 그래야 플래그가 거동까지 실제로 롤백한다.
 const SNAP_SETTINGS_ENABLED = import.meta.env.VITE_ENABLE_SNAP_SETTINGS !== 'false'
 
 export function useSnapSettingsSync(ready: boolean): void {

@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { useAppStore } from './useAppStore'
 
 /**
- * runBulkPageOps — 대량 페이지 생성 구간의 썸네일 배칭 (2026-08-24 §2 ⑤).
+ * runBulkPageOps — 대량 페이지 생성 구간의 썸네일 배칭.
  *
  * 배경: 썸네일 debounce 는 200ms 인데 addPage 1회가 그보다 오래 걸린다(재진입 시드 실측
  * ≈390ms/장). 감싸지 않으면 루프 매 반복에서 debounce 가 만료돼 그 시점의 전 캔버스를

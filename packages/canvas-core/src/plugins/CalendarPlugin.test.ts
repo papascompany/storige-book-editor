@@ -1,4 +1,4 @@
-// CalendarPlugin — 그리드 생성·rehydrate 보존·직렬화 왕복·hitTest (P1 캘린더, 2026-10-17)
+// CalendarPlugin — 그리드 생성·rehydrate 보존·직렬화 왕복·hitTest
 //
 // 실 fabric(5.5.2 dist, node-canvas) + 실 core.extendFabricOption / core.loadFromJSON 으로
 // embed/useEmbedAutoSave/ServicePlugin 저장 경로와 같은 계약을 고정한다.
@@ -50,7 +50,7 @@ vi.mock('../calendar/core', () => ({
     }
     return { year, month, weekStart: opts.weekStart, weekdayOrder: months[0].weekdayOrder, months }
   },
-  // 잡절(삼복, T4): 실제 core 와 같은 규칙(ctx.data.minorTerms 의 그 달 항목) — 데이터 정확성은 data 테스트가 담당
+  // 잡절(삼복): 실제 core 와 같은 규칙(ctx.data.minorTerms 의 그 달 항목) — 데이터 정확성은 data 테스트가 담당
   getMinorTermsForMonth: (year: number, month: number, d: CalendarData) => {
     minorCalls.push({ year, month })
     return (d.minorTerms?.[String(year)] ?? []).filter((t) => t.date.startsWith(`${year}-${String(month).padStart(2, '0')}-`))
@@ -344,7 +344,7 @@ describe('CalendarPlugin — 임시공휴일·선거일 옵션(show.temporaryHol
   })
 })
 
-describe('CalendarPlugin — 잡절(삼복) 칸 문구(show.minorTerms, T4 — 기본 off)', () => {
+describe('CalendarPlugin — 잡절(삼복) 칸 문구(show.minorTerms — 기본 off)', () => {
   const minorData = {
     ...data,
     minorTerms: { '2027': [{ date: '2027-07-20', name: '초복' }, { date: '2027-07-30', name: '중복' }, { date: '2027-08-09', name: '말복' }] },
@@ -396,7 +396,7 @@ describe('CalendarPlugin — 잡절(삼복) 칸 문구(show.minorTerms, T4 — �
 })
 
 /**
- * T3a 'year' variant 추가 전(origin/master 12de30af CalendarPlugin)에서 같은 정규화로 캡처한 값 — month/mini 렌더 구조가 바뀌면 깨진다.
+ * 'year' variant 추가 전(origin/master 12de30af CalendarPlugin)에서 같은 정규화로 캡처한 값 — month/mini 렌더 구조가 바뀌면 깨진다.
  * 플랫폼 독립: 폰트 메트릭에서 오는 값(텍스트·그룹의 width/height/left/top/scale)은 넣지 않는다(로컬 macOS 와 CI ubuntu 가 같은 값).
  */
 const BASELINE_SHA256 = {
@@ -436,7 +436,7 @@ function normalizeGrid(o: Plain): Plain {
   return { ...base, ...pick(['left', 'top', 'width', 'height', 'x1', 'y1', 'x2', 'y2', 'originX', 'originY']) }
 }
 
-describe("CalendarPlugin — 'month'/'mini' 렌더 구조 고정(플랫폼 독립, T3a 'year' 추가 전 기준값)", () => {
+describe("CalendarPlugin — 'month'/'mini' 렌더 구조 고정(플랫폼 독립, 'year' 추가 전 기준값)", () => {
   /** 고정 ctx·박스로 만든 그리드의 toObject(EXTEND) 를 정규화(무작위 uuid → 'GRID')한 JSON sha256 */
   async function digest(ext: Parameters<CalendarPlugin['createGrid']>[0], over: Partial<CalendarRenderContext> = {}): Promise<string> {
     const plugin = makePlugin(makeCanvas())
@@ -458,7 +458,7 @@ describe("CalendarPlugin — 'month'/'mini' 렌더 구조 고정(플랫폼 독�
   })
 })
 
-describe('CalendarPlugin — 기념일 문구 스타일(색·굵게, D1(b) T3b)', () => {
+describe('CalendarPlugin — 기념일 문구 스타일(색·굵게)', () => {
   const noteObjects = (g: fabric.Group) =>
     g.getObjects().filter((o) => ((o as fabric.Object & { id?: string }).id ?? '').includes('-n-')) as fabric.Text[]
 
@@ -499,7 +499,7 @@ describe('CalendarPlugin — 기념일 문구 스타일(색·굵게, D1(b) T3b)'
   })
 })
 
-describe("CalendarPlugin — 연달력 variant 'year' (T3a)", () => {
+describe("CalendarPlugin — 연달력 variant 'year'", () => {
   type Obj = fabric.Object & { id?: string }
   const box = { left: 0, top: 0, width: 1200, height: 900 }
   const idOf = (g: fabric.Object) => (g as Obj).id as string
@@ -548,7 +548,7 @@ describe("CalendarPlugin — 연달력 variant 'year' (T3a)", () => {
     const defJan = await plugin.createGrid(ext, ctx(), box)
     expect(dates(defJan)[0]).toBe('2027-01-01')
     expect(child(defJan, '-title')?.text).toBe('2027')
-    // 생략 + 시작연월 변경(3월) = 선택한 월부터 12개월(오너 답 Q1)
+    // 생략 + 시작연월 변경(3월) = 선택한 월부터 12개월
     const defMar = await plugin.createGrid(ext, ctx({ startMonth: 3 }), box)
     expect(dates(defMar)[0]).toBe('2027-03-01')
     expect(dates(defMar).at(-1)).toBe('2028-02-29')

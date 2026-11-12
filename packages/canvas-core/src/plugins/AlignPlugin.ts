@@ -13,9 +13,9 @@ interface DistributeProtectionFlags {
 class AlignPlugin extends PluginBase {
   name = 'AlignPlugin'
 
-  // D-E2-1 (§10): 분배 단축키 2종 additive. hideContext 는 함수형(contextMenu.ts setMenus
+  // 분배 단축키 2종 additive. hideContext 는 함수형(contextMenu.ts setMenus
   // 이 Function 분기 지원) — 3개 미만 선택 시 컨텍스트 메뉴 자동 은폐로 ControlBar ≥3 게이팅과
-  // 정합. category:'arrange' 필수 — 누락 시 C9 도움말 모달이 '객체'로 오분류(displayKeys 는
+  // 정합. category:'arrange' 필수 — 누락 시 도움말 모달이 '객체'로 오분류(displayKeys 는
   // formatHotkeyKeys 자동 파생이라 불요). 콜백 내부 <3 no-op 가드는 _distribute 에 이중 존재.
   hotkeys: CanvasHotkey[] = [
     {
@@ -37,22 +37,22 @@ class AlignPlugin extends PluginBase {
   ]
   events: string[] = []
 
-  // E2 §3-2a: editMode(관리자) 면제 판정을 위해 options 수신 (additive — 미전달 시 {}
+  // editMode(관리자) 면제 판정을 위해 options 수신 (additive — 미전달 시 {}
   // 로 기존 시그니처 하위호환. createCanvas 가 mergedOptions 를 전달한다.)
   constructor(canvas: fabric.Canvas, editor: Editor, options: PluginOption = {}) {
     super(canvas, editor, options)
   }
 
   /**
-   * 분배 이동 보호 판정 (E2 §3-2a) — CopyPlugin.isCloneProtected 와 동형 구조의 단독
+   * 분배 이동 보호 판정 — CopyPlugin.isCloneProtected 와 동형 구조의 단독
    * 함수이되, 분배는 '이동' 행위이므로 이동 관련 플래그(movable, lockMovementX/Y)만
    * 본다. 복제 판정(deleteable/contentEditable/lockInfo)과 혼용하지 않는다 — 규칙
    * 이원화 방지. editMode(관리자)는 제외 없이 현행 유지(CopyPlugin _options.editMode
    * 규약과 동형).
    *
    * 배경: _distribute 의 setPositionByOrigin 은 lockMovementX/Y·movable=false 를
-   * 우회하므로, 위치고정 객체가 다중 선택에 포함되면(L1 에서 선택 자체는 허용)
-   * 관리자 보호를 뚫고 이동된다 — 여기서 제외해 L1~L7 보호 게이팅을 지킨다.
+   * 우회하므로, 위치고정 객체가 다중 선택에 포함되면(선택 자체는 허용된다)
+   * 관리자 보호를 뚫고 이동된다 — 여기서 제외해 관리자 보호 게이팅을 지킨다.
    */
   isDistributeProtected(obj: fabric.Object): boolean {
     if (this._options?.editMode) return false
@@ -239,10 +239,10 @@ class AlignPlugin extends PluginBase {
   }
 
   /**
-   * 가로 균등 분배 (E1 §5-4 — ControlBar 트랙 T 구현을 공개 API 로 이관, 동작 동일).
+   * 가로 균등 분배 (ControlBar 와 같은 동작의 공개 API).
    * 이동가능 객체 3개 이상 선택 시 x 축 center 기준 정렬 후 첫/끝 고정, 중간 객체를
-   * center-to-center 간격 균등으로 재배치한다 (분배 기준은 D-E2-2 확정: center-to-center
-   * 유지). 보호객체(isDistributeProtected)는 참여 집합에서 제외 — E2 §3-2a.
+   * center-to-center 간격 균등으로 재배치한다 (분배 기준: center-to-center
+   * 유지). 보호객체(isDistributeProtected)는 참여 집합에서 제외.
    */
   distributeH() {
     this._distribute('horizontal')
@@ -262,7 +262,7 @@ class AlignPlugin extends PluginBase {
     const objects = this._canvas.getActiveObjects()
     if (!objects || objects.length < 3) return
 
-    // E2 §3-2a: 보호객체는 분배 참여 집합에서 통째로 제외(기준점 후보로도 미사용).
+    // 보호객체는 분배 참여 집합에서 통째로 제외(기준점 후보로도 미사용).
     // 제외 후 잔여 이동가능 객체 < 3 → no-op (기존 length < 3 가드와 동일 지점 판정
     // — offHistory 이전이라 히스토리 중단 부작용 없음).
     const movables = objects.filter((o) => !this.isDistributeProtected(o))
@@ -303,7 +303,7 @@ class AlignPlugin extends PluginBase {
 
       // ActiveSelection 재생성으로 바운딩 박스 갱신 (setV/setH 다중 정렬과 동일 패턴).
       // ⚠️ 재생성에는 보호객체 포함 **선택 전체**를 유지한다 — 제외는 '이동'에만 적용
-      // (E2 §3-2a: 제외 객체가 선택에 남아 있어도 위치 불변이면 무해).
+      // (제외 객체가 선택에 남아 있어도 위치 불변이면 무해).
       this._canvas.discardActiveObject()
       const newSel = new fabric.ActiveSelection([...objects], { canvas: this._canvas })
       this._canvas.setActiveObject(newSel)

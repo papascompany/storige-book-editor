@@ -3,10 +3,10 @@ import { computeInferenceCap } from '@storige/types'
 import type { CutoutJobResult } from '@storige/types'
 
 /**
- * 배경제거(컷아웃) 서버 오프로드 클라이언트 — S-P2A-B 샤드3 (2026-08-06).
+ * 배경제거(컷아웃) 서버 오프로드 클라이언트.
  *
- * 종전에는 브라우저가 `@imgly/background-removal`(ONNX·AGPL-3.0)로 직접 추론했다.
- * 이제 추론은 서버(rembg 사이드카, 모델 u2net — D-12b)가 하고 편집기는 3단계만 한다:
+ * 브라우저 추론(`@imgly/background-removal`, ONNX·AGPL-3.0)은 쓰지 않는다.
+ * 추론은 서버(rembg 사이드카, 모델 u2net)가 하고 편집기는 3단계만 한다:
  *
  *   1) 추론 입력 PNG 를 `POST /storage/upload-public` 으로 올려 **fileId** 를 받는다.
  *      이 라우트는 게스트 `@Public` 이면서 내부적으로 `filesService.registerExternalFile`
@@ -16,7 +16,7 @@ import type { CutoutJobResult } from '@storige/types'
  *   3) `GET /worker-jobs/:id/cutout-status` 폴링(무인증, 120/min).
  *
  * ⚠️ 업로드·잡 요청은 모두 `getDirectBaseUrl()`(빌드타임 API 원본)로 직결한다. 임베드 호스트가
- *    `setBaseUrl` 로 base 를 자사 프록시로 덮어쓴 경우 업로드가 본문 한도에 걸린다(413 전례).
+ *    `setBaseUrl` 로 base 를 자사 프록시로 덮어쓴 경우 업로드가 본문 한도에 걸린다(413).
  */
 
 /** 폴링 간격 — 라우트 throttle 120/min 이므로 1.5s(=40회/분)면 한 잡이 3분을 끌어도 여유가 있다. */
@@ -33,7 +33,7 @@ const PNG_TO_JPEG_THRESHOLD_BYTES = 20 * 1024 * 1024
 /**
  * 피사체별 모델 프리셋 — 서버 화이트리스트(`WorkerJobsService.CUTOUT_ALLOWED_MODELS`)의 부분집합이다.
  *
- * 두 모델은 성격이 갈린다(2026-08-06 동일 원본 실측, 알파 히스토그램 기준):
+ * 두 모델은 성격이 갈린다(동일 원본 실측, 알파 히스토그램 기준):
  *  - `person`  : `u2net_human_seg` — 인물 전용. 반투명 2.7% · 2.9s. 사람이면 압도적으로 정확하다.
  *  - `general` : `isnet-general-use` — 범용. 반투명 18.0% · 4.5s. 상품·캐릭터·반려동물은 이쪽.
  *

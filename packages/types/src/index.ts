@@ -3,10 +3,10 @@
  * Shared TypeScript types for Storige system
  */
 
-// 책등(세네카) 계산 순수 엔진 (R-44) — API·워커·표지 파생 공용 단일 산식
+// 책등(세네카) 계산 순수 엔진 — API·워커·표지 파생 공용 단일 산식
 export * from './spine-calc';
 export * from './print-template';
-// 상품별 편집 모드 프로파일 (P1 캘린더, 2026-10-17) — 템플릿셋 product_profile 판정·검증·캔버스 매핑
+// 상품별 편집 모드 프로파일 — 템플릿셋 product_profile 판정·검증·캔버스 매핑
 export * from './product-profile';
 export * from './print-geometry';
 import type { ProductProfile } from './product-profile';
@@ -18,7 +18,7 @@ import type { ProductProfile } from './product-profile';
 export enum UserRole {
   SUPER_ADMIN = 'SUPER_ADMIN',
   ADMIN = 'ADMIN',
-  // P1 멀티테넌시 (2026-06-17): 사이트 운영자 역할. 전역(SUPER_ADMIN/ADMIN)과 달리
+  // 멀티테넌시: 사이트 운영자 역할. 전역(SUPER_ADMIN/ADMIN)과 달리
   // user_site_roles 에 매핑된 site 에서만 권한을 가진다(TenantGuard 가 스코핑 강제).
   // SITE_ADMIN = 해당 site 의 관리자(템플릿·라이브러리·상품·주문 관리),
   // SITE_MANAGER = 해당 site 의 운영(주문/세션 조회·상태변경 등 제한).
@@ -29,7 +29,7 @@ export enum UserRole {
 }
 
 /**
- * P1 멀티테넌시 — JWT 에 실리는 사이트별 역할 클레임.
+ * 멀티테넌시 — JWT 에 실리는 사이트별 역할 클레임.
  * 한 계정이 여러 site 를 다른 역할로 운영할 수 있다(user_site_roles 1:N).
  * 전역 관리자(SUPER_ADMIN/ADMIN)는 siteRoles 가 비어 있어도 전역 접근(dual-mode).
  */
@@ -44,7 +44,7 @@ export interface User {
   email: string;
   role: UserRole;
   /**
-   * P1 멀티테넌시 (2026-06-17) — 이 계정이 운영하는 사이트별 역할 목록.
+   * 멀티테넌시 — 이 계정이 운영하는 사이트별 역할 목록.
    * 전역 관리자(SUPER_ADMIN/ADMIN/MANAGER)는 비어 있을 수 있다(dual-mode).
    * GET /auth/me 가 채워서 반환(additive optional — 하위호환).
    */
@@ -90,7 +90,7 @@ export enum TemplateType {
   SPINE = 'spine',
   PAGE = 'page',
   SPREAD = 'spread',
-  /** 면지 (앞면지/뒷면지) — 인쇄 워크플로우 v1 Phase 2 (2026-05-19) */
+  /** 면지 (앞면지/뒷면지) */
   ENDPAPER = 'endpaper',
 }
 
@@ -174,7 +174,7 @@ export interface TemplateRef {
  * 템플릿들의 조합. 상품에 연결되어 에디터의 기본 구성을 정의
  */
 /**
- * 면지(EndPaper) 구성 — 인쇄 워크플로우 v1 Phase 2 (2026-05-19).
+ * 면지(EndPaper) 구성.
  *
  * 책의 표지 안쪽(앞)과 뒤표지 안쪽(뒷)에 위치하는 빈 면지.
  * 관리자가 0~6 장 범위에서 사전 등록하고, 각 면지의 편집 가능 여부를 결정.
@@ -191,11 +191,11 @@ export interface EndpaperConfig {
 }
 
 /**
- * PHOTOBOOK 페이지 가변 가격 메타 — Phase 2 (2026-06-24).
+ * PHOTOBOOK 페이지 가변 가격 메타.
  *
  * storige 는 가격을 계산하지 않는다. 관리자가 템플릿셋에 이 메타를 저장하면,
  * 편집기는 완료 시 현재 총 pageCount 와 함께 emit 하고 **파트너 장바구니가 가격을 계산**한다.
- * (설계 §3-4·§8 — 가격 계산 주체=파트너)
+ * (가격 계산 주체=파트너)
  */
 export interface PhotobookPricing {
   /** 기본 포함 페이지 (예: 16). 이 수까지는 추가 단가 없음 */
@@ -209,11 +209,11 @@ export interface PhotobookPricing {
 }
 
 // ============================================================================
-// 커버 체계 (D-4, 2026-07-06) — 공통 3종 + 확장형 코드 모델
+// 커버 체계 — 공통 3종 + 확장형 코드 모델
 // ============================================================================
 
 /**
- * 커버 SKU 시드 코드 3종 (D-4). ⚠️ **템플릿 기하가 아니다** — 표지펼침면/표지3분할은 conversionMode.
+ * 커버 SKU 시드 코드 3종. ⚠️ **템플릿 기하가 아니다** — 표지펼침면/표지3분할은 conversionMode.
  * 저장/전송은 자유 문자열. 이 상수는 시드일 뿐이다.
  * - 'hardcover_wrap'            : 양장 싸바리 SKU. 편집기 싸바리 출력 모드(표지 PDF = 콘텐츠 + 사방
  *                                 싸바리 여분)의 첫 조건 — caseBind 없음·표지 면 = 판형+8 등 나머지 조건은
@@ -229,7 +229,7 @@ export const COVER_TYPE_SEED_CODES = [
 ] as const;
 
 /**
- * 싸바리(하드커버 보드 wrap) geometry — D-4 (설계서 §3-2 초안 채택).
+ * 싸바리(하드커버 보드 wrap) geometry.
  * 화면(trim 뷰)에는 나타나지 않고 **출력(PDF) 사이즈 계산에만** 사용된다.
  */
 export interface CaseBindSpec {
@@ -261,7 +261,7 @@ export interface CoverFinishingConfig {
   silver?: boolean;
 }
 
-/** 템플릿셋 coverConfig JSON 형상 (트랙 간 동결 인터페이스 ③) */
+/** 템플릿셋 coverConfig JSON 형상 */
 export interface TemplateSetCoverConfig {
   caseBind?: CaseBindSpec;
   /** 페브릭 표지 후가공 허용. 없으면 전부 OFF */
@@ -313,7 +313,7 @@ export function buildTemplateSetCoverConfig(input: {
 }
 
 /**
- * 템플릿셋 커버 메타 (D-4). 데이터 소스는 template_sets 의 additive nullable 컬럼
+ * 템플릿셋 커버 메타. 데이터 소스는 template_sets 의 additive nullable 컬럼
  * (coverType varchar + coverConfig JSON) — 편집기는 옵셔널 체이닝으로 읽기만 한다(값 없으면 기존 동작).
  */
 export interface TemplateSetCoverMeta {
@@ -333,7 +333,7 @@ export interface TemplateSet {
   canAddPage: boolean;        // 내지 추가 가능 여부
   pageCountRange: number[];   // 내지 수량 범위 (예: [10, 20, 30, 40])
   /**
-   * 내지 페이지 증감 단위 (S8, 2026-09-28). 물리 내지 페이지 수가 이 값의 배수여야 한다.
+   * 내지 페이지 증감 단위. 물리 내지 페이지 수가 이 값의 배수여야 한다.
    * - null/undefined: 제약 없음(기존 동작 — 1장씩 추가/삭제).
    * - N(>=1): 에디터가 N페이지 단위로 추가/삭제하고, 배수가 아니면 편집 완료를 차단.
    * (파트너 상품 예: pageStep=2, pageCountRange=[16, 500])
@@ -355,12 +355,12 @@ export interface TemplateSet {
    */
   enabledMenus?: EditorMenuKey[] | null;
   /**
-   * 면지 구성 — Phase 2 (2026-05-19).
+   * 면지 구성.
    * null/undefined: 면지 없음 (legacy/기본).
    */
   endpaperConfig?: EndpaperConfig | null;
   /**
-   * 상품별 편집 모드 프로파일 — P1 캘린더 (2026-10-17).
+   * 상품별 편집 모드 프로파일.
    * null/undefined: 기존 동작(legacy). 값이 있으면 편집기·API 가 `resolveProductProfile()` 결과로
    * 페이지 정책(고정 캔버스 수·라벨)·플러그인 활성·검증 기대 쪽수를 정한다. `EditorMode`·`type` 은 그대로.
    */
@@ -371,7 +371,7 @@ export interface TemplateSet {
    */
   siteId?: string | null;
   /**
-   * 표지 편집 가능 여부 — Phase 2 (2026-05-19), 2026-08-13 재정의.
+   * 표지 편집 가능 여부.
    * - true (기본): 일반 책 표지 — 편집기에서 디자인 가능
    * - false: 페브릭·기성 — 표지 템플릿 캔버스를 그대로 보여 주고 소재 배경만 잠금.
    *   후가공(형압·금박·은박)은 coverConfig.finishing. 캔버스를 미리보기 이미지로 대체하지 않음.
@@ -411,8 +411,8 @@ export interface TemplateSet {
    */
   libraryCategoryIds?: string[];
   /**
-   * PHOTOBOOK 페이지 가변 가격 메타 — Phase 2 (2026-06-24).
-   * storige 는 가격을 계산하지 않는다(설계 §3-4·§8). 이 메타를 저장하고 편집 완료 시
+   * PHOTOBOOK 페이지 가변 가격 메타.
+   * storige 는 가격을 계산하지 않는다. 이 메타를 저장하고 편집 완료 시
    * 현재 총 pageCount 와 함께 emit 하면, 파트너 장바구니가 실제 가/감 가격을 계산한다.
    * 가격식(참고): base + max(0, pageCount − includedPages) × perPageUnit.
    * null/undefined = 가변 가격 미사용(BOOK/LEAFLET 등 기존 동작 비파괴).
@@ -450,7 +450,7 @@ export interface CreateTemplateSetInput {
   height: number;
   canAddPage?: boolean;
   pageCountRange?: number[];
-  /** 내지 페이지 증감 단위 (S8, null=제약 없음, >=1 정수) */
+  /** 내지 페이지 증감 단위 (null=제약 없음, >=1 정수) */
   pageStep?: number | null;
   /** 첨부 내지 PDF 빈 페이지 배수 채움 (opt-in, 기본 false) */
   padToPageStep?: boolean;
@@ -458,9 +458,9 @@ export interface CreateTemplateSetInput {
   categoryId?: string;
   /** 에디터 도구 메뉴 노출 화이트리스트 (null=모두 노출) */
   enabledMenus?: EditorMenuKey[] | null;
-  /** 인쇄 워크플로우 v1 Phase 3 (2026-05-19) — 면지/표지/레더커버 */
+  /** 면지/표지/레더커버 */
   endpaperConfig?: EndpaperConfig | null;
-  /** 상품별 편집 모드 프로파일 (P1, null/미지정=legacy) */
+  /** 상품별 편집 모드 프로파일 (null/미지정=legacy) */
   productProfile?: ProductProfile | null;
   coverEditable?: boolean;
   coverPreviewImage?: string | null;
@@ -487,16 +487,16 @@ export interface UpdateTemplateSetInput {
   height?: number;
   canAddPage?: boolean;
   pageCountRange?: number[];
-  /** 내지 페이지 증감 단위 (S8, null=제약 없음, >=1 정수) */
+  /** 내지 페이지 증감 단위 (null=제약 없음, >=1 정수) */
   pageStep?: number | null;
   /** 첨부 내지 PDF 빈 페이지 배수 채움 (opt-in, 기본 false) */
   padToPageStep?: boolean;
   templates?: TemplateRef[];
   /** 에디터 도구 메뉴 노출 화이트리스트 (null=모두 노출) */
   enabledMenus?: EditorMenuKey[] | null;
-  /** 인쇄 워크플로우 v1 Phase 3 (2026-05-19) — 면지/표지/레더커버 */
+  /** 면지/표지/레더커버 */
   endpaperConfig?: EndpaperConfig | null;
-  /** 상품별 편집 모드 프로파일 (P1, null/미지정=legacy) */
+  /** 상품별 편집 모드 프로파일 (null/미지정=legacy) */
   productProfile?: ProductProfile | null;
   coverEditable?: boolean;
   coverPreviewImage?: string | null;
@@ -602,9 +602,9 @@ export interface EditSession {
   modifiedBy?: string;
   modifiedAt?: Date;
   /**
-   * 고객 첨부 내지 PDF — 인쇄 워크플로우 v1 Phase 2 (2026-05-19).
-   * 결정 3-3: PDF 첨부와 일부 편집은 배타적 (둘 다 동시 불가).
-   * 결정 3-4: 워커 검증 실패 시 첨부 자체 거부 (validationResult 에 issue 누적되면 클라이언트가 거부 UI 노출).
+   * 고객 첨부 내지 PDF.
+   * PDF 첨부와 일부 편집은 배타적 (둘 다 동시 불가).
+   * 워커 검증 실패 시 첨부 자체 거부 (validationResult 에 issue 누적되면 클라이언트가 거부 UI 노출).
    */
   contentPdfFileId?: string | null;
   /** PDF 페이지수 (자동 페이지 확장 계산용) */
@@ -620,8 +620,8 @@ export interface EditSession {
    */
   contentPdfMode?: 'replace' | 'underlay' | null;
   /**
-   * 게스트 식별자 — Phase 2 (2026-05-19).
-   * 결정 3-1: 24시간 후 자동 삭제. 결정 3-6: 저장(편집완료) 시점에만 회원 전환 유도.
+   * 게스트 식별자.
+   * 24시간 후 자동 삭제. 저장(편집완료) 시점에만 회원 전환 유도.
    */
   guestToken?: string | null;
   /** 게스트 작업 자동 삭제 시점 (NOW + 24h). 회원 가입 시 NULL 로 클리어 */
@@ -774,10 +774,10 @@ export enum WorkerJobType {
    */
   RENDER_PAGES = 'RENDER_PAGES',
   /**
-   * 배경제거(컷아웃) 서버 오프로드 (2026-08-05, D-6a=B·D-12a=C).
+   * 배경제거(컷아웃) 서버 오프로드.
    * 큐 `image-cutout` / 잡명 `remove-background` / 동시성 1.
    * 추론은 워커 프로세스가 아니라 rembg 사이드카 컨테이너가 수행한다
-   * (워커 베이스가 Alpine/musl 이라 onnxruntime-node 계열을 적재할 수 없음 — 스파이크 §1-1).
+   * (워커 베이스가 Alpine/musl 이라 onnxruntime-node 계열을 적재할 수 없음).
    */
   CUTOUT = 'CUTOUT',
 }
@@ -792,7 +792,7 @@ export enum WorkerJobStatus {
 }
 
 // ----------------------------------------------------------------------------
-// Cutout (배경제거) — 서버 오프로드 계약 (2026-08-05, S-P2A-B 샤드2)
+// Cutout (배경제거) — 서버 오프로드 계약
 // ----------------------------------------------------------------------------
 
 /** 컷아웃 큐 이름 — API 프로듀서와 워커 컨슈머의 단일 진실 공급원 */
@@ -801,7 +801,7 @@ export const CUTOUT_QUEUE_NAME = 'image-cutout';
 export const CUTOUT_JOB_NAME = 'remove-background';
 
 /**
- * 배경제거 추론 입력 픽셀 캡 — 장변 상한 (D-6b②).
+ * 배경제거 추론 입력 픽셀 캡 — 장변 상한.
  *
  * 세그멘테이션 모델은 내부 고정 해상도(예: 1024²)로 추론하고 마스크를 "입력 해상도"로
  * 업스케일하므로, 12MP 원본을 그대로 넣으면 품질 이득 없이 피크 메모리만 폭증한다
@@ -854,8 +854,8 @@ export interface CutoutJobData {
   maxLongEdge?: number;
   /**
    * 배경제거 모델 키(rembg 세션명). 미지정 시 워커 env `REMBG_MODEL`.
-   * ⚠️ 라이선스가 모델마다 다르다 — 상업 사용 가부는 D-12b 결정표 참조.
-   * 런타임 교체가 가능해야 한다는 것이 오너 결정의 완화 조건이다.
+   * ⚠️ 라이선스가 모델마다 다르다 — 상업 사용 가부는 모델별로 확인한다.
+   * 모델은 런타임에 교체할 수 있어야 한다.
    */
   model?: string;
 }
@@ -887,14 +887,14 @@ export interface WorkerJob {
   options?: ValidationOptions | ConversionOptions | SynthesisOptions;
   /**
    * 잡 결과. VALIDATE 잡의 런타임 실물은 `WorkerValidationResult`
-   * ({isValid, errors, warnings, metadata} — 워커 DTO 정본, S-1 2026-07-15).
+   * ({isValid, errors, warnings, metadata} — 워커 DTO 정본).
    * 구형 `ValidationResult`({valid, fileInfo})는 하위호환 선언으로만 유지.
    */
   result?: ValidationResult | WorkerValidationResult | ConversionResult | SynthesisResult;
   errorMessage?: string;
   createdAt: Date;
   completedAt?: Date;
-  /** Phase C — 사이트 컨텍스트 (외부 X-API-Key 호출 시 자동 주입) */
+  /** 사이트 컨텍스트 (외부 X-API-Key 호출 시 자동 주입) */
   siteId?: string | null;
 }
 
@@ -903,11 +903,11 @@ export interface ValidationOptions {
   fileType: 'cover' | 'content';
   orderOptions: OrderOptions;
   /**
-   * [S2-5, 2026-07-16] test env 파트너 키 컨텍스트로 생성된 잡 마커 (additive).
+   * test env 파트너 키 컨텍스트로 생성된 잡 마커 (additive).
    * API 잡 생성 서비스가 인증 컨텍스트 env==='test'일 때만 자동 스탬프한다 —
    * 호출자가 body 로 직접 세팅할 수 없다(DTO 비화이트리스트).
-   * 현 시점(Stage 2) 잡 생성 표면은 전부 live(공용 ApiKeyGuard=sites 키)라 항상 미설정 —
-   * 실발화는 Stage 3(v1 books 잡 생성 표면)에서 일어난다.
+   * 공용 ApiKeyGuard(sites 키) 잡 생성 표면은 전부 live 라 항상 미설정 —
+   * 설정되는 곳은 v1 books 잡 생성 표면이다.
    * true 인 잡: 완료 웹훅 v2 발신 시 페이로드 isTest 반영 + 합성 산출물은 TEST
    * 워터마크 더미 + outputs 24h retention(TestJobOutputsRetentionService).
    */
@@ -917,7 +917,7 @@ export interface ValidationOptions {
 /**
  * @deprecated 워커 런타임 발신 shape 과 불일치하는 구형 선언({valid, fileInfo}).
  * 워커가 실제로 발신하는 검증 결과는 `WorkerValidationResult`({isValid, metadata}) 다.
- * S-1 정본화(2026-07-15) — 신규 코드는 `WorkerValidationResult` 를 사용하라.
+ * 신규 코드는 `WorkerValidationResult` 를 사용하라.
  * 기존 참조 호환을 위해 유지: 필드 변경·삭제 금지(additive-only).
  */
 export interface ValidationResult {
@@ -953,7 +953,7 @@ export interface ValidationWarning {
 }
 
 // ============================================================================
-// Worker 검증 결과 정본 (Stage 0 S-1, 2026-07-15)
+// Worker 검증 결과 정본
 // ----------------------------------------------------------------------------
 // 정본은 apps/worker/src/dto/validation-result.dto.ts 의 ValidationResultDto.
 // 아래 타입들은 그 DTO 와 필드 1:1 미러이며, 구조 일치는
@@ -1038,26 +1038,26 @@ export interface WorkerPdfMetadata {
   unembeddedFonts?: string[];
   /** 2026-11-04: 편집기 산출 파일에서 경고 대상에서 제외한 PDF 표준 14폰트 — 제외한 것이 있을 때만 기록 (additive) */
   ignoredStandardFonts?: string[];
-  /** C-2a: 첫 페이지 TrimBox 크기(mm, 소수1자리) — TrimBox 명시 선언 시에만 기록 */
+  /** 첫 페이지 TrimBox 크기(mm, 소수1자리) — TrimBox 명시 선언 시에만 기록 */
   trimBox?: { width: number; height: number };
-  /** C-2a: 재단 기하(TrimBox) 명시 선언 여부 — crop mark 검증 수행 시에만 기록 */
+  /** 재단 기하(TrimBox) 명시 선언 여부 — crop mark 검증 수행 시에만 기록 */
   hasCropMarkGeometry?: boolean;
   /** 2026-11-11: crop mark 검증을 건너뛴 이유 — 양장 싸바리 전개 표지('HARDCOVER_WRAP')일 때만 기록 (additive) */
   cropMarkSkipReason?: 'HARDCOVER_WRAP';
-  /** R3 (2026-08-11): 최대 페이지 평균 TAC(%) — GS ink_cov 측정 성공 시에만 기록 (additive) */
+  /** 최대 페이지 평균 TAC(%) — GS ink_cov 측정 성공 시에만 기록 (additive) */
   maxTacPercent?: number;
-  /** R3: 적용된 TAC 경고 한계(%) — 측정 성공 시에만 기록 (additive) */
+  /** 적용된 TAC 경고 한계(%) — 측정 성공 시에만 기록 (additive) */
   tacLimitPercent?: number;
-  /** R4a (2026-08-11): 인쇄 유의 주석 수(Link/Popup 제외) — 검출 성공 시에만 기록 (additive) */
+  /** 인쇄 유의 주석 수(Link/Popup 제외) — 검출 성공 시에만 기록 (additive) */
   annotationCount?: number;
-  /** R4a: 양식(AcroForm) 필드 존재 여부 — 검출 성공 시에만 기록 (additive) */
+  /** 양식(AcroForm) 필드 존재 여부 — 검출 성공 시에만 기록 (additive) */
   hasAcroForm?: boolean;
-  /** R4b (2026-08-11): 화이트 오버프린트 존재 여부 — 스캔 성공 시에만 기록 (additive) */
+  /** 화이트 오버프린트 존재 여부 — 스캔 성공 시에만 기록 (additive) */
   hasWhiteOverprint?: boolean;
 }
 
 /**
- * 워커 검증 결과 정본 (Stage 0 S-1, 2026-07-15).
+ * 워커 검증 결과 정본.
  *
  * 워커가 실제로 발신하는 런타임 shape: `{isValid, errors, warnings, metadata}`.
  * apps/worker/src/dto/validation-result.dto.ts `ValidationResultDto` 와 필드 1:1.
@@ -1098,7 +1098,7 @@ export interface SynthesisOptions {
   bindingType?: 'perfect' | 'saddle' | 'hardcover';
   generatePreview?: boolean;
   outputFormat?: 'merged' | 'separate'; // 요청 옵션, 기본값: 'merged'
-  /** [S2-5] test env 잡 마커 — `ValidationOptions.isTest` 주석 참조 (additive) */
+  /** test env 잡 마커 — `ValidationOptions.isTest` 주석 참조 (additive) */
   isTest?: boolean;
 }
 
@@ -1148,7 +1148,7 @@ export interface SplitSynthesisOptions {
   totalExpectedPages: number;
   outputFormat: 'merged' | 'separate';
   alsoGenerateMerged?: boolean;
-  /** [S2-5] test env 잡 마커 — `ValidationOptions.isTest` 주석 참조 (additive) */
+  /** test env 잡 마커 — `ValidationOptions.isTest` 주석 참조 (additive) */
   isTest?: boolean;
 }
 
@@ -1167,7 +1167,7 @@ export interface SplitSynthesisJobData {
   alsoGenerateMerged?: boolean;
   callbackUrl?: string;
   /**
-   * [S2-5] test env 잡 마커. ⚠️ 큐 페이로드는 명시 구성이므로(직렬화 등재 필요)
+   * test env 잡 마커. ⚠️ 큐 페이로드는 명시 구성이므로(직렬화 등재 필요)
    * API 잡 생성부가 isTest 잡에만 conditional spread 로 싣는다 — live 잡 페이로드 바이트 불변.
    * 워커 SynthesisProcessor 는 이 플래그로 실합성 대신 TEST 워터마크 더미 산출 분기.
    */
@@ -1193,7 +1193,7 @@ export interface DuplexSplitSynthesisJobData {
 }
 
 /**
- * Sheet-map Synthesis (P2, 2026-10-18 — 설계 docs/PRODUCT_MODE_ARCHITECTURE_DESIGN_2026-10-16.md §6.3~6.4).
+ * Sheet-map Synthesis (설계 docs/PRODUCT_MODE_ARCHITECTURE_DESIGN_2026-10-16.md §6.3~6.4).
  *
  * ProductProfile `output.mode='sheet-map'` 상품의 편집기 산출 단일 PDF(캔버스 순서)를
  * API 가 `buildSheetMap(profile, pageCount)`(apps/api/src/edit-sessions/sheet-map.ts, 순수 함수)로
@@ -1282,10 +1282,10 @@ export interface SynthesisResult {
   outputFiles?: OutputFile[]; // separate 모드에서만 추가 (cover → content 순서)
   previewUrl?: string;
   totalPages?: number; // merged PDF 기준 총 페이지 수
-  /** [S2-5] test env 더미 산출물 마커 — isTest 잡 결과에만 true (additive, live 결과 불변) */
+  /** test env 더미 산출물 마커 — isTest 잡 결과에만 true (additive, live 결과 불변) */
   isTest?: boolean;
   /**
-   * P2-c(2026-10-18) worker mode 'sheet-map' 결과 echo(additive) — 매니페스트(.synthesis-complete.json)·잡 result 에만 실리고
+   * worker mode 'sheet-map' 결과 echo(additive) — 매니페스트(.synthesis-complete.json)·잡 result 에만 실리고
    * 웹훅 본문(outputFiles)은 불변. output: per-sheet 는 outputFiles type 'set'(setIndex = sheet.index, 1~2p),
    * merged-duplex 는 type 'pages' 1파일(인쇄 시트 front, back(없으면 빈 면) 순). role 'post-process' 시트는 항상 별도 set 파일.
    */
@@ -1303,11 +1303,11 @@ export interface SynthesisResult {
 export interface ValidationWebhookPayload {
   event: 'validation.completed' | 'validation.fixable' | 'validation.failed';
   jobId: string;
-  /** 편집 세션 ID — job.editSessionId가 있을 때만 포함 (WH-005) */
+  /** 편집 세션 ID — job.editSessionId가 있을 때만 포함 */
   sessionId?: string;
   /** 검증 대상 파일 타입 */
   fileType: 'cover' | 'content' | 'post_process';
-  /** 연결된 주문 번호 — bookmoa orderOptions.orderSeqno echo-back (WH-005) */
+  /** 연결된 주문 번호 — 파트너 사이트 orderOptions.orderSeqno echo-back */
   orderSeqno?: number;
   status: 'completed' | 'fixable' | 'failed';
   /** 검증 결과 상세 (errors, warnings, metadata) */
@@ -1323,11 +1323,11 @@ export interface ValidationWebhookPayload {
 export interface SynthesisWebhookPayload {
   event: 'synthesis.completed' | 'synthesis.failed';
   jobId: string;
-  sessionId?: string; // EditSession ID (additive, NEW_DEV_PLAN §3.5 계약 보강)
+  sessionId?: string; // EditSession ID (additive)
   orderId?: string;
-  /** bookmoa orderOptions.orderSeqno echo-back — orders 테이블 원자 갱신용 (WH-005) */
+  /** 파트너 사이트 orderOptions.orderSeqno echo-back — orders 테이블 원자 갱신용 */
   orderSeqno?: number;
-  /** P2-b 런처 synthesize(재합성) 로 만든 잡에만 존재 — 세션 metadata.revision 값(additive, 2026-10-18). 그 외 잡은 키 없음 */
+  /** 런처 synthesize(재합성) 로 만든 잡에만 존재 — 세션 metadata.revision 값(additive, 2026-10-18). 그 외 잡은 키 없음 */
   revision?: number;
   status: 'completed' | 'failed';
 
@@ -1350,10 +1350,10 @@ export interface SynthesisWebhookPayload {
 }
 
 /**
- * Book finalization 웹훅 페이로드 (Partner API v1 Stage 3 W3).
+ * Book finalization 웹훅 페이로드 (Partner API v1).
  *
  * finalization 완료/실패 시 사이트 v2 webhook config(opt-in)로 발신 — 폴링
- * (GET /api/v1/books/:uid/finalization)과 병행(설계서 §6.3). 기존 발신 7종과
+ * (GET /api/v1/books/:uid/finalization)과 병행(docs/PARTNER_PLATFORM_API_V1_DESIGN_2026-07-07.md §6.3). 기존 발신 7종과
  * 별개 additive 이벤트(webhook-v2.constants WEBHOOK_V2_SUBSCRIBABLE_EVENTS 등재).
  * 내부 UUID(id)는 비노출 — 외부 식별자(bk_.../fin_...)만 싣는다(§2.0).
  */
@@ -1371,10 +1371,10 @@ export interface BookFinalizationWebhookPayload {
   /** 실패 시 ERR_* (§3 카탈로그) */
   errorCode?: string | null;
   timestamp: string;
-  /** [S2-5] test env 더미 산출물 마커 — isTest 잡 결과에만 true(additive, live 결과 불변) */
+  /** test env 더미 산출물 마커 — isTest 잡 결과에만 true(additive, live 결과 불변) */
   isTest?: boolean;
   /**
-   * [P1-2] 워커 validate 를 건너뛰고 최종화됐음(book_spec 미연결 or pageCount 미확정 →
+   * 워커 validate 를 건너뛰고 최종화됐음(book_spec 미연결 or pageCount 미확정 →
    * 대조 판형 부재). true 면 파트너는 미검증 FINALIZED 임을 인지하고 자체 게이팅 가능(§6.3).
    */
   validationSkipped?: boolean;
@@ -1700,7 +1700,7 @@ export function normalizeSpreadSpec(raw: Partial<SpreadSpec> & {
     cutSizeMm: roundMm01(raw.cutSizeMm ?? 3),
     safeSizeMm: roundMm01(raw.safeSizeMm ?? 3),
     dpi: raw.dpi ?? 150,
-    // D-4 (2026-07-06): 싸바리 geometry 보존(additive) — 유효할 때만 0.1mm 정규화해 유지.
+    // 싸바리 geometry 보존(additive) — 유효할 때만 0.1mm 정규화해 유지.
     // 비유효/미설정이면 필드 자체를 생략해 기존 스냅샷과 byte-identical.
     ...(isValidCaseBind(raw.caseBind)
       ? {
@@ -1737,7 +1737,7 @@ export function computeSpreadDimensions(spec: SpreadSpec): SpreadDimensions {
 }
 
 /**
- * 트랙 C (2026-07-23): 스프레드 영역 좌→우 경계(mm) — 단일 기하 소스.
+ * 스프레드 영역 좌→우 경계(mm) — 단일 기하 소스.
  *
  * SpreadLayoutEngine.computeLayout 의 영역 배치 시맨틱과 동일(widthMm<=0 영역 제외,
  * 좌→우 REGION_ORDER 고정) — px 환산 없이 mm 로만 계산한다. canvas-core 와의
@@ -1796,12 +1796,12 @@ export function computeSpreadRegionRangesMm(spec: SpreadSpec): SpreadRegionRange
 }
 
 /**
- * D-4 (2026-07-06): 스프레드 **출력(PDF) 사이즈** 계산 — 싸바리(caseBind) wrap 포함.
+ * 스프레드 **출력(PDF) 사이즈** 계산 — 싸바리(caseBind) wrap 포함.
  *
  * 이중경계 원칙: 화면(trim 뷰)은 computeSpreadDimensions(위, **불변**)를 그대로 쓰고,
  * PDF 생성 시에만 이 함수의 출력 사이즈를 페이지 크기로 쓴다(콘텐츠는 중앙 배치).
  *
- * 공식(설계서 §3-2): 출력 폭 = trim 총폭 + boardThicknessMm×2(책등 가산) + (turnIn+wrap)×2,
+ * 공식: 출력 폭 = trim 총폭 + boardThicknessMm×2(책등 가산) + (turnIn+wrap)×2,
  * 출력 높이 = trim 높이 + (turnIn+wrap)×2.
  *
  * caseBind 미설정/비유효 → computeSpreadDimensions 와 동일값(기존 totalWidthMm 출력 byte-parity).
@@ -1818,7 +1818,7 @@ export function computeSpreadOutputDimensions(spec: SpreadSpec): SpreadDimension
 }
 
 /**
- * B48/B49: 클라이언트가 제출한 스프레드 스펙(스냅샷)을 권위 스펙(Template.spreadConfig.spec)과 대조.
+ * 클라이언트가 제출한 스프레드 스펙(스냅샷)을 권위 스펙(Template.spreadConfig.spec)과 대조.
  *
  * ⚠️ 책등(spineWidthMm)·총폭(totalWidthMm)은 **비교하지 않는다** — 책등은 주문 페이지수/용지에 따라
  *    동적으로 결정되므로 정적 템플릿 스펙과 다른 게 정상이다. 템플릿이 고정하는 **기하(표지 가로/세로,
@@ -1896,7 +1896,7 @@ export const ROLE_PERMISSIONS: Record<UserRole, UserPermissions> = {
     canChangeStatus: true,
     canViewAllSessions: true,
   },
-  // P1 멀티테넌시: 사이트 운영자. 기능 권한은 ADMIN/MANAGER 급이되, 접근 범위(site)는
+  // 멀티테넌시: 사이트 운영자. 기능 권한은 ADMIN/MANAGER 급이되, 접근 범위(site)는
   // TenantGuard 가 user_site_roles 로 스코핑한다(여기 권한 맵은 '무엇을 할 수 있나'만 정의).
   [UserRole.SITE_ADMIN]: {
     canEdit: true,
@@ -1994,9 +1994,9 @@ export const EDITOR_MENU_DEFS: EditorMenuDef[] = [
   { key: 'SMART_CODE', label: 'QR/바코드', description: 'QR 코드 / 바코드 생성', defaultEnabled: true, requiresFlag: 'SMART_CODE' },
   { key: 'EDIT', label: '편집도구', description: '이미지 편집 (배경 제거 등 OpenCV)', defaultEnabled: true, requiresFlag: 'IMAGE_PROCESSING' },
   { key: 'AI', label: 'AI', description: 'AI 추천 / 생성 패널', defaultEnabled: true, requiresFlag: 'AI' },
-  // P1 캘린더 (2026-10-17): 편집기는 productProfile.kind==='calendar' 세트에서만 런타임 게이트로 노출한다.
+  // 캘린더: 편집기는 productProfile.kind==='calendar' 세트에서만 런타임 게이트로 노출한다.
   { key: 'CALENDAR', label: '달력', description: '캘린더 시작연월·표기 옵션·기념일 (productProfile kind=calendar 세트에서만 노출)', defaultEnabled: false, requiresFlag: 'CALENDAR' },
-  // P2-d 사진인화 (2026-10-19): productProfile.kind==='photo-print' 세트에서만 런타임 게이트로 노출한다.
+  // 사진인화: productProfile.kind==='photo-print' 세트에서만 런타임 게이트로 노출한다.
   { key: 'PHOTO_PRINT', label: '사진인화', description: '사진별 매수·테두리·맞춤·마감·촬영일·흑백 옵션 (productProfile kind=photo-print 세트에서만 노출)', defaultEnabled: false, requiresFlag: 'PHOTO_PRINT' },
 ];
 
@@ -2089,7 +2089,7 @@ export interface SpreadSpec {
   safeSizeMm: number;
   dpi: number;
   /**
-   * D-4 (2026-07-06): 싸바리(하드커버 보드 wrap) geometry — optional additive, 기존 BOOK 비파괴.
+   * 싸바리(하드커버 보드 wrap) geometry — optional additive, 기존 BOOK 비파괴.
    * 화면 레이아웃(computeSpreadDimensions/SpreadLayoutEngine)에는 **관여하지 않고**,
    * 출력(PDF) 사이즈 계산(computeSpreadOutputDimensions)에만 사용된다.
    */
@@ -2157,7 +2157,7 @@ export type SpreadConversionMode = 'full' | 'flat-spread' | 'flat-spine';
 /**
  * SpreadConfig.version 현재값.
  * - 1: 초기 (표지 스프레드 + 포토북 내지 regionScope/innerSpec)
- * - 2: D-4 caseBind(싸바리)·출력 사이즈 이중경계 도입 (2026-07-06)
+ * - 2: caseBind(싸바리)·출력 사이즈 이중경계 포함
  * 소비처는 version 으로 게이팅하지 않는다(형상 세대 추적용 — 미존재 시 1 간주).
  */
 export const SPREAD_CONFIG_VERSION = 2;
@@ -2185,7 +2185,7 @@ export interface SpreadConfig {
 }
 
 // ============================================================================
-// 포토북 펼침면 내지(2-up) 모델 (O-2, 2026-06-24)
+// 포토북 펼침면 내지(2-up) 모델
 // — 표지 스프레드(wing/cover/spine)와 **별개**의 좌/우 면 + 거터 모델.
 //   좌표는 중앙원점@150dpi 규약(content=trim, bleed 는 WorkspacePlugin 이 별도 처리) — 표지와 동일.
 // ============================================================================
@@ -2284,13 +2284,13 @@ export const SPINE_FORMULA_VERSION = '1.0' as const;
 export interface SpineSnapshot {
   pageCount: number;
   /**
-   * 용지 종류. 책등 0mm 이고 제본이 perfect/hardcover 가 아닐 때만 생략 가능(S7) — 그 외 필수.
+   * 용지 종류. 책등 0mm 이고 제본이 perfect/hardcover 가 아닐 때만 생략 가능 — 그 외 필수.
    * (bindingType 비교는 대소문자 무시. 동일 predicate: editor buildSpreadSnapshots,
    *  api EditSessionsService.validateSpreadSnapshot, worker PdfSynthesizerService.validateSpreadSnapshot)
    */
   paperType?: string;
   bindingType: string;
-  /** 책등 폭 mm. 유한수 ≥ 0 — 0 은 책등 없는 책(스프링 표지펼침면 등)으로 유효하다(S7). */
+  /** 책등 폭 mm. 유한수 ≥ 0 — 0 은 책등 없는 책(스프링 표지펼침면 등)으로 유효하다. */
   spineWidthMm: number;
   formulaVersion: string;
   /**
@@ -2309,7 +2309,7 @@ export interface SpreadSnapshot {
   totalHeightMm: number;
   dpi: number;
   /**
-   * D-4 (2026-07-06, 트랙 간 동결 인터페이스 ①): 싸바리 wrap 포함 **출력(PDF) 사이즈** mm.
+   * 싸바리 wrap 포함 **출력(PDF) 사이즈** mm.
    * caseBind 가 설정된 세션에만 기록(additive) — 미설정 세션은 필드 자체 생략(기존 스냅샷 불변).
    * 워커 cover MediaBox 검증 기대치는 output 우선·total 폴백으로 확장 가능.
    */
@@ -2319,7 +2319,7 @@ export interface SpreadSnapshot {
 
 /**
  * 스프레드 스냅샷 검증 결과 (EditSession.metadata.spreadValidation)
- * P0-2: 완료 시 서버가 스냅샷 무결성을 SOFT(경고/기록) 또는 HARD(차단)로 검증한 결과.
+ * 완료 시 서버가 스냅샷 무결성을 SOFT(경고/기록) 또는 HARD(차단)로 검증한 결과.
  */
 export interface SpreadValidationResult {
   ok: boolean;
@@ -2343,8 +2343,8 @@ export interface EditSessionMetadata {
    */
   contentPdfGuide?: ContentPdfGuide;
   /**
-   * D1 외부 사진 주입 (2026-06-12, EDITOR.md §20.1).
-   * 호스트(예: ShareSnap 공유방)가 세션 생성/PATCH 시 주입하는 사진 목록.
+   * 외부 사진 주입 (docs/EDITOR.md §20.1).
+   * 호스트(예: 사진 공유 서비스의 공유방)가 세션 생성/PATCH 시 주입하는 사진 목록.
    * 목록이 있으면 편집기 이미지 패널에 "공유방 사진" 탭이 조건부 렌더된다.
    * url 은 인쇄용 리사이즈본(긴변 3000~4000px 권장, 만료형 signed URL 금지).
    */
@@ -2352,7 +2352,7 @@ export interface EditSessionMetadata {
 }
 
 /**
- * 외부 주입 사진 1장 (D1).
+ * 외부 주입 사진 1장.
  */
 export interface ExternalPhoto {
   /** 인쇄용 이미지 URL (편집기 캔버스에 로드되는 원본 — 곧 인쇄 품질) */
@@ -2366,7 +2366,7 @@ export interface ExternalPhoto {
   /** 업로드 시각 ISO (정렬용, 선택) */
   uploadedAt?: string;
   /**
-   * 포토북 자동편집(Phase 2): EXIF 메타. 호스트가 주입하거나 편집기가 exifr 로 파싱해 채운다.
+   * 포토북 자동편집: EXIF 메타. 호스트가 주입하거나 편집기가 exifr 로 파싱해 채운다.
    * 없을 수 있음(스캔/구형/프라이버시) → 정렬 폴백 체인(takenAt→uploadedAt→name)으로 처리.
    */
   takenAt?: string;            // EXIF DateTimeOriginal ISO (날짜순 정렬 1차 기준)
@@ -2375,7 +2375,7 @@ export interface ExternalPhoto {
 }
 
 /**
- * 포토북 자동편집 정렬 기준 (Phase 2).
+ * 포토북 자동편집 정렬 기준.
  * - 'date'    : 촬영일시(DateTimeOriginal) 오름차순 — **기본/1차 기준**(거의 항상 존재, 시간순 이야기).
  * - 'filename': 파일명 자연 정렬.
  * - 'location': GPS 근접 군집 → 군집을 최소 촬영시각순, 군집 내부는 시간순. GPS 없는 사진은 날짜로 폴백.
@@ -2456,11 +2456,11 @@ export interface SpreadSynthesisWebhookPayload {
 }
 
 // ============================================================================
-// Partner API v1 (Stage 1 — docs/PARTNER_PLATFORM_API_V1_DESIGN_2026-07-07.md §3)
+// Partner API v1 (docs/PARTNER_PLATFORM_API_V1_DESIGN_2026-07-07.md §3)
 // ============================================================================
 
 /**
- * Partner API v1 에러 코드 카탈로그 (설계서 §3.3 — 29종).
+ * Partner API v1 에러 코드 카탈로그 (PARTNER_PLATFORM_API_V1_DESIGN §3.3 — 29종).
  *
  * 계약 원칙: 파트너 분기는 errorCode(와 errors[].code)로만 한다.
  * message 문자열 파싱 금지 — 메시지는 예고 없이 개선될 수 있다.
@@ -2479,7 +2479,7 @@ export enum ErrV1 {
   ERR_INTERNAL = 'ERR_INTERNAL', // 500
   ERR_SERVICE_UNAVAILABLE = 'ERR_SERVICE_UNAVAILABLE', // 503
 
-  // 멱등성 (2) — 설계서 §4
+  // 멱등성 (2) — PARTNER_PLATFORM_API_V1_DESIGN §4
   ERR_IDEMPOTENCY_KEY_MISMATCH = 'ERR_IDEMPOTENCY_KEY_MISMATCH', // 422 동일 키+다른 body hash
   ERR_IDEMPOTENCY_IN_PROGRESS = 'ERR_IDEMPOTENCY_IN_PROGRESS', // 409 동일 키 처리 중
 
@@ -2508,16 +2508,16 @@ export enum ErrV1 {
   ERR_WEBHOOK_URL_FORBIDDEN = 'ERR_WEBHOOK_URL_FORBIDDEN', // 422
   ERR_DELIVERY_NOT_RETRYABLE = 'ERR_DELIVERY_NOT_RETRYABLE', // 409
 
-  // [오너 게이트] Orders/Credits (2) — Stage 6
+  // Orders/Credits (2)
   ERR_ORDER_NOT_CANCELLABLE = 'ERR_ORDER_NOT_CANCELLABLE', // 409
   ERR_INSUFFICIENT_CREDIT = 'ERR_INSUFFICIENT_CREDIT', // 402
 
-  // Sessions/런처 (2) — P2-b 1-call 런처(2026-10-18, 설계안 §8.1)
+  // Sessions/런처 (2) — 1-call 런처(docs/PRODUCT_MODE_ARCHITECTURE_DESIGN_2026-10-16.md §8.1)
   ERR_SESSION_NOT_COMPLETE = 'ERR_SESSION_NOT_COMPLETE', // 409 — 편집 완료 전 synthesize
   ERR_OUTPUT_MODE_UNSUPPORTED = 'ERR_OUTPUT_MODE_UNSUPPORTED', // 422 — 템플릿셋 pdfOutputMode 가 재합성 대상 아님
 }
 
-/** v1 목록 응답 pagination 메타 (설계서 §5.1) */
+/** v1 목록 응답 pagination 메타 (PARTNER_PLATFORM_API_V1_DESIGN §5.1) */
 export interface PartnerV1Pagination {
   total: number;
   limit: number;
@@ -2525,7 +2525,7 @@ export interface PartnerV1Pagination {
   hasNext: boolean;
 }
 
-/** v1 성공 봉투 — 필드 4종 고정 (설계서 §3.1) */
+/** v1 성공 봉투 — 필드 4종 고정 (PARTNER_PLATFORM_API_V1_DESIGN §3.1) */
 export interface PartnerV1SuccessEnvelope<T> {
   success: true;
   message: string;
@@ -2539,7 +2539,7 @@ export interface PartnerV1ErrorItem {
   message: string;
 }
 
-/** v1 에러 봉투 — 필드 6종 고정 (설계서 §3.2) */
+/** v1 에러 봉투 — 필드 6종 고정 (PARTNER_PLATFORM_API_V1_DESIGN §3.2) */
 export interface PartnerV1ErrorEnvelope {
   success: false;
   errorCode: ErrV1;

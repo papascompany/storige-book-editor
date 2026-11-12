@@ -9,7 +9,7 @@ vi.mock('@/stores/useSettingsStore', () => ({ useSettingsStore: { getState: () =
 import { useEditorStore } from '@/stores/useEditorStore'
 import { getPageStepBlockMessage, getLivePageStepViolation } from './pageStepGuard'
 
-describe('pageStepGuard — 편집완료 차단 판정 (S8)', () => {
+describe('pageStepGuard — 편집완료 차단 판정', () => {
   beforeEach(() => {
     appState.allCanvas = []
     appState.isSpreadMode = true

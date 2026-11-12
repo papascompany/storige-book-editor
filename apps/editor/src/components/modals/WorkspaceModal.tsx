@@ -29,7 +29,7 @@ export const WorkspaceModal = memo(function WorkspaceModal({
       setIsLoading(true)
       setError(null)
       const response = await editSessionsApi.getMySessions()
-      // 최신순으로 정렬 — complete 세션도 포함해 표시 (2026-06-11).
+      // 최신순으로 정렬 — complete 세션도 포함해 표시.
       // 고객 저장본(장바구니 담기)은 전부 status='complete' 라 기존
       // `s.status !== 'complete'` 필터가 최근 저장본을 전부 숨기던 버그 수정.
       // complete 세션도 재편집 시 update 가 status:'editing' 역전환을 허용하므로 표시해도 무해.

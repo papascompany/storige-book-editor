@@ -1,5 +1,5 @@
 /**
- * 비스프레드(단일 모드) 편집완료 PDF 대상 캔버스 선택 (P0, 2026-10-16).
+ * 비스프레드(단일 모드) 편집완료 PDF 대상 캔버스 선택.
  *
  * 종전 embed.tsx handleFinish 단일 분기는 현재 캔버스 1장만 `saveMultiPagePDFAsBlob([canvas], [editor], …)`
  * 에 넘겨 낱장 N장 세트(같은 판형 캔버스 N개)의 나머지 페이지가 PDF 에서 누락됐다.

@@ -52,7 +52,7 @@ export function useAutoSave() {
   const allCanvas = useAppStore((state) => state.allCanvas)
   const allEditors = useAppStore((state) => state.allEditors)
 
-  // BB-Phase 3 follow-up — 시점 썸네일 캡처/업로드 helper (모바일 자동 스킵)
+  // 시점 썸네일 캡처/업로드 helper (모바일 자동 스킵)
   const { captureAndUpload: captureThumbnail } = useAutoSaveThumbnail()
 
   /**
@@ -146,7 +146,7 @@ export function useAutoSave() {
    */
   const saveToServer = useCallback(async (): Promise<boolean> => {
     if (!sessionId || isSavingRef.current) return false
-    // L4-②: PDF 생성 창(excludeFromExport 임시 플래깅) 동안 직렬화하면 printExclude/moldIcon
+    // PDF 생성 창(excludeFromExport 임시 플래깅) 동안 직렬화하면 printExclude/moldIcon
     // 객체가 저장에서 누락 — 스킵 대신 생성 완료 후 1회 지연 실행(ref 로 최신 클로저).
     if (isAutosaveSuspended()) {
       deferUntilAutosaveResumed('autoSave.saveToServer', () => {
@@ -161,7 +161,7 @@ export function useAutoSave() {
     try {
       const updatedPages = await collectCanvasData()
 
-      // BB-Phase 3 follow-up — 시점 썸네일 캡처/업로드는 autoSave POST와 병렬로 진행.
+      // 시점 썸네일 캡처/업로드는 autoSave POST와 병렬로 진행.
       // (실패해도 null로 fallback해 자동저장 자체는 그대로 성공)
       // 백엔드 maybePushVersion은 1분 debounce로 묶여 매번 push되지 않으므로
       // 매번 캡처되는 썸네일도 일부는 사용 안 됨 — 비용은 0.25x JPEG라 미미.
@@ -183,7 +183,7 @@ export function useAutoSave() {
       resetRetry()
       deleteLocalBackup()
 
-      // 자동저장 시점 스냅샷 메타 push (트랙 BB — Phase 2 minimal, LRU 5개)
+      // 자동저장 시점 스냅샷 메타 push (LRU 5개)
       try {
         useAutoSaveSnapshotsStore.getState().pushSnapshot({
           savedAt: new Date().toISOString(),
@@ -254,9 +254,9 @@ export function useAutoSave() {
   /**
    * 네트워크 상태 감지
    *
-   * RACE-001(2026-06-22): 과거 deps 에 [isDirty, saveToServer, saveToLocal] 가 있어
+   * deps 에 [isDirty, saveToServer, saveToLocal] 를 넣으면
    * isDirty 변동마다 리스너가 재구독되고, 핸들러가 stale isDirty/saveToServer 를 캡처해
-   * 중복 저장 호출 위험이 있었다. 최신값은 ref 로 읽고 리스너는 마운트 시 1회만 구독한다.
+   * 중복 저장 호출 위험이 있다. 그래서 최신값은 ref 로 읽고 리스너는 마운트 시 1회만 구독한다.
    * (saveToServer 는 내부 isSavingRef 가드가 이미 있어 중복은 1차 차단되지만, 여기서도
    *  isSavingRef 가드 + 단일구독으로 이중 방어.)
    */

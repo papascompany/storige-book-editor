@@ -1,17 +1,17 @@
 import type { fabric } from 'fabric'
 
 /**
- * L4-① (2026-07-11): printExclude 캔버스 상시 시각 표식 — CS 리스크 해소(CTO 결정: 표시형).
+ * printExclude 캔버스 상시 시각 표식 (표시형).
  *
  * printExclude=true 객체는 화면에는 보이지만 인쇄물(PDF)에는 없다 — 고객 클레임 벡터.
- * SidePanel 배지(L2)만으로는 캔버스에서 안 보이므로, 캔버스 위에 **화면 전용 오버레이**로
+ * SidePanel 배지만으로는 캔버스에서 안 보이므로, 캔버스 위에 **화면 전용 오버레이**로
  * 연한 점선 테두리 + 우상단 '인쇄 제외' 라벨을 상시 표시한다(고객·디자이너 공통).
  *
  * 오염 없음 보장(핵심 불변):
  * - fabric 객체를 추가하지 않는다 — `after:render` 훅에서 contextTop(upper canvas)에
  *   순수 2D 드로잉만 수행. 따라서 toJSON(저장)·PDF(ServicePlugin toSVG)·썸네일
  *   (toDataURL = lowerCanvasEl 캡처)에 절대 포함되지 않는다.
- * - 신규 직렬화 속성 없음(§8 불변) — 바인딩 마커는 캔버스 인스턴스의 비직렬화 필드.
+ * - 신규 직렬화 속성 없음 — 바인딩 마커는 캔버스 인스턴스의 비직렬화 필드.
  *
  * 좌표 정합: getBoundingRect(true, true)(절대좌표, 캐시 미사용) → viewportTransform 을
  * 수동 적용해 화면(screen) 좌표로 변환 — 스크롤/줌/팬에서 테두리가 객체를 정확히 따라간다.
@@ -130,7 +130,7 @@ export function drawPrintExcludeOverlay(canvas: OverlayCanvas): void {
 /**
  * 캔버스에 printExclude 오버레이 렌더 훅을 바인딩(멱등).
  * createCanvas(editor 레벨)·addPage(스프레드 내지) 양쪽 캔버스 생성 경로에서 호출한다.
- * canvas-core 공개 API 는 건드리지 않는다 — after:render 바인딩도 editor 레벨(§8 불변).
+ * canvas-core 공개 API 는 건드리지 않는다 — after:render 바인딩도 editor 레벨.
  */
 export function bindPrintExcludeOverlay(canvas: fabric.Canvas): void {
   const c = canvas as OverlayCanvas

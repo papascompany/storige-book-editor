@@ -1,8 +1,8 @@
 /**
- * P2-d 사진인화 (2026-10-19, contract-3): 레거시 `storige:completed` 에 선택 키 `items`(사진별 항목) 동봉.
+ * 사진인화: 레거시 `storige:completed` 에 선택 키 `items`(사진별 항목) 동봉.
  *  - 정식 envelope(editor.complete)와 같은 additive 키 — EditorResult.items 가 있을 때만 싣고, 없으면 키 자체가 없다
  *    (캘린더/NULL 세트·게스트 완료는 종전 payload 그대로).
- *  - 자격증명이 아니므로 parentOrigin 이 없는 와일드카드 송신에도 싣는다(D24·D25 불변식은 guestToken 에만 적용).
+ *  - 자격증명이 아니므로 parentOrigin 이 없는 와일드카드 송신에도 싣는다(불변식은 guestToken 에만 적용).
  *
  * 하네스는 EmbedView.test.tsx D 절을 준용한다(EmbeddedEditor·editSessionsApi 만 모킹).
  */
@@ -62,7 +62,7 @@ const items: PhotoItem[] = [
 ]
 const product = { kind: 'photo-print' as const, editorType: 'photo_digital_free', canvasCount: 4, sheetCount: 2, faces: 2 as const }
 
-describe('EmbedView — 레거시 storige:completed items (P2-d 계약 row ②)', () => {
+describe('EmbedView — 레거시 storige:completed items', () => {
   const realParent = Object.getOwnPropertyDescriptor(window, 'parent')
   const parentPost = vi.fn<(message: unknown, targetOrigin: string) => void>()
 

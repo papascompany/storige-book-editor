@@ -42,7 +42,7 @@ describe('FilterPlugin.dispose — 실버그 회귀', () => {
   it('Editor.dispose 호출 패턴(`plugin.dispose && plugin.dispose()`)에서 예외가 나지 않는다', () => {
     const plugin = makePlugin()
     let caught: unknown = null
-    // Editor.ts:97-101 의 정리 루프와 동일한 형태
+    // Editor.dispose 의 플러그인 정리 루프와 동일한 형태
     try {
       // eslint-disable-next-line @typescript-eslint/no-unused-expressions
       plugin.dispose && plugin.dispose()

@@ -4,7 +4,7 @@ import { PluginBase, PluginOption } from '../plugin'
 import { getUnitSize } from '../utils/math'
 
 /**
- * TransformFeedbackPlugin (E1 §5-2) — 변형 중 실시간 치수/각도/좌표 피드백
+ * TransformFeedbackPlugin — 변형 중 실시간 치수/각도/좌표 피드백
  *
  * - 이동 중 `X/Y mm` · 리사이즈 중 `W×H mm` · 회전 중 `각도°` 를 객체 상단에 표시.
  * - **DOM 오버레이** (canvas.wrapperEl 내 absolute div, pointer-events:none)

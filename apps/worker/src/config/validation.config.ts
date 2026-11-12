@@ -1,5 +1,5 @@
 /**
- * X1 (2026-09-30): WORKER_TRIMBOX_SIZE_CHECK 의 OFF 값 집합(trim·소문자 비교).
+ * WORKER_TRIMBOX_SIZE_CHECK 의 OFF 값 집합(trim·소문자 비교).
  * 이 집합 밖의 모든 값(미설정·빈 문자열 포함)은 ON — **코드 기본 ON** 킬스위치.
  */
 const TRIMBOX_SIZE_CHECK_OFF_VALUES: ReadonlySet<string> = new Set([
@@ -10,7 +10,7 @@ const TRIMBOX_SIZE_CHECK_OFF_VALUES: ReadonlySet<string> = new Set([
 ]);
 
 /**
- * X1: TrimBox 기준 내지 판형 판정 + 재단선 영역 크롭 정규화 킬스위치 파서.
+ * TrimBox 기준 내지 판형 판정 + 재단선 영역 크롭 정규화 킬스위치 파서.
  *
  * - 코드 기본 ON. 'false'/'0'/'off'/'no'(앞뒤 공백 무시, 대소문자 무시)일 때만 OFF.
  * - 하나의 플래그가 판정(pdf-validator)과 정규화(합성·변환 입력)를 **함께** 게이트한다 —
@@ -47,7 +47,7 @@ export const VALIDATION_CONFIG = {
   /** 대형 파일 임계값 - GS 분석 선택적 (50MB) */
   LARGE_FILE_THRESHOLD: 50 * 1024 * 1024,
 
-  // 트랙 B-(d): 경량 검증(스트리밍) 경로 토글
+  // 경량 검증(스트리밍) 경로 토글
   /**
    * true 면 검증을 ON 경로(스트림 다운로드 + qpdf 메타 + 청크 스트리밍 검출)로 수행 →
    * 2GB 도 상수 메모리. false(기본)면 기존 OFF 경로(전체버퍼 + pdf-lib.load) 유지.
@@ -56,7 +56,7 @@ export const VALIDATION_CONFIG = {
   LIGHTWEIGHT_VALIDATION:
     String(process.env.WORKER_LIGHTWEIGHT_VALIDATION || '').toLowerCase() === 'true',
   /**
-   * 트랙 B-(f): true 면 변환(conversion)·합성(synthesis)·렌더를 상수메모리 경로로 수행
+   * true 면 변환(conversion)·합성(synthesis)·렌더를 상수메모리 경로로 수행
    * (스트림 다운로드 + qpdf 메타/병합 — 끝단 2GB). false(기본)면 기존 pdf-lib/arraybuffer 경로.
    * 골든파일 파리티(출력 PDF 동일성) 통과 후 env WORKER_LIGHTWEIGHT_SYNTHESIS=true 로 ON.
    * ⚠️ 불변식: 로컬 /storage 입력일 때 ON(downloadToTempFile→resolveLocalPath, WORKER_STORAGE_PATH)
@@ -67,23 +67,22 @@ export const VALIDATION_CONFIG = {
   LIGHTWEIGHT_SYNTHESIS:
     String(process.env.WORKER_LIGHTWEIGHT_SYNTHESIS || '').toLowerCase() === 'true',
 
-  // C+ 게이팅: autoFixable 정직화 킬스위치
+  // autoFixable 게이팅 킬스위치
   /**
    * true 면 autoFixable 을 실행기가 배선된 fixMethod(WIRED_FIX_METHODS)에만 부여한다.
    * 코드 기본 OFF(레거시 autoFixable 그대로). 운영 .env 는 2026-07-21 부터 ON.
    * ⚠️ ON 전환 선결 게이트(소비처가 FIXABLE→FAILED flip 에 안전해야 함):
    *   ① [해소 2026-07-11] editor ContentPdfAttachModal — A4 하드코드 → templateSet 판형
    *      주입(trimSize prop) + 폴링 result 이중중첩 파싱 수정
-   *   ② [해소 2026-07-11] API 세션 검증 경로 — G2a size 폴백(templateSet 판형) +
-   *      G2b 세션 한정 FIXABLE 동등 처리(isFixableEquivalentFailure, VALIDATE 잡 게이트)
+   *   ② [해소 2026-07-11] API 세션 검증 경로 — size 폴백(templateSet 판형) +
+   *      세션 한정 FIXABLE 동등 처리(isFixableEquivalentFailure, VALIDATE 잡 게이트)
    *      → 세션 상태 전이·웹훅 이벤트는 게이팅 ON/OFF 무관 보존
-   *   ③ [해소 2026-07-14] bookmoa R-19 종결 → 2026-07-21 운영 ON
-   *      (.cursor/plans/RESUME_PROMPT_2026-07-21.md:13-15, 고지: .cursor/plans/NOTICE_bookmoa_autofixable_gating_2026-07-11.md)
+   *   ③ [해소 2026-07-14] 파트너 사이트 측 선결 항목 종결 → 2026-07-21 운영 ON
    */
   WIRED_FIXABLE_GATING:
     String(process.env.WORKER_WIRED_FIXABLE_GATING || '').toLowerCase() === 'true',
 
-  // C-2a: crop mark(재단 기하) 검증 킬스위치
+  // crop mark(재단 기하) 검증 킬스위치
   /**
    * true 면 TrimBox 기반 재단 기하 검증(validateCropMarks)을 수행한다. **기본 OFF** —
    * 기본 상태에서 프로덕션 행동 변화 0. 켜도 orderOptions.cropMarkEnabled === true 인
@@ -93,7 +92,7 @@ export const VALIDATION_CONFIG = {
   CROP_MARK_VALIDATION:
     String(process.env.WORKER_CROP_MARK_VALIDATION || '').toLowerCase() === 'true',
 
-  // X1 (2026-09-30): TrimBox 기준 내지 판형 판정 + 재단선 영역 크롭 정규화 킬스위치
+  // TrimBox 기준 내지 판형 판정 + 재단선 영역 크롭 정규화 킬스위치
   /**
    * **기본 ON** — isTrimBoxSizeCheckEnabled 참조('false'/'0'/'off'/'no' 만 OFF).
    * ON: 내지(fileType==='content') MediaBox 판정이 SIZE_MISMATCH 일 때만 전 페이지 명시
@@ -105,16 +104,16 @@ export const VALIDATION_CONFIG = {
    */
   TRIMBOX_SIZE_CHECK: isTrimBoxSizeCheckEnabled(process.env),
 
-  // R-44: 표지 spine(전개폭) 검증 허용오차 — 관찰 1단계는 현행 2mm 유지.
+  // 표지 spine(전개폭) 검증 허용오차 — 관찰 1단계는 현행 2mm 유지.
   /**
    * 무선/양장 각각 env 로 조정(orderOptions.spineToleranceMm 이 최우선).
    * 2단계 강화(무선 ±1.0 / 양장 ±1.5 제안)는 관찰기간 mismatch 로그 리뷰 후
-   * env 로만 내린다(코드 무변경 롤아웃) — bookmoa 회신 §C-3 확정 대기.
+   * env 로만 내린다(코드 무변경 롤아웃) — 파트너 사이트 확정 대기.
    */
   SPINE_TOLERANCE_MM_PERFECT: Number(process.env.SPINE_TOLERANCE_MM_PERFECT || '') || 2,
   SPINE_TOLERANCE_MM_HARDCOVER: Number(process.env.SPINE_TOLERANCE_MM_HARDCOVER || '') || 2,
-  /** F13: orderOptions.spineToleranceMm 파트너 오버라이드 상한 — 무상한 값으로 표지
-   *  치수 검증을 무력화하는 페이로드 차단(워커측 클램프, 초과 시 warn 계측). */
+  /** orderOptions.spineToleranceMm 파트너 오버라이드 상한 — 이 값을 넘는 요청은
+   *  워커가 이 상한으로 낮춘다(초과 시 warn 계측). */
   SPINE_TOLERANCE_MM_MAX: Number(process.env.SPINE_TOLERANCE_MM_MAX || '') || 5,
 
   // 스프레드(펼침면) 감지
@@ -137,10 +136,10 @@ export const VALIDATION_CONFIG = {
   /** 최소 허용 해상도 (DPI) - 이 값 미만이면 경고 */
   MIN_ACCEPTABLE_DPI: 150,
 
-  // R3 (2026-08-11): TAC(잉크총량) 경고
+  // TAC(잉크총량) 경고
   /**
    * TAC 경고 임계(%). 기본 320 = GWG 2022 SheetCMYK(매엽 오프셋) 한계.
-   * 우선순위: orderOptions.tacLimitPercent(API 가 지종별로 주입 — R-44 spine 패턴) →
+   * 우선순위: orderOptions.tacLimitPercent(API 가 지종별로 주입 — spineWidthMm 과 같은 서버 주입 패턴) →
    * env TAC_WARN_PERCENT → 이 기본값. 비차단 warn 전용(GWG 도 TAC 는 warning 등급).
    */
   TAC_WARN_PERCENT: Number(process.env.TAC_WARN_PERCENT) || 320,
@@ -149,11 +148,11 @@ export const VALIDATION_CONFIG = {
 export type ValidationConfig = typeof VALIDATION_CONFIG;
 
 /**
- * 신규 상품별 설정값의 전역 기본값 (C-2b: 소비처 배선 완료 — 값-동일 리팩터).
+ * 신규 상품별 설정값의 전역 기본값.
  * @see 데이터모델 계약 — bleed_mm / crop_mark_enabled / size_tolerance_mm
  */
 /**
- * 고객 업로드 PDF 사이즈 검증 허용오차 기본값(mm) — templateSet 계약(P4 변환) 기본값.
+ * 고객 업로드 PDF 사이즈 검증 허용오차 기본값(mm) — templateSet 계약(업로드 내지 변환) 기본값.
  * 소비처: pdf-converter.service.ts resolveMode/applyImpositionMode 의 폴백.
  * ⚠️ validatePageSize(검증)의 폴백은 이 값이 아니라 LEGACY_SIZE_TOLERANCE_MM(1mm)다 —
  *    이원 체제는 의도된 설계이며 통일 금지(아래 LEGACY_SIZE_TOLERANCE_MM 주석 참조).
@@ -182,7 +181,7 @@ export const DEFAULT_BLEED_MM = 3;
 export const DEFAULT_CROP_MARK_ENABLED = false;
 
 /**
- * C+ 게이팅(2026-07-11): 실행기가 실제 배선된 fixMethod 만 등록하는 단일 소스.
+ * autoFixable 게이팅: 실행기가 실제 배선된 fixMethod 만 등록하는 단일 소스.
  *
  * WIRED_FIXABLE_GATING(위 킬스위치) ON 일 때 pdf-validator 의 autoFixable 은
  * `WIRED_FIX_METHODS.has(fixMethod)` 로만 부여된다 — 실행 수단이 없는 항목이
@@ -202,7 +201,6 @@ export const DEFAULT_CROP_MARK_ENABLED = false;
  *
  * ⚠️ fixMethod 필드 자체는 '의도 메타데이터'로 계속 발행한다(제거 금지) —
  *    실행기 출시 시 계약 변경 없이 재활성하기 위함.
- * @see .cursor/plans/NOTICE_bookmoa_autofixable_gating_2026-07-11.md (파트너 고지·선결 게이트)
  */
 export const WIRED_FIX_METHODS: ReadonlySet<string> = new Set([
   'addBlankPages',

@@ -1,5 +1,5 @@
 /**
- * L7 (2026-07-11) — requiredEdit store 연동 계층.
+ * requiredEdit store 연동 계층.
  *
  * 순수 판정(requiredEditCheck.ts)과 앱 상태(zustand)를 잇는다:
  *   - trackRequiredEdits(canvas): 로드 완료 지점(applyObjectPermissions 호출부와 동일)에서

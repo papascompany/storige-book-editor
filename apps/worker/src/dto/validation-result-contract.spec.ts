@@ -1,5 +1,5 @@
 /**
- * S-1 ValidationResult 타입 정본화 contract test (Stage 0, 2026-07-15)
+ * ValidationResult 타입 정본화 contract test
  *
  * 정본 = 이 워커의 ValidationResultDto({isValid, errors, warnings, metadata}).
  * @storige/types 의 WorkerValidationResult 는 그 정본의 필드 1:1 미러다.
@@ -57,7 +57,7 @@ const _metadataToCanonical = (m: PdfMetadata): WorkerPdfMetadata => m;
 // 2) 런타임 shape 불변 단언
 // ────────────────────────────────────────────────────────────────────────────
 
-describe('S-1 ValidationResult 정본 계약 (worker DTO ↔ @storige/types 미러)', () => {
+describe('ValidationResult 정본 계약 (worker DTO ↔ @storige/types 미러)', () => {
   /** 워커 발신 실물을 본뜬 대표 샘플 (enum·중첩 필드 포함) */
   const sample: ValidationResultDto = {
     isValid: false,

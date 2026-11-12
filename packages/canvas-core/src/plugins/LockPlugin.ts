@@ -244,7 +244,7 @@ class LockPlugin extends PluginBase {
       return lockInfo
     }
 
-    // L1① (2026-07-06): 위치고정(movable===false, Part B)은 '잠금'이 아니다 —
+    // 위치고정(movable===false)은 '잠금'이 아니다 —
     // applyObjectPermissions 가 lockMovement* 를 세팅하지만 선택/내용편집은 허용이
     // 설계 규약. 레거시 렌즈가 이를 isLocked 로 오판하면 handleSelection 이 고객
     // 선택을 즉시 해제해 '위치고정=선택불가'로 변질된다(실버그). 이동 차단 자체는
@@ -325,7 +325,7 @@ class LockPlugin extends PluginBase {
    * 선택 이벤트 핸들러 - 잠긴 객체 선택 차단
    */
   private handleSelection(e: fabric.IEvent) {
-    // B1 (2026-07-04): admin(editMode 승격) 은 잠긴 객체의 선택 유지 허용 — 레벨 변경/해제 관리 목적.
+    // admin(editMode 승격) 은 잠긴 객체의 선택 유지 허용 — 레벨 변경/해제 관리 목적.
     // 주의: lock() 이 selectable/evented=false 를 세팅하므로 캔버스 직접 클릭으로는 여전히 선택
     // 불가 — 이 바이패스는 프로그래매틱 선택(레이어 패널 행 클릭 setActiveObject, ControlBar
     // 레벨 변경 후 선택 복원)을 살리는 용도다. 고객(user/designer) 동작은 불변.

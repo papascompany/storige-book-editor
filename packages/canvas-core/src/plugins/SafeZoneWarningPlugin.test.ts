@@ -1,4 +1,4 @@
-// SafeZoneWarningPlugin — 재단/안전영역 침범 실시간 경고 테스트 (E1 §5-5)
+// SafeZoneWarningPlugin — 재단/안전영역 침범 실시간 경고 테스트
 //
 // 증명 대상:
 //  ① 침범/복귀 전이 — enter 에서만 safeZoneViolation 1회 발행(디바운스), 복귀 시 오버레이 숨김
@@ -363,7 +363,7 @@ describe('SafeZoneWarningPlugin — ③ 오버레이 계약 + ⑤ 정리', () =>
   })
 })
 
-describe('SafeZoneWarningPlugin — ⑥ clear()/loadFromJSON 유령 참조 복원 (적대 리뷰 P1)', () => {
+describe('SafeZoneWarningPlugin — ⑥ clear()/loadFromJSON 유령 참조 복원', () => {
   it('오버레이 생성 → clear 시뮬레이션 → 다음 침범에서 오버레이가 재추가되고 visible 동작한다', () => {
     const { cut, safe } = makeBorders()
     const target = makeObj({ id: 'obj-1', left: 5, top: 100, width: 50, height: 50 })

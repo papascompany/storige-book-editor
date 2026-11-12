@@ -309,7 +309,7 @@ describe('withEditRetentionDays (사이트 폼 payload)', () => {
   });
 });
 
-describe('파트너 주문 연결 세션 안전장치 (3-B, 2026-09-30)', () => {
+describe('파트너 주문 연결 세션 안전장치', () => {
   it('isOrderLinked — 양의 주문번호만 연결로 본다', () => {
     expect(isOrderLinked({ orderSeqno: 100 })).toBe(true);
     expect(isOrderLinked({ orderSeqno: null })).toBe(false);

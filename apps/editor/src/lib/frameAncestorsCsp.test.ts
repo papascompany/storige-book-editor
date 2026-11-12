@@ -1,5 +1,5 @@
 /**
- * frame-ancestors CSP 동적 합성 순수 로직 spec (P-Stage2-3).
+ * frame-ancestors CSP 동적 합성 순수 로직 spec.
  *
  * 핵심 회귀 3방향:
  *  (a) 정적 parity — STATIC_FRAME_ANCESTORS ≠ vercel.json 정적 CSP 이면 red
@@ -84,7 +84,7 @@ describe('isValidAncestorSource', () => {
     expect(isValidAncestorSource(v)).toBe(false);
   });
 
-  // [보안 P2-2] 퍼블릭 서픽스 단독 와일드카드 + 범위 밖 포트 거부
+  // 퍼블릭 서픽스 단독 와일드카드 + 범위 밖 포트 거부
   it.each([
     'https://*.com', // TLD 단독 와일드카드 = 사실상 전 인터넷 허용
     'https://*.kr',
@@ -92,7 +92,7 @@ describe('isValidAncestorSource', () => {
     'https://a.com:99999', // 포트 범위 밖 (>65535)
     'https://a.com:0', // 포트 0
     'https://*.example.com:70000', // 와일드카드 + 범위 밖 포트
-  ])('거부(P2-2): %s', (v) => {
+  ])('거부(와일드카드·포트): %s', (v) => {
     expect(isValidAncestorSource(v)).toBe(false);
   });
 
@@ -101,7 +101,7 @@ describe('isValidAncestorSource', () => {
     'https://*.partner.example.com',
     'https://a.com:1', // 포트 경계값
     'https://a.com:65535',
-  ])('허용 유지(P2-2 경계): %s', (v) => {
+  ])('허용 유지(와일드카드·포트 경계): %s', (v) => {
     expect(isValidAncestorSource(v)).toBe(true);
   });
 

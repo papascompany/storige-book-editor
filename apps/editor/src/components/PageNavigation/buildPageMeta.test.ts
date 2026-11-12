@@ -3,9 +3,9 @@ import { TemplateType } from '@storige/types'
 import { buildPageMeta } from './BookNavigation'
 
 /**
- * buildPageMeta — 펼침면 내지 세트의 SPREAD 분류 (2026-08-23 수정).
- * 종전엔 모든 SPREAD 가 표지로 분류돼 내지 펼침면 8장이 "표지(펼침면)" 표지 그룹이 되었고,
- * 텍스트 패널 "다른 영역으로 이동" 이 내지 8장을 표지 영역으로 나열했다(8/22·8/23 실기 관찰).
+ * buildPageMeta — 펼침면 내지 세트의 SPREAD 분류.
+ * 모든 SPREAD 가 표지로 분류되면 내지 펼침면이 "표지(펼침면)" 표지 그룹이 되고,
+ * 텍스트 패널 "다른 영역으로 이동" 이 내지를 표지 영역으로 나열한다.
  */
 const d = (id: string, type: TemplateType) => ({ id, type })
 
@@ -63,10 +63,10 @@ describe('buildPageMeta — SPREAD 분류', () => {
 })
 
 /**
- * P1 캘린더 (2026-10-17): labelResolver(additive). resolver 없음 → 기존 라벨 불변,
+ * 캘린더: labelResolver(additive). resolver 없음 → 기존 라벨 불변,
  * 있음 → 문자열을 돌려준 인덱스만 치환(isCover·id·coverPosition 은 유지).
  */
-describe('buildPageMeta — labelResolver (P1 캘린더)', () => {
+describe('buildPageMeta — labelResolver (캘린더)', () => {
   const calendarDetails = [
     d('cover', TemplateType.PAGE),
     d('m1a', TemplateType.PAGE),

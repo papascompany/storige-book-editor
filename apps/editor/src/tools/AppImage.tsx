@@ -22,11 +22,11 @@ const AUTOFILL_SORT_OPTIONS: { value: PhotoSortMode; label: string }[] = [
   { value: 'random', label: '랜덤' },
 ]
 
-// S-E4: 사용 횟수 집계 debounce — 이벤트 폭주(자동편집·다중 삭제·undo 복원) 시
-// 프레임당 재스캔을 막는다(기술설계 §3.4: ≥300ms).
+// 사용 횟수 집계 debounce — 이벤트 폭주(자동편집·다중 삭제·undo 복원) 시
+// 프레임당 재스캔을 막는다(≥300ms).
 const USAGE_RECOUNT_DEBOUNCE_MS = 300
 
-/** S-E4: 썸네일 우상단 사용 횟수 배지 — 0이면 렌더하지 않는다(호출부 가드). */
+/** 썸네일 우상단 사용 횟수 배지 — 0이면 렌더하지 않는다(호출부 가드). */
 function UsageBadge({ count }: { count: number }) {
   return (
     <span
@@ -46,13 +46,13 @@ export default function AppImage() {
   const uploaded = useUploaded()
   const isCoarsePointer = useIsCoarsePointer()
 
-  // D1 외부 사진 주입 (EDITOR.md §20.1) — 목록이 있으면 탭 UI 활성
+  // 외부 사진 주입 (EDITOR.md §20.1) — 목록이 있으면 탭 UI 활성
   const externalPhotos = useExternalPhotosStore((s) => s.photos)
   const usageTick = useExternalPhotosStore((s) => s.usageTick)
   const bumpUsage = useExternalPhotosStore((s) => s.bumpUsage)
   const hasExternal = externalPhotos.length > 0
 
-  // Track 2 (D-2): '내 업로드' 자동편집 입력 메타(storage URL 기준) + 페이지(캔버스) 목록.
+  // '내 업로드' 자동편집 입력 메타(storage URL 기준) + 페이지(캔버스) 목록.
   const uploadedPhotoMeta = useUploadedPhotoMeta()
   const allCanvas = useAppStore((state) => state.allCanvas)
 
@@ -60,10 +60,10 @@ export default function AppImage() {
   const [activeTab, setActiveTab] = useState<'external' | 'my'>(hasExternal ? 'external' : 'my')
   const [unusedOnly, setUnusedOnly] = useState(false)
   const [addingUrl, setAddingUrl] = useState<string | null>(null)
-  // 포토북 자동편집(Phase 3): 정렬 모드 + 진행 상태
+  // 포토북 자동편집: 정렬 모드 + 진행 상태
   const [autofillMode, setAutofillMode] = useState<PhotoSortMode>('date')
   const [autofilling, setAutofilling] = useState(false)
-  // Track 2 (D-2): 빈 사진틀 존재 재판정 트리거 — 캔버스 객체 추가/삭제 시 증가.
+  // 빈 사진틀 존재 재판정 트리거 — 캔버스 객체 추가/삭제 시 증가.
   const [frameTick, setFrameTick] = useState(0)
 
   // 사진 목록은 세션 로드 후 비동기 적재 — 패널이 먼저 마운트됐어도 기본 탭 전환
@@ -71,8 +71,8 @@ export default function AppImage() {
     if (hasExternal) setActiveTab('external')
   }, [hasExternal])
 
-  // S-E4: 캔버스 객체 추가/삭제·undo/redo 시 사용 횟수 재집계 트리거.
-  // (구 D1 배선 확장 — 외부주입 전용 → 내 업로드 포함, allCanvas 선택자 구독으로
+  // 캔버스 객체 추가/삭제·undo/redo 시 사용 횟수 재집계 트리거.
+  // (외부주입·내 업로드 공통, allCanvas 선택자 구독으로
   //  늦게 뜨는 페이지 재구독, history:undo/redo 직접 구독, 300ms debounce)
   const hasUploads = uploaded.length > 0
   const recountTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -105,7 +105,7 @@ export default function AppImage() {
     }
   }, [hasExternal, hasUploads, allCanvas, bumpUsage])
 
-  // Track 2 (D-2): 빈 사진틀 존재 재판정 배선 — 채움/삭제(fillImage add·frame remove)가
+  // 빈 사진틀 존재 재판정 배선 — 채움/삭제(fillImage add·frame remove)가
   // object:added/removed 로 관측되므로 그때마다 frameTick 을 올려 노출 조건을 갱신한다.
   // allCanvas 는 zustand 상태(캔버스 등록 시 배열 교체)라 늦게 뜨는 페이지도 재구독된다.
   useEffect(() => {
@@ -128,14 +128,14 @@ export default function AppImage() {
     }
   }, [allCanvas])
 
-  // Track 2 (D-2): 자동편집 입력 = 외부주입 ∪ 내 업로드 (URL 중복 제거, 외부주입 우선).
+  // 자동편집 입력 = 외부주입 ∪ 내 업로드 (URL 중복 제거, 외부주입 우선).
   const autofillPhotos = useMemo(
     () => mergeAutofillPhotoInputs(externalPhotos, uploadedPhotoMeta),
     [externalPhotos, uploadedPhotoMeta],
   )
 
-  // Track 2 (D-2): 자동편집 노출 조건 = '빈 사진틀 존재' 런타임 판정.
-  // ⚠️ TemplateSetType 게이팅 금지(오너 결정) — frame 없는 상품(BOOK/LEAFLET 일반 셋)에선
+  // 자동편집 노출 조건 = '빈 사진틀 존재' 런타임 판정.
+  // ⚠️ TemplateSetType 게이팅 금지 — frame 없는 상품(BOOK/LEAFLET 일반 셋)에선
   // 이 판정이 false 라 컨트롤이 자연히 숨는다.
   const emptyFrameExists = useMemo(() => {
     const canvases = allCanvas.length > 0 ? allCanvas : canvas ? [canvas] : []
@@ -145,7 +145,7 @@ export default function AppImage() {
 
   const showAutofill = emptyFrameExists && autofillPhotos.length > 0
 
-  // S-E4: 사용 횟수 맵 — usageTick 변경 시 전 캔버스 1패스 재집계 O(objects).
+  // 사용 횟수 맵 — usageTick 변경 시 전 캔버스 1패스 재집계 O(objects).
   // (구 usedMap 은 사진별 재스캔 O(사진×객체) — 300장×50페이지 요건 미달이라 교체)
   const usageCountMap = useMemo(() => {
     if (!hasExternal && !hasUploads) return new Map<string, number>()
@@ -162,7 +162,7 @@ export default function AppImage() {
     [externalPhotos, unusedOnly, usageCountMap],
   )
 
-  // S-E4: '내 업로드' 필터 — 업로드 객체의 dataURL(src) + storage URL 합산 키.
+  // '내 업로드' 필터 — 업로드 객체의 dataURL(src) + storage URL 합산 키.
   const [myUnusedOnly, setMyUnusedOnly] = useState(false)
   const uploadedKeysOf = useCallback((image: unknown): Array<string | undefined> => {
     const imgObj = image as { getSrc?: () => string; storagePhotoUrl?: string }
@@ -216,7 +216,7 @@ export default function AppImage() {
     }
   }, [canvas, getPlugin, upload])
 
-  // D1: 공유방 사진을 현재 캔버스에 추가 (1-tap).
+  // 공유방 사진을 현재 캔버스에 추가 (1-tap).
   // 인쇄용 리사이즈본(긴변 3000~4000px)이 워크스페이스보다 크므로 80% 맞춤 스케일.
   const addExternalPhoto = useCallback(async (photo: ExternalPhoto) => {
     if (!canvas || addingUrl) return
@@ -253,7 +253,7 @@ export default function AppImage() {
     }
   }, [canvas, addingUrl, bumpUsage, isCoarsePointer, tapMenu])
 
-  // 포토북 자동편집(Phase 3): 정렬 → 빈 사진틀 aspect 매칭 채움 → 저해상도 경고.
+  // 포토북 자동편집: 정렬 → 빈 사진틀 aspect 매칭 채움 → 저해상도 경고.
   // 배치 엔진(autofillPhotosIntoFrames)에 fillImageIntoFrame(채움) + core.imageFromURL(로드)을
   // 주입한다 — 마스킹/clipPath/frameRef/z-order 는 전부 fillImageIntoFrame 재사용(중복 구현 없음).
   const handleAutofill = useCallback(async () => {
@@ -263,12 +263,12 @@ export default function AppImage() {
       showToast('이미지 처리 플러그인을 찾을 수 없습니다.', 'error')
       return
     }
-    // Track 2 (D-2): 입력 = 외부주입 ∪ 내 업로드(스토어 메타, storage URL 기준).
+    // 입력 = 외부주입 ∪ 내 업로드(스토어 메타, storage URL 기준).
     if (autofillPhotos.length === 0) {
       showToast('자동편집할 사진이 없습니다.', 'info')
       return
     }
-    // P2-d 사진인화(security-3): 외부 주입 ∪ 내 업로드 사진 수가 프로파일 maxPhotos 를 넘으면 자동배치 차단(프로파일 NULL 은 no-op)
+    // 사진인화: 외부 주입 ∪ 내 업로드 사진 수가 프로파일 maxPhotos 를 넘으면 자동배치 차단(프로파일 NULL 은 no-op)
     if (!checkPhotoPrintPhotoCount(autofillPhotos.length)) return
 
     setAutofilling(true)
@@ -295,7 +295,7 @@ export default function AppImage() {
         },
       })
 
-      // P2-d 사진인화(editor-flow-5/tests-5): 채움 뒤 항목 옵션(흑백·촬영일·유테 창) 재적용 — 프로파일 NULL 이면 즉시 0.
+      // 사진인화: 채움 뒤 항목 옵션(흑백·촬영일·유테 창) 재적용 — 프로파일 NULL 이면 즉시 0.
       if (result.filledCount > 0) await applyAllPhotoPrint()
 
       // '사용됨' 뱃지 재계산
@@ -379,7 +379,7 @@ export default function AppImage() {
 
   return (
     <div className="w-full h-full flex flex-col">
-      {/* D1: 외부 사진 주입 시 탭 바 (없으면 기존 UI 그대로) */}
+      {/* 외부 사진 주입 시 탭 바 (없으면 기존 UI 그대로) */}
       {hasExternal && (
         <div className="flex border-b border-editor-border">
           <button
@@ -409,7 +409,7 @@ export default function AppImage() {
       )}
 
       {/* 포토북 자동편집: 정렬모드 드롭다운 + 실행 버튼.
-          Track 2 (D-2): external 탭 전용 → 탭 공통으로 이동. 입력 = 외부주입 ∪ 내 업로드.
+          탭 공통으로 노출한다. 입력 = 외부주입 ∪ 내 업로드.
           노출 = '빈 사진틀 존재' 런타임 판정(TemplateSetType 게이팅 금지) ∧ 입력 사진 존재. */}
       {showAutofill && (
         <div className="px-4 pt-3 pb-1 flex items-center gap-2">
@@ -471,7 +471,7 @@ export default function AppImage() {
               ) : (
                 <div className="grid grid-cols-3 gap-2">
                   {visiblePhotos.map((photo) => {
-                    // S-E4: '사용됨' 체크 → 사용 횟수 배지로 승격 (0=비표시)
+                    // '사용됨' 체크 → 사용 횟수 배지로 승격 (0=비표시)
                     const count = photoUsageCount(usageCountMap, [photo.url])
                     return (
                       <div
@@ -516,7 +516,7 @@ export default function AppImage() {
               <div className="px-4 py-3">
                 <div className="flex items-center justify-between mb-3">
                   <div className="text-sm font-medium text-editor-text">나의 콘텐츠</div>
-                  {/* S-E4: 사용/미사용 필터 (공유방 탭과 동일 패턴) */}
+                  {/* 사용/미사용 필터 (공유방 탭과 동일 패턴) */}
                   <div className="flex items-center gap-1.5">
                     <button
                       className={`text-xs px-2 py-0.5 rounded-full border transition-colors ${
@@ -547,7 +547,7 @@ export default function AppImage() {
                 ) : (
                   <div className="grid grid-cols-2 gap-3">
                     {visibleUploaded.map((image, index) => {
-                      // S-E4: 문서 내 사용 횟수 배지 (0=비표시)
+                      // 문서 내 사용 횟수 배지 (0=비표시)
                       const count = photoUsageCount(usageCountMap, uploadedKeysOf(image))
                       return (
                         <div

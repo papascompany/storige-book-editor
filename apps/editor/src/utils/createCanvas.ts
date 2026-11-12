@@ -36,23 +36,23 @@ import Editor, {
 const ENABLE_IMAGE_PROCESSING = import.meta.env.VITE_ENABLE_IMAGE_PROCESSING !== 'false'
 // Feature flag for ruler
 const ENABLE_RULER = import.meta.env.VITE_ENABLE_RULER !== 'false'
-// Feature flag for smart guides (객체 간 정렬 가이드/스냅 + 회전 각도 스냅, E1 §5-1) — 기본 on
+// Feature flag for smart guides (객체 간 정렬 가이드/스냅 + 회전 각도 스냅) — 기본 on
 const ENABLE_SMART_GUIDES = import.meta.env.VITE_ENABLE_SMART_GUIDES !== 'false'
-// Feature flag for transform feedback (변형 중 실시간 치수/각도/좌표, E1 §5-2) — 기본 on
+// Feature flag for transform feedback (변형 중 실시간 치수/각도/좌표) — 기본 on
 const ENABLE_TRANSFORM_FEEDBACK = import.meta.env.VITE_ENABLE_TRANSFORM_FEEDBACK !== 'false'
-// Feature flag for safe zone warning (재단/안전영역 침범 실시간 경고, E1 §5-5) — 기본 on
+// Feature flag for safe zone warning (재단/안전영역 침범 실시간 경고) — 기본 on
 const ENABLE_SAFEZONE_WARNING = import.meta.env.VITE_ENABLE_SAFEZONE_WARNING !== 'false'
-// Feature flag for image DPI warning (배치 이미지 유효 DPI 실시간 경고, R8) — 기본 on
+// Feature flag for image DPI warning (배치 이미지 유효 DPI 실시간 경고) — 기본 on
 const ENABLE_IMAGE_DPI_WARNING = import.meta.env.VITE_ENABLE_IMAGE_DPI_WARNING !== 'false'
-// Feature flag for alt+drag clone (Alt/Option 키를 누른 채 객체 드래그 시 복제, C5/E2) — 기본 on
+// Feature flag for alt+drag clone (Alt/Option 키를 누른 채 객체 드래그 시 복제) — 기본 on
 const ENABLE_ALT_DRAG_CLONE = import.meta.env.VITE_ENABLE_ALT_DRAG_CLONE !== 'false'
-// Feature flag for touch long-press context menu (모바일 롱프레스 컨텍스트 메뉴, C6/E2) — 기본 on
+// Feature flag for touch long-press context menu (모바일 롱프레스 컨텍스트 메뉴) — 기본 on
 const ENABLE_TOUCH_CONTEXT_MENU = import.meta.env.VITE_ENABLE_TOUCH_CONTEXT_MENU !== 'false'
-// Feature flag for calendar grid plugin (P1 캘린더 2026-10-17, 캘린더 날짜 그리드 재합성) — 기본 on.
+// Feature flag for calendar grid plugin (캘린더 날짜 그리드 재합성) — 기본 on.
 // 프로파일과 무관하게 플래그만으로 모든 캔버스에 등록한다: 첫 캔버스는 템플릿셋 로드 전에 만들어지고,
 // 플러그인은 이벤트·핫키가 없어 calendar-grid 객체가 없는 캔버스에서는 무동작이다.
 const ENABLE_CALENDAR = import.meta.env.VITE_ENABLE_CALENDAR !== 'false'
-// Feature flag for photo print plugin (P2-d 사진인화 2026-10-19, 사진틀 fitMode/유테/촬영일/흑백) — 기본 on.
+// Feature flag for photo print plugin (사진인화 — 사진틀 fitMode/유테/촬영일/흑백) — 기본 on.
 // 플러그인은 이벤트·핫키가 없어 사진인화 세트(productProfile kind=photo-print)에서 utils/photoPrintRehydrate 가
 // apply/rehydrate 를 호출할 때만 동작한다(legacy 세트 무동작).
 const ENABLE_PHOTO_PRINT = import.meta.env.VITE_ENABLE_PHOTO_PRINT !== 'false'
@@ -266,7 +266,7 @@ export const createMultipleCanvas = async (
  * 플러그인 **생성·등록**만 수행하고, 컨테이너 가시성에 의존하는 초기화
  * (`workspace.init()` / `spread.init()` / 앱스토어 등록)는 호출자에게 맡긴다.
  *
- * 분리 이유(2026-08-03): 내지 추가 경로(`useAppStore.addPage`)는 캔버스 컨테이너가
+ * 분리 이유: 내지 추가 경로(`useAppStore.addPage`)는 캔버스 컨테이너가
  * display:block 이 된 **뒤에** workspace.init() 을 불러야 setZoomAuto 가 올바른 크기를
  * 잡는다. 그래서 addPage 는 자체 순서를 유지하면서 플러그인 세트만 공유해야 한다.
  * 종전에는 addPage 가 WorkspacePlugin+PointerShiftGuard 2개만 등록해, 스프레드 모드의
@@ -281,7 +281,7 @@ export function registerCanvasPlugins(
   pluginOpts?: {
     /**
      * 책(표지 스프레드 + 단면 내지)에서 내지 추가 시 cover SpreadPlugin 을 붙이지 않는다.
-     * 붙이면 내지가 표지처럼 책등/앞뒤 영역으로 나뉜다 (2026-08-13 실기).
+     * 붙이면 내지가 표지처럼 책등/앞뒤 영역으로 나뉜다.
      * 포토북 내지 펼침면(regionScope=inner)은 이 플래그와 무관하게 항상 등록.
      */
     allowCoverSpread?: boolean
@@ -303,7 +303,7 @@ export function registerCanvasPlugins(
     : null
 
   // SmartGuidesPlugin은 VITE_ENABLE_SMART_GUIDES 환경변수로 제어 (기본 on)
-  // ⚠️ 생성 순서 계약 (P0, 2026-07-15): fabric 이벤트 핸들러는 **등록(=생성자 바인딩) 순서대로**
+  // ⚠️ 생성 순서 계약: fabric 이벤트 핸들러는 **등록(=생성자 바인딩) 순서대로**
   //   발화한다. SmartGuides 는 생성자에서 object:moving/rotating 을 바인딩하므로, 같은 이벤트를
   //   생성자에서 바인딩하는 FrameInteractionPlugin(아래) 보다 **먼저 생성**되어야
   //   "스냅 → 사진틀(fillImage/clipPath) 동기화" 순서가 보장된다. 뒤에 생성하면 프레임 동기화가
@@ -325,7 +325,7 @@ export function registerCanvasPlugins(
   // conversionMode: IDML 가져오기 유형(미존재 시 'full') — flat-spread 는 resizeSpine 방어 no-op,
   // flat-spine 은 spine-artwork 재배치 불변 가드에 사용된다.
   const spreadConfig = settingsStore.spreadConfig
-  // 포토북 내지(O-2): regionScope==='inner' + innerSpec 이면 2-up 펼침면 렌더 경로.
+  // 포토북 내지: regionScope==='inner' + innerSpec 이면 2-up 펼침면 렌더 경로.
   // inner 도 SpreadPlugin 생성자 계약상 spec(표지 SpreadSpec)을 요구하므로 placeholder 합성
   // (렌더는 innerSpec 으로만 수행 — placeholder 는 currentSpec 비-null 유지용, 표지경로 미진입).
   const allowCoverSpread = pluginOpts?.allowCoverSpread !== false
@@ -346,7 +346,7 @@ export function registerCanvasPlugins(
       : null
 
   const workspace = new WorkspacePlugin(canvas, editor, mergedOptions)
-  // C6-b (E2 §5-5, 오너결정 D-E2-4): 컨텍스트 메뉴/롱프레스 '삭제'를 S2 확인 모달 경유로 정합.
+  // 컨텍스트 메뉴/롱프레스 '삭제'를 삭제 확인 모달 경유로 정합.
   // ObjectPlugin 삭제 hotkey 콜백이 onDeleteRequest 를 먼저 호출하고 true 면 코어 del() 을 건너뛴다.
   // ⚠️ requestDeleteSelection 은 void 반환이라 반드시 boolean 어댑터로 감싼다(raw 주입 시 콜백층
   //    가드가 항상 falsy 로 처리돼 우회가 안 됨). useAppStore 자체는 불변 — getState 로 액션만 호출.
@@ -359,7 +359,7 @@ export function registerCanvasPlugins(
       return true
     },
   })
-  // P1-5 (2026-06-02): 객체 잠금/삭제불가 — LockPlugin 배선.
+  // 객체 잠금/삭제불가 — LockPlugin 배선.
   // editMode(관리자 템플릿 제작)면 'admin'(잠금 지정/해제 가능), 고객 편집이면 'user'.
   const lock = new LockPlugin(canvas, editor, mergedOptions)
   // 사진틀(프레임) 인터랙션 — 프레임=선택단위 그룹 이동/스케일 동기화 + 더블클릭 사진 조정 모드.
@@ -370,22 +370,22 @@ export function registerCanvasPlugins(
   const history = new HistoryPlugin(canvas, editor)
   const copy = new CopyPlugin(canvas, editor, {
     getActiveCanvas: () => useAppStore.getState().canvas,
-    // C5 (E2): Alt+드래그 복제 (기본 on). CopyPlugin 이 clone 파이프라인을 공유.
+    // Alt+드래그 복제 (기본 on). CopyPlugin 이 clone 파이프라인을 공유.
     altDragClone: ENABLE_ALT_DRAG_CLONE
   })
-  // E2 §3-2a: 분배 보호객체 제외 가드의 editMode(관리자) 면제 판정용 옵션 전달
+  // 분배 보호객체 제외 가드의 editMode(관리자) 면제 판정용 옵션 전달
   // (additive — AlignPlugin 시그니처 하위호환, CopyPlugin editMode 규약과 동형).
   const align = new AlignPlugin(canvas, editor, mergedOptions)
   // ImageProcessingPlugin은 이미지 처리 기능이 활성화된 경우에만 생성
   const image = ENABLE_IMAGE_PROCESSING ? new ImageProcessingPlugin(canvas, editor) : null
   const service = new ServicePlugin(canvas, editor, image, mergedOptions)
   const material = new AccessoryPlugin(canvas, editor, {})
-  // C5 (E2): 객체 위 alt+드래그를 CopyPlugin 복제에 양보하도록 동일 플래그 주입
+  // 객체 위 alt+드래그를 CopyPlugin 복제에 양보하도록 동일 플래그 주입
   // (빈 곳 alt+팬은 불변). off 면 종전 거동 복원.
   const drag = new DraggingPlugin(canvas, editor, { altDragClone: ENABLE_ALT_DRAG_CLONE })
-  // P1-3 (2026-06-12): 드래그 변환 진행 중 캔버스 레이아웃 이동/vpt 변경이 드래그
+  // 드래그 변환 진행 중 캔버스 레이아웃 이동/vpt 변경이 드래그
   // 변위로 전이되는 결함 차단 — 패널(ControlBar 280px) 열림 × 더블클릭 편집 레이스로
-  // 객체가 -280px/zoom 텔레포트하던 라이브 P1 의 근본 수정.
+  // 객체가 -280px/zoom 텔레포트하는 것을 막는다.
   const pointerShiftGuard = new PointerShiftGuardPlugin(canvas, editor)
 
   // FontPlugin에 전달하기 위해 fontList 변환 (API에서 로드된 LibraryFont 사용)
@@ -503,10 +503,10 @@ export function registerCanvasPlugins(
   // 룰러는 사용자 토글 기반 — 시작 시 자동 enable 안 함
   // 토글은 EditorView가 useUiPrefStore.showRuler 변화에 반응해 ruler.enable()/disable() 호출
 
-  // L4-①: printExclude 화면 전용 오버레이 훅 (after:render, contextTop 순수 드로잉 — 저장/PDF/썸네일 무오염)
+  // printExclude 화면 전용 오버레이 훅 (after:render, contextTop 순수 드로잉 — 저장/PDF/썸네일 무오염)
   bindPrintExcludeOverlay(canvas)
 
-  // C6 (E2): 모바일 터치 롱프레스 컨텍스트 메뉴 — coarse-pointer 환경에서만 활성(데스크탑 무영향).
+  // 모바일 터치 롱프레스 컨텍스트 메뉴 — coarse-pointer 환경에서만 활성(데스크탑 무영향).
   // editor.init 이후라 wrapperEl·contextMenu 확정. embed/EditorView/TemplateEditorView 모두 이
   // 단일 createCanvas 경유라 자동 적용. coarse 판정은 React 훅(useIsCoarsePointer) 대신 인라인
   // matchMedia — 여기는 비-React async 유틸.

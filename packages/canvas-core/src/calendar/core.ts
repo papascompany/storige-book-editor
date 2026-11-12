@@ -1,5 +1,5 @@
 /**
- * calendar/core.ts — 캘린더 순수 함수 (P1, 2026-10-17)
+ * calendar/core.ts — 캘린더 순수 함수
  *
  * fabric·DOM 의존 없음. 모든 함수는 `CalendarData`(정적 데이터)를 인자로 받는다.
  * ⚠️ 시그니처 계약(2026-10-17) — 시그니처를 바꾸면 CalendarPlugin·editor 호출부도 바뀐다.
@@ -177,7 +177,7 @@ export function getSolarTermsForMonth(year: number, month: number, data: Calenda
   return list.filter((t) => t.date.startsWith(prefix));
 }
 
-/** 잡절(삼복, T4). 데이터에 `minorTerms` 가 없거나(구 데이터) 그 연도가 없으면 빈 배열 */
+/** 잡절(삼복). 데이터에 `minorTerms` 가 없거나(구 데이터) 그 연도가 없으면 빈 배열 */
 export function getMinorTermsForMonth(year: number, month: number, data: CalendarData): CalendarMinorTerm[] {
   const list = data.minorTerms?.[String(year)];
   if (!list) return [];
@@ -215,7 +215,7 @@ function parseDateKeyLoose(key: string): { year: number; month: number; day: num
 const HEX_COLOR_RE = /^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/;
 
 /**
- * 기념일 문구 스타일 정제(D1(b) 최소: 색·굵게). 세션 metadata 는 자유형이라 렌더(화면·PDF)에 넘기기 전에
+ * 기념일 문구 스타일 정제(색·굵게). 세션 metadata 는 자유형이라 렌더(화면·PDF)에 넘기기 전에
  * 색은 hex('#rgb'/'#rrggbb')만, 굵기는 'normal'|'bold' 만 남긴다. 남는 키가 없으면 null.
  */
 export function sanitizeAnniversaryTextStyle(style: unknown): AnniversaryTextStyle | null {
@@ -273,7 +273,7 @@ export function buildMonthMatrix(year: number, month: number, opts: BuildMonthMa
     }
   }
   const anniversaryMap = new Map<DateKey, string[]>();
-  // 문구 스타일(T3b): anniversaryMap 과 같은 순서로 쌓고, 유효 스타일이 하나라도 있는 날짜만 칸에 싣는다
+  // 문구 스타일: anniversaryMap 과 같은 순서로 쌓고, 유효 스타일이 하나라도 있는 날짜만 칸에 싣는다
   const anniversaryStyleMap = new Map<DateKey, Array<AnniversaryTextStyle | null>>();
   const styledDates = new Set<DateKey>();
   for (const a of opts.anniversaries ?? []) {

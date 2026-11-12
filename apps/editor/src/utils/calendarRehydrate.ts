@@ -13,7 +13,7 @@ import { useCalendarStore } from '@/stores/useCalendarStore'
 import { isCalendarProfile, resolveCalendarStart, resolveCanvasMonthOffset } from '@/utils/productProfile'
 
 /**
- * 캘린더 그리드 재합성 — 캔버스 복원(loadJSON/loadFromJSON) 직후 호출 (P1 캘린더, 2026-10-17)
+ * 캘린더 그리드 재합성 — 캔버스 복원(loadJSON/loadFromJSON) 직후 호출 (캘린더)
  *
  * `extensionType:'calendar-grid'` 객체는 저장 JSON 에 그룹으로 직렬화되지만 날짜 데이터·시작연월·
  * 표기 옵션은 세션 메타에만 있다. 복원 뒤 CalendarPlugin.rehydrate(ctx) 로 제자리에서 다시 그린다.
@@ -22,7 +22,7 @@ import { isCalendarProfile, resolveCalendarStart, resolveCanvasMonthOffset } fro
  * 게이트: settings.productProfile 이 null 이거나 kind≠calendar 면 즉시 0(legacy 세트 no-op).
  * 실패는 편집기 진입을 막지 않는다(catch 후 warn, 0 반환).
  *
- * 연달력(variant 'year', T3b 2026-10-24): ctx.yearSpan = 프로파일 `calendar.yearPolicy.span`(없으면 undefined = 기본 규칙),
+ * 연달력(variant 'year'): ctx.yearSpan = 프로파일 `calendar.yearPolicy.span`(없으면 undefined = 기본 규칙),
  * ctx.yearDelta = 이 캔버스 역할(표지·에필로그)의 세션 `yearDeltas[역할]` — 정책 허용 폭 안의 정수일 때만(아니면 생략 = 템플릿 값).
  *
  * @returns 다시 그린 그리드 수
@@ -122,7 +122,7 @@ export async function rehydrateCalendarGridsStrict(
 }
 
 /**
- * 세션 기념일 → 렌더 입력. 문구 스타일은 D1(b) 최소 2종(fill·fontWeight)만 넘기고(정제는 canvas-core 가 한 번 더),
+ * 세션 기념일 → 렌더 입력. 문구 스타일은 최소 2종(fill·fontWeight)만 넘기고(정제는 canvas-core 가 한 번 더),
  * 둘 다 없으면 style 키를 두지 않는다 — 스타일 없는 기념일의 렌더 입력은 종전과 같다.
  */
 export function toAnniversaryInputs(list: readonly CalendarAnniversary[]): AnniversaryInput[] {

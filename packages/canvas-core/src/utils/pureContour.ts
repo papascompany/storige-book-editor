@@ -244,7 +244,7 @@ function samplePoints(points: [number, number][], budget: number): [number, numb
   return out
 }
 
-/** 이진 마스크에서 직접 윤곽을 추출할 때의 입력(R7 — 정밀 경로 이식용 공유 코어). */
+/** 이진 마스크에서 직접 윤곽을 추출할 때의 입력(정밀 경로 이식용 공유 코어). */
 export interface MaskContourInput {
   /** w×h 이진 마스크(1=전경). 마스크 판정 규약은 호출부 책임(알파 임계·erode 등). */
   mask: Uint8Array

@@ -1,6 +1,6 @@
 // 히스토리 경량상태(lightState) — spread meta(regionRef/anchor) 보존 회귀 테스트.
 //
-// 배경(라이브 P1, 2026-06-11/12): `_historyNext` 는 성능을 위해 하드코딩 화이트리스트로
+// 배경: `_historyNext` 는 성능을 위해 하드코딩 화이트리스트로
 // 객체를 경량 직렬화하는데 `meta` 가 누락되어 있었다. undo/redo 시 삭제→복원되는 객체는
 // `_loadHistory` 의 enliven 재추가 경로를 타며 meta(regionRef/anchor) 가 통째로 소실 →
 // 편집기 useSpreadAutoAnchor(object:added) 가 meta 없는 객체로 보고 재앵커를 시도,

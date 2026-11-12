@@ -1,7 +1,7 @@
 /**
- * 포토북 자동편집(autofill) — 프레임 배치 엔진 (Phase 3, 2026-06-24).
+ * 포토북 자동편집(autofill) — 프레임 배치 엔진.
  *
- * 설계서 §7-1 (4. 프레임 매칭) + SKILL.md "블록 B — 사진 자동편집".
+ * 프레임 매칭 단계를 구현한다.
  *
  * 역할: 정렬된 사진 목록을 모든 캔버스(페이지)의 빈 사진틀(frame)에 배치한다.
  *   (a) 정렬     : sortPhotosForAutofill(photos, mode) 재사용(photoAutofill.ts import).
@@ -69,7 +69,7 @@ export interface AutofillOptions {
   imagePlugin: unknown
   /** 채움 후 setActiveObject 등 호출처 후처리(선택). */
   onFilled?: (canvas: FabricCanvas, frame: FabricObject, fore: FabricObject) => void
-  /** B1: 관리자(editMode)면 contentEditable 잠금 프레임도 자동배치 허용(기본 false=고객). */
+  /** 관리자(editMode)면 contentEditable 잠금 프레임도 자동배치 허용(기본 false=고객). */
   editMode?: boolean
 }
 
@@ -227,7 +227,7 @@ export function isFrameFilled(canvas: FabricCanvas, frame: FabricObject): boolea
 /**
  * '빈 사진틀 존재' 런타임 판정(순수, early-return) — 자동편집 UI 노출 조건.
  *
- * ⚠️ 노출 게이팅 원칙(오너 결정 D-2 + 착수 원칙): TemplateSetType 으로 게이팅하지 않는다.
+ * ⚠️ 노출 게이팅 원칙: TemplateSetType 으로 게이팅하지 않는다.
  *    frame 이 없는 상품(BOOK/LEAFLET 일반 셋)에선 이 판정이 false 라 버튼이 자연히 숨는다.
  * collectEmptyFrames 와 동일 기준(extensionType==='frame' + contentEditable 게이트 + 미채움)이되
  * 첫 발견 즉시 반환해 렌더 경로에서 싸다.
@@ -253,17 +253,17 @@ export function hasEmptyFrame(
 }
 
 // ────────────────────────────────────────────────────────────────────────────
-// '내 업로드' 입력 어댑터 (순수) — Track 2 (D-2 잔여 갭, 2026-07-06)
+// '내 업로드' 입력 어댑터 (순수)
 // ────────────────────────────────────────────────────────────────────────────
 
 /**
  * '내 업로드' 사진 메타(useImageStore.uploadedPhotoMeta) — editor 로컬 어댑터 타입.
  * packages/types 의 ExternalPhoto 와 구조적으로 호환되지만 소유/시맨틱이 다르다:
  *
- * ⚠️ uploadedAt 시맨틱 차이(혼합 정렬 시 주의 — SKILL.md §자동편집 EXIF 명문화):
+ * ⚠️ uploadedAt 시맨틱 차이(혼합 정렬 시 주의):
  *   - ExternalPhoto.uploadedAt      = 호스트 서비스가 사진을 업로드한 시각(서버 시계).
  *   - UploadedPhotoMeta.uploadedAt  = file.lastModified(사용자 기기의 파일 수정시각).
- *   둘 다 D-2 폴백 체인의 DateAdded 역할이나 기준 시계가 다르다. takenAt(EXIF)이 있으면
+ *   둘 다 정렬 폴백 체인의 DateAdded 역할이나 기준 시계가 다르다. takenAt(EXIF)이 있으면
  *   effectiveTime 이 takenAt 을 우선하므로 실사진 대부분에선 차이가 드러나지 않는다.
  *
  * url 은 반드시 storage 업로드 결과 URL(objectURL/dataURL 금지 — 세션 휘발로 저장 JSON·
@@ -335,10 +335,10 @@ export interface CollectedFrame {
  * 모든 캔버스(페이지)에서 빈 사진틀을 페이지 순서대로 수집.
  * extensionType==='frame' 이고 채워진 사진이 없는 프레임만.
  *
- * ⚠️ [O-급 이슈 태깅 — 변경 금지, 오너 게이트 대기] 캔버스 내부 프레임 열거 순서는
+ * ⚠️ [변경 금지] 캔버스 내부 프레임 열거 순서는
  * getObjects() 순서 = z-order(디자이너 추가순)이며 시각적 독서 순서(top,left)가 아니다.
- * 디자이너가 의도한 추가순일 수 있어 위치순 정렬 옵션은 오너 결정 후에만 추가한다
- * (2026-07-06 Track 2에서 실측 확인·테스트로 고정).
+ * 디자이너가 의도한 추가순일 수 있어 위치순 정렬 옵션은 두지 않는다
+ * (이 순서는 테스트가 고정한다).
  */
 export function collectEmptyFrames(
   canvases: FabricCanvas[],
@@ -355,7 +355,7 @@ export function collectEmptyFrames(
     const dpi = canvasDpi(canvas)
     for (const obj of objs) {
       if (obj.extensionType !== 'frame') continue
-      // B1 (2026-07-04): 내용편집 잠금 프레임은 자동배치 대상에서 제외.
+      // 내용편집 잠금 프레임은 자동배치 대상에서 제외.
       // 관리자(editMode)는 면제 — 수동 채우기/스왑의 useImageStore 가드와 동일 규약.
       if (!opts?.editMode && obj.contentEditable === false) continue
       if (isFrameFilled(canvas, obj)) continue

@@ -251,10 +251,10 @@ export function useTemplateSave(): UseTemplateSaveReturn {
       const thumbnailUrl = await generateAndUploadThumbnail(options.name || 'template')
 
       // 템플릿 업데이트 DTO — 명시 안 된(undefined) 메타 필드는 dto 에서 제외해
-      // 기존 DB 값을 보존한다. (2026-05-19 fix)
-      // 이전엔 type/width/height 가 undefined 면 entity 의 기존 값을 덮을 위험은
+      // 기존 DB 값을 보존한다.
+      // type/width/height 가 undefined 면 entity 의 기존 값을 덮을 위험은
       // 없지만 호출자가 잘못된 기본값(PAGE/210/297)을 보내면 spread 표지가 page 로
-      // 덮어씌워지는 사고가 발생 → 호출 측 + 여기 둘 다 가드.
+      // 덮어씌워진다 → 호출 측 + 여기 둘 다 가드.
       const updateDto: UpdateTemplateDto = {
         thumbnailUrl,
         canvasData,

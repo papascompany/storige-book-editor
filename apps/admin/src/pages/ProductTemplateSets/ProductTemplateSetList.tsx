@@ -234,7 +234,7 @@ export const ProductTemplateSetList = () => {
       title: '템플릿셋',
       key: 'templateSet',
       render: (_, record) => {
-        // 인쇄 워크플로우 v1 Phase 3 (2026-05-19) — 면지/레더커버 요약 배지
+        // 면지/레더커버 요약 배지
         const ts = record.templateSet;
         const endpaper = ts?.endpaperConfig;
         const endpaperLabel = endpaper

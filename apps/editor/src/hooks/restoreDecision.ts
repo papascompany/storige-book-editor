@@ -28,7 +28,7 @@ export interface RestoreSessionInfo {
    * 전달되면 백업과의 경량 동등성 비교(페이지 수 + 페이지별 objects 개수)로
    * "실질 동일 내용" 백업의 복원 제안을 억제한다 — 무편집 unmount 백업 재작성이
    * backup.savedAt > session.updatedAt 을 상시 성립시켜 재진입마다 배너가 뜨던
-   * footgun 방어(R4).
+   * footgun 방어.
    */
   canvasData?: unknown
 }
@@ -110,7 +110,7 @@ export function shouldOfferRestore(
     return { offer: false, confident: false }
   }
 
-  // R4 — 경량 동등성 억제: 서버 canvasData 가 전달됐고 백업과 페이지 수·페이지별 objects
+  // 경량 동등성 억제: 서버 canvasData 가 전달됐고 백업과 페이지 수·페이지별 objects
   // 개수가 전부 동일하면, 백업은 무편집 unmount 재작성일 가능성이 높다 → 제안하지 않는다.
   // 시그니처를 만들 수 없으면(형태 미상) 억제하지 않고 종전 시각 비교로 폴백(안전측).
   if (session.canvasData !== undefined) {

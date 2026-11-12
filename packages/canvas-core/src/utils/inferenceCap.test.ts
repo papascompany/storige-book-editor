@@ -1,5 +1,5 @@
 /**
- * D-6b② 픽셀 캡 수식 테스트 (2026-08-05 오너 승인).
+ * 픽셀 캡 수식 테스트.
  *
  * getForeground 의 스케일 보상 불변식도 여기서 수식으로 증명한다:
  * scaleX' = (item.width × item.scaleX) / fgW 이고, 캡 미적용이면 fgW = item.width

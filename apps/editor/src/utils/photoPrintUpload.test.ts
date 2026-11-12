@@ -8,7 +8,7 @@ import { useSettingsStore } from '@/stores/useSettingsStore'
 import { checkPhotoPrintPhotoCount, checkPhotoPrintUploadLimit, photoCountLimitMessage, photoSizeLimitMessage } from './photoPrintUpload'
 
 /**
- * P2-d 사진인화 (2026-10-19): 업로드 한도 — maxPhotos(현재 수 + 선택 수)·maxMb(파일 size) 거부, 프로파일 NULL 은 no-op.
+ * 사진인화: 업로드 한도 — maxPhotos(현재 수 + 선택 수)·maxMb(파일 size) 거부, 프로파일 NULL 은 no-op.
  */
 const MB = 1024 * 1024
 
@@ -72,7 +72,7 @@ describe('checkPhotoPrintUploadLimit', () => {
   })
 })
 
-describe('checkPhotoPrintPhotoCount (security-3 — 자동배치 입력 수량)', () => {
+describe('checkPhotoPrintPhotoCount (자동배치 입력 수량)', () => {
   it('프로파일 NULL: 어떤 수량이든 true', () => {
     expect(checkPhotoPrintPhotoCount(999)).toBe(true)
     expect(showToast).not.toHaveBeenCalled()

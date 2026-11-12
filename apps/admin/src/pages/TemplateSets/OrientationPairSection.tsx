@@ -133,7 +133,7 @@ export const OrientationPairSection = ({ templateSetId }: OrientationPairSection
         </span>,
         8,
       );
-      // 트랙 C: 표지 이월 결과 안내 — 제외 사유·검수 노트가 있으면 경고로 병기
+      // 표지 이월 결과 안내 — 제외 사유·검수 노트가 있으면 경고로 병기
       if (meta && (meta.coverSkipped.length > 0 || meta.coverReviewNotes.length > 0)) {
         const skipped = meta.coverSkipped
           .map((s) => `표지 ${s.templateId.slice(0, 8)}… (${s.reason})`)
@@ -155,7 +155,7 @@ export const OrientationPairSection = ({ templateSetId }: OrientationPairSection
   const handleDeriveClick = () => {
     if (!current) return;
     // antd Modal.confirm 의 content 는 1회 정적 렌더 — 클로저 변수 + uncontrolled
-    // Checkbox 로 최소 diff(리렌더 없는 정적 content 전제, 설계 §7-9).
+    // Checkbox 로 최소 diff(리렌더 없는 정적 content 전제).
     let includeCover = false;
     Modal.confirm({
       title: '반대 방향 세트 파생 생성',

@@ -1,4 +1,4 @@
-// textPresets 데이터 무결성 — S-E3
+// textPresets 데이터 무결성
 import { describe, it, expect } from 'vitest'
 import {
   TEXT_STYLE_PRESETS,

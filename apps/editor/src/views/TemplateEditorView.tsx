@@ -62,7 +62,7 @@ export default function TemplateEditorView() {
   const [spreadError, setSpreadError] = useState<string | null>(null)
   const spreadSpecRef = useRef<SpreadSpec | null>(null)
   const spreadLayoutRef = useRef<SpreadLayout | null>(null)
-  // 포토북 내지 펼침면(2-up, O-2): admin 이 spec 으로 보낸 regionScope='inner' config 의 innerSpec.
+  // 포토북 내지 펼침면(2-up): admin 이 spec 으로 보낸 regionScope='inner' config 의 innerSpec.
   // 표지(cover) spec 과 별개 — 존재하면 좌/우 면+거터 모델로 저장/렌더한다.
   const innerSpecRef = useRef<SpreadInnerSpec | null>(null)
   // 템플릿 로드 시 기존 spreadConfig.conversionMode 보관 — 저장 시 spreadConfig 를
@@ -119,13 +119,13 @@ export default function TemplateEditorView() {
   } = useAppStore()
   const { updateSettings, setSpreadConfig } = useSettingsStore()
 
-  // B0-③ (2026-07-04): /template 화면 editMode 활성.
+  // /template 화면 editMode 활성.
   // 이 뷰는 admin iframe 이 ?token=<admin_jwt> 로 진입하지만 라우트 자체는 무가드라
   // URL 파라미터만으로 editMode 를 켜면 위조 가능 — checkAuth 로 me.role 이
-  // ADMIN/SUPER_ADMIN 확인된 뒤에만 켠다. (초기값 false → 관리자 속성 토글 미노출 버그 수정)
+  // ADMIN/SUPER_ADMIN 확인된 뒤에만 켠다. (초기값 false 로 두면 관리자 속성 토글이 노출되지 않는다)
   const isAdmin = useIsAdmin()
   const storeEditMode = useSettingsStore((s) => s.currentSettings.editMode)
-  // L3 B-3: 고객 시점 미리보기 중에는 editMode 자동 승격 억제
+  // 고객 시점 미리보기 중에는 editMode 자동 승격 억제
   const customerPreview = useSettingsStore((s) => s.customerPreview)
   useEffect(() => {
     if (customerPreview) return
@@ -141,11 +141,11 @@ export default function TemplateEditorView() {
   // Template save hook
   const { saving, saveTemplate, updateExistingTemplate } = useTemplateSave()
 
-  // T6 (2026-07-13): 컨테이너 크기 변화 → 캔버스 dim 동기화 + 워크스페이스 재센터링.
+  // 컨테이너 크기 변화 → 캔버스 dim 동기화 + 워크스페이스 재센터링.
   // 객체 선택 시 FeatureSidebar↔ControlBar 스왑으로 캔버스 폭이 바뀌어도 페이지가
-  // 밀린 채 방치되지 않도록 EditorView 와 동일 훅 배선(이 뷰엔 리사이즈 동기화가 전무했다).
+  // 밀린 채 방치되지 않도록 EditorView 와 동일 훅 배선.
   useCanvasContainerSizeSync(ready, canvasContainerRef)
-  // §6-3: 스냅 설정 배선(admin 템플릿 편집에도 적용)
+  // 스냅 설정 배선(admin 템플릿 편집에도 적용)
   useSnapSettingsSync(ready)
 
   // 부모 창에 메시지 전송
@@ -419,8 +419,8 @@ export default function TemplateEditorView() {
       let savedTemplate
       if (templateId) {
         // 기존 템플릿 업데이트 — URL 에 명시된 메타만 전달 (기존 DB 값 보존).
-        // 이전엔 type/width/height 기본값(PAGE/210/297) 으로 강제 덮어써서
-        // spread 표지가 page 로 손상되는 사고 발생 → 명시된 값만 전송 (2026-05-19 fix).
+        // type/width/height 기본값(PAGE/210/297) 으로 강제 덮어쓰면
+        // spread 표지가 page 로 손상된다 → 명시된 값만 전송.
         const updates: UpdateTemplateOptions = {
           name: templateName,
         }

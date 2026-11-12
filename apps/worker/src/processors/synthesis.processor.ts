@@ -13,7 +13,7 @@ import * as path from 'path';
 import * as fs from 'fs/promises';
 import { captureJobException } from '../sentry/sentry.init';
 import { reportStalledLimitFailure } from './stalled-job-failure';
-// JD-2 (2026-10): 합성 실패 시도 판정 — 재시도(PATCH 없이 throw) / 최종 FAILED(+discard).
+// 합성 실패 시도 판정 — 재시도(PATCH 없이 throw) / 최종 FAILED(+discard).
 import {
   buildSynthesisFailedFields,
   decideSynthesisFailure,
@@ -26,14 +26,14 @@ import { VALIDATION_CONFIG } from '../config/validation.config';
 import { isSpreadSnapshotHardFail } from '../config/feature-flags';
 import { downloadToTempFile } from '../utils/stream-download';
 import { extractPdfMetadataQpdf } from '../utils/pdf-metadata-qpdf';
-// X1 (2026-09-30): compose-mixed 내지 입력 재단선 영역 크롭 정규화(원본 불변·임시 사본).
+// compose-mixed 내지 입력 재단선 영역 크롭 정규화(원본 불변·임시 사본).
 import {
   normalizeTrimBoxFile,
   normalizeTrimBoxPdfDoc,
   trimCropContextFromJob,
   TrimCropContext,
 } from '../utils/trimbox-normalize';
-// R5 (2026-08-11): 최종 인쇄 산출 정규화 — 기본 OFF(no-op)·fail-open. 6개 산출 지점 공통.
+// 최종 인쇄 산출 정규화 — 기본 OFF(no-op)·fail-open. 6개 산출 지점 공통.
 import { maybeNormalizeForPrint } from '../utils/print-normalize';
 import {
   assemblePdf as qpdfAssemble,
@@ -42,12 +42,12 @@ import {
   createBlankPdf,
   MergePart,
 } from '../utils/pdf-merge-qpdf';
-// P2-c (2026-10-18): 합성 mode 'sheet-map' 입력 검증(다운로드 전·비재시도).
+// 합성 mode 'sheet-map' 입력 검증(다운로드 전·비재시도).
 import { assertSheetMapJobInput, sheetFaces } from './sheet-map-input';
-// P2-d D13 (2026-10-21): pdf-lib(OFF) 분리본의 미참조 XObject 정리 — jsPDF 가 전체 이미지를 매 페이지 리소스에 올려
+// pdf-lib(OFF) 분리본의 미참조 XObject 정리 — jsPDF 가 전체 이미지를 매 페이지 리소스에 올려
 // copyPages 분리본이 원본 크기였다. qpdf(ON) 경로는 --pages 기본값이 이미 정리한다.
 import { compactPdfDocument } from '../utils/pdf-prune-xobjects';
-// A3 (2026-10): 합성 입력 오류(열 수 없는 PDF·저장소의 없는 파일·쓸 수 없는 입력 주소) 타입화.
+// 합성 입력 오류(열 수 없는 PDF·저장소의 없는 파일·쓸 수 없는 입력 주소) 타입화.
 import {
   fetchInput,
   lightweightStorageRoot,
@@ -87,7 +87,7 @@ interface SynthesisJobData {
   // Spread synthesis 전용
   spreadPdfFileId?: string;
   contentPdfFileIds?: string[];
-  // ── 인쇄 워크플로우 v1 Phase 5 (2026-05-19) — compose-mixed 전용 ──
+  // ── compose-mixed 전용 ──
   /** 표지 PDF URL. coverEditable=false 면 worker가 빈 페이지 생성하므로 미전송 가능 */
   composeCoverUrl?: string;
   /** 표지 편집 가능 여부 (false=레더커버 → 빈 페이지) */
@@ -107,12 +107,12 @@ interface SynthesisJobData {
   composeContentHeightMm?: number;
   /** 출력 모드: separate(표지+내지), content-only(내지만), single(낱장) */
   composeOutputMode?: 'separate' | 'content-only' | 'single';
-  /** P0-3: 스프레드 책 cover(펼침면 전체) MediaBox 무결성 검증 기대치 (API가 세션 metadata.spread 에서 push). 부재=비스프레드 → 검증 skip */
+  /** 스프레드 책 cover(펼침면 전체) MediaBox 무결성 검증 기대치 (API가 세션 metadata.spread 에서 push). 부재=비스프레드 → 검증 skip */
   composeSpreadTotalWidthMm?: number;
   composeSpreadTotalHeightMm?: number;
   composeSpreadDpi?: number;
   /**
-   * D-4 (2026-07-06, C-4 Track 3): 하드커버 싸바리 등 '출력(wrap 포함) 사이즈'가 화면 trim 과
+   * 하드커버 싸바리 등 '출력(wrap 포함) 사이즈'가 화면 trim 과
    * 다른 상품의 cover 검증 기대치 (세션 metadata.spread.outputWidthMm/outputHeightMm).
    * 존재 시 total 대신 이 값으로 검증(output 우선), 부재 시 total 폴백 = 기존 동작과 100% 동일.
    * 내부 큐 metadata 전용 — 워커 external DTO(worker-job.dto.ts) 표면 불변.
@@ -120,15 +120,15 @@ interface SynthesisJobData {
   composeSpreadOutputWidthMm?: number;
   composeSpreadOutputHeightMm?: number;
   /**
-   * [S2-5, 2026-07-16] test env 파트너 키 잡 마커 — API 잡 생성부가 isTest 잡에만
+   * test env 파트너 키 잡 마커 — API 잡 생성부가 isTest 잡에만
    * conditional spread 로 등재(live 잡 페이로드 키 집합 불변). true 면 실합성 대신
    * TEST 워터마크 더미 산출(handleTestSynthesis) — 실합성 리소스 소모 방지.
-   * 현 Stage 2 는 발화 경로 없음(잡 생성 external 라우트=sites 키 live 전용),
-   * 실발화는 Stage 3(v1 books 잡 생성 표면).
+   * 잡 생성 external 라우트는 live 전용이라 이 키를 싣지 않고,
+   * v1 books 최종화가 env 'test' 로 만든 잡에만 실린다.
    */
   isTest?: boolean;
   /**
-   * X1F-1: API 가 조건부로 싣는 공유 계약 키(주문 재단·도련 — merge 합성, compose-mixed
+   * API 가 조건부로 싣는 공유 계약 키(주문 재단·도련 — merge 합성, compose-mixed
    * 자동조립·관리자 경로). 반드시 trimCropContextFromJob 으로만 읽는다.
    */
   contentTrim?: unknown;
@@ -136,7 +136,7 @@ interface SynthesisJobData {
 
 // FilesService 인터페이스 (Worker에서 DB 조회용)
 /**
- * GET /files/:id/external 응답 중 워커가 읽는 필드. filePath 는 SEC-008 로 DTO 에 없다 —
+ * GET /files/:id/external 응답 중 워커가 읽는 필드. filePath 는 DTO 에 없다 —
  * 바이트는 항상 `api://<id>`(GET /files/:id/download/external, local/s3 라우팅은 API 가 담당)로 받는다.
  */
 interface FileRecord {
@@ -156,7 +156,7 @@ export class SynthesisProcessor {
     process.env.STORAGE_PATH || '/app/storage/temp';
   private readonly outputsPath =
     process.env.OUTPUTS_PATH || '/app/storage/outputs';
-  // WK-4 — 상태 업데이트 재시도 공유 서비스 (DI 대신 직접 생성 — 기존 스펙 생성자 고정)
+  // 상태 업데이트 재시도 공유 서비스 (DI 대신 직접 생성 — 기존 스펙 생성자 고정)
   private readonly jobStatusService = new JobStatusService();
 
   constructor(private readonly synthesizerService: PdfSynthesizerService) {}
@@ -166,7 +166,7 @@ export class SynthesisProcessor {
     const { mode } = job.data;
     const jobId = job.data.jobId;
 
-    // ⓔ(2026-06-23) 멱등 가드 — 합성 비멱등 재실행 방지(유료 인쇄 주문 중복합성 차단).
+    // 멱등 가드 — 합성 비멱등 재실행 방지(유료 인쇄 주문 중복합성 차단).
     // 완료 마커(.synthesis-complete.json, updateJobStatus COMPLETED 시 기록)가 있으면 이전 시도가
     // 이미 성공한 것 → 재합성/재다운로드/재머지 없이 단락. Bull stalled 재배달(maxStalledCount,
     // lock 만료 시 발생)과 합성 큐 재시도(attempts>1, settleFailedAttempt 의 retry) 양쪽을 커버한다.
@@ -181,7 +181,7 @@ export class SynthesisProcessor {
       return cached.result ?? { success: true, idempotentSkip: true };
     }
 
-    // [S2-5] test env 잡 — 실합성 파이프라인 대신 TEST 워터마크 더미 산출물 생성.
+    // test env 잡 — 실합성 파이프라인 대신 TEST 워터마크 더미 산출물 생성.
     // 멱등 가드 뒤·mode 분기 앞: 재배달도 완료 마커로 동일하게 단락된다.
     // 기존 3큐·프로세서 시맨틱 불변 — isTest 잡만 분기(live 잡은 이 라인 통과 비용 0).
     if (job.data.isTest === true) {
@@ -198,14 +198,14 @@ export class SynthesisProcessor {
       );
     }
     if (mode === 'sheet-map') {
-      // P2-c (2026-10-18) — 시트 맵(앞/뒤 면 참조·뒷면 회전) 기반 시트별/양면 합본 산출
+      // 시트 맵(앞/뒤 면 참조·뒷면 회전) 기반 시트별/양면 합본 산출
       return this.handleSheetMapSynthesis(job as Job<SheetMapSynthesisJobData>);
     }
     if (mode === 'spread') {
       return this.handleSpreadSynthesis(job as Job<SpreadSynthesisJobData>);
     }
     if (mode === 'compose-mixed') {
-      // 인쇄 워크플로우 v1 Phase 5 (2026-05-19) — 표지+면지+내지 합본
+      // 표지+면지+내지 합본
       return this.handleComposeMixedSynthesis(job);
     }
 
@@ -214,7 +214,7 @@ export class SynthesisProcessor {
   }
 
   // ============================================================================
-  // [S2-5] Test env 더미 합성 (2026-07-16, 로드맵 §6 Stage 2 작업 1)
+  // Test env 더미 합성
   // ============================================================================
 
   /** A4 세로 기본 판형(pt) — 요청 스펙에 판형 정보가 없는 mode(classic/split)의 폴백 */
@@ -448,7 +448,7 @@ export class SynthesisProcessor {
   }
 
   /**
-   * Compose-mixed 합성 — 인쇄 워크플로우 v1 Phase 5 (2026-05-19).
+   * Compose-mixed 합성.
    *
    * 출력 순서 (고정):
    *   [표지, 앞면지 1..N, 내지 PDF, 뒷면지 1..K]
@@ -477,9 +477,9 @@ export class SynthesisProcessor {
     const jobId = job.data.jobId;
     const queueJobId = job.id;
     const outputMode = composeOutputMode || 'merged';
-    // D-4: cover 검증 기대치 — output(wrap 포함) 우선, total 폴백. 부재=비스프레드 → 검증 skip(기존 동일).
+    // cover 검증 기대치 — output(wrap 포함) 우선, total 폴백. 부재=비스프레드 → 검증 skip(기존 동일).
     const spreadCoverExpectation = this.resolveSpreadCoverExpectation(job.data);
-    // X1F-1: 내지 정규화 컨텍스트 — pdf-lib(3곳)·qpdf(lightweight) 경로가 같은 값을 받는다.
+    // 내지 정규화 컨텍스트 — pdf-lib(3곳)·qpdf(lightweight) 경로가 같은 값을 받는다.
     const contentTrimCtx = trimCropContextFromJob(job.data.contentTrim, `compose:${jobId}`);
 
     this.logger.log(
@@ -504,7 +504,7 @@ export class SynthesisProcessor {
       const storageKeyBase = `outputs/${jobId}`;
 
       // ──────────────────────────────────────────────────────────────
-      // 트랙 B-(f) — compose-mixed 2GB 상수메모리 ON 경로(LIGHTWEIGHT_SYNTHESIS).
+      // compose-mixed 2GB 상수메모리 ON 경로(LIGHTWEIGHT_SYNTHESIS).
       // pdf-lib copyPages 누적적재 대신 입력을 임시파일로 확보 → qpdf assemblePdf 로 순서대로
       // 이어붙임(치수/별색/오버프린트 무손실). null 면지/빈 표지는 createBlankPdf(contentPt/coverPt).
       // outputMode 별 산출(separate/content-only/single/merged)·outputFiles·result 매핑은 OFF 와 동일.
@@ -544,7 +544,7 @@ export class SynthesisProcessor {
         }
         if (composeContentPdfUrl) {
           const doc = await this.loadComposeInputPdf(composeContentPdfUrl, 'content');
-          // X1: 내지 재단선 영역 크롭 정규화(메모리 사본, copyPages 이전). 면지·표지 제외.
+          // 내지 재단선 영역 크롭 정규화(메모리 사본, copyPages 이전). 면지·표지 제외.
           await normalizeTrimBoxPdfDoc(doc, contentTrimCtx, `compose:${jobId}`);
           const pages = await pdf.copyPages(doc, doc.getPageIndices());
           pages.forEach((p) => pdf.addPage(p));
@@ -564,7 +564,7 @@ export class SynthesisProcessor {
 
       let result: SynthesisResult;
       const outputFiles: OutputFile[] = [];
-      // P0-3: 스프레드 cover MediaBox 검증 결과(있으면 result 에 기록). 비스프레드/skip 시 undefined.
+      // 스프레드 cover MediaBox 검증 결과(있으면 result 에 기록). 비스프레드/skip 시 undefined.
       let coverSizeValidation: Record<string, unknown> | undefined;
 
       if (outputMode === 'separate') {
@@ -572,8 +572,8 @@ export class SynthesisProcessor {
         const coverPdf = await PDFDocument.create();
         if (composeCoverEditable !== false && composeCoverUrl) {
           const coverDoc = await this.loadComposeInputPdf(composeCoverUrl, 'cover');
-          // P0-3: 스프레드 책이면(API가 metadata.spread 기대치를 push) 펼침면 cover MediaBox 무결성 검증.
-          // D-4: 기대치 = output(wrap 포함) 우선 · total 폴백 (resolveSpreadCoverExpectation).
+          // 스프레드 책이면(API가 metadata.spread 기대치를 push) 펼침면 cover MediaBox 무결성 검증.
+          // 기대치 = output(wrap 포함) 우선 · total 폴백 (resolveSpreadCoverExpectation).
           if (spreadCoverExpectation) {
             coverSizeValidation = this.validateSpreadCoverSize(
               jobId,
@@ -619,7 +619,7 @@ export class SynthesisProcessor {
         const pagesPdf = await PDFDocument.create();
         if (composeContentPdfUrl) {
           const doc = await this.loadComposeInputPdf(composeContentPdfUrl, 'content');
-          // X1: 내지 재단선 영역 크롭 정규화(메모리 사본, copyPages 이전).
+          // 내지 재단선 영역 크롭 정규화(메모리 사본, copyPages 이전).
           await normalizeTrimBoxPdfDoc(doc, contentTrimCtx, `compose:${jobId}`);
           const pages = await pagesPdf.copyPages(doc, doc.getPageIndices());
           pages.forEach((p) => pagesPdf.addPage(p));
@@ -649,7 +649,7 @@ export class SynthesisProcessor {
         }
         if (composeContentPdfUrl) {
           const d = await this.loadComposeInputPdf(composeContentPdfUrl, 'content');
-          // X1: 내지 재단선 영역 크롭 정규화(메모리 사본, copyPages 이전).
+          // 내지 재단선 영역 크롭 정규화(메모리 사본, copyPages 이전).
           await normalizeTrimBoxPdfDoc(d, contentTrimCtx, `compose:${jobId}`);
           const p = await finalPdf.copyPages(d, d.getPageIndices()); p.forEach(pg => finalPdf.addPage(pg));
         }
@@ -660,7 +660,7 @@ export class SynthesisProcessor {
         }
         const mergedPath = path.join(outputDir, 'merged.pdf');
         await fs.writeFile(mergedPath, await finalPdf.save());
-        await maybeNormalizeForPrint(mergedPath); // R5: 기본 OFF·fail-open
+        await maybeNormalizeForPrint(mergedPath); // 기본 OFF·fail-open
         const mergedUrl = `/storage/${storageKeyBase}/merged.pdf`;
         result = { success: true, outputFileUrl: mergedUrl, totalPages: finalPdf.getPageCount() };
       }
@@ -688,7 +688,7 @@ export class SynthesisProcessor {
   }
 
   /**
-   * 트랙 B-(f) — compose-mixed 2GB 상수메모리 구현(LIGHTWEIGHT_SYNTHESIS ON).
+   * compose-mixed 2GB 상수메모리 구현(LIGHTWEIGHT_SYNTHESIS ON).
    *
    * OFF(handleComposeMixedSynthesis 본문)와 '동일 산출'을 내야 한다:
    *   - 출력 순서: [표지, 앞면지 1..N, 내지 PDF, 뒷면지 1..K] (content 조립은 면지+내지+면지 순서)
@@ -709,9 +709,9 @@ export class SynthesisProcessor {
     composeFrontEndpaperUrls?: (string | null)[];
     composeBackEndpaperUrls?: (string | null)[];
     composeContentPdfUrl?: string;
-    /** D-4: cover 검증 기대치(output 우선·total 폴백 해석 완료값). 부재=비스프레드 → 검증 skip */
+    /** cover 검증 기대치(output 우선·total 폴백 해석 완료값). 부재=비스프레드 → 검증 skip */
     spreadCoverExpectation?: { widthMm: number; heightMm: number; dpi?: number };
-    /** X1F-1: 내지 정규화 컨텍스트(OFF 경로와 같은 값 — 필수). */
+    /** 내지 정규화 컨텍스트(OFF 경로와 같은 값 — 필수). */
     contentTrimCtx: TrimCropContext;
   }): Promise<SynthesisResult> {
     const {
@@ -736,7 +736,7 @@ export class SynthesisProcessor {
     const scratchCleanups: Array<() => Promise<void>> = [];
     const mkTmp = (suffix: string) =>
       path.join(outputDir, `__lw_${suffix}_${Math.random().toString(36).slice(2)}.pdf`);
-    // A3: 입력에서 온 part 경로 → 입력 역할. qpdf 병합 실패 시 이 part 들만 판독한다(빈 페이지 등 직접 만든 part 제외).
+    // 입력에서 온 part 경로 → 입력 역할. qpdf 병합 실패 시 이 part 들만 판독한다(빈 페이지 등 직접 만든 part 제외).
     const inputRoles = new Map<string, SynthesisInputRole>();
     const registerInput = (file: string, input: SynthesisInputRole): void => {
       if (!inputRoles.has(file)) inputRoles.set(file, input);
@@ -775,7 +775,7 @@ export class SynthesisProcessor {
       return dl.path;
     };
 
-    // X1: 내지 part 재단선 영역 크롭 정규화. dl.path 는 로컬 원본일 수 있으므로 **절대 쓰지
+    // 내지 part 재단선 영역 크롭 정규화. dl.path 는 로컬 원본일 수 있으므로 **절대 쓰지
     // 않고** 새 임시파일(mkTmp)에만 쓴다. 적용 시 그 사본을 part 로 쓴다. out 은 호출 **전에**
     // scratch 에 등록해, 정규화 도중 실패(부분 파일)여도 finally 에서 정리한다(없는 파일 삭제는 무해).
     const normalizedContentPart = async (srcPath: string): Promise<string> => {
@@ -829,8 +829,8 @@ export class SynthesisProcessor {
           scratchCleanups.push(dl.cleanup);
           registerInput(dl.path, 'cover');
           const meta = await extractPdfMetadataQpdf(dl.path);
-          // P0-3: 스프레드 책이면 펼침면 cover MediaBox 무결성 검증(측정-주입판).
-          // D-4: 기대치 = output(wrap 포함) 우선 · total 폴백.
+          // 스프레드 책이면 펼침면 cover MediaBox 무결성 검증(측정-주입판).
+          // 기대치 = output(wrap 포함) 우선 · total 폴백.
           if (spreadCoverExpectation) {
             // qpdf 가 MediaBox 를 못 해석(meta.pages 비어있음)한 '정상' 표지에서 치수가
             // undefined 가 되어 허위 COVER_SIZE 불일치/HARD-FAIL 이 나는 것을 방지:
@@ -916,7 +916,7 @@ export class SynthesisProcessor {
         mergedParts.push(...(await buildContentParts()));
         const mergedPath = path.join(outputDir, 'merged.pdf');
         const mergedCount = await assembleToFile(mergedParts, mergedPath);
-        await maybeNormalizeForPrint(mergedPath); // R5: 기본 OFF·fail-open
+        await maybeNormalizeForPrint(mergedPath); // 기본 OFF·fail-open
         const mergedUrl = `/storage/${storageKeyBase}/merged.pdf`;
         result = { success: true, outputFileUrl: mergedUrl, totalPages: mergedCount };
       }
@@ -946,7 +946,7 @@ export class SynthesisProcessor {
    * 입력 오류(INPUT_URL_REJECTED·FILE_NOT_FOUND·PDF_LOAD_FAILED)로 throw 한다(synthesis-input).
    */
   /**
-   * P2-d D13: 분리본(setDoc)의 미참조 XObject 를 지우고 새 문서로 복사해 크기를 줄인다. 정리 실패는 로그만 남기고
+   * 분리본(setDoc)의 미참조 XObject 를 지우고 새 문서로 복사해 크기를 줄인다. 정리 실패는 로그만 남기고
    * 원본 분리본을 돌려준다(산출 파일 수·페이지 수는 불변 — 호출측 무결성 검사 그대로).
    */
   private async compactSetDoc(setDoc: PDFDocument, jobId: string, label: string): Promise<PDFDocument> {
@@ -973,7 +973,7 @@ export class SynthesisProcessor {
   }
 
   /**
-   * D-4 (2026-07-06, C-4 Track 3): compose-mixed cover 검증 기대치 해석 — output 우선 · total 폴백.
+   * compose-mixed cover 검증 기대치 해석 — output 우선 · total 폴백.
    *
    * - composeSpreadOutputWidthMm/HeightMm(하드커버 싸바리 wrap 포함 출력 사이즈)가 둘 다
    *   양수로 존재하면 그 값을 기대치로 사용(output 우선).
@@ -1016,9 +1016,9 @@ export class SynthesisProcessor {
   }
 
   /**
-   * P0-3: 스프레드 책 cover(펼침면 전체) MediaBox 무결성 검증.
+   * 스프레드 책 cover(펼침면 전체) MediaBox 무결성 검증.
    * cover.pdf 의 실제 페이지 크기(MediaBox)를 세션 metadata.spread 의 기대 펼침면 총폭/총높이와 대조.
-   * 펼침면 cover 는 1페이지(뒷표지|책등|앞표지(+날개))여야 하고, 폭/높이가 기대치 ±tol(B43=max(0.2mm,1px@dpi)) 이내여야 한다.
+   * 펼침면 cover 는 1페이지(뒷표지|책등|앞표지(+날개))여야 하고, 폭/높이가 기대치 ±tol(max(0.2mm,1px@dpi)) 이내여야 한다.
    *
    * SOFT(기본): 불일치를 결과로 기록 + logger.warn, throw 안 함(합성 계속).
    * HARD(env SPREAD_SNAPSHOT_HARD_FAIL='true'): 불일치 시 DomainError(SPREAD_PDF_SIZE_MISMATCH) throw → 잡 FAILED(잘못된 크기 인쇄 차단).
@@ -1045,7 +1045,7 @@ export class SynthesisProcessor {
   }
 
   /**
-   * 트랙 B-(f) — validateSpreadCoverSize 의 측정-주입판(파일기반 ON 경로용).
+   * validateSpreadCoverSize 의 측정-주입판(파일기반 ON 경로용).
    * pageCount + 첫 페이지 치수(pt)를 직접 받아 동일 게이트(SOFT/HARD·tol·mismatches)를 적용한다.
    * qpdf widthPt/heightPt 는 pdf-lib getSize() 와 동일 보장 → 산출(검증 결과) 동일.
    */
@@ -1125,7 +1125,7 @@ export class SynthesisProcessor {
     );
 
     let localResult: SynthesisLocalResult | null = null;
-    // X1F-1: 잡 contentTrim(주문 재단·도련) → 내지 정규화 컨텍스트. 키 없음·무효·킬스위치 OFF 면 {}.
+    // 잡 contentTrim(주문 재단·도련) → 내지 정규화 컨텍스트. 키 없음·무효·킬스위치 OFF 면 {}.
     const contentTrimCtx = trimCropContextFromJob(job.data.contentTrim, `merge:${jobId}`);
 
     try {
@@ -1162,7 +1162,7 @@ export class SynthesisProcessor {
       await fs.mkdir(path.join(this.outputsPath, jobId), { recursive: true });
 
       // merged 파일 복사
-      await maybeNormalizeForPrint(localResult.mergedPath); // R5: 기본 OFF·fail-open
+      await maybeNormalizeForPrint(localResult.mergedPath); // 기본 OFF·fail-open
       await fs.copyFile(localResult.mergedPath, mergedStoragePath);
       const mergedUrl = `/storage/${storageKeyBase}/${mergedFilename}`;
 
@@ -1286,13 +1286,13 @@ export class SynthesisProcessor {
   }
 
   // ============================================================================
-  // Split Synthesis (단일 PDF 분리) - ★ v1.1.4 설계서
+  // Split Synthesis (단일 PDF 분리)
   // ============================================================================
 
   /**
    * 분리 합성 처리 (1개 PDF → cover.pdf + content.pdf)
    *
-   * ★ 설계서 v1.1.4 핵심:
+   * ★ 핵심:
    * - mode는 Queue payload만 신뢰 (DB 참조 안 함)
    * - jobId scoped temp 디렉토리 (동시 작업 안전)
    * - 이중 검증 (API + Worker)
@@ -1314,7 +1314,7 @@ export class SynthesisProcessor {
     // ★ jobId scoped temp 디렉토리 (동시 작업 안전)
     const jobTempDir = path.join(this.storagePath, `temp_${jobId}`);
 
-    // 트랙 B-(f) ON 경로의 스트림 입력 임시파일 정리 핸들(임시면 삭제, 로컬원본이면 no-op).
+    // 상수메모리 ON 경로의 스트림 입력 임시파일 정리 핸들(임시면 삭제, 로컬원본이면 no-op).
     let lwCleanup: (() => Promise<void>) | null = null;
 
     this.logger.log(
@@ -1366,7 +1366,7 @@ export class SynthesisProcessor {
       let lwInputPath: string | null = null; // ON 경로 전용(분리 입력)
       let totalPages: number;
 
-      // SEC-008: DTO 에 filePath 없음 → backend 무관하게 API 다운로드 라우트(api://)로 받는다.
+      // DTO 에 filePath 없음 → backend 무관하게 API 다운로드 라우트(api://)로 받는다.
       const sourceUrl = `api://${file.id}`;
       if (lightweight) {
         let dl;
@@ -1484,7 +1484,7 @@ export class SynthesisProcessor {
         );
       }
 
-      // 8. ★ 무결성 검증 (P0 필수)
+      // 8. ★ 무결성 검증 (필수)
       await this.verifySplitResult(
         splitResult,
         coverIndices.length,
@@ -1512,7 +1512,7 @@ export class SynthesisProcessor {
         );
 
         const mergedStoragePath = path.join(this.outputsPath, jobId, 'merged.pdf');
-        await maybeNormalizeForPrint(mergedPath); // R5: 기본 OFF·fail-open
+        await maybeNormalizeForPrint(mergedPath); // 기본 OFF·fail-open
         await fs.copyFile(mergedPath, mergedStoragePath);
         result.outputFileUrl = `/storage/${storageKeyBase}/merged.pdf`;
       } else if (outputFormat === 'separate') {
@@ -1547,7 +1547,7 @@ export class SynthesisProcessor {
             jobId,
             'merged.pdf',
           );
-          await maybeNormalizeForPrint(mergedPath); // R5: 기본 OFF·fail-open
+          await maybeNormalizeForPrint(mergedPath); // 기본 OFF·fail-open
           await fs.copyFile(mergedPath, mergedStoragePath);
           result.outputFileUrl = `/storage/${storageKeyBase}/merged.pdf`;
         }
@@ -1624,7 +1624,7 @@ export class SynthesisProcessor {
 
     const jobTempDir = path.join(this.storagePath, `temp_${jobId}`);
 
-    // 트랙 B-(f) ON 경로의 스트림 입력 임시파일 정리 핸들.
+    // 상수메모리 ON 경로의 스트림 입력 임시파일 정리 핸들.
     let lwCleanup: (() => Promise<void>) | null = null;
 
     this.logger.log(
@@ -1662,7 +1662,7 @@ export class SynthesisProcessor {
       let lwInputPath: string | null = null;
       let totalPages: number;
 
-      // SEC-008: DTO 에 filePath 없음 → backend 무관하게 API 다운로드 라우트(api://)로 받는다.
+      // DTO 에 filePath 없음 → backend 무관하게 API 다운로드 라우트(api://)로 받는다.
       const sourceUrl = `api://${file.id}`;
       if (lightweight) {
         let dl;
@@ -1754,7 +1754,7 @@ export class SynthesisProcessor {
           ]);
           rawSetDoc.addPage(frontPage);
           rawSetDoc.addPage(backPage);
-          // D13: 미참조 XObject 정리(실패 시 원본 분리본 그대로 — 산출은 막지 않는다)
+          // 미참조 XObject 정리(실패 시 원본 분리본 그대로 — 산출은 막지 않는다)
           const setDoc = await this.compactSetDoc(rawSetDoc, jobId, `duplex-split set ${setIndex}`);
           await fs.writeFile(setOutPath, await setDoc.save());
           setPageCount = setDoc.getPageCount();
@@ -1830,7 +1830,7 @@ export class SynthesisProcessor {
   }
 
   // ============================================================================
-  // Sheet-map Synthesis (시트 맵: 앞/뒤 면 참조 + 뒷면 회전 → 시트별 PDF 또는 양면 합본) - 2026-10-18 P2-c
+  // Sheet-map Synthesis (시트 맵: 앞/뒤 면 참조 + 뒷면 회전 → 시트별 PDF 또는 양면 합본) - 2026-10-18
   // ============================================================================
 
   /**
@@ -1991,7 +1991,7 @@ export class SynthesisProcessor {
             }
             rawSetDoc.addPage(page);
           });
-          // D13: 미참조 XObject 정리(실패 시 원본 분리본 그대로). 회전(/Rotate)은 copyPages 가 보존한다.
+          // 미참조 XObject 정리(실패 시 원본 분리본 그대로). 회전(/Rotate)은 copyPages 가 보존한다.
           const setDoc = await this.compactSetDoc(rawSetDoc, jobId, `sheet-map sheet ${sheet.index}`);
           setPageCount = setDoc.getPageCount();
           if (separate) {
@@ -2124,7 +2124,7 @@ export class SynthesisProcessor {
   }
 
   /**
-   * ★ 무결성 검증 (P0 필수)
+   * ★ 무결성 검증 (필수)
    *
    * 트레이드오프:
    * - 비용: PDF 재로딩 I/O 2회 추가
@@ -2224,7 +2224,7 @@ export class SynthesisProcessor {
   }
 
   /**
-   * 트랙 B-(f) — 0-based 페이지 인덱스 배열을 qpdf 1-based 콤마 페이지표기로 변환.
+   * 0-based 페이지 인덱스 배열을 qpdf 1-based 콤마 페이지표기로 변환.
    * 순서를 그대로 보존한다(예: [0,2,1] → "1,3,2"). 빈 배열은 호출 전에 걸러져야 한다
    * (split 은 cover/content 비어있음을 이미 NO_*_PAGES 로 차단).
    */
@@ -2242,7 +2242,7 @@ export class SynthesisProcessor {
         `${this.apiBaseUrl}/files/${fileId}/external`,
         {
           headers: { 'X-API-Key': process.env.WORKER_API_KEY },
-          timeout: 30000, // EH-005: API 무응답 시 split/duplex 잡 무한대기 방지
+          timeout: 30000, // API 무응답 시 split/duplex 잡 무한대기 방지
         },
       );
       return response.data;
@@ -2271,11 +2271,11 @@ export class SynthesisProcessor {
   // ============================================================================
 
   /**
-   * ★ 상태 업데이트 재시도 래퍼 (설계서 v1.1.4)
+   * ★ 상태 업데이트 재시도 래퍼
    *
-   * WK-4 (2026-06-13): 본 프로세서에만 있던 재시도 로직(3회/최대 3s)을
-   * 공유 JobStatusService 로 추출 — 재시도 5회·최대 30s 백오프·최종 실패 시
-   * Sentry capture 로 강화되었고 validation/conversion/render 도 동일 정책을 쓴다.
+   * 재시도는 공유 JobStatusService 가 맡는다 —
+   * 재시도 5회·최대 30s 백오프·최종 실패 시
+   * Sentry capture 이며 validation/conversion/render 도 동일 정책을 쓴다.
    */
   private async updateJobStatusWithRetry(
     jobId: string,
@@ -2300,13 +2300,13 @@ export class SynthesisProcessor {
   }
 
   // ============================================================================
-  // Spread Synthesis (스프레드 PDF 합성) - ★ v2.5 설계서
+  // Spread Synthesis (스프레드 PDF 합성)
   // ============================================================================
 
   /**
    * 스프레드 합성 처리 (spread PDF 1개 + content PDF들 → cover.pdf + content.pdf)
    *
-   * ★ 설계서 v2.5 핵심:
+   * ★ 핵심:
    * - spreadPdfFileId: 스프레드 캔버스 PDF (1페이지, 표지 전체)
    * - contentPdfFileIds: 내지 PDF들 (순서대로 병합)
    * - 항상 2개 PDF 분리 출력: cover.pdf + content.pdf
@@ -2366,7 +2366,7 @@ export class SynthesisProcessor {
       let mergedStoragePath: string | null = null;
       if (localResult.mergedPath) {
         mergedStoragePath = path.join(outputDir, 'merged.pdf');
-        await maybeNormalizeForPrint(localResult.mergedPath); // R5: 기본 OFF·fail-open
+        await maybeNormalizeForPrint(localResult.mergedPath); // 기본 OFF·fail-open
         await fs.copyFile(localResult.mergedPath, mergedStoragePath);
       }
 
@@ -2420,7 +2420,7 @@ export class SynthesisProcessor {
         error.stack,
       );
 
-      // EH-001: 스프레드 합성 실패도 다른 합성 핸들러와 동일하게 Sentry 로 보고(최종 실패일 때).
+      // 스프레드 합성 실패도 다른 합성 핸들러와 동일하게 Sentry 로 보고(최종 실패일 때).
       await this.settleFailedAttempt(
         job,
         jobId,
@@ -2449,7 +2449,7 @@ export class SynthesisProcessor {
   }
 
   /**
-   * JD-2 (2026-10): 합성 실패 시도 정리. 각 catch 가 cleanup·throw 전에 부른다. throw 하지 않는다.
+   * 합성 실패 시도 정리. 각 catch 가 cleanup·throw 전에 부른다. throw 하지 않는다.
    *
    * 1. 완료 마커가 있으면 저장된 COMPLETED 를 1회 재보고하고 'completed'(FAILED PATCH 없음).
    * 2. 재시도할 수 있는 오류 + 남은 시도 → 상태 PATCH 없이 'retry'(DB 는 PROCESSING 유지, Bull 이 다시 시도).
@@ -2540,7 +2540,7 @@ export class SynthesisProcessor {
   }
 
   /**
-   * JD-4: pdf-synthesis 큐의 failed 리스너. stalled 한도 초과 실패만 FAILED(JOB_STALLED)로 기록한다.
+   * pdf-synthesis 큐의 failed 리스너. stalled 한도 초과 실패만 FAILED(JOB_STALLED)로 기록한다.
    * 완료 마커가 있고 잡이 아직 PENDING/PROCESSING 이면 멱등 가드와 같이 캐시된 COMPLETED 를 1회 재보고한다.
    */
   @OnQueueFailed()
@@ -2557,7 +2557,7 @@ export class SynthesisProcessor {
   /**
    * Update job status in API (★ payload 객체 형태로만 호출)
    *
-   * WK-4: 공유 JobStatusService 의 재시도 경로로 위임 — merge/compose-mixed
+   * 공유 JobStatusService 의 재시도 경로로 위임 — merge/compose-mixed
    * 경로가 쓰던 무재시도 단발 PATCH 도 동일 재시도 정책(5회·최대 30s·Sentry)을 얻는다.
    * 최종 실패 시 throw 하지 않음(상태 미반영이 잡 결과 자체를 삼키지 않도록).
    */
@@ -2583,7 +2583,7 @@ export class SynthesisProcessor {
     }
   }
 
-  // ── ⓔ 멱등 가드 헬퍼 (2026-06-23) ──
+  // ── 멱등 가드 헬퍼 ──
   // 마커는 outputsPath/<jobId>/.synthesis-complete.json (마운트 볼륨=재시도/재시작 간 영속).
   private completionMarkerPath(jobId: string): string {
     return path.join(this.outputsPath, jobId, '.synthesis-complete.json');

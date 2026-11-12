@@ -77,11 +77,11 @@ export const WorkerJobList = () => {
   const [filterJobType, setFilterJobType] = useState<WorkerJobType | undefined>();
   const [selectedSiteId, setSelectedSiteId] = useState<string | undefined>(undefined);
   const [selectedJob, setSelectedJob] = useState<WorkerJob | null>(null);
-  // P3b — 헤더 테넌트 스위처 컨텍스트가 로컬 필터보다 우선(운영자는 자동 고정).
+  // 헤더 테넌트 스위처 컨텍스트가 로컬 필터보다 우선(운영자는 자동 고정).
   const currentSiteId = useAuthStore((s) => s.currentSiteId) ?? undefined;
   const effectiveSiteId = currentSiteId ?? selectedSiteId;
 
-  // Phase C-3 — 사이트 dropdown (전역 admin 전용 — 운영자는 GET /sites 403)
+  // 사이트 dropdown (전역 admin 전용 — 운영자는 GET /sites 403)
   const { data: sites = [] } = useQuery({
     queryKey: ['sites'],
     queryFn: () => sitesApi.list(),
@@ -266,7 +266,7 @@ export const WorkerJobList = () => {
       </Row>
 
       <Space style={{ marginBottom: 16 }}>
-        {/* P3b — 헤더 스위처가 site 를 고정하면 로컬 필터 숨김(이중 컨트롤 방지) */}
+        {/* 헤더 스위처가 site 를 고정하면 로컬 필터 숨김(이중 컨트롤 방지) */}
         {!currentSiteId && (
           <Select
             placeholder="사이트 필터"
@@ -350,7 +350,7 @@ export const WorkerJobList = () => {
                   </a>
                 ) : '-'}
               </Descriptions.Item>
-              {/* T5 — separate 모드 잡: 표지/내지 개별 PDF 다운로드 링크 (merged 잡은 미표시) */}
+              {/* separate 모드 잡: 표지/내지 개별 PDF 다운로드 링크 (merged 잡은 미표시) */}
               {getOutputFiles(selectedJob).length > 0 && (
                 <Descriptions.Item label="개별 출력 파일">
                   <Space direction="vertical" size={4}>

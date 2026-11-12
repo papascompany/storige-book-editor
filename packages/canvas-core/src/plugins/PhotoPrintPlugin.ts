@@ -4,7 +4,7 @@ import type Editor from '../Editor';
 import type CanvasHotkey from '../models/CanvasHotkey';
 
 /**
- * PhotoPrintPlugin — 사진인화(P2-d, 2026-10-19) 사진틀 채움 규칙·촬영일·흑백 적용
+ * PhotoPrintPlugin — 사진인화 사진틀 채움 규칙·촬영일·흑백 적용
  *
  * - 대상: 캔버스의 사진틀(`extensionType:'frame'`)과 그 틀에 채워진 사진(`extensionType:'fillImage'`,
  *   `parentLayerId === frame.id` — FrameInteractionPlugin 과 같은 링크 규약).
@@ -15,7 +15,7 @@ import type CanvasHotkey from '../models/CanvasHotkey';
  *   왕복에 침묵 유실). 촬영일은 fillImage 의 기존 `extension` 키(`{ takenAt }`) 를 재사용한다.
  *   `FRAME_INSET_PX_RUNTIME_KEY`(__frameInsetPx) 는 FrameInteractionPlugin 이 드래그 중 읽는 런타임 값이며 저장하지 않는다
  *   — 복원 뒤 편집기가 `rehydrate(opts)` 를 명시 호출해 다시 채운다(CalendarPlugin 과 같은 계약, lifecycle 훅 비의존).
- * - 창(window, D3 2026-10-19): 유테 창은 프레임이 아니라 **재단 상자** 기준이다. 도련(bleed) 세트의 풀블리드 틀은 workspace 전체
+ * - 창(window): 유테 창은 프레임이 아니라 **재단 상자** 기준이다. 도련(bleed) 세트의 풀블리드 틀은 workspace 전체
  *   (재단+도련)라 프레임 가장자리 기준 inset 은 재단 뒤 사라지므로, `opts.bleedPx`(workspace 가 재단 상자보다 각 변에서 바깥으로
  *   확장된 px) 로 trim = workspace − bleed 를 구해 (frame ∩ trim) 을 inset 만큼 줄인 창을 쓴다. 결과는 프레임 런타임 키
  *   `FRAME_WINDOW_RUNTIME_KEY`(__frameWindow, `{ sx, sy, cx, cy }`) 에, bleedPx 는 캔버스 런타임 키

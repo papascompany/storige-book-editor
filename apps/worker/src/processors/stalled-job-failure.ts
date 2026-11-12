@@ -7,7 +7,7 @@ import type {
 import { captureJobException } from '../sentry/sentry.init';
 
 /**
- * JD-4 (2026-10) — stalled 한도 초과 실패 기록.
+ * stalled 한도 초과 실패 기록.
  *
  * Bull 이 stalled 한도(maxStalledCount)를 넘긴 잡을 실패시키면, 큐 failed 리스너가
  * 이 헬퍼로 DB 잡을 FAILED(errorCode JOB_STALLED)로 기록한다.

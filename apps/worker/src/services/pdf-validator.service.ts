@@ -22,7 +22,7 @@ import {
   LEGACY_SIZE_TOLERANCE_MM,
   WIRED_FIX_METHODS,
 } from '../config/validation.config';
-// R-44 — 양장 싸바리 전개·폴백 spine 기대치(단일 산식, API/편집기와 동일 모듈)
+// 양장 싸바리 전개·폴백 spine 기대치(단일 산식, API/편집기와 동일 모듈)
 import { calcHardcoverSpine, hardcoverCoverSpreadFromSpine } from '@storige/types';
 import {
   detectCmykUsage,
@@ -33,20 +33,20 @@ import {
   detectImageResolutionFromPdf,
   detectFonts,
 } from '../utils/ghostscript';
-// R2 (2026-08-10): poppler 기반 폰트·해상도 정밀 검출 — 실패 시 null 로 기존 정규식 폴백.
+// poppler 기반 폰트·해상도 정밀 검출 — 실패 시 null 로 기존 정규식 폴백.
 import {
   detectFontsPoppler,
   detectImageResolutionPoppler,
 } from '../utils/poppler-preflight';
-// R4a (2026-08-11): 주석/양식 검출 — 실패 시 null(경고 스킵).
-// R4b: 페이지 기하 이상 검출 동거.
+// 주석/양식 검출 — 실패 시 null(경고 스킵).
+// 페이지 기하 이상 검출 동거.
 import {
   detectAnnotationsQpdf,
   detectPageGeometryQpdf,
 } from '../utils/annotations-qpdf';
-// R4b (2026-08-11): 화이트 오버프린트 정밀 스캔(QDF) — 실패 시 null.
+// 화이트 오버프린트 정밀 스캔(QDF) — 실패 시 null.
 import { detectWhiteOverprintQpdf } from '../utils/white-overprint-scan';
-// 트랙 B-(d) 경량(ON) 검증 경로 전용 유틸 (OFF 경로는 import 만 하고 사용하지 않음).
+// 경량(ON) 검증 경로 전용 유틸 (OFF 경로는 import 만 하고 사용하지 않음).
 import { downloadToTempFile } from '../utils/stream-download';
 import { assertSafeDownloadUrl } from '../utils/url-safety';
 import {
@@ -54,7 +54,7 @@ import {
   QpdfMetadataResult,
 } from '../utils/pdf-metadata-qpdf';
 import { scanPdfStreaming } from '../utils/streaming-pdf-scan';
-// X1 (2026-09-30): TrimBox 기준 판형 판정 — 표준·경량 공용 순수 함수(파리티).
+// TrimBox 기준 판형 판정 — 표준·경량 공용 순수 함수(파리티).
 import {
   evaluateTrimSizeBasis,
   firstPageSmallerTrimMm,
@@ -67,11 +67,11 @@ import { SpotColorResult, TransparencyResult, ImageResolutionResult, FontDetecti
 // 기본 설정 (VALIDATION_CONFIG에서 가져오거나 폴백)
 const DEFAULT_MAX_FILE_SIZE = VALIDATION_CONFIG.MAX_FILE_SIZE;
 const DEFAULT_MAX_PAGES = 1000;
-// C-2b: 로컬 상수 `DEFAULT_BLEED = 3` 을 삭제하고 validation.config.ts 의
-// DEFAULT_BLEED_MM(=3) import 로 치환(값-동일 리팩터, 행동 무변화).
+// 도련 기본값은 validation.config.ts 의
+// DEFAULT_BLEED_MM(=3) 을 쓴다.
 // 사용처는 `orderOptions.bleed ?? DEFAULT_BLEED_MM`.
 
-/** C-2a: 정규화된 박스 사각형(pt) — x/y 는 좌하단, width/height 는 항상 양수. */
+/** 정규화된 박스 사각형(pt) — x/y 는 좌하단, width/height 는 항상 양수. */
 interface BoxRectPt {
   x: number;
   y: number;
@@ -80,7 +80,7 @@ interface BoxRectPt {
 }
 
 /**
- * C-2a: 첫 페이지 박스 기하 — validateCropMarks 입력.
+ * 첫 페이지 박스 기하 — validateCropMarks 입력.
  * authoritative=false 면 trim/bleed 존재 판정을 신뢰할 수 없어(추출 실패·pdfinfo 폴백 등)
  * 검증을 skip 한다(TRIMBOX_MISSING 허위 경고 오탐 방지).
  */
@@ -151,7 +151,7 @@ export class PdfValidatorService {
   ): Promise<ValidationResultDto> {
     this.logger.log(`Validating PDF: ${fileUrl}`);
 
-    // 트랙 B-(d): 경량(스트리밍) 검증 ON 경로. env WORKER_LIGHTWEIGHT_VALIDATION=true 일 때만
+    // 경량(스트리밍) 검증 ON 경로. env WORKER_LIGHTWEIGHT_VALIDATION=true 일 때만
     // 진입한다. OFF(기본) 동작은 아래 본문 그대로 유지(파리티 보장).
     if (VALIDATION_CONFIG.LIGHTWEIGHT_VALIDATION) {
       return this.validateLightweight(fileUrl, options);
@@ -209,7 +209,7 @@ export class PdfValidatorService {
 
       // 4. 메타데이터 추출
       const pages = pdfDoc.getPages();
-      // 0페이지 가드(P0-4): pages[0] 접근 전 차단. 없으면 firstPage.getSize() 가
+      // 0페이지 가드: pages[0] 접근 전 차단. 없으면 firstPage.getSize() 가
       // TypeError 를 던져 상위 catch 가 FILE_CORRUPTED 로 오진한다.
       if (pages.length === 0) {
         errors.push({
@@ -237,14 +237,14 @@ export class PdfValidatorService {
       this.validatePageCount(pages.length, options, errors, warnings);
 
       // 6. 페이지 크기 검증
-      // R-44: 표지 + spine 해석 가능이면 validateSpine 전개폭·높이 검증이 대체(이중발행 해소).
-      // R-53 완화: 무선/양장 표지는 spine 미해석이어도 스킵 — 전개폭 표지가 단일 판형
-      // 기대치와 원리적으로 불일치해 정상 표지를 오차단하던 경로 제거(대신
+      // 표지 + spine 해석 가능이면 validateSpine 전개폭·높이 검증이 대체(이중발행 해소).
+      // 무선/양장 표지는 spine 미해석이어도 스킵 — 전개폭 표지가 단일 판형
+      // 기대치와 원리적으로 불일치해 정상 표지를 오차단하기 때문(대신
       // validateSpine 이 SPINE_PARAMS_UNRESOLVED 비차단 고지). saddle 등 비스프레드
       // 표지·내지는 현행 그대로. validatePageSize 본문은 무접촉(48케이스 계약).
-      // S6: coverLayout='separate'(앞/뒤 낱장 2쪽 표지)는 스프레드가 아니므로 제본·spine
+      // coverLayout='separate'(앞/뒤 낱장 2쪽 표지)는 스프레드가 아니므로 제본·spine
       // 해석과 무관하게 단일 판형 검증(W×H+도련)으로 돌리고 validateSpine 을 건너뛴다.
-      // P1-e(2026-10-17): coverSpine='none'(프로파일 세트 cover 슬롯 — 책등 없음)도 동일하게
+      // coverSpine='none'(프로파일 세트 cover 슬롯 — 책등 없음)도 동일하게
       // 게이트 false. 키 미전송·무효값이면 기존 식과 동치.
       const coverSpineAuthoritative =
         options.fileType === 'cover' &&
@@ -254,9 +254,9 @@ export class PdfValidatorService {
       if (!coverSpineAuthoritative) {
         const frontSizeErrStart = errors.length;
         this.validatePageSize(widthMm, heightMm, options, errors, metadata);
-        // S6 후속: separate 표지 2쪽(뒤표지)도 동일 규칙으로 판형 검증(2쪽 있을 때만)
+        // separate 표지 2쪽(뒤표지)도 동일 규칙으로 판형 검증(2쪽 있을 때만)
         this.validateSeparateBackCoverSize(pages, frontSizeErrStart, options, errors, metadata);
-        // X1: 내지 MediaBox 판정이 SIZE_MISMATCH 일 때만 전 페이지 명시 TrimBox 로 재판정.
+        // 내지 MediaBox 판정이 SIZE_MISMATCH 일 때만 전 페이지 명시 TrimBox 로 재판정.
         // 박스 추출은 lazy(실패 시에만) — MediaBox 통과 파일은 추가 작업 0(결과 불변).
         this.applyTrimBoxSizeBasis(
           () => pages.map((p) => pageBoxesFromPdfLib(p)),
@@ -269,7 +269,7 @@ export class PdfValidatorService {
         );
       }
 
-      // 6-b. C-2a: crop mark(재단 기하) 검증 — 이중 게이트(orderOptions.cropMarkEnabled
+      // 6-b. crop mark(재단 기하) 검증 — 이중 게이트(orderOptions.cropMarkEnabled
       // opt-in + env WORKER_CROP_MARK_VALIDATION 킬스위치 기본 OFF), 전부 warning(비차단).
       // 게이트 통과 전에는 박스 추출조차 하지 않아 기본 경로 행동 변화 0.
       // ⚠️ pdf-lib page.getTrimBox() 는 부재 시 CropBox/MediaBox 로 폴백하므로
@@ -284,7 +284,7 @@ export class PdfValidatorService {
       }
 
       // 7. 재단 여백 검증
-      // F8: spine 대체 표지는 validateBleed 도 건너뜀 — 전개폭 표지는 hasBleed 판정이
+      // spine 대체 표지는 validateBleed 도 건너뜀 — 전개폭 표지는 hasBleed 판정이
       // 구조적으로 미설정이라 정상 표지 전건에 허위 BLEED_MISSING(자동보정 extendBleed
       // 배선!)이 발행되던 결함. 도련 판정은 validateSpine 기대폭에 내재(무선=bleed×2
       // 포함, 양장 전개=도련 개념 없음)라 검증 공백 없음.
@@ -292,10 +292,10 @@ export class PdfValidatorService {
         this.validateBleed(widthMm, heightMm, options, warnings, metadata);
       }
 
-      // 8. 책등 크기 검증 (표지인 경우) — R-44: 높이 축 포함(위 6 대체 시 공백 방지)
-      // R-53: 미해석 스프레드 표지는 SPINE_PARAMS_UNRESOLVED 경고(warnings) 발행
-      // S6: separate 표지는 스프레드 기대치 자체가 없음 — 책등 검증·미해석 고지 모두 생략
-      // P1-e: coverSpine='none' 도 책등 없음 — 생략(SPINE_* 경고·오류·metadata.spineSize 없음)
+      // 8. 책등 크기 검증 (표지인 경우) — 높이 축 포함(위 6 대체 시 공백 방지)
+      // 미해석 스프레드 표지는 SPINE_PARAMS_UNRESOLVED 경고(warnings) 발행
+      // separate 표지는 스프레드 기대치 자체가 없음 — 책등 검증·미해석 고지 모두 생략
+      // coverSpine='none' 도 책등 없음 — 생략(SPINE_* 경고·오류·metadata.spineSize 없음)
       if (
         options.fileType === 'cover' &&
         !this.isCoverSeparateLayout(options) &&
@@ -307,7 +307,7 @@ export class PdfValidatorService {
         });
       }
 
-      // 9. 페이지 방향 검증 (WBS 2.1, R3 집계형 재구현)
+      // 9. 페이지 방향 검증 (WBS 2.1, 집계형)
       this.validatePageOrientation(
         pages,
         warnings,
@@ -315,7 +315,7 @@ export class PdfValidatorService {
       );
 
       // 10. 사철 제본 검증 (WBS 2.2). 데이터 주도 페이지규칙 활성 시 페이지수 검사는 validatePageCount 소유.
-      // R-195(2026-09-28): 사철 쪽수 규칙(4배수·64쪽)은 책(내지) 규칙 — 표지 쪽수는 validatePageCount 의
+      // 사철 쪽수 규칙(4배수·64쪽)은 책(내지) 규칙 — 표지 쪽수는 validatePageCount 의
       // 1·2·4쪽 규칙이 소유한다. 종전엔 표지에도 적용돼 1쪽 펼침 사철 표지가 SADDLE_STITCH_INVALID 로 막혔다.
       if (options.orderOptions.binding === 'saddle' && options.fileType !== 'cover') {
         const dd =
@@ -389,7 +389,7 @@ export class PdfValidatorService {
         ),
         detectSpotColors('', pdfBytes),
         detectTransparencyAndOverprint('', pdfBytes),
-        // R2: poppler(pdfimages -list — CTM 반영 실배치 DPI) 우선. null(미설치/실패) 이면
+        // poppler(pdfimages -list — CTM 반영 실배치 DPI) 우선. null(미설치/실패) 이면
         // 기존 정규식 검출('페이지 전체 채움' 가정)로 폴백 — 종전보다 나빠지는 경로 없음.
         detectImageResolutionPoppler(
           inputPath,
@@ -402,15 +402,15 @@ export class PdfValidatorService {
               VALIDATION_CONFIG.MIN_ACCEPTABLE_DPI,
             ),
         ),
-        // R2: poppler(pdffonts — ObjStm 포함 정식 파싱) 우선, 실패 시 기존 정규식 폴백.
+        // poppler(pdffonts — ObjStm 포함 정식 파싱) 우선, 실패 시 기존 정규식 폴백.
         // detectFonts 는 자체 try/catch 로 실패 시 안전기본값(hasUnembeddedFonts:false)을
         // 반환하므로 추가 가드 없이 결과를 그대로 사용한다.
         detectFontsPoppler(inputPath).then((r) => r ?? detectFonts(pdfBytes)),
-        // R4a: 주석/양식 검출(qpdf --json) — 실패 null(경고 스킵).
+        // 주석/양식 검출(qpdf --json) — 실패 null(경고 스킵).
         detectAnnotationsQpdf(inputPath),
-        // R4b: 페이지 기하 이상 — 실패 null.
+        // 페이지 기하 이상 — 실패 null.
         detectPageGeometryQpdf(inputPath),
-        // R4b: 화이트 오버프린트 — QDF 평문화가 비싸 대형 파일은 생략(null).
+        // 화이트 오버프린트 — QDF 평문화가 비싸 대형 파일은 생략(null).
         pdfBytes.length <= VALIDATION_CONFIG.LARGE_FILE_THRESHOLD
           ? detectWhiteOverprintQpdf(inputPath)
           : Promise.resolve(null),
@@ -429,11 +429,11 @@ export class PdfValidatorService {
         warnings,
         metadata,
       );
-      // R3: TAC 경고 — applyDetectionWarnings(변경 금지 계약)와 분리된 additive 단계.
+      // TAC 경고 — applyDetectionWarnings(변경 금지 계약)와 분리된 additive 단계.
       this.applyInkTacWarning(colorModeResult.inkTac, options, warnings, metadata);
-      // R4a: 주석/양식 경고 — 동일하게 분리된 additive 단계.
+      // 주석/양식 경고 — 동일하게 분리된 additive 단계.
       this.applyAnnotationWarning(annotationResult, warnings, metadata);
-      // R4b: 화이트 오버프린트·페이지 기하 경고.
+      // 화이트 오버프린트·페이지 기하 경고.
       this.applyWhiteOverprintWarning(whiteOverprintResult, warnings, metadata);
       this.applyPageGeometryWarning(geometryResult, warnings);
 
@@ -587,8 +587,8 @@ export class PdfValidatorService {
       }
     }
 
-    // 16. 폰트 임베딩 결과 처리 (요구사항6)
-    // 검출 원천은 poppler pdffonts(정식 파싱, R2) 우선 + 정규식 폴백 — 어느 쪽이든
+    // 16. 폰트 임베딩 결과 처리
+    // 검출 원천은 poppler pdffonts(정식 파싱) 우선 + 정규식 폴백 — 어느 쪽이든
     // 동일한 FontDetectionResult 형태로 들어오며 실패 시 안전기본값이라 별도 가드가 없다.
     // 임베딩되지 않은 폰트는 인쇄소에서 글꼴 누락/치환을 유발하므로 비차단 경고로
     // 노출한다(기존 통과/에러 동작은 변경하지 않음).
@@ -625,13 +625,13 @@ export class PdfValidatorService {
   }
 
   /**
-   * R3 (2026-08-11): TAC(잉크총량) 경고 매핑 — OFF·ON 공통, additive 단계.
+   * TAC(잉크총량) 경고 매핑 — OFF·ON 공통, additive 단계.
    *
    * applyDetectionWarnings(임의 변경 금지 계약)와 의도적으로 분리했다. TAC 는 비차단
    * warning 전용(GWG 2022 도 warning 등급)이며, 측정 부재(inkTac 없음 = GS 미가용·
    * 대형파일 생략·RGB 구조·ink_cov 실패)는 조용히 스킵한다 — 검증 결과에 영향 0.
    *
-   * 한계 해석 순서: orderOptions.tacLimitPercent(API 지종별 주입 — R-44 서버 주입
+   * 한계 해석 순서: orderOptions.tacLimitPercent(API 지종별 주입 — spineWidthMm 과 같은 서버 주입
    * 패턴) → VALIDATION_CONFIG.TAC_WARN_PERCENT(env TAC_WARN_PERCENT → 기본 320).
    *
    * ⚠️ 판정 기준은 ink_cov 의 **페이지 평균** 잉크량 합 — 국소 최대 TAC 의 하한이다.
@@ -682,7 +682,7 @@ export class PdfValidatorService {
   }
 
   /**
-   * R4a (2026-08-11): 주석/양식 경고 매핑 — OFF·ON 공통, additive 단계.
+   * 주석/양식 경고 매핑 — OFF·ON 공통, additive 단계.
    *
    * 검출 부재(null = qpdf 실패/암호화)는 조용히 스킵. 비차단 warning 전용.
    * GS 재증류 경로(pdfwrite)는 PRINT_SANITIZE_ARGS(-dPreserveAnnots=false)로
@@ -723,7 +723,7 @@ export class PdfValidatorService {
   }
 
   /**
-   * R4b (2026-08-11): 화이트 오버프린트 경고 — 흰색+오버프린트 페인트 = 인쇄 시 소멸.
+   * 화이트 오버프린트 경고 — 흰색+오버프린트 페인트 = 인쇄 시 소멸.
    * GWG 는 텍스트를 error 등급으로 분류하나 기존 품질계 관행(비차단)을 유지하되
    * 소멸 위험을 문구로 명시한다. 검출 부재(null=미스캔·대형파일)는 스킵.
    */
@@ -755,7 +755,7 @@ export class PdfValidatorService {
   }
 
   /**
-   * R4b: 페이지 기하 이상 경고 — UserUnit(스케일 왜곡 위험)·Rotate·CropBox 불일치.
+   * 페이지 기하 이상 경고 — UserUnit(스케일 왜곡 위험)·Rotate·CropBox 불일치.
    * Rotate/CropBox 는 GS 재증류가 정규화하므로 정보성, UserUnit 만 주의 톤.
    */
   private applyPageGeometryWarning(
@@ -785,7 +785,7 @@ export class PdfValidatorService {
   }
 
   /**
-   * 트랙 B-(d): 경량(스트리밍) 검증 ON 경로.
+   * 경량(스트리밍) 검증 ON 경로.
    *
    * 기존 validate()(OFF) 는 파일 전체를 메모리(Uint8Array)에 올리고 pdf-lib 로 load 하므로
    * 2GB 파일에서 OOM 이 난다. 이 경로는 같은 검증 규칙을 유지하되:
@@ -864,7 +864,7 @@ export class PdfValidatorService {
       const pageCount =
         meta.ok && meta.pageCount > 0 ? meta.pageCount : pages.length;
 
-      // 0페이지 가드(P0-4): OFF 와 파리티 유지 + pdf-lib 폴백분기 안전(qpdf 상위 가드가
+      // 0페이지 가드: OFF 와 파리티 유지 + pdf-lib 폴백분기 안전(qpdf 상위 가드가
       // 막아 도달은 드물지만, 폴백([])·파리티를 위해 양 경로 동일 적용).
       if (pages.length === 0) {
         errors.push({
@@ -889,15 +889,15 @@ export class PdfValidatorService {
 
       // 5~11. 페이지/사이즈/블리드/책등/방향/사철/스프레드 검증 — OFF 와 동일 헬퍼.
       this.validatePageCount(pageCount, options, errors, warnings);
-      // R-44/R-53: OFF 경로와 동일 분기 — 스프레드 표지는 스킵(해석 시 SPINE 대체,
-      // 미해석 시 SPINE_PARAMS_UNRESOLVED 비차단 고지). S6: separate 표지는 단일 판형.
-      // P1-e: coverSpine='none' 도 단일 판형(OFF 경로와 동일 게이트).
+      // OFF 경로와 동일 분기 — 스프레드 표지는 스킵(해석 시 SPINE 대체,
+      // 미해석 시 SPINE_PARAMS_UNRESOLVED 비차단 고지). separate 표지는 단일 판형.
+      // coverSpine='none' 도 단일 판형(OFF 경로와 동일 게이트).
       const coverSpineAuthoritative =
         options.fileType === 'cover' &&
         !this.isCoverSeparateLayout(options) &&
         !this.isCoverSpineNone(options) &&
         (this.isCoverSpreadBinding(options) || this.hasSpineExpectation(options.orderOptions));
-      // X1 박스 공급자(내지 판형·표지 전개폭 TrimBox 판정 공용, lazy). 박스 소스는 crop mark 경로와
+      // TrimBox 박스 공급자(내지 판형·표지 전개폭 TrimBox 판정 공용, lazy). 박스 소스는 crop mark 경로와
       // 같은 폴백 순서 — qpdf 명시 박스(authoritative, pages.length===pageCount) → pdf-lib 폴백
       // 분기(node 존재) → 둘 다 없으면 null(판별 불가 → MediaBox 판정 유지).
       const trimBoxesProvider = (): PageBoxesPt[] | null => {
@@ -911,9 +911,9 @@ export class PdfValidatorService {
       if (!coverSpineAuthoritative) {
         const frontSizeErrStart = errors.length;
         this.validatePageSize(widthMm, heightMm, options, errors, metadata);
-        // S6 후속: OFF 와 동일 — 2쪽 치수는 qpdf/pdfinfo 페이지별 치수(상수메모리)에서 얻는다
+        // OFF 와 동일 — 2쪽 치수는 qpdf/pdfinfo 페이지별 치수(상수메모리)에서 얻는다
         this.validateSeparateBackCoverSize(pages, frontSizeErrStart, options, errors, metadata);
-        // X1: OFF 경로와 동일 규칙·위치(박스 소스는 위 trimBoxesProvider).
+        // OFF 경로와 동일 규칙·위치(박스 소스는 위 trimBoxesProvider).
         this.applyTrimBoxSizeBasis(
           trimBoxesProvider,
           pageCount,
@@ -924,7 +924,7 @@ export class PdfValidatorService {
           metadata,
         );
       }
-      // C-2a: crop mark(재단 기하) 검증(경량 경로) — OFF 와 동일 게이트/위치(validatePageSize 직후).
+      // crop mark(재단 기하) 검증(경량 경로) — OFF 와 동일 게이트/위치(validatePageSize 직후).
       // 1차: qpdf 추출 박스. 비신뢰(pdfinfo 폴백·간접참조 미해석)면 pdf-lib 실페이지
       // (위 폴백 분기에서 로드된 경우에만 node 존재)로 재시도, 그것도 없으면 skip(오탐 방지).
       if (this.shouldValidateCropMarks(options, metadata)) {
@@ -934,11 +934,11 @@ export class PdfValidatorService {
         }
         this.validateCropMarks(cropBoxes, options, warnings, metadata);
       }
-      // F8: OFF 경로와 동일 — spine 대체 표지는 validateBleed 도 대체(허위 BLEED_MISSING 방지)
+      // OFF 경로와 동일 — spine 대체 표지는 validateBleed 도 대체(허위 BLEED_MISSING 방지)
       if (!coverSpineAuthoritative) {
         this.validateBleed(widthMm, heightMm, options, warnings, metadata);
       }
-      // S6: OFF 경로와 동일 — separate 표지는 책등 검증 생략. P1-e: coverSpine='none' 도 생략
+      // OFF 경로와 동일 — separate 표지는 책등 검증 생략. coverSpine='none' 도 생략
       if (
         options.fileType === 'cover' &&
         !this.isCoverSeparateLayout(options) &&
@@ -954,7 +954,7 @@ export class PdfValidatorService {
         warnings,
         options.orderOptions.expectedOrientation,
       );
-      // R-195: 사철 쪽수 규칙은 내지 전용(위 10단계와 동일)
+      // 사철 쪽수 규칙은 내지 전용(위 10단계와 동일)
       if (options.orderOptions.binding === 'saddle' && options.fileType !== 'cover') {
         const dd =
           options.orderOptions.pageMultiple != null ||
@@ -1000,7 +1000,7 @@ export class PdfValidatorService {
       );
       const spotColorResult = scan.spot;
       const transparencyResult = scan.transparency;
-      // R2 (2026-08-10): 폰트·해상도는 poppler 정밀 검출 우선(ObjStm 전수·실배치 DPI).
+      // 폰트·해상도는 poppler 정밀 검출 우선(ObjStm 전수·실배치 DPI).
       // null(미설치/타임아웃/암호화) 이면 스트리밍 스캔 결과 유지 — OFF 경로와 동일 폴백 규약.
       const [popplerResolution, popplerFonts] = await Promise.all([
         detectImageResolutionPoppler(
@@ -1024,11 +1024,11 @@ export class PdfValidatorService {
         warnings,
         metadata,
       );
-      // R3: TAC 경고 — OFF 경로와 동일한 additive 단계(detectColorMode 가 ON 에서도
+      // TAC 경고 — OFF 경로와 동일한 additive 단계(detectColorMode 가 ON 에서도
       // 같은 GS 게이트로 ink_cov 를 측정한다 — dl.path 입력, fileSize 는 precomputed).
       this.applyInkTacWarning(colorModeResult.inkTac, options, warnings, metadata);
-      // R4a: 주석/양식 경고 — OFF 와 동일 additive 단계(qpdf 파일 기반이라 상수 메모리).
-      // R4b: 기하·화이트 오버프린트 동거(화이트 OP 는 대형 파일 생략 — QDF 팽창 비용).
+      // 주석/양식 경고 — OFF 와 동일 additive 단계(qpdf 파일 기반이라 상수 메모리).
+      // 기하·화이트 오버프린트 동거(화이트 OP 는 대형 파일 생략 — QDF 팽창 비용).
       const [annotDet, geomDet, wopDet] = await Promise.all([
         detectAnnotationsQpdf(dl.path),
         detectPageGeometryQpdf(dl.path),
@@ -1066,12 +1066,12 @@ export class PdfValidatorService {
   }
 
   /**
-   * C+ 게이팅: autoFixable 부여 단일 지점 (validate OFF/ON 경로 공용 헬퍼들이 호출).
+   * autoFixable 게이팅: autoFixable 부여 단일 지점 (validate OFF/ON 경로 공용 헬퍼들이 호출).
    * 킬스위치 WIRED_FIXABLE_GATING OFF(기본)면 레거시(항상 true — byte-identical),
    * ON 이면 실행기가 배선된 fixMethod(WIRED_FIX_METHODS)에만 true.
    * ⚠️ ON 전환 선결 게이트(FIXABLE→FAILED flip 소비처 2건 + 파트너 고지)는
    *    validation.config.ts 의 WIRED_FIXABLE_GATING 주석 참조.
-   * ⚠️ 불변식(G2b 의존): fixMethod 를 발행하는 모든 에러/경고는 autoFixable 을
+   * ⚠️ 불변식: fixMethod 를 발행하는 모든 에러/경고는 autoFixable 을
    *    "반드시 이 헬퍼로" 부여할 것. 'fixMethod + autoFixable:false 하드코드' 조합을
    *    새로 만들면, OFF 상태에서도 FAILED+전에러 fixMethod 잡이 생성되어 API 의
    *    세션 FIXABLE 동등 처리(isFixableEquivalentFailure)가 진짜 실패 세션을
@@ -1172,7 +1172,7 @@ export class PdfValidatorService {
         pageMultiple != null || pageCountMax != null || pageCountMin != null;
 
       if (usesDataDriven) {
-        // (d1) 배수 위반 → 에러 + 자동수정(addBlankPages). bookmoa 모달이 고객 동의 받아 fix 트리거.
+        // (d1) 배수 위반 → 에러 + 자동수정(addBlankPages). 파트너 사이트 모달이 고객 동의 받아 fix 트리거.
         if (pageMultiple && pageMultiple > 0 && actualPages % pageMultiple !== 0) {
           errors.push({
             code: ErrorCode.PAGE_COUNT_INVALID,
@@ -1212,7 +1212,7 @@ export class PdfValidatorService {
         }
       } else {
         // ── 레거시 폴백 (현행 byte-identical) ──
-        // R5: 짝수책 경고 (비차단).
+        // 짝수책 경고 (비차단).
         // perfect/saddle 은 아래에서 4의 배수(=자동 짝수)를 PAGE_COUNT_INVALID 에러로 강제하므로
         // 홀수면 이미 에러로 커버됨 → 중복 push 금지. 반면 spring(스프링 제본)은 페이지수
         // 무검사라 홀수가 통과되므로, 여기서만 ODD_PAGE_COUNT 경고로 확인을 유도한다.
@@ -1303,7 +1303,7 @@ export class PdfValidatorService {
     const expectedHeight = options.orderOptions.size.height;
     const bleed = options.orderOptions.bleed ?? DEFAULT_BLEED_MM;
 
-    // 허용 오차 — P1/P4 가변화. 기본 LEGACY_SIZE_TOLERANCE_MM(=1mm, 현행) 유지.
+    // 허용 오차 — orderOptions.sizeToleranceMm 로 가변. 기본 LEGACY_SIZE_TOLERANCE_MM(=1mm, 현행) 유지.
     // ⚠️ DEFAULT_SIZE_TOLERANCE_MM(0.2) 로 좁히지 말 것 — 2026-06-10 실회귀 재발.
     const tolerance =
       options.orderOptions.sizeToleranceMm ?? LEGACY_SIZE_TOLERANCE_MM;
@@ -1312,7 +1312,7 @@ export class PdfValidatorService {
     const expectedWidthWithBleed = expectedWidth + bleed * 2;
     const expectedHeightWithBleed = expectedHeight + bleed * 2;
 
-    // 작업 사이즈(P1) — workSize 제공 시 직접, 미제공 시 trim + bleedMm*2 로 파생.
+    // 작업 사이즈 — workSize 제공 시 직접, 미제공 시 trim + bleedMm*2 로 파생.
     // 매칭(작업사이즈±허용오차 동일) 업로드를 검증에서도 정상으로 인정(업로드 passthrough 와 정합).
     const bleedMm = options.orderOptions.bleedMm;
     const trim = options.orderOptions.trimSize;
@@ -1347,7 +1347,7 @@ export class PdfValidatorService {
           },
           actual: { width: Math.round(widthMm * 10) / 10, height: Math.round(heightMm * 10) / 10 },
         },
-        // C+ 게이팅(플래그 ON 시): resizeWithPadding 실행기 미배선 → autoFixable=false.
+        // autoFixable 게이팅(플래그 ON 시): resizeWithPadding 실행기 미배선 → autoFixable=false.
         // fixMethod 는 의도 메타데이터로 보존(실행기 배선 시 WIRED_FIX_METHODS 에 추가만).
         autoFixable: this.wiredAutoFixable('resizeWithPadding'),
         fixMethod: 'resizeWithPadding',
@@ -1387,10 +1387,10 @@ export class PdfValidatorService {
         details: {
           expected: expectedBleed,
           // 종전 경로는 hasBleed=false 일 때 bleedSize 를 쓰지 않으므로 0 그대로.
-          // TrimBox 기준 판정(X1)은 부족한 선언 도련을 bleedSize 에 기록하므로 같은 값을 싣는다.
+          // TrimBox 기준 판정은 부족한 선언 도련을 bleedSize 에 기록하므로 같은 값을 싣는다.
           actual: metadata.bleedSize ?? 0,
         },
-        // C+ 게이팅(플래그 ON 시): extendBleed 실행기 미배선 → autoFixable=false (경고라 상태 무영향,
+        // autoFixable 게이팅(플래그 ON 시): extendBleed 실행기 미배선 → autoFixable=false (경고라 상태 무영향,
         // 모달의 '자동 보정 가능' 오표기만 제거). fixMethod 는 의도 보존.
         autoFixable: this.wiredAutoFixable('extendBleed'),
         fixMethod: 'extendBleed',
@@ -1399,7 +1399,7 @@ export class PdfValidatorService {
   }
 
   // ============================================================
-  // X1 (2026-09-30): TrimBox 기준 내지 판형 판정
+  // TrimBox 기준 내지 판형 판정
   // ============================================================
 
   /**
@@ -1409,7 +1409,7 @@ export class PdfValidatorService {
    * 게이트: VALIDATION_CONFIG.TRIMBOX_SIZE_CHECK && fileType==='content' && SIZE_MISMATCH 발생.
    * 게이트가 닫히면(MediaBox 통과 포함) 아무것도 하지 않는다 — 기존 결과 바이트 동일.
    *
-   * 통과 조건(CTO X1-R2): 엄격 기하 조건(전 페이지 명시 TrimBox ⊂ MediaBox ≈ 기대 재단 ±tol,
+   * 통과 조건: 엄격 기하 조건(전 페이지 명시 TrimBox ⊂ MediaBox ≈ 기대 재단 ±tol,
    * 스왑·회전 90/270·UserUnit≠1·비정형·극소 TrimBox·경량 비신뢰 불허) + known 목표
    * (TrimBox 를 사방 균등 B_order = max(bleed ?? DEFAULT, bleedMm ?? 0) 확장) ⊂ 전 페이지 MediaBox.
    * '합성(모르는 경로) 산출 박스 = 허용 크기' 조건은 두지 않는다(파일 B 오탐 회귀 해소).
@@ -1498,7 +1498,7 @@ export class PdfValidatorService {
 
   /**
    * 2026-10-28: 무선 표지 TrimBox 기준 전개폭 판정 — validateSpine 이 SPINE_SIZE_MISMATCH 를
-   * 내기 직전에만 호출된다. 내지 X1 과 같은 순수 함수(evaluateTrimSizeBasis)로, 전 페이지 명시
+   * 내기 직전에만 호출된다. 내지 판정과 같은 순수 함수(evaluateTrimSizeBasis)로, 전 페이지 명시
    * TrimBox ≈ 기대 재단(앞+책등+뒤+날개 × 높이, ±책등 허용오차)이고 TrimBox+주문 도련 ⊂ MediaBox 면
    * 통과(true — 호출부가 오류를 내지 않음). 킬스위치 WORKER_TRIMBOX_SIZE_CHECK 공용.
    */
@@ -1555,7 +1555,7 @@ export class PdfValidatorService {
   }
 
   // ============================================================
-  // C-2a: crop mark(재단 기하) 검증 — warning-only, 이중 게이트
+  // crop mark(재단 기하) 검증 — warning-only, 이중 게이트
   // ============================================================
 
   /**
@@ -1791,9 +1791,9 @@ export class PdfValidatorService {
    * **반드시 같은 함수**를 쓴다(불변식: 게이트 true ⇔ 기대치 존재 — 어긋나면
    * validatePageSize 를 건너뛰고 validateSpine 도 생략하는 검증 전무 공백 발생).
    *
-   *  1) spineWidthMm(서버 주입 권위값) — round2 보존(F6: v2 무선 0.77 을 0.8 로 뭉개지 않음)
-   *  2) paperThickness 폴백 — pages 유효(≥1)일 때만(F7/F9: NaN 전파 차단).
-   *     양장은 합지4·min8 포함 산식(F1/F4: 무선식 폴백이면 정상 싸바리 표지가 확정 오탐),
+   *  1) spineWidthMm(서버 주입 권위값) — round2 보존(v2 무선 0.77 을 0.8 로 뭉개지 않음)
+   *  2) paperThickness 폴백 — pages 유효(≥1)일 때만(NaN 전파 차단).
+   *     양장은 합지4·min8 포함 산식(무선식 폴백이면 정상 싸바리 표지가 확정 오탐),
    *     유효성 위반(p<12·비4배수)이면 기대치 없음 → validatePageSize 백스톱 복귀.
    *  3) 둘 다 없으면 undefined → 게이트 false(validatePageSize 경로 유지)
    */
@@ -1823,13 +1823,13 @@ export class PdfValidatorService {
   }
 
   /**
-   * R-53 완화 스킵 게이트: 표지 + 스프레드 제본(무선/양장)이면 spine 해석 여부와 무관하게
+   * 스프레드 표지 스킵 게이트: 표지 + 스프레드 제본(무선/양장)이면 spine 해석 여부와 무관하게
    * 단일 판형 검증(validatePageSize/validateBleed)을 스킵한다 — 표지 폭은 W×2+spine 이라
    * 단일 판형과 원리적으로 절대 불일치(해석 시 SPINE 검증이 대체, 미해석 시
    * SPINE_PARAMS_UNRESOLVED 비차단 고지). saddle/spiral 표지는 현행 유지.
    */
   /**
-   * S6: 표지가 앞/뒤 낱장(2쪽) 레이아웃인가 — orderOptions.coverLayout === 'separate' 일 때만 true.
+   * 표지가 앞/뒤 낱장(2쪽) 레이아웃인가 — orderOptions.coverLayout === 'separate' 일 때만 true.
    * 미전송·'spread'·그 외 무효값은 전부 false(=현행 스프레드 판정 경로 byte-identical).
    * true 면 콜사이트가 단일 판형 validatePageSize/validateBleed 를 수행하고 validateSpine
    * (SPINE_SIZE_MISMATCH·SPINE_PARAMS_UNRESOLVED 포함)을 건너뛴다.
@@ -1839,7 +1839,7 @@ export class PdfValidatorService {
   }
 
   /**
-   * S6 후속(2026-09-29): separate 표지의 2쪽(뒤표지) 판형 검증.
+   * separate 표지의 2쪽(뒤표지) 판형 검증.
    *
    * - separate 표지이고 PDF 에 2쪽 이상일 때만 동작. 그 외(1쪽·비 separate)는 no-op
    *   → 현행 결과 byte-identical. 쪽수 강제(2쪽 요구)는 하지 않는다.
@@ -1890,7 +1890,7 @@ export class PdfValidatorService {
   }
 
   /**
-   * P1-e(2026-10-17): 표지에 책등이 없는가 — orderOptions.coverSpine === 'none' 일 때만 true
+   * 표지에 책등이 없는가 — orderOptions.coverSpine === 'none' 일 때만 true
    * (프로파일 세트의 cover 슬롯: 캘린더 단일 PDF 등). 미전송·그 외 값은 false(현행 binding 기준 경로
    * byte-identical). true 면 콜사이트가 binding 과 무관하게 단일 판형 validatePageSize/validateBleed 를
    * 수행하고 validateSpine 을 생략한다. 내지(content)에 실려와도 무영향.
@@ -1902,13 +1902,13 @@ export class PdfValidatorService {
   /**
    * 책등 크기 검증 (표지용)
    *
-   * R-44(2026-07-21) 확장:
+   * 검증 규칙:
    *  - 양장(hardcover)은 싸바리 전개 규격으로 검증 — 전개폭 (W+8)×2+spine+40,
-   *    전개높이 (H+8)+40 (mybookmake 골든 484×345, @storige/types 단일 산식).
+   *    전개높이 (H+8)+40 (골든 484×345, @storige/types 단일 산식).
    *    도련은 전개 규격에 이미 포함된 개념이라 추가 가산하지 않음.
    *  - 무선은 현행 산식 유지(W×2+spine+날개+도련×2) + 높이(H+도련×2) 검증 additive —
    *    콜사이트에서 validatePageSize 를 대체하므로 높이 축이 공백이 되지 않게.
-   *  - details 에 { expectedMm, actualMm, toleranceMm } additive(bookmoa PdfValidationModal 계약).
+   *  - details 에 { expectedMm, actualMm, toleranceMm } additive(파트너 사이트 검증 모달 계약).
    *  - 허용오차: orderOptions.spineToleranceMm > env(제본별) > 2mm(현행 유지 — 관찰 1단계).
    */
   private validateSpine(
@@ -1926,7 +1926,7 @@ export class PdfValidatorService {
     // 책등 폭 결정 — 스킵 게이트(isCoverSpreadBinding+해석)와 단일 소스(resolveExpectedSpine).
     const expectedSpine = this.resolveExpectedSpine(options.orderOptions);
     if (expectedSpine === undefined) {
-      // R-53 완화(bookmoa §3-1 오너 확정): 무선/양장 표지인데 spine 미해석 —
+      // 무선/양장 표지인데 spine 미해석 —
       // 단일 판형 SIZE 검증은 콜사이트에서 이미 스킵됐으므로(오차단 방지) 침묵하지 않고
       // "표지 규격 검증 생략" 비차단 고지를 남긴다. 매핑 지종의 SPINE_SIZE_MISMATCH
       // 차단은 아래 정상 경로 그대로(완화는 미해석 경로 한정).
@@ -1953,8 +1953,8 @@ export class PdfValidatorService {
     metadata.spineSize = expectedSpine;
 
     const isHardcover = binding === 'hardcover';
-    // F13: 파트너 오버라이드는 상한 클램프 — 무상한 spineToleranceMm(예: 10000)로
-    // 표지 치수 검증을 전면 무력화하는 페이로드 차단(@IsObject 단독 DTO 라 워커측이 방어선).
+    // 파트너 오버라이드는 상한 클램프 — spineToleranceMm 이 상한을 넘으면
+    // SPINE_TOLERANCE_MM_MAX 로 낮춘다(DTO 는 @IsObject 만 검사하므로 워커가 값을 검사).
     const rawTolerance =
       typeof spineToleranceMm === 'number' && spineToleranceMm > 0
         ? spineToleranceMm
@@ -1972,7 +1972,7 @@ export class PdfValidatorService {
     let expectedTotalHeight: number;
     let wingTotal = 0;
     if (isHardcover) {
-      // 양장 = 싸바리 전개 인쇄물(§C-2 판정). 날개 개념 없음, 도련 추가 가산 없음.
+      // 양장 = 싸바리 전개 인쇄물. 날개 개념 없음, 도련 추가 가산 없음.
       const spread = hardcoverCoverSpreadFromSpine({
         widthMm: size.width,
         heightMm: size.height,
@@ -2014,8 +2014,8 @@ export class PdfValidatorService {
           `(예상: ${Math.round(expectedTotalWidth)}×${Math.round(expectedTotalHeight)}mm, ` +
           `현재: ${Math.round(widthMm)}×${Math.round(heightMm)}mm)`,
         details: {
-          // R-44 계약(bookmoa PdfValidationModal): 평탄 3필드 + 기존 expected/actual 구조 병존.
-          // F11: 평탄값은 어긋난 축 기준(폭 우선) — 높이 단독 불일치 때 정상 폭이 뜨는 오표시 방지.
+          // 파트너 사이트 검증 모달 계약: 평탄 3필드 + 기존 expected/actual 구조 병존.
+          // 평탄값은 어긋난 축 기준(폭 우선) — 높이 단독 불일치 때 정상 폭이 뜨는 오표시 방지.
           expectedMm: Math.round((widthOff ? expectedTotalWidth : expectedTotalHeight) * 100) / 100,
           actualMm: Math.round((widthOff ? widthMm : heightMm) * 100) / 100,
           axis: widthOff ? 'width' : 'height',
@@ -2038,7 +2038,7 @@ export class PdfValidatorService {
             totalHeight: Math.round(heightMm),
           },
         },
-        // C+ 게이팅(플래그 ON 시): adjustSpine 실행기 미배선(자동화 비대상 확정) → autoFixable=false.
+        // autoFixable 게이팅(플래그 ON 시): adjustSpine 실행기 미배선(자동화 비대상 확정) → autoFixable=false.
         autoFixable: this.wiredAutoFixable('adjustSpine'),
         fixMethod: 'adjustSpine',
       });
@@ -2095,7 +2095,7 @@ export class PdfValidatorService {
       return new Uint8Array(buffer);
     }
 
-    // URL에서 다운로드 — SSRF 가드(P0-1 M1): 내부망 페치 + 리다이렉트 우회 차단.
+    // URL에서 다운로드 — SSRF 가드: 내부망 주소를 거부하고 리다이렉트를 따르지 않는다.
     await assertSafeDownloadUrl(url);
     this.logger.log(`Downloading from URL: ${url}`);
     const response = await axios.get(url, {
@@ -2113,7 +2113,7 @@ export class PdfValidatorService {
   // ============================================================
 
   /**
-   * WBS 2.1 / R3: 페이지 방향 검증 (집계형·비차단)
+   * WBS 2.1: 페이지 방향 검증 (집계형·비차단)
    *
    * 종전: 각 landscape 페이지마다 LANDSCAPE_PAGE 경고를 개별 emit
    *   → (1) 가로형 책자가 정상이어도 전 페이지 오탐, (2) 주문 의도 방향 비교 불가,
@@ -2480,7 +2480,7 @@ export class PdfValidatorService {
         };
       }
 
-      // inkcov 분석 실행 (+R3: ink_cov TAC 측정 병렬 — 같은 GS 게이트 안, wall-time 수렴.
+      // inkcov 분석 실행 (+ink_cov TAC 측정 병렬 — 같은 GS 게이트 안, wall-time 수렴.
       // detectInkTac 은 실패를 null 로 흡수하므로 기존 inkcov 예외 폴백 분기는 불변)
       const [inkCoverage, inkTac] = await Promise.all([
         detectCmykUsage(inputPath),

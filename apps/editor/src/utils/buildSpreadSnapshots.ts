@@ -29,16 +29,16 @@ interface SpineConfigLike {
 }
 
 /**
- * 스프레드 책 "편집완료" 시 EditSession.metadata 에 저장할 출력재현 단일소스(B38) 스냅샷 생성.
+ * 스프레드 책 "편집완료" 시 EditSession.metadata 에 저장할 출력재현 단일소스 스냅샷 생성.
  *
  * - metadata.spread(SpreadSnapshot): normalizeSpreadSpec 으로 정규화한 spec + computeSpreadDimensions
  *   재계산 총폭(wing×2 포함 비즈니스 단일소스) + dpi. 스토어 캐시 totalWidthMm 대신 공식 재실행으로
  *   api/worker 검증과 항상 동일값 보장.
- * - metadata.spine(SpineSnapshot): 필수 필드가 모두 유효할 때만 기록(부분기록 금지 — 단 S7 예외로
+ * - metadata.spine(SpineSnapshot): 필수 필드가 모두 유효할 때만 기록(부분기록 금지 — 단 예외로
  *   책등 0mm·비공식제본이면 paperType 만 생략 가능). spineWidthMm 은
  *   spec.spineWidthMm(updateSpreadSpineWidth 동기화값) 우선, 폴백 calculatedSpineWidth.
  *   책등공식 계산값과 일치하면 spineWidthSource='formula', 수동조정 등으로 다르면 'manual'.
- *   S7: spineWidthMm 은 유한수 ≥ 0 이면 유효(0 = 책등 없는 책 — 스프링 표지펼침면·호스트 0mm).
+ *   spineWidthMm 은 유한수 ≥ 0 이면 유효(0 = 책등 없는 책 — 스프링 표지펼침면·호스트 0mm).
  *   단 spec 초기값 0(buildSpreadSpec "나중에 계산됨")과 확정 0 을 구분해야 하므로 0 은 다음일 때만 확정으로 본다:
  *     ① calculatedSpineWidth 가 유한수 0(공식/호스트 적용 결과), 또는
  *     ② conversionMode==='flat-spread'(책등 고정 템플릿 — spec 값이 곧 확정값)
@@ -68,7 +68,7 @@ export function buildSpreadSnapshots(
   try {
     const normSpec = normalizeSpreadSpec(spreadConfig.spec)
     const dims = computeSpreadDimensions(normSpec)
-    // D-4 (2026-07-06): 싸바리(caseBind) 세션만 출력(wrap 포함) 사이즈를 additive 기록.
+    // 싸바리(caseBind) 세션만 출력(wrap 포함) 사이즈를 additive 기록.
     // 미설정 세션은 필드 자체를 생략해 기존 스냅샷과 byte-identical(기존 필드 불변).
     // 양장 싸바리 모드(caseBind 없음): 출력 = 총폭/총높이 + 사방 wrap.
     const wrapMm = opts?.hardcoverWrapMm
@@ -102,7 +102,7 @@ export function buildSpreadSnapshots(
             ? 0
             : undefined
 
-    // S7: paperType 생략 허용 predicate — 확정 0mm + 공식제본(perfect/hardcover) 아닌 bindingType.
+    // paperType 생략 허용 predicate — 확정 0mm + 공식제본(perfect/hardcover) 아닌 bindingType.
     // 동일 predicate: packages/types SpineSnapshot.paperType 주석, api EditSessionsService.validateSpreadSnapshot,
     // worker PdfSynthesizerService.validateSpreadSnapshot. 변경 시 네 곳을 함께 맞춘다.
     const bindingType = spineConfig?.bindingType

@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 //
-// P1 캘린더 (2026-10-17): 날짜칸 더블클릭 구독은 항상 마운트되는 FeatureSidebar 가 맡는다.
+// 캘린더: 날짜칸 더블클릭 구독은 항상 마운트되는 FeatureSidebar 가 맡는다.
 // (그리드를 클릭하면 선택 패널로 바뀌어 CalendarPanel 이 언마운트되므로 패널 안 구독은 두 번째 클릭 전에 사라진다.)
 //
 // 고정하는 계약:
@@ -8,7 +8,7 @@
 //      useCalendarStore.pendingDate 세팅 + 선택 해제 + 달력 메뉴(tapMenu 'CALENDAR') 전환
 //  (2) 이미 달력 메뉴면 tapMenu 를 다시 부르지 않는다(토글로 닫히지 않게)
 //  (3) 프로파일 NULL(legacy) 세트는 구독하지 않는다 — 바이트 동일
-//  (4) 연달력(variant 'year', T3b)은 기념일 폼 대상이 아니다 — hitTestDate 를 부르지 않고 무시
+//  (4) 연달력(variant 'year')은 기념일 폼 대상이 아니다 — hitTestDate 를 부르지 않고 무시
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, act } from '@testing-library/react'
 

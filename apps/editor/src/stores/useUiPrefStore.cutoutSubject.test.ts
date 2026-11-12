@@ -1,4 +1,4 @@
-// useUiPrefStore 배경제거 피사체 선택 (2026-08-06, D-12b 3차 후속)
+// useUiPrefStore 배경제거 피사체 선택
 //
 //  ① 기본값 'person' — 서버 기본 모델(u2net_human_seg)과 같은 쪽에서 시작해야
 //     UI 표시와 실제 추론 결과가 어긋나지 않는다.
@@ -50,7 +50,7 @@ describe('피사체 → 서버 모델 매핑', () => {
     // (여기가 어긋나면 잡 생성이 400 CUTOUT_MODEL_NOT_ALLOWED 로 떨어진다)
     expect(CUTOUT_SUBJECT_MODELS.person).toBe('u2net_human_seg')
     expect(CUTOUT_SUBJECT_MODELS.general).toBe('isnet-general-use')
-    // `*_custom` 은 CVE-2026-40086 경로 순회 벡터라 UI 선택지에 절대 들어오면 안 된다.
+    // `*_custom` 은 UI 선택지에 절대 들어오면 안 된다.
     for (const model of Object.values(CUTOUT_SUBJECT_MODELS)) {
       expect(model.toLowerCase()).not.toContain('_custom')
     }

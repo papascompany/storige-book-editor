@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 //
-// T2 그리드·기념일 안전성 (2026-10-22): ControlBar '그룹해제' 버튼 게이트.
+// 그리드·기념일 안전성: ControlBar '그룹해제' 버튼 게이트.
 //  (1) 캘린더 날짜 그리드(fabric.Group, extensionType 'calendar-grid') 선택 → 바는 뜨지만 '그룹해제' 버튼은 없다
 //      (GroupPlugin.unGroup 이 no-op 이라 눌러도 무동작인 버튼을 내지 않는다)
 //  (2) 일반 그룹(extensionType 'group') 선택 → 버튼 노출 + 클릭 시 GroupPlugin.unGroup 1회·requestRenderAll (회귀)
@@ -85,7 +85,7 @@ afterEach(() => {
   })
 })
 
-describe("ControlBar — '그룹해제' 버튼 게이트 (T2 calendar-grid)", () => {
+describe("ControlBar — '그룹해제' 버튼 게이트 (calendar-grid)", () => {
   it('(1) calendar-grid 그룹 선택: 컨트롤 바는 렌더되지만 그룹해제 버튼은 없다', () => {
     wire([calendarGridGroup])
     expect(bar()).not.toBeNull()

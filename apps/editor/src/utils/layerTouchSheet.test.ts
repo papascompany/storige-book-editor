@@ -10,9 +10,9 @@ import {
 } from './layerTouchSheet'
 
 // -----------------------------------------------------------------------------
-// L6-③: 롱프레스 판정 상태기 — 타이머 활성 / 이동 취소 / end 정리
+// 롱프레스 판정 상태기 — 타이머 활성 / 이동 취소 / end 정리
 // -----------------------------------------------------------------------------
-describe('createLongPressTracker — 롱프레스 판정 (L6)', () => {
+describe('createLongPressTracker — 롱프레스 판정', () => {
   beforeEach(() => {
     vi.useFakeTimers()
   })
@@ -96,9 +96,9 @@ describe('createLongPressTracker — 롱프레스 판정 (L6)', () => {
 })
 
 // -----------------------------------------------------------------------------
-// L6-③: 드롭 대상 판정 — 데스크톱 S3 와 동일 시맨틱(상단 절반=above/front)
+// 드롭 대상 판정 — 데스크톱 DnD 와 동일 시맨틱(상단 절반=above/front)
 // -----------------------------------------------------------------------------
-describe('resolveTouchDropTarget — 삽입 위치 판정 (L6)', () => {
+describe('resolveTouchDropTarget — 삽입 위치 판정', () => {
   // 목록은 z-order reverse: 위 = 맨앞. 행 높이 40, 간격 없음 가정.
   const rows: RowRect[] = [
     { id: 'front', top: 0, height: 40 },
@@ -130,9 +130,9 @@ describe('resolveTouchDropTarget — 삽입 위치 판정 (L6)', () => {
 })
 
 // -----------------------------------------------------------------------------
-// L6-①: 시트 렌더 분기 — TOUCH_ENV mock (matchMedia) + 컨테이너 클래스 분기
+// 시트 렌더 분기 — TOUCH_ENV mock (matchMedia) + 컨테이너 클래스 분기
 // -----------------------------------------------------------------------------
-describe('isTouchEnv — TOUCH_ENV 판정 (L6)', () => {
+describe('isTouchEnv — TOUCH_ENV 판정', () => {
   const originalMatchMedia = window.matchMedia
 
   afterEach(() => {
@@ -159,7 +159,7 @@ describe('isTouchEnv — TOUCH_ENV 판정 (L6)', () => {
   })
 })
 
-describe('sidePanelContainerClass — 바텀시트/우측 패널 분기 (L6)', () => {
+describe('sidePanelContainerClass — 바텀시트/우측 패널 분기', () => {
   it('터치: 하단 고정 바텀시트(55vh) — show 에 따라 translate-y 전환', () => {
     const shown = sidePanelContainerClass(true, true)
     expect(shown).toContain('bottom-0')
@@ -174,7 +174,7 @@ describe('sidePanelContainerClass — 바텀시트/우측 패널 분기 (L6)', (
   })
 
   it('데스크톱: 기존 우측 220px 슬라이드 문자열 무변경(스냅샷 동결)', () => {
-    // ⚠️ 이 두 값은 L6 이전 SidePanel 의 cn(...) 결과와 byte-identical 해야 한다 —
+    // ⚠️ 이 두 값은 SidePanel 의 기존 cn(...) 결과와 byte-identical 해야 한다 —
     // 데스크톱 시각 무변경 불변(변경 시 의도적 데스크톱 리디자인인지 확인할 것).
     // show=true 는 twMerge 가 right-[-220px] 를 right-0 으로 병합(기존 cn 동작 그대로)
     expect(sidePanelContainerClass(false, true)).toBe(

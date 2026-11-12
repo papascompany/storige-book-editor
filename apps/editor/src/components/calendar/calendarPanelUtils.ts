@@ -15,7 +15,7 @@ import {
 } from '@storige/types'
 
 /**
- * calendarPanelUtils.ts — CalendarPanel 순수 헬퍼 (P1-d 캘린더, 2026-10-17)
+ * calendarPanelUtils.ts — CalendarPanel 순수 헬퍼 (캘린더)
  * fabric·스토어 의존 없음. 날짜 키는 'YYYY-MM-DD'.
  */
 
@@ -132,7 +132,7 @@ export function formatAnniversaryDateLabel(a: Pick<CalendarAnniversary, 'date' |
   return `음력 ${a.isLeapMonth ? '윤' : ''}${base}`
 }
 
-// ─── 연달력(variant 'year', T3b 2026-10-24) ─────────────────────────────────
+// ─── 연달력(variant 'year') ─────────────────────────────────
 
 /**
  * 연달력 한 개의 기간 표기 — 플러그인 연도 제목과 같은 규칙.
@@ -183,7 +183,7 @@ export function scanYearGrids(
 }
 
 /**
- * 관리자 그리드 스타일 입력(D1 최소 4종). 빈 값('') = 지정 안 함(키 생략 → 플러그인의 variant 별 기본값).
+ * 관리자 그리드 스타일 입력(최소 4종). 빈 값('') = 지정 안 함(키 생략 → 플러그인의 variant 별 기본값).
  * 연도 제목은 `style.showTitle`(템플릿의 제목 자리)만 쓴다 — `extension.show.yearTitle` 은 쓰지 않는다:
  * 플러그인이 `ext.show.yearTitle ?? ctx.show.yearTitle` 순으로 읽으므로 템플릿에 값이 있으면 고객 on/off 가 무력화된다.
  */
@@ -206,14 +206,14 @@ export function gridStyleFromDraft(draft: GridStyleDraft): Pick<CalendarGridStyl
   return Object.keys(style).length > 0 ? style : undefined
 }
 
-// ─── 기념일 문구 스타일(D1(b) 최소: 글자색) ─────────────────────────────────
+// ─── 기념일 문구 스타일(최소: 글자색) ─────────────────────────────────
 
 const HEX_COLOR_RE = /^#[0-9a-fA-F]{6}$/
 
 /**
  * 기념일 스타일 갱신 — 색(`fill`)만 바꾸고 저장분의 다른 키(fontWeight·fontFamily 등)는 그대로 둔다.
  * fill 은 '#rrggbb' 일 때만, null 이면 키 제거. 결과가 비면 undefined.
- * 고객 폼은 굵게를 받지 않는다(T3b-1a, 오너 결정 2026-10-25 — 완료 PDF 벡터화가 fontWeight 를 적용하지 않아 화면·인쇄가 달라짐).
+ * 고객 폼은 굵게를 받지 않는다(완료 PDF 벡터화가 fontWeight 를 적용하지 않아 화면·인쇄가 달라짐).
  * 이미 저장된 `fontWeight` 는 지우지 않고 보존한다.
  */
 export function mergeAnniversaryStyle(

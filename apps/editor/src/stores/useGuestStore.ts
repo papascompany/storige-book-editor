@@ -1,17 +1,17 @@
 /**
- * Guest Session Store — 인쇄 워크플로우 v1 Phase 4 (2026-05-19).
+ * Guest Session Store — 인쇄 워크플로우 v1.
  *
  * 비로그인 사용자가 편집기에 진입하면 게스트 세션이 발급되고,
  * 응답의 guestToken / sessionId 를 sessionStorage 에 저장한다.
  *
- * - 결정 3-1: 24시간 후 EVENT 가 자동 DELETE.
+ * - 24시간 후 EVENT 가 자동 DELETE.
  *   sessionStorage 도 24h 만료 시 자동 정리 (load 시 timestamp 비교).
- * - 결정 3-6: 회원 전환은 저장(편집완료) 시점에 별도 흐름으로.
+ * - 회원 전환은 저장(편집완료) 시점에 별도 흐름으로.
  *
  * 사용 시점:
  *   1) 편집기 진입 시 token 없으면 → useGuestStore.ensureGuestSession() 호출
  *   2) update 시 → updateGuest(sessionId, guestToken, payload)
- *   3) 회원 가입/로그인 시 → useGuestStore.clearGuest() + 세션 마이그레이션 API 호출 (Phase 6)
+ *   3) 회원 가입/로그인 시 → useGuestStore.clearGuest() + 세션 마이그레이션 API 호출
  */
 import { create } from 'zustand'
 import { editSessionsApi, EditSessionResponse } from '../api/edit-sessions'

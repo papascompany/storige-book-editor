@@ -5,7 +5,7 @@ import { useAppStore } from '@/stores/useAppStore'
 import { useSettingsStore } from '@/stores/useSettingsStore'
 
 /**
- * ObjectActionBar (E1 §5-3) 스펙:
+ * ObjectActionBar 스펙:
  *  ① 보호 매트릭스 — 잠금 4단계(user/designer/admin/system) × 보호 플래그 × 버튼 노출
  *  ② 변형 중 숨김(moving/scaling/rotating) → object:modified/mouse:up 재표시
  *  ③ clamp 계산 — 캔버스(컨테이너) 밖 이탈 금지 (임베드 소형 뷰포트 포함)
@@ -118,7 +118,7 @@ describe('ObjectActionBar — 보호 매트릭스 (잠금 레벨 × 버튼 노�
     expect(screen.getByLabelText('삭제')).toBeInTheDocument()
   })
 
-  it('user 레벨 잠금(내 잠금): 복제·삭제 모두 노출 (L1④ mine 판정 정합)', () => {
+  it('user 레벨 잠금(내 잠금): 복제·삭제 모두 노출 (mine 판정 정합)', () => {
     wire([makeObj({ lockInfo: { isLocked: true, lockLevel: 'user' } })])
     render(<ObjectActionBar />)
     expect(screen.getByLabelText('복제')).toBeInTheDocument()
@@ -300,7 +300,7 @@ describe('ObjectActionBar — 액션은 기존 경로 재사용', () => {
     expect(requestDeleteSelection).not.toHaveBeenCalled()
   })
 
-  it('삭제 클릭 → requestDeleteSelection() (S2 확인 모달 공통 경로)', () => {
+  it('삭제 클릭 → requestDeleteSelection() (삭제 확인 모달 공통 경로)', () => {
     wire([makeObj()])
     render(<ObjectActionBar />)
     fireEvent.click(screen.getByLabelText('삭제'))

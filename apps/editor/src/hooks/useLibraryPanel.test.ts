@@ -6,7 +6,7 @@ import { useLibraryPanel } from './useLibraryPanel'
 // templateSetId 를 테스트별로 바꿀 수 있게 가변 변수로 보관.
 let mockTemplateSetId: string | null = null
 let mockIsCustomer = true
-// A1-4: 관리자(editMode) fetch 게이트 완화 검증용 — 실스토어 기본값에 기대지 않고 명시 mock.
+// 관리자(editMode) fetch 게이트 완화 검증용 — 실스토어 기본값에 기대지 않고 명시 mock.
 let mockEditMode = false
 
 vi.mock('@/stores/useEditorStore', () => ({
@@ -46,7 +46,7 @@ describe('useLibraryPanel', () => {
     expect(fetcher).not.toHaveBeenCalled()
   })
 
-  it('비고객이라도 editMode=true(관리자 템플릿 제작)면 fetcher 를 호출한다 (A1-4)', async () => {
+  it('비고객이라도 editMode=true(관리자 템플릿 제작)면 fetcher 를 호출한다', async () => {
     mockIsCustomer = false
     mockEditMode = true
     const fetcher = vi.fn().mockResolvedValue(ok([{ id: '1', name: 'A' }]))

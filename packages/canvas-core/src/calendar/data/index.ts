@@ -1,5 +1,5 @@
 /**
- * calendar/data/index.ts — 정적 날짜 데이터 레지스트리 (P1, 2026-10-17)
+ * calendar/data/index.ts — 정적 날짜 데이터 레지스트리
  *
  * 버전 키는 `@storige/types` `CALENDAR_DATA_VERSIONS` 와 같아야 한다. 새 버전은
  * `scripts/gen-calendar-data.mjs` 로 생성한 모듈을 여기 등록하고 오너 승인 후 릴리스한다.

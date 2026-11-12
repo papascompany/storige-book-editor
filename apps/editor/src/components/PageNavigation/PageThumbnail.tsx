@@ -16,7 +16,7 @@ interface PageThumbnailProps {
   isCover: boolean
   onClick: () => void
   orientation: 'vertical' | 'horizontal'
-  // DD-5-B-v2: drag-to-reorder (BookNavigation에서만 주입; 표지/모바일은 미주입)
+  // drag-to-reorder (BookNavigation에서만 주입; 표지/모바일은 미주입)
   draggable?: boolean
   onDragStart?: (e: React.DragEvent<HTMLButtonElement>) => void
   onDragOver?: (e: React.DragEvent<HTMLButtonElement>) => void
@@ -132,7 +132,7 @@ export const PageThumbnail = memo(function PageThumbnail({
       (orientation === 'vertical' ? 'bottom-0' : 'right-0')
   )
 
-  // PDF 시안 매칭 (cover.md §5.4):
+  // PDF 시안 매칭:
   //   - 표지 카드는 둥근 그레이 박스 외곽 (라벨은 카드 외부 하단)
   //   - 내지 카드는 흰 배경 + 카드 내부 하단 라벨 (기존 유지)
   //   - 활성 카드는 editor-accent 강조 (브랜드 일관성, 기존 violet 대체)

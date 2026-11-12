@@ -8,11 +8,11 @@ export interface Product {
    */
   title?: string;
   /**
-   * Bookmoa-style 상품명 (nullable). 누락 시 title 로 fallback.
+   * 파트너 쇼핑몰 형식 상품명 (nullable). 누락 시 title 로 fallback.
    * @deprecated 직접 접근 대신 `getProductDisplayName(product)` 사용 권장.
    */
   name?: string;
-  /** 상품 코드 (Bookmoa-style, nullable) */
+  /** 상품 코드 (파트너 쇼핑몰 형식, nullable) */
   code?: string;
   categoryId?: string;
   templateSetId?: string;

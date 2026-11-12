@@ -1,5 +1,5 @@
 /**
- * L4-② (2026-07-11): PDF 생성 중 자동저장 suspend — 런타임 전역 플래그(직렬화 없음, §8 불변).
+ * PDF 생성 중 자동저장 suspend — 런타임 전역 플래그(직렬화 없음).
  *
  * 문제: ServicePlugin._createMultiPagePDF 는 PDF 생성 창 동안 printExclude(및 moldIcon 동류)
  * 객체를 excludeFromExport=true 로 임시 플래깅한다. fabric 의 toJSON 은 excludeFromExport

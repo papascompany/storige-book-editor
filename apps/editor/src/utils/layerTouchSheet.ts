@@ -1,11 +1,11 @@
 import { cn } from '@/lib/utils'
 
-// L6 (2026-07-11): 모바일 레이어 UX — 바텀시트 렌더 분기 + 롱프레스 재정렬 판정 유틸.
-// 업계 패턴 5(LAYER_UX_REDESIGN §0): Canva '페이지 탭→Layers 시트', 미리캔버스
+// 모바일 레이어 UX — 바텀시트 렌더 분기 + 롱프레스 재정렬 판정 유틸.
+// 업계 패턴: Canva '페이지 탭→Layers 시트', 미리캔버스
 // 바텀시트+long-press, Polotno isMobile 드래그핸들 — hover·사이드패널 이식 금지.
 // 순수 판정 로직만 이 모듈에 두고 DOM 배선은 SidePanel 이 담당한다(테스트 용이성).
 
-/** 터치 환경 판정 — S3 DnD 가드와 동일 기준(pointer: coarse). SSR/미지원 브라우저는 false. */
+/** 터치 환경 판정 — 데스크톱 DnD 가드와 동일 기준(pointer: coarse). SSR/미지원 브라우저는 false. */
 export function isTouchEnv(): boolean {
   if (typeof window === 'undefined' || !window.matchMedia) return false
   try {
@@ -133,7 +133,7 @@ export interface TouchDropTarget {
 
 /**
  * 손가락 Y 좌표 → 삽입 대상 행 판정.
- * S3 데스크톱 드롭과 동일 시맨틱(단일 진실원 R2): 목록은 z-order reverse 라 "위 = 맨앞".
+ * 데스크톱 드롭과 동일 시맨틱(단일 진실원): 목록은 z-order reverse 라 "위 = 맨앞".
  * target 행 상단 절반 = above(앞/front), 하단 절반 = 뒤. source 행 자신은 대상에서 제외하고,
  * 행 밖(목록 위/아래 여백)이면 가장 가까운 행 기준으로 판정한다.
  */

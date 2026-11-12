@@ -2,12 +2,12 @@ import { describe, it, expect, beforeEach } from 'vitest'
 import { useSettingsStore } from './useSettingsStore'
 
 /**
- * B0-① (2026-07-04): empty 프리셋 editMode:true 스프레드 오염 회귀 테스트.
+ * empty 프리셋 editMode:true 스프레드 오염 회귀 테스트.
  * 고객 embed 는 loadTemplateSetEditor → setupEmptyEditor 를 경유하므로,
  * setupEmptyEditor 가 명시 인자 없이 editMode 를 켜면 고객에게 관리자 토글이
- * 노출되고 applyObjectPermissions 가 무력화된다(e326b4c 이래의 오염).
+ * 노출되고 applyObjectPermissions 가 무력화된다.
  */
-describe('setupEmptyEditor editMode isolation (B0-①)', () => {
+describe('setupEmptyEditor editMode isolation', () => {
   beforeEach(async () => {
     // 이전 테스트 잔류 상태 제거 — 명시적으로 false 로 되돌린 뒤 시작
     await useSettingsStore.getState().updateSettings({ editMode: false })

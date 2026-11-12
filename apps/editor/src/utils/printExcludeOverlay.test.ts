@@ -2,7 +2,7 @@ import { describe, it, expect, vi } from 'vitest'
 import { bindPrintExcludeOverlay, drawPrintExcludeOverlay } from './printExcludeOverlay'
 
 /**
- * L4-① (2026-07-11): printExclude 화면 전용 오버레이 회귀 테스트.
+ * printExclude 화면 전용 오버레이 회귀 테스트.
  *
  * 핵심 불변: 오버레이는 contextTop 순수 드로잉만 — fabric 객체 추가/속성 변경이 없어야
  * toJSON(저장)·PDF·썸네일(toDataURL=lower canvas) 출력이 오염되지 않는다.

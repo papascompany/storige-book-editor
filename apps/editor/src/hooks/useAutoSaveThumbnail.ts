@@ -4,7 +4,7 @@ import { storageApi } from '@/api/storage'
 
 // 모바일/터치 환경에서는 fabric retina(DPR=3) 캔버스의 toDataURL이 매우 비싸 iOS Safari
 // 메모리 한계와 만나 페이지 크래시 유발 → 모바일에선 캡처 자체를 스킵.
-// (useAppStore.ts의 동일 패턴, 모바일 페이지 크래시 fix `60efb05` 참고)
+// (useAppStore.ts의 동일 패턴 — 모바일 페이지 크래시 방지)
 function isTouchEnv(): boolean {
   if (typeof window === 'undefined' || !window.matchMedia) return false
   try {
@@ -29,7 +29,7 @@ function dataURLtoBlob(dataUrl: string): Blob | null {
 }
 
 /**
- * BB-Phase 3 follow-up — 자동저장 시점 썸네일 캡처 + 업로드 helper.
+ * 자동저장 시점 썸네일 캡처 + 업로드 helper.
  *
  * 흐름
  * 1. 모바일이면 즉시 null 반환 (TOUCH_ENV 가드)
@@ -38,7 +38,7 @@ function dataURLtoBlob(dataUrl: string): Blob | null {
  * 4. 응답 url 반환 (실패 시 null — autoSave는 그대로 진행)
  *
  * 정책
- * - 단일 페이지(현재 활성)만 캡처. 멀티 페이지 콜라주는 1차 미도입.
+ * - 단일 페이지(현재 활성)만 캡처. 멀티 페이지 콜라주는 만들지 않는다.
  * - 실패는 자동저장 자체를 깨면 안 됨 → catch 후 null 반환.
  * - 0.25x + JPEG 0.7로 일반 A4 페이지 ~10-30KB.
  */

@@ -86,7 +86,7 @@ describe('buildInnerSpreadConfig', () => {
 
   it('regionScope=inner, spec 생략, innerSpec 동일참조, totals/regions 정합', () => {
     const cfg = buildInnerSpreadConfig(spec)
-    // Track 1 (2026-07-06): SpreadConfig.version 1→2 (caseBind/출력 사이즈 세대)
+    // SpreadConfig.version 1→2 (caseBind/출력 사이즈 세대)
     expect(cfg.version).toBe(2)
     expect(cfg.regionScope).toBe('inner')
     expect(cfg.spec).toBeUndefined()
@@ -187,7 +187,7 @@ describe('innerSpecToPlaceholderSpec', () => {
 })
 
 // ────────────────────────────────────────────────────────────────────────────
-// Track 1 (2026-07-06) — 출력 계약 헬퍼 (D-1 · D-4 · D-3)
+// 출력 계약 헬퍼
 // ────────────────────────────────────────────────────────────────────────────
 
 const innerSpec190: SpreadInnerSpec = {
@@ -210,7 +210,7 @@ const coverSpec: SpreadSpec = {
   dpi: 150,
 }
 
-describe('computeInnerContentSizeMm (D-1 1단계)', () => {
+describe('computeInnerContentSizeMm', () => {
   it("regionScope='inner' + innerSpec → 2-up trim(pageW×2 × pageH) — content.pdf 1페이지=1펼침면", () => {
     const size = computeInnerContentSizeMm({ regionScope: 'inner', innerSpec: innerSpec190 })
     expect(size).toEqual({ widthMm: 380, heightMm: 190 })
@@ -223,7 +223,7 @@ describe('computeInnerContentSizeMm (D-1 1단계)', () => {
     expect(computeInnerContentSizeMm(undefined)).toBeNull()
   })
 
-  it('표지+내지 결합(cover/미지정)이라도 innerSpec 있으면 2-up (R7 — 표지 패널 폴백 SIZE_MISMATCH 근본수정)', () => {
+  it('표지+내지 결합(cover/미지정)이라도 innerSpec 있으면 2-up (표지 패널 폴백 SIZE_MISMATCH 방지)', () => {
     expect(
       computeInnerContentSizeMm({ regionScope: 'cover', spec: coverSpec, innerSpec: innerSpec190 }),
     ).toEqual({ widthMm: 380, heightMm: 190 })
@@ -298,7 +298,7 @@ describe('resolveSpreadInnerPdfSizeMm — 스프레드 책 내지 content.pdf �
     })
   })
 
-  describe('싸바리 모드 아님 — 변경 전(HEAD b987a81) 산식과 같은 크기', () => {
+  describe('싸바리 모드 아님 — 기존 산식과 같은 크기', () => {
     // HEAD 두 완료 경로의 내지 크기 산식을 그대로 옮긴 기준값.
     //  embed.tsx:     innerSpec 2-up → spec.coverWidthMm/HeightMm → options.size → 210×297
     //  useWorkSave:   innerSpec 2-up → artwork.sizeInfo → 210×297
@@ -323,7 +323,7 @@ describe('resolveSpreadInnerPdfSizeMm — 스프레드 책 내지 content.pdf �
       }
     }
 
-    // H1 영향표 세트 유형별(판형 ≠ 표지 면, 면 = 판형, innerSpec 있음)
+    // 세트 유형별(판형 ≠ 표지 면, 면 = 판형, innerSpec 있음)
     const sets: Array<{
       name: string
       face: { w: number; h: number }
@@ -383,7 +383,7 @@ describe('resolveSpreadInnerPdfSizeMm — 스프레드 책 내지 content.pdf �
   })
 })
 
-describe('computeSpreadOutputDimensions (D-4, @storige/types)', () => {
+describe('computeSpreadOutputDimensions (@storige/types)', () => {
   it('caseBind 無 → computeSpreadDimensions 와 동일값(기존 출력 byte-parity)', () => {
     expect(computeSpreadOutputDimensions(coverSpec)).toEqual({
       totalWidthMm: 430,
@@ -410,7 +410,7 @@ describe('computeSpreadOutputDimensions (D-4, @storige/types)', () => {
   })
 })
 
-describe('computeCoverOutputSizeMm (D-4 편집기측)', () => {
+describe('computeCoverOutputSizeMm (편집기측)', () => {
   const caseBind = { boardThicknessMm: 2, turnInMm: 15, wrapMarginMm: 5 }
 
   it('caseBind 有 cover config → wrap 포함 출력 사이즈', () => {
@@ -448,7 +448,7 @@ describe('computeCoverOutputSizeMm (D-4 편집기측)', () => {
   })
 })
 
-describe('resolveTemplateSetCoverMeta (D-4 templateSet optional 읽기)', () => {
+describe('resolveTemplateSetCoverMeta (templateSet optional 읽기)', () => {
   it('coverType + coverConfig.caseBind 를 옵셔널 체이닝으로 읽는다', () => {
     const meta = resolveTemplateSetCoverMeta({
       id: 'ts-1',
@@ -480,8 +480,8 @@ describe('resolveTemplateSetCoverMeta (D-4 templateSet optional 읽기)', () => 
   })
 })
 
-describe('computeLivePageCount (D-3 단일 진실원 + T5 coverCanvasCount)', () => {
-  it('2026-09-28: 표지+내지펼침면 — 표지 제외 후 내지 캔버스 ×innerPagesPerCanvas(2)', () => {
+describe('computeLivePageCount (단일 진실원 + coverCanvasCount)', () => {
+  it('표지+내지펼침면 — 표지 제외 후 내지 캔버스 ×innerPagesPerCanvas(2)', () => {
     expect(computeLivePageCount(9, false, 1, 1, 2)).toBe(16) // 표지 1 + 펼침면 8장
     expect(computeLivePageCount(9, false, 1, 1, 1)).toBe(8) // 낱장 내지(기본과 동일)
     expect(computeLivePageCount(9, false, 1, 1)).toBe(8) // 파라미터 생략 = 종전 byte-parity
@@ -497,11 +497,11 @@ describe('computeLivePageCount (D-3 단일 진실원 + T5 coverCanvasCount)', ()
     expect(computeLivePageCount(1, false, 1, 0)).toBe(1) // 표지 단독 세션(게이트로 0 전달) 불변
   })
 
-  it('T5: 표지+내지 단일 세션 spread — 표지 캔버스 1장 제외(21→20)', () => {
+  it('표지+내지 단일 세션 spread — 표지 캔버스 1장 제외(21→20)', () => {
     expect(computeLivePageCount(21, false, 20, 1)).toBe(20)
   })
 
-  it('T5: 포토북 inner 세션은 coverCanvasCount 무영향(×2 산식 불변)', () => {
+  it('포토북 inner 세션은 coverCanvasCount 무영향(×2 산식 불변)', () => {
     expect(computeLivePageCount(12, true, 1, 0)).toBe(24)
   })
 
@@ -510,7 +510,7 @@ describe('computeLivePageCount (D-3 단일 진실원 + T5 coverCanvasCount)', ()
     expect(computeLivePageCount(0, false, 0)).toBe(1) // fallback 비유효 시 최소 1
   })
 
-  it('T5 방어: 제외 후 0 이하이면 fallbackPages 폴백(음수 물리 페이지 금지)', () => {
+  it('방어: 제외 후 0 이하이면 fallbackPages 폴백(음수 물리 페이지 금지)', () => {
     expect(computeLivePageCount(1, false, 8, 1)).toBe(8)
   })
 })
@@ -521,7 +521,7 @@ describe('SPREAD_CONFIG_VERSION 정합', () => {
   })
 })
 
-describe('splitSpreadOutputCanvases — 표지/내지 출력 분할 (2026-08-03)', () => {
+describe('splitSpreadOutputCanvases — 표지/내지 출력 분할', () => {
   const cover = { regionScope: 'cover' as const, innerSpec: undefined }
   const inner = {
     regionScope: 'inner' as const,

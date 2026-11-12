@@ -1,6 +1,5 @@
 /**
- * L2 (2026-07-06): 레이어 행 표시 계층 — 잠금 2어휘 렌즈 + 행 이름 규약.
- * 설계 정본 LAYER_UX_REDESIGN_2026-07-06.md §2(재설계 원칙)·§3 A-2/A-3·§5(용어 통일).
+ * 레이어 행 표시 계층 — 잠금 2어휘 렌즈 + 행 이름 규약.
  *
  * - 잠금 어휘 재편: 내부 3계층(단순잠금 / movable·deleteable·contentEditable·lockLayerOrder /
  *   lockInfo 레벨)을 사용자 개념 딱 둘로 통합 — "내 잠금"(본인이 걸고 즉시 푸는 것) vs
@@ -34,7 +33,7 @@ export function resolveLayerLockState(o: {
   return 'none'
 }
 
-/** SelectionType → 타입 한국어명. ControlBar getObjectName 과 단일 소스(§5 용어 동기화). */
+/** SelectionType → 타입 한국어명. ControlBar getObjectName 과 단일 소스(용어 동기화). */
 export function selectionTypeLabel(type: SelectionType | string, count = 1): string {
   switch (type) {
     case SelectionType.text:
@@ -63,7 +62,7 @@ export function selectionTypeLabel(type: SelectionType | string, count = 1): str
 /**
  * fabric 자동 생성 이름 판정 — updateObjects 가 미명명 객체에 채우는 `obj.type + index`
  * (예: textbox3, image0, rect12, i-text2) 만 해당. 끝 숫자 필수(\d+) — 'logo'·'cover' 같은
- * 소문자 영단어 사용자 지정 이름을 오탐하지 않는다(적대 리뷰 major).
+ * 소문자 영단어 사용자 지정 이름을 오탐하지 않는다.
  */
 const AUTO_NAME_RE = /^[a-z][a-z-]*\d+$/
 

@@ -1,12 +1,12 @@
 // @vitest-environment jsdom
 //
-// R1 (2026-08-18) 회귀 테스트 — initWorkspace stale closure 경화.
+// 회귀 테스트 — initWorkspace stale closure 경화.
 //
 // embed.tsx 초기화 useEffect(deps=[])는 마운트 시점의 훅 반환(loadTemplateSetEditor 등)을
 // 캡처한다. 그 시점 useAppStore 의 editor/canvas 는 null 이라, initWorkspace 가 클로저
 // editor/canvas 로 가드하면 통째로 조기 반환(no-op) — 빈 표지(flat-spread)의 workspace
-// 치수 적용이 누락돼 createCanvas 기본 105×105mm 정사각이 잔존했다(DB 실측).
-// 수정: loadCanvasData(:363)와 동일하게 useAppStore.getState() 최신 참조로 경화.
+// 치수 적용이 누락돼 createCanvas 기본 105×105mm 정사각이 남는다.
+// 그래서 loadCanvasData 와 동일하게 useAppStore.getState() 최신 참조를 쓴다.
 import { describe, it, expect, vi, afterEach } from 'vitest'
 import { renderHook } from '@testing-library/react'
 import { useAppStore } from '@/stores/useAppStore'
@@ -29,7 +29,7 @@ afterEach(() => {
   vi.restoreAllMocks()
 })
 
-describe('useEditorContents.initWorkspace — R1 stale closure 경화', () => {
+describe('useEditorContents.initWorkspace — stale closure 경화', () => {
   it('마운트 시점 editor/canvas 가 null(임베드 초기화 순서)이어도 호출 시점 스토어 최신 참조로 workspace 를 초기화한다', async () => {
     // 1) 임베드와 동일: 스토어가 비어 있는 상태에서 훅 렌더 → 반환 함수 캡처(stale closure).
     useAppStore.setState({ editor: null, canvas: null } as never)

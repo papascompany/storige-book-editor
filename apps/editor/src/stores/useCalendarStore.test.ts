@@ -3,7 +3,7 @@ import type { ProductProfile } from '@storige/types'
 import { useCalendarStore } from './useCalendarStore'
 
 /**
- * P1 캘린더 (2026-10-17): 캘린더 세션 메타 스토어 — 프로파일 기본값·허용 범위·기념일 CRUD.
+ * 캘린더: 캘린더 세션 메타 스토어 — 프로파일 기본값·허용 범위·기념일 CRUD.
  */
 function calendarProfile(over: Partial<NonNullable<ProductProfile['calendar']>> = {}): ProductProfile {
   return {
@@ -144,7 +144,7 @@ describe('restore — 허용 범위 재검증', () => {
 })
 
 /**
- * T2 그리드·기념일 안전성 (2026-10-22): 같은 날짜(양력 환산 기준) 기념일 거부를 store 경계로 확장.
+ * 그리드·기념일 안전성: 같은 날짜(양력 환산 기준) 기념일 거부를 store 경계로 확장.
  * 음력 환산 픽스처는 calendar/core.test 가 고정한 값(kr-2025-2035-v1: 음력 2026-11-28 = 양력 2027-01-05).
  */
 describe('useCalendarStore — 같은 날짜 기념일 거부 (add/update)', () => {
@@ -229,7 +229,7 @@ describe('useCalendarStore — 같은 날짜 기념일 거부 (add/update)', () 
   })
 })
 
-describe('useCalendarStore — 연달력 연도 선택 yearDeltas (T3b)', () => {
+describe('useCalendarStore — 연달력 연도 선택 yearDeltas', () => {
   const withSelect = () => calendarProfile({ yearPolicy: { select: { minDelta: 0, maxDelta: 1 } } })
 
   it('setFromProfile 은 yearPolicy 를 복사하고 meta 에 yearDeltas 키를 만들지 않는다', () => {
@@ -270,7 +270,7 @@ describe('useCalendarStore — 연달력 연도 선택 yearDeltas (T3b)', () => 
     expect(useCalendarStore.getState().meta).not.toHaveProperty('yearDeltas')
   })
 
-  it('restore 는 yearDeltas·show.yearTitle 을 복사해 보존하고, 시작연월을 바꿔도 상대값은 그대로(Q4)', () => {
+  it('restore 는 yearDeltas·show.yearTitle 을 복사해 보존하고, 시작연월을 바꿔도 상대값은 그대로', () => {
     useCalendarStore.getState().setFromProfile(withSelect())
     const saved = {
       startYear: 2027,

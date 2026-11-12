@@ -34,7 +34,7 @@ import { usePhotoPrintStore } from '@/stores/usePhotoPrintStore'
 const ENABLE_IMAGE_PROCESSING = import.meta.env.VITE_ENABLE_IMAGE_PROCESSING !== 'false'
 
 // 모바일/터치 환경에서는 retina(DPR=3) 캔버스에 대용량 이미지 추가 시 메모리 hit이 매우 큼.
-// 4MB 이상 파일은 사전 차단해 iOS Safari 페이지 크래시 방지 (P0-2 사용자 보고 대응).
+// 4MB 이상 파일은 사전 차단해 iOS Safari 페이지 크래시 방지 (사용자 보고 대응).
 function isTouchEnv(): boolean {
   if (typeof window === 'undefined' || !window.matchMedia) return false
   try { return window.matchMedia('(pointer: coarse)').matches } catch { return false }
@@ -48,8 +48,8 @@ const MOBILE_MAX_FILE_LABEL = '4MB'
  * - 데스크톱: 항상 허용
  * - 모바일: MOBILE_MAX_FILE_BYTES 초과 시 toast 안내 + false 반환 (호출자가 abort)
  *
- * D-6b② (2026-08-05): 모양컷(AppClipping) 업로드 경로에도 배선하기 위해 export —
- * Wave0 실측에서 이 경로만 가드가 없어 12MP 원본이 배경제거 파이프에 직행했다.
+ * 모양컷(AppClipping) 업로드 경로에도 배선하기 위해 export —
+ * 이 경로에 가드가 없으면 12MP 원본이 배경제거 파이프에 직행한다.
  */
 export function checkMobileFileSize(file: File): boolean {
   if (!TOUCH_ENV) return true
@@ -63,7 +63,7 @@ export function checkMobileFileSize(file: File): boolean {
   return false
 }
 
-// ─── P2-d 사진인화 (2026-10-19) 보조 — 프로파일 NULL 세트에서는 전부 no-op/바이트 동일 ───────────────
+// ─── 사진인화 보조 — 프로파일 NULL 세트에서는 전부 no-op/바이트 동일 ───────────────
 
 /** 사진인화 세트인지(업로드 한도·촬영일 기록·옵션 재적용 게이트) */
 function isPhotoPrintSession(): boolean {
@@ -71,7 +71,7 @@ function isPhotoPrintSession(): boolean {
 }
 
 /**
- * B11 (2026-10-25): 상품 프로파일이 있는 세트인지(캘린더·사진인화 등 — `resolveProductProfile` 판정 결과가 non-null).
+ * 상품 프로파일이 있는 세트인지(캘린더·사진인화 등 — `resolveProductProfile` 판정 결과가 non-null).
  * 틀 클릭 채움을 storage 업로드 URL 로 넣는 게이트 — 세트 종류가 아니라 프로파일 존재(데이터 속성)로만 판정한다.
  */
 function hasProductProfileSession(): boolean {
@@ -120,7 +120,7 @@ function readFrameInsetPx(frame: Record<string, unknown>): number {
 let warnedImageFrameInset = false
 
 /**
- * 사진틀의 fitMode('cover' | 'contain' | 미설정=legacy)와 마스크 창을 읽는다(D8/serialization-1, tests-3).
+ * 사진틀의 fitMode('cover' | 'contain' | 미설정=legacy)와 마스크 창을 읽는다.
  * - 창: inset 0 이면 {1,1,프레임 중심}(종전과 바이트 동일). inset>0 이면 플러그인이 둔 `__frameWindow` 를 쓰고, 없으면
  *   FrameInteractionPlugin 과 같은 폴백(`resolveFrameWindowFor(frame, canvas, insetPx, canvas.__photoPrintBleedPx ?? 0)`),
  *   캔버스를 모르면(테스트 더미) frameInsetScale 비율·프레임 중심.
@@ -212,7 +212,7 @@ function resolveFillSourcePhotoId(fore: Record<string, unknown>, uploadedPhotoId
 }
 
 /**
- * 채움/교체 뒤 항목 메타 기록(contract-1/contract-2) — 사진인화 세트에서만, 캔버스가 allCanvas 에 있을 때만.
+ * 채움/교체 뒤 항목 메타 기록 — 사진인화 세트에서만, 캔버스가 allCanvas 에 있을 때만.
  * lowRes = 이 채움의 dpi < sizes[0].minDpi, 또는 같은 캔버스의 다른 채움(런타임 `__lowRes`)이 저해상인 경우.
  * sourcePhotoId 는 원본 식별자가 있으면 기록, 없으면 키 제거(런처 입력 echo 금지).
  */
@@ -303,7 +303,7 @@ function hasLoadedImageSize(image: unknown): boolean {
 }
 
 /**
- * D12·B11-b: storage 업로드 URL 로 이미지 로드(crossOrigin anonymous — PDF 생성 toDataURL taint 방지, AppImage 자동편집과 동일).
+ * storage 업로드 URL 로 이미지 로드(crossOrigin anonymous — PDF 생성 toDataURL taint 방지, AppImage 자동편집과 동일).
  * 로드 실패(예외 또는 0×0 결과)는 경고만 남기고 undefined — 호출부가 종전 data URL 경로로 폴백한다.
  */
 async function loadImageFromStorageUrl(url: string, logTag: string, fileName: string): Promise<{ image: FabricObject } | undefined> {
@@ -321,7 +321,7 @@ async function loadImageFromStorageUrl(url: string, logTag: string, fileName: st
 }
 
 /**
- * B11-b (2026-10-25): 프로파일 세트(캘린더·사진인화 등)의 래스터 배경 업로드 원본 — storage 업로드(게스트 통로
+ * 프로파일 세트(캘린더·사진인화 등)의 래스터 배경 업로드 원본 — storage 업로드(게스트 통로
  * `/storage/upload-public`) 후 절대 URL 로 로드해 canvasData 에 base64 를 넣지 않는다.
  * 배경은 자동편집 입력이 아니므로 registerUploadedPhoto(메타 등록·사진 수 한도 집계)를 거치지 않는다(종전과 같음).
  * 업로드·URL 로드 실패는 종전 core.fileToImage(data URL)로 폴백해 편집을 막지 않는다.
@@ -365,14 +365,14 @@ interface ImageState {
   uploading: boolean
   uploaded: FabricObject[]
   /**
-   * Track 2 (D-2 잔여 갭, 2026-07-06): '내 업로드' 사진 메타 — 자동편집(autofill) 입력용.
+   * '내 업로드' 사진 메타 — 자동편집(autofill) 입력용.
    * 기존 uploaded(FabricObject[])는 불변 유지(additive). url 은 storage 업로드 결과 URL
    * (objectURL/dataURL 금지 — 세션 휘발로 저장 JSON·재편집 기준이 깨짐).
    * ⚠️ uploadedAt = file.lastModified(파일 수정시각) — 외부주입 ExternalPhoto.uploadedAt
    * (호스트 업로드시각)과 시맨틱이 다름. photoPlacement.UploadedPhotoMeta 주석 참조.
    */
   uploadedPhotoMeta: UploadedPhotoMeta[]
-  /** P2-d 사진인화: storage 업로드 URL → files 레코드 id(sourcePhotoId 원천). 등록 실패분은 없음 */
+  /** 사진인화: storage 업로드 URL → files 레코드 id(sourcePhotoId 원천). 등록 실패분은 없음 */
   uploadedPhotoIdByUrl: Record<string, string>
 }
 
@@ -399,7 +399,7 @@ interface ImageActions {
     file: File
   ) => Promise<FabricObject | undefined>
 
-  // Track 2 (D-2): 업로드 File 을 자동편집 입력으로 등록 — EXIF(원본 File) 파싱 +
+  // 업로드 File 을 자동편집 입력으로 등록 — EXIF(원본 File) 파싱 +
   // storage 업로드 URL 확보 후 uploadedPhotoMeta 에 additive 추가. 실패는 조용히 스킵
   // (자동편집 대상에서만 제외, 캔버스 업로드 UX 무영향). fire-and-forget 호출 전제.
   registerUploadedPhoto: (file: File) => Promise<UploadedPhotoMeta | undefined>
@@ -412,7 +412,7 @@ interface ImageActions {
     imagePlugin: ImageProcessingPlugin
   ) => Promise<FabricObject>
 
-  // P2-d D12 (2026-10-21)·B11 (2026-10-25): 틀 채움 원본 이미지 — 프로파일 세트(캘린더·사진인화 등)는 storage 업로드(URL src),
+  // 틀 채움 원본 이미지 — 프로파일 세트(캘린더·사진인화 등)는 storage 업로드(URL src),
   // 프로파일 NULL 세트는 종전 core.fileToImage(data URL)
   resolveFrameFillImage: (
     canvas: FabricCanvas,
@@ -451,7 +451,7 @@ interface ImageActions {
     canvas: FabricCanvas,
     imagePlugin: ImageProcessingPlugin,
     loadingBar: LoadingBar,
-    /** 서버 모델 선택(미지정 시 서버 env 기본값). 스파이크 §5-10 시그니처 규약을 깨지 않는 선택 인자. */
+    /** 서버 모델 선택(미지정 시 서버 env 기본값). 기존 호출 시그니처를 깨지 않는 선택 인자. */
     options?: { model?: string }
   ) => Promise<FabricImage>
 
@@ -486,8 +486,8 @@ export const useImageStore = create<ImageState & ImageActions>()((set, get) => (
   uploadedPhotoMeta: [],
   uploadedPhotoIdByUrl: {},
 
-  // Track 2 (D-2): '내 업로드' → 자동편집 입력 메타 등록.
-  // 순서 제약(SKILL.md §자동편집 EXIF): EXIF 는 **원본 File** 에서 즉시 파싱한다 —
+  // '내 업로드' → 자동편집 입력 메타 등록.
+  // 순서 제약: EXIF 는 **원본 File** 에서 즉시 파싱한다 —
   // 서버 썸네일 파이프(storage.service.ts sharp.rotate())는 사본에만 적용되지만,
   // 원본 File 파싱이면 그 경로와 아예 무관해 takenAt/GPS 보존이 구조적으로 보장된다.
   registerUploadedPhoto: async (file: File): Promise<UploadedPhotoMeta | undefined> => {
@@ -496,9 +496,9 @@ export const useImageStore = create<ImageState & ImageActions>()((set, get) => (
       // storage 업로드 URL 기준(안정 참조). objectURL/dataURL 은 세션 휘발이라
       // 자동편집 결과(fillImage src)의 저장/재편집 라운드트립이 깨진다.
       //
-      // ⚠️ 게스트 통로(`/storage/upload-public`)로만 올린다 — 종전 `storageApi.uploadFile` 은
-      // `/storage/upload`(JWT+@Roles)라 비로그인 고객에게 **401** 이었고, 자동편집(배지/EXIF)
-      // 입력 등록이 전량 실패하고 있었다(fire-and-forget 이라 편집 자체는 무영향, 2026-08-09 수정).
+      // ⚠️ 게스트 통로(`/storage/upload-public`)로만 올린다 — `storageApi.uploadFile` 은
+      // `/storage/upload`(JWT+@Roles)라 비로그인 고객에게 **401** 이라 자동편집(배지/EXIF)
+      // 입력 등록이 전량 실패한다(fire-and-forget 이라 편집 자체는 무영향).
       const result = await storageApi.uploadFilePublic(file)
       // 응답 url 은 `/storage/uploads/...` 상대 경로다. meta.url 은 ExternalPhoto.url 과 같은
       // 자리(자동편집 fillImage src)에 쓰이므로 API origin 기준 절대 URL 이어야 한다 —
@@ -601,7 +601,7 @@ export const useImageStore = create<ImageState & ImageActions>()((set, get) => (
 
       const file = files[0]
 
-      // P2-d 사진인화: 프로파일 업로드 한도(maxPhotos/maxMb) — 프로파일 NULL 세트는 no-op
+      // 사진인화: 프로파일 업로드 한도(maxPhotos/maxMb) — 프로파일 NULL 세트는 no-op
       if (!checkPhotoPrintUploadLimit(files, currentPhotoCountForLimit(uploaded, get().uploadedPhotoMeta))) return undefined
 
       // 벡터 파일은 지원하지 않음 (ImageProcessingPlugin 필요)
@@ -613,7 +613,7 @@ export const useImageStore = create<ImageState & ImageActions>()((set, get) => (
         return undefined
       }
 
-      // 모바일 메모리 가드 — 4MB 초과 차단 (P0-2 사용자 보고: iOS Safari 크래시)
+      // 모바일 메모리 가드 — 4MB 초과 차단 (사용자 보고: iOS Safari 크래시)
       if (!checkMobileFileSize(file)) return undefined
 
       // 간단한 이미지 로드 (OpenCV 미사용)
@@ -652,8 +652,8 @@ export const useImageStore = create<ImageState & ImageActions>()((set, get) => (
         canvas.setActiveObject(item)
 
         set({ uploaded: [...uploaded, item] })
-        // Track 2 (D-2): 자동편집 입력 등록 — fire-and-forget(업로드 UX 비블로킹).
-        // S-E4: storage URL 을 업로드 객체에 링크 — 자동편집 채움(src=storage URL)과
+        // 자동편집 입력 등록 — fire-and-forget(업로드 UX 비블로킹).
+        // storage URL 을 업로드 객체에 링크 — 자동편집 채움(src=storage URL)과
         // 패널 썸네일(src=dataURL)의 사용 횟수 집계를 잇는다(photoUsage 키 합산).
         void get().registerUploadedPhoto(file).then((meta) => {
           if (meta?.url) (item as FabricObject & { storagePhotoUrl?: string }).storagePhotoUrl = meta.url
@@ -683,7 +683,7 @@ export const useImageStore = create<ImageState & ImageActions>()((set, get) => (
       set({ uploading: true })
       const workspace = canvas.getObjects().find((obj: FabricObject) => obj.id === 'workspace')
       if (!workspace) return undefined
-      // P2-d 사진인화: 드래그드롭(EditorView) 등 File 직접 경로도 프로파일 업로드 한도 — 프로파일 NULL 세트는 no-op
+      // 사진인화: 드래그드롭(EditorView) 등 File 직접 경로도 프로파일 업로드 한도 — 프로파일 NULL 세트는 no-op
       if (!checkPhotoPrintUploadLimit([file], currentPhotoCountForLimit(uploaded, get().uploadedPhotoMeta))) return undefined
 
       // 벡터 파일은 지원 안 함 (uploadSimple과 동일)
@@ -721,8 +721,8 @@ export const useImageStore = create<ImageState & ImageActions>()((set, get) => (
       canvas.add(item)
       canvas.setActiveObject(item)
       set({ uploaded: [...uploaded, item] })
-      // Track 2 (D-2): 자동편집 입력 등록 — fire-and-forget(업로드 UX 비블로킹).
-      // S-E4: storage URL 링크(uploadSimple 과 동일 — photoUsage 키 합산용).
+      // 자동편집 입력 등록 — fire-and-forget(업로드 UX 비블로킹).
+      // storage URL 링크(uploadSimple 과 동일 — photoUsage 키 합산용).
       void get().registerUploadedPhoto(file).then((meta) => {
         if (meta?.url) (item as FabricObject & { storagePhotoUrl?: string }).storagePhotoUrl = meta.url
       })
@@ -773,10 +773,10 @@ export const useImageStore = create<ImageState & ImageActions>()((set, get) => (
 
       const file = files[0]
 
-      // P2-d 사진인화: 프로파일 업로드 한도(maxPhotos/maxMb) — 프로파일 NULL 세트는 no-op
+      // 사진인화: 프로파일 업로드 한도(maxPhotos/maxMb) — 프로파일 NULL 세트는 no-op
       if (!checkPhotoPrintUploadLimit(files, currentPhotoCountForLimit(uploaded, get().uploadedPhotoMeta))) return undefined
 
-      // 모바일 메모리 가드 — 4MB 초과 차단 (P0-2 사용자 보고: iOS Safari 크래시)
+      // 모바일 메모리 가드 — 4MB 초과 차단 (사용자 보고: iOS Safari 크래시)
       if (!checkMobileFileSize(file)) return undefined
 
       let item: FabricObject | undefined
@@ -824,7 +824,7 @@ export const useImageStore = create<ImageState & ImageActions>()((set, get) => (
           return undefined
         }
       } else if (type === SelectionType.background && hasProductProfileSession()) {
-        // B11-b: 프로파일 세트의 래스터 배경은 storage 업로드 URL 로 로드(실패 시 data URL 폴백). 벡터·SVG·다른 타입과
+        // 프로파일 세트의 래스터 배경은 storage 업로드 URL 로 로드(실패 시 data URL 폴백). 벡터·SVG·다른 타입과
         // 프로파일 NULL 세트는 아래 종전 경로 그대로.
         item = await resolveProfileBackgroundImage(canvas, file, imagePlugin)
       } else {
@@ -934,9 +934,9 @@ export const useImageStore = create<ImageState & ImageActions>()((set, get) => (
               return null
             }
             const selectedFile = selectedFiles[0]
-            // P2-d 사진인화: 프로파일 업로드 한도(maxPhotos/maxMb) — 프로파일 NULL 세트는 no-op
+            // 사진인화: 프로파일 업로드 한도(maxPhotos/maxMb) — 프로파일 NULL 세트는 no-op
             if (!checkPhotoPrintUploadLimit(selectedFiles, currentPhotoCountForLimit(get().uploaded, get().uploadedPhotoMeta))) return
-            // D12·B11: 프로파일 세트(캘린더·사진인화 등)는 storage 업로드 URL, NULL 세트는 종전 data URL
+            // 프로파일 세트(캘린더·사진인화 등)는 storage 업로드 URL, NULL 세트는 종전 data URL
             const fabricImage = (await get().resolveFrameFillImage(canvas, selectedFile, imagePlugin))?.image
             if (!fabricImage) {
               console.log('no image selected')
@@ -947,7 +947,7 @@ export const useImageStore = create<ImageState & ImageActions>()((set, get) => (
             canvas.add(fore)
             canvas.setActiveObject(fore)
             canvas.renderAll()
-            // P2-d 사진인화: 채움 뒤 항목 옵션 재적용(흑백·촬영일). 프로파일 NULL 이면 즉시 0.
+            // 사진인화: 채움 뒤 항목 옵션 재적용(흑백·촬영일). 프로파일 NULL 이면 즉시 0.
             if (isPhotoPrintSession()) void applyPhotoPrintForCanvas(canvas)
           })
         } else if (type === SelectionType.background) {
@@ -1001,9 +1001,9 @@ export const useImageStore = create<ImageState & ImageActions>()((set, get) => (
 
         if (type === SelectionType.image) {
           set({ uploaded: [...uploaded, item] })
-          // Track 2 (D-2): 래스터 사진만 자동편집 입력 등록(벡터/SVG 는 사진틀 채움 대상 아님).
+          // 래스터 사진만 자동편집 입력 등록(벡터/SVG 는 사진틀 채움 대상 아님).
           if (!isVectorFile && !isSvgFile) {
-            // S-E4: storage URL 링크(uploadSimple 과 동일 — photoUsage 키 합산용).
+            // storage URL 링크(uploadSimple 과 동일 — photoUsage 키 합산용).
             void get().registerUploadedPhoto(file).then((meta) => {
               if (meta?.url) (item as FabricObject & { storagePhotoUrl?: string }).storagePhotoUrl = meta.url
             })
@@ -1022,12 +1022,12 @@ export const useImageStore = create<ImageState & ImageActions>()((set, get) => (
   },
 
   // 이미지 채우기
-  // P2-d D12 (2026-10-21): 사진인화 틀 채움은 사진을 base64 data URL 로 캔버스에 넣지 않는다 —
+  // 사진인화 틀 채움은 사진을 base64 data URL 로 캔버스에 넣지 않는다 —
   // 사진당 ≈1.8MB 씩 canvasData 가 커져 13장(26캔버스)에서 22.6MB 가 되고 PATCH /edit-sessions 가 MariaDB
-  // max_allowed_packet(기본 16MB)에 걸려 500 이 났다(2026-10-20 2차 e2e). '내 업로드'·자동편집과 같은 통로
+  // max_allowed_packet(기본 16MB)에 걸려 500 이 난다. '내 업로드'·자동편집과 같은 통로
   // (registerUploadedPhoto → storage 업로드 URL, EXIF 는 원본 File 에서)로 올리고 URL 로 로드한다(crossOrigin anonymous —
   // PDF 생성 toDataURL taint 방지, AppImage 자동편집과 동일). 업로드·URL 로드 실패는 종전 data URL 경로로 폴백해 편집을 막지 않는다.
-  // B11 (2026-10-25): 게이트를 사진인화 전용에서 상품 프로파일이 있는 세트 전체로 넓혔다(캘린더 세트도 사진 9장 이상이면
+  // 게이트는 사진인화 전용이 아니라 상품 프로파일이 있는 세트 전체다(캘린더 세트도 사진 9장 이상이면
   // 같은 패킷 한도 위험). 촬영일 기록·옵션 재적용은 호출부에서 계속 사진인화 세트만.
   // 프로파일 NULL 세트는 종전 core.fileToImage 그대로(바이트 동일).
   resolveFrameFillImage: async (
@@ -1058,7 +1058,7 @@ export const useImageStore = create<ImageState & ImageActions>()((set, get) => (
     rear: FabricObject,
     imagePlugin: ImageProcessingPlugin
   ): Promise<FabricObject> => {
-    // P2-d 사진인화(D8): 창(window) 기하 — fitMode 'cover' 는 창을 가로·세로 모두 덮는 max 비율, 'contain' 은 min, 미설정(legacy)은
+    // 사진인화: 창(window) 기하 — fitMode 'cover' 는 창을 가로·세로 모두 덮는 max 비율, 'contain' 은 min, 미설정(legacy)은
     // 종전 폭 기준·프레임 중심 그대로(바이트 동일). 유테 창은 `__frameWindow`(없으면 resolveFrameWindowFor 폴백) 기준.
     const rearW = rear.width! * rear.scaleX!
     const rearH = rear.height! * rear.scaleY!
@@ -1142,7 +1142,7 @@ export const useImageStore = create<ImageState & ImageActions>()((set, get) => (
     // z-order 보정: SVG 프레임도 image 경로(fillImageIntoFrame)와 통일해 프레임을 위로.
     // (모양틀은 기존 스택 유지를 위해 건드리지 않음)
     if (asFrame) rear.bringToFront()
-    // P2-d 사진인화: 항목 lowRes·sourcePhotoId 기록(프로파일 NULL·allCanvas 밖 캔버스면 no-op)
+    // 사진인화: 항목 lowRes·sourcePhotoId 기록(프로파일 NULL·allCanvas 밖 캔버스면 no-op)
     if (asFrame) recordPhotoFillMeta(canvas, fore, g)
 
     return fore
@@ -1177,7 +1177,7 @@ export const useImageStore = create<ImageState & ImageActions>()((set, get) => (
             obj.extensionType === 'fillImage' && obj.parentLayerId === frame.id
         )
 
-    // 채워진 사진을 캔버스에서 제거 — ObjectPlugin.del(:309-310) 과 동일하게
+    // 채워진 사진을 캔버스에서 제거 — ObjectPlugin.del 과 동일하게
     // clipPath 해제 후 remove (clipPath 잔존 시 렌더 누수/마스크 오염 방지).
     const removeFilledImage = (filled: FabricObject) => {
       filled.clipPath = undefined
@@ -1198,7 +1198,7 @@ export const useImageStore = create<ImageState & ImageActions>()((set, get) => (
 
     frame.set({ hoverCursor: 'pointer', moveCursor: 'pointer' })
 
-    // B1 (2026-07-04): 내용편집 잠금 — contentEditable===false 프레임은 고객(비-editMode)의
+    // 내용편집 잠금 — contentEditable===false 프레임은 고객(비-editMode)의
     // 채우기/교체 진입 차단. 관리자(editMode)는 자유 편집(다른 잠금 축과 동일 규약).
     const isContentLocked = () =>
       frame.contentEditable === false &&
@@ -1206,7 +1206,7 @@ export const useImageStore = create<ImageState & ImageActions>()((set, get) => (
 
     frame.on('mouseover', () => {
       if (overlay || isContentLocked()) return
-      // A1-5 (스왑 발견성): 채워진 액자에도 hover 시 '사진 교체' 오버레이를 표시한다.
+      // 스왑 발견성: 채워진 액자에도 hover 시 '사진 교체' 오버레이를 표시한다.
       // 클릭 동작은 기존 mousedown 스왑 경로 그대로(로직 무변경) — 표시만 추가.
       // adjust(사진 조정) 모드 중엔 숨김: FrameInteractionPlugin 이 frame.evented=false 로
       // 두어 mouseover 자체가 오지 않지만, fore.evented(adjust 진입 시 true)도 방어 검사.
@@ -1262,9 +1262,9 @@ export const useImageStore = create<ImageState & ImageActions>()((set, get) => (
     frame.on('mouseout', removeOverlay)
 
     frame.on('mousedown', async () => {
-      // B1: 내용편집 잠금 프레임은 채우기/스왑 진입 차단(비-editMode).
+      // 내용편집 잠금 프레임은 채우기/스왑 진입 차단(비-editMode).
       if (isContentLocked()) return
-      // A1-5: 클릭(파일선택 진입)·더블클릭(adjust 진입) 시 오버레이 즉시 제거 —
+      // 클릭(파일선택 진입)·더블클릭(adjust 진입) 시 오버레이 즉시 제거 —
       // adjust 진입 후엔 frame.evented=false 라 mouseout 이 오지 않아 잔존할 수 있다.
       removeOverlay()
       // 드롭 오버라이드 스왑(포토북 고유): 이미 채워진 틀에 새 사진을 떨어뜨리면
@@ -1275,7 +1275,7 @@ export const useImageStore = create<ImageState & ImageActions>()((set, get) => (
       const selectedFiles = await selectFiles({ accept: 'image/*', multiple: false })
       if (!selectedFiles || selectedFiles.length === 0) return
       const selectedFile = selectedFiles[0]
-      // P2-d 사진인화: 프로파일 업로드 한도(maxPhotos/maxMb) — 프로파일 NULL 세트는 no-op.
+      // 사진인화: 프로파일 업로드 한도(maxPhotos/maxMb) — 프로파일 NULL 세트는 no-op.
       // 교체(이미 채워진 틀)는 사진 수가 늘지 않으므로 수량 한도에서 1장 빼고 판정한다.
       const photoPrint = isPhotoPrintSession()
       if (photoPrint) {
@@ -1285,14 +1285,14 @@ export const useImageStore = create<ImageState & ImageActions>()((set, get) => (
       }
       if (!checkMobileFileSize(selectedFile)) return
 
-      // D12·B11: 프로파일 세트(캘린더·사진인화 등)는 storage 업로드 URL 로 로드(canvasData 에 base64 미포함), NULL 세트는 종전 data URL
+      // 프로파일 세트(캘린더·사진인화 등)는 storage 업로드 URL 로 로드(canvasData 에 base64 미포함), NULL 세트는 종전 data URL
       const source = await get().resolveFrameFillImage(canvas, selectedFile, imagePlugin)
       const fabricImage = source?.image
       if (!fabricImage) {
         console.log('no image selected')
         return
       }
-      // P2-d 사진인화: 촬영일(EXIF DateTimeOriginal)을 원본 File 에서 읽어 채움 시 extension.takenAt 으로 기록(사진인화 세트만)
+      // 사진인화: 촬영일(EXIF DateTimeOriginal)을 원본 File 에서 읽어 채움 시 extension.takenAt 으로 기록(사진인화 세트만)
       if (photoPrint) writeFillTakenAt(fabricImage as Record<string, unknown>, source.takenAt)
 
       // 새 이미지 로드 성공 후에만 기존 사진을 치운다(로드 실패 시 기존 채움 유지).
@@ -1306,7 +1306,7 @@ export const useImageStore = create<ImageState & ImageActions>()((set, get) => (
       // 사진 위치 조정은 프레임 더블클릭(FrameInteractionPlugin adjust 모드)으로.
       canvas.setActiveObject(frame)
       canvas.requestRenderAll()
-      // P2-d 사진인화: 채움/교체 뒤 항목 옵션 재적용(date-overlay·흑백이 새 사진 기준으로 갱신). 프로파일 NULL 이면 즉시 0.
+      // 사진인화: 채움/교체 뒤 항목 옵션 재적용(date-overlay·흑백이 새 사진 기준으로 갱신). 프로파일 NULL 이면 즉시 0.
       if (photoPrint) void applyPhotoPrintForCanvas(canvas)
     })
   },
@@ -1327,8 +1327,8 @@ export const useImageStore = create<ImageState & ImageActions>()((set, get) => (
       return get().fillImage(canvas, fore, frame, imagePlugin)
     }
 
-    // P2-d 사진인화: 사진틀 fitMode(cover 기본 | contain) — 미설정(legacy)이면 max 비율·프레임 중심으로 종전과 바이트 동일.
-    // image(PNG) 틀은 유테(inset)를 지원하지 않는다(tests-3): inset 을 0 으로 취급해 사진이 창 전체를 덮게 한다(console.warn 1회).
+    // 사진인화: 사진틀 fitMode(cover 기본 | contain) — 미설정(legacy)이면 max 비율·프레임 중심으로 종전과 바이트 동일.
+    // image(PNG) 틀은 유테(inset)를 지원하지 않는다: inset 을 0 으로 취급해 사진이 창 전체를 덮게 한다(console.warn 1회).
     const frameW = frame.width! * frame.scaleX!
     const frameH = frame.height! * frame.scaleY!
     const g = readFrameFill(frame, canvas, frameW, frameH, true)
@@ -1363,7 +1363,7 @@ export const useImageStore = create<ImageState & ImageActions>()((set, get) => (
     })
 
     // 사진이 프레임 창 전체를 덮도록 스케일링 (가로/세로 중 큰 비율로 cover)
-    // P2-d 사진인화: fitMode 'contain'(이미지풀)이면 작은 비율.
+    // 사진인화: fitMode 'contain'(이미지풀)이면 작은 비율.
     const coverScale = resolveFillScaleFor(g, fore.width!, fore.height!, Math.max(frameW / fore.width!, frameH / fore.height!))
     // 촬영일: 사진인화 세트에서만 채움 시점에 extension.takenAt 기록(외부 주입·내 업로드 메타의 EXIF 원천)
     if (isPhotoPrintSession()) writeFillTakenAt(fore, resolveFillTakenAt(fore, get().uploadedPhotoMeta))
@@ -1393,7 +1393,7 @@ export const useImageStore = create<ImageState & ImageActions>()((set, get) => (
     // 프레임을 사진 위로 올려 프레임 테두리/장식이 사진을 덮도록 z-order 보정.
     // (사진은 위 add 호출 직후 맨 위에 놓이므로 프레임을 다시 최상단으로)
     frame.bringToFront()
-    // P2-d 사진인화: 항목 lowRes·sourcePhotoId 기록(프로파일 NULL·allCanvas 밖 캔버스면 no-op)
+    // 사진인화: 항목 lowRes·sourcePhotoId 기록(프로파일 NULL·allCanvas 밖 캔버스면 no-op)
     recordPhotoFillMeta(canvas, fore, g)
 
     return fore
@@ -1426,7 +1426,7 @@ export const useImageStore = create<ImageState & ImageActions>()((set, get) => (
     frame.clipPath = undefined
     canvas.remove(frame)
     canvas.requestRenderAll()
-    // P2-d 사진인화: 틀 삭제 뒤 항목 옵션 재적용(date-overlay 가 남은 첫 채워진 틀 기준으로 갱신). 프로파일 NULL 이면 즉시 0.
+    // 사진인화: 틀 삭제 뒤 항목 옵션 재적용(date-overlay 가 남은 첫 채워진 틀 기준으로 갱신). 프로파일 NULL 이면 즉시 0.
     if (isPhotoPrintSession()) void applyPhotoPrintForCanvas(canvas)
     return true
   },
@@ -1459,9 +1459,9 @@ export const useImageStore = create<ImageState & ImageActions>()((set, get) => (
         throw new Error('배경이 이미 제거된 이미지입니다')
       }
 
-      // S-P2A-B 샤드3: 추론을 서버(rembg 사이드카)로 오프로드한다.
+      // 추론을 서버(rembg 사이드카)로 오프로드한다.
       // 종전 `imagePlugin.getForeground()`(=@imgly/background-removal, AGPL-3.0 · 브라우저 ONNX)를
-      // 대체한다 — 픽셀 캡·업로드·잡·폴링은 api/cutout.ts 가 담당한다(D-12b/D-12d).
+      // 대체한다 — 픽셀 캡·업로드·잡·폴링은 api/cutout.ts 가 담당한다.
       editor?.emit('longTask:start', { message: '배경 제거 준비 중...' })
       const { element: cutoutElement, result } = await requestCutout(
         image.getElement() as HTMLImageElement,

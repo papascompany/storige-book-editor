@@ -44,12 +44,12 @@ export interface PageMeta {
   label: string
   isCover: boolean
   id: string
-  /** 표지 그룹 내 좌→우 순서 (cover.md §5.2). 내지면 undefined */
+  /** 표지 그룹 내 좌→우 순서. 내지면 undefined */
   coverPosition?: 'back-wing' | 'back-cover' | 'spine' | 'front-cover' | 'front-wing'
 }
 
 /**
- * 표지 페이지 라벨링 — cover.md §5.2 위치별 추론 규칙
+ * 표지 페이지 라벨링 — 위치별 추론 규칙
  *
  * 규칙: cover-related 페이지(WING/COVER/SPINE)만 추출하여 좌→우 순서로:
  *   - N=1: 단독 표지
@@ -126,7 +126,7 @@ export interface BuildPageMetaOptions {
    */
   hasCoverSlot?: boolean
   /**
-   * P1 캘린더 (2026-10-17): 인덱스별 라벨 치환(additive). 문자열을 돌려주면 그 라벨을 쓰고
+   * 캘린더: 인덱스별 라벨 치환(additive). 문자열을 돌려주면 그 라벨을 쓰고
    * undefined 면 기존 규칙(n쪽/펼침면/표지 위치)을 유지한다. isCover 판정은 바꾸지 않는다.
    */
   labelResolver?: (index: number, type?: string) => string | undefined
@@ -138,8 +138,8 @@ export function buildPageMeta(
 ): PageMeta[] {
   const hasCoverSlot = options.hasCoverSlot !== false
   // 표지 펼침면 = 첫 SPREAD(표지 슬롯이 있을 때만). 그 뒤의 SPREAD 는 내지 펼침면.
-  // (2026-08-23 수정: 종전엔 모든 SPREAD 를 표지로 간주해 펼침면 내지 8장이 전부 "표지(펼침면)" 표지
-  //  그룹이 되었고, 텍스트 패널 "다른 영역으로 이동" 이 내지 8장을 표지 영역으로 나열했다.)
+  // (모든 SPREAD 를 표지로 간주하면 펼침면 내지가 전부 "표지(펼침면)" 표지
+  //  그룹이 되고, 텍스트 패널 "다른 영역으로 이동" 이 내지를 표지 영역으로 나열한다.)
   const firstSpreadIndex = details.findIndex(
     (t) => ((t.type as TemplateType) || TemplateType.PAGE) === TemplateType.SPREAD,
   )
@@ -231,8 +231,8 @@ export const BookNavigation = memo(function BookNavigation({
     return () => { cancelled = true }
   }, [templateSetId, editorStorePages.length])
 
-  // P1 캘린더: 캘린더 세트면 "표지 / 2027년 1월 앞면 / … / 에필로그" 라벨 resolver(legacy 세트는 undefined → 기존 라벨).
-  // P2-d 사진인화: "사진 3 앞/뒤"(digital) · "사진 3"(chemical) 라벨 resolver.
+  // 캘린더: 캘린더 세트면 "표지 / 2027년 1월 앞면 / … / 에필로그" 라벨 resolver(legacy 세트는 undefined → 기존 라벨).
+  // 사진인화: "사진 3 앞/뒤"(digital) · "사진 3"(chemical) 라벨 resolver.
   const productProfile = useSettingsStore((s) => s.productProfile)
   const calendarMeta = useCalendarStore((s) => s.meta)
   const labelResolver = useMemo(() => {
@@ -279,13 +279,13 @@ export const BookNavigation = memo(function BookNavigation({
   const autoOrientation = useResolvedPageNavPosition() === 'right' ? 'vertical' : 'horizontal'
   const orientation = forcedOrientation ?? autoOrientation
 
-  // DD-5-B-v2: drag-to-reorder 상태 — sourceIdx는 allCanvas 기준 인덱스
+  // drag-to-reorder 상태 — sourceIdx는 allCanvas 기준 인덱스
   const [dragSourceIdx, setDragSourceIdx] = useState<number | null>(null)
   const [dragOver, setDragOver] = useState<{ idx: number; before: boolean } | null>(null)
 
   // 드래그 가능 조건 — 모바일/터치 + 스프레드 모드 + 메타 미동기화 시 비활성
   // (items.length !== allCanvasLength면 reorderByIndex가 length mismatch로 거절하므로 사전 차단)
-  // P2-d 사진인화(editor-flow-1): 항목(metadata.items)이 캔버스 위치(index×stride)에 묶여 있고 digital 은 2i/2i+1 앞·뒤 쌍이라
+  // 사진인화: 항목(metadata.items)이 캔버스 위치(index×stride)에 묶여 있고 digital 은 2i/2i+1 앞·뒤 쌍이라
   // 1장 단위 재정렬이 옵션·매수·sheet-map 짝을 깨뜨린다 → kind 'photo-print' 세트는 순서 변경을 비활성화한다.
   const dragEnabled =
     !TOUCH_ENV &&
@@ -375,7 +375,7 @@ export const BookNavigation = memo(function BookNavigation({
       )}
       aria-label="페이지 네비게이션"
     >
-      {/* 이전 버튼 — 터치 타겟 44px+ 보장 (반응형 Phase 2) */}
+      {/* 이전 버튼 — 터치 타겟 44px+ 보장 */}
       <button
         onClick={handlePrev}
         disabled={currentPageIndex === 0}
@@ -392,7 +392,7 @@ export const BookNavigation = memo(function BookNavigation({
       </button>
 
       {/* 카드 리스트 — 가로/세로 모두 같은 PageThumbnail 사용
-          표지 그룹과 내지 사이에 시각 구분선 삽입 (cover.md §5.3) */}
+          표지 그룹과 내지 사이에 시각 구분선 삽입 */}
       <div
         className={cn(
           'flex-1 flex gap-2 overflow-auto scrollbar-hide',
@@ -440,7 +440,7 @@ export const BookNavigation = memo(function BookNavigation({
         })}
       </div>
 
-      {/* 다음 버튼 — 터치 타겟 44px+ 보장 (반응형 Phase 2) */}
+      {/* 다음 버튼 — 터치 타겟 44px+ 보장 */}
       <button
         onClick={handleNext}
         disabled={currentPageIndex >= pageCount - 1}

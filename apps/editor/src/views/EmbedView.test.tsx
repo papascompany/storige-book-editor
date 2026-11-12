@@ -7,7 +7,7 @@
  *      보낸 message 와 같은 고정 문구, 세션에 templateSetId 가 없으면 고정 안내 문구(이벤트 없음)
  *   C. adminEdit=session: fragment 토큰 → 탭 저장소, 주소창 fragment 제거, 쿼리 폴백, 플래그 해제
  *   D. 레거시 발신 payload·targetOrigin (와일드카드 송신에는 guestToken 을 싣지 않음)
- *      W8-2b: storige:ready·storige:completed 의 templateSetId·templateSetMismatch(additive)
+ *      storige:ready·storige:completed 의 templateSetId·templateSetMismatch(additive)
  *   E. 게스트 세션 재오픈: fragment 게스트 토큰 수신·주소창 제거, 게스트 조회 경로 도출,
  *      도출 실패 시 정식 editor.error(SESSION_NOT_FOUND) 1회. 그 밖의 실패는 초기화와 같은 분류·고정 문구
  *      (연결·5xx → NETWORK_ERROR, 401 → AUTH_EXPIRED, 그 밖 → INVALID_DATA) 1회

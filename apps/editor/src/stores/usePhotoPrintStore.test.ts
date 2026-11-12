@@ -3,7 +3,7 @@ import type { ProductProfile } from '@storige/types'
 import { usePhotoPrintStore } from './usePhotoPrintStore'
 
 /**
- * P2-d 사진인화 (2026-10-19): 항목 스토어 — 프로파일 기본값·캔버스 수 동기화·옵션 클램프·복원.
+ * 사진인화: 항목 스토어 — 프로파일 기본값·캔버스 수 동기화·옵션 클램프·복원.
  */
 function digitalProfile(over: Partial<NonNullable<ProductProfile['photoPrint']>> = {}): ProductProfile {
   return {
@@ -170,7 +170,7 @@ describe('usePhotoPrintStore — restore(세션 metadata.items)', () => {
   })
 })
 
-describe('usePhotoPrintStore — removeItem(사진 단위 삭제) / setItemMeta (api-sheetmap-1·tests-1·contract-1·contract-2)', () => {
+describe('usePhotoPrintStore — removeItem(사진 단위 삭제) / setItemMeta', () => {
   beforeEach(() => {
     usePhotoPrintStore.getState().setFromProfile(digitalProfile())
     usePhotoPrintStore.getState().syncWithCanvasCount(6)

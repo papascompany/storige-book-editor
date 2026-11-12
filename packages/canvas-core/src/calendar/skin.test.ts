@@ -1,6 +1,6 @@
 /**
- * calendar/skin.test.ts — 캘린더 스킨 병합 순수 함수(설계 C10 §3.3 · §7.1, T7a)
- * + §9 R1 특성 테스트(기존 교체 경로의 clone 속성 손실 확인, 교체 경로 수정 뒤 사용자 요소 보존 확인 — 스킨 경로는 그 함수를 쓰지 않음).
+ * calendar/skin.test.ts — 캘린더 스킨 병합 순수 함수
+ * + 특성 테스트(기존 교체 경로의 clone 속성 손실 확인, 교체 경로 수정 뒤 사용자 요소 보존 확인 — 스킨 경로는 그 함수를 쓰지 않음).
  */
 import { describe, it, expect } from 'vitest'
 import { readFileSync } from 'fs'
@@ -160,7 +160,7 @@ describe('mergeSkinCanvas — 채움 사진', () => {
     expect(report).toMatchObject({ photosRefilled: 1, photosKept: 0 })
   })
 
-  it('대상 틀 없음(Q2 정책 — 호환 검사 밖의 방어) → 캔버스에서 빼고 보고', () => {
+  it('대상 틀 없음(호환 검사 밖의 방어) → 캔버스에서 빼고 보고', () => {
     const cur = canvas([ws(), frame('fa', 0, 0), frame('fb', 300, 0), photo('fa', '/u/a.jpg'), photo('fb', '/u/b.jpg')])
     const to = canvas([ws(), frame('s1', 0, 0)])
     const { json, report } = mergeSkinCanvas(cur, null, to, { templateIds: ['fa', 'fb'] })
@@ -241,7 +241,7 @@ describe('mergeSkinCanvas — 채움 사진', () => {
   })
 })
 
-describe('mergeSkinCanvas — 템플릿 문구(Q3 (a) 문자열만)', () => {
+describe('mergeSkinCanvas — 템플릿 문구(문자열만)', () => {
   const from = canvas([ws(), text('t1', '2027 CALENDAR'), text('t2', '우리 가족'), text('t3', 'Thank you')])
   const to = canvas([ws(), text('t1', '2027 SPRING', { fontFamily: 'SkinB', left: -200 }), text('t2', 'OUR FAMILY', { fill: '#f00' })])
 
@@ -324,7 +324,7 @@ describe('mergeSkinCanvas — 템플릿 유래 판정(판정 집합 · 보조 �
       { type: 'group', id: 'x-el', extensionType: 'template-element' },
       frame('x-frame', 0, 0),
     ])
-    // 고객 배경은 배치 모드가 따로 있다(B2) — 여기서는 '내 배경 유지'로 고객 요소 판정만 본다
+    // 고객 배경은 배치 모드가 따로 있다 — 여기서는 '내 배경 유지'로 고객 요소 판정만 본다
     const { json, report } = mergeSkinCanvas(cur, null, canvas([ws(), bg('bg-s')]), { keepCustomerBackground: true })
     expect(ids(json)).toEqual(['workspace', 'x-bg', 'x-el', 'x-frame'])
     expect(report).toMatchObject({ templateRemoved: 0, auxiliaryTemplateCount: 0, customerKept: 2, customerBackgroundsKept: 1 })
@@ -503,7 +503,7 @@ describe('mergeSkinCanvas — 고객 요소 그룹 자식·clipPath id 충돌', 
   })
 })
 
-describe('mergeSkinCanvas — 고객 배경 keepCustomerBackground (오너 결정 B2 (b))', () => {
+describe('mergeSkinCanvas — 고객 배경 keepCustomerBackground', () => {
   // 편집기 addBackground 모양: 템플릿 배경을 지우고 uuid id·extensionType 'background' 고객 배경을 둔다(잠금·deleteable 없음)
   const custBg = (src: string, id = 'cb-1'): Obj =>
     ({ type: 'image', id, extensionType: 'background', src, left: 0, top: 0, originX: 'center', originY: 'center', scaleX: 1.2, scaleY: 1.2, name: '배경' })
@@ -655,9 +655,9 @@ describe('mergeSkinCanvas — dryRun · 입력 불변', () => {
   })
 })
 
-// ─── §9 R1 특성 테스트 — 기존 템플릿 교체 경로(스킨은 쓰지 않음) ───────────────────
+// ─── 특성 테스트 — 기존 템플릿 교체 경로(스킨은 쓰지 않음) ───────────────────
 
-describe('R1 특성 — fabric clone 속성 손실·TemplatePlugin.preserveUserElements 예외(기존 결함 고정)', () => {
+describe('특성 — fabric clone 속성 손실·TemplatePlugin.preserveUserElements 예외(기존 결함 고정)', () => {
   const customProps = { id: 'r1', extensionType: 'frame', frameRef: 'x', parentLayerId: 'x', deleteable: false, lockInfo: { isLocked: true, lockLevel: 'admin' } }
 
   it('fabric 5.5.2 clone() 은 속성 목록 없이 부르면 id 포함 커스텀 속성을 잃고, extendFabricOption 을 넘기면 보존한다', async () => {

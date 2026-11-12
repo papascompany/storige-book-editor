@@ -1,13 +1,13 @@
 // @vitest-environment jsdom
 //
-// 곡선(패스) 텍스트 → PDF 벡터화(svgTextToPath) 회귀 테스트 — R9 (2026-08-11)
+// 곡선(패스) 텍스트 → PDF 벡터화(svgTextToPath) 회귀 테스트
 //
 // fabric 5.x 는 path(text-on-path) 텍스트를 SVG 로 낼 때 글자별 <tspan x y rotate> 를
 // 방출한다(dist _createTextCharSpan 의 renderLeft 분기). convertSvgTextToPath 는 이
 // tspan 을 opentype 아웃라인 <path> 로 바꾸면서 rotate 를 (x,y) 기준 transform 으로
-// 이관해야 PDF 에서도 호를 따라 글자가 회전된다 (P1-6, 2026-06-02 — 기존엔 무테스트).
+// 이관해야 PDF 에서도 호를 따라 글자가 회전된다 (기존엔 무테스트).
 //
-// ⚠️ 이 테스트가 적발한 실결함(R9 에서 수정): fabric 5.5.2 Text#toSVG 는 path 가 있으면
+// ⚠️ 이 테스트가 적발한 실결함(수정됨): fabric 5.5.2 Text#toSVG 는 path 가 있으면
 // <g>(텍스트) + <g id="curveText">(가이드 패스) "루트 2개" 프래그먼트를 반환한다.
 // XML 다중 루트는 파스 에러 → convertSvgTextToPath 가 즉시 throw → FontPlugin catch
 // → null → ServicePlugin 래스터(PNG) 폴백. 즉 곡선 텍스트는 도입 이래 벡터화가

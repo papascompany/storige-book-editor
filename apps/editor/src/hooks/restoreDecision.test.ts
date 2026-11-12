@@ -100,7 +100,7 @@ describe('shouldOfferRestore', () => {
     })
   })
 
-  describe('경량 동등성 억제 — 서버 canvasData 전달 시 (R4)', () => {
+  describe('경량 동등성 억제 — 서버 canvasData 전달 시', () => {
     it('페이지 수 + 페이지별 objects 개수가 전부 동일하면 백업이 최신이어도 offer:false', () => {
       const backup = makeBackup({
         canvasData: [{ objects: [{ type: 'rect' }, { type: 'textbox' }] }, { objects: [] }],

@@ -192,7 +192,7 @@ describe('collectEmptyFrames', () => {
 
   it('[O-급 태깅 실측] 캔버스 내 열거 순서 = getObjects() 순서(z-order/추가순), 시각적 위치순 아님', () => {
     // 시각적으로는 top-left 가 앞이어야 할 프레임(b)이 추가순으로 뒤에 있으면 뒤에 열거된다.
-    // 이 동작은 오너 게이트(위치순 정렬 옵션) 전까지 의도된 현행 스펙 — 변경 시 이 테스트로 감지.
+    // 이 동작은 의도된 현행 스펙(위치순 정렬 옵션 없음) — 변경 시 이 테스트로 감지.
     const later = { id: 'b', extensionType: 'frame', width: 10, height: 10, top: 0, left: 0 }
     const earlier = { id: 'a', extensionType: 'frame', width: 10, height: 10, top: 500, left: 500 }
     const out = collectEmptyFrames([fakeCanvas([earlier, later])])
@@ -201,7 +201,7 @@ describe('collectEmptyFrames', () => {
 })
 
 // ────────────────────────────────────────────────────────────────────────────
-// hasEmptyFrame (자동편집 UI 노출 판정 — Track 2)
+// hasEmptyFrame (자동편집 UI 노출 판정)
 // ────────────────────────────────────────────────────────────────────────────
 
 describe('hasEmptyFrame', () => {
@@ -238,7 +238,7 @@ describe('hasEmptyFrame', () => {
 })
 
 // ────────────────────────────────────────────────────────────────────────────
-// adaptUploadedPhotoMeta / mergeAutofillPhotoInputs (혼합 입력 어댑팅 — Track 2)
+// adaptUploadedPhotoMeta / mergeAutofillPhotoInputs (혼합 입력 어댑팅)
 // ────────────────────────────────────────────────────────────────────────────
 
 describe('adaptUploadedPhotoMeta', () => {
@@ -454,7 +454,7 @@ describe('autofillPhotosIntoFrames — 혼합 입력 4모드 라운드트립', (
 })
 
 // ────────────────────────────────────────────────────────────────────────────
-// 저해상도 경고 × 캔버스 dpi 기준 (2026-08-18 부수효과 ①의 회귀 가드)
+// 저해상도 경고 × 캔버스 dpi 기준 (회귀 가드)
 //
 // 배경: addPage/addInnerPage 로 만들어진 캔버스는 종전 unitOptions 미주입이라
 //   canvas.unitOptions === undefined 였고, canvasDpi() 가 72(px=pt) 로 폴백했다.
@@ -488,7 +488,7 @@ describe('autofillPhotosIntoFrames — 저해상도 경고는 캔버스 dpi 를 
     expect(result.lowResWarnings).toHaveLength(0)
   })
 
-  it('unitOptions 미주입(=8/18 이전 addPage 캔버스): 같은 사진이 122dpi 로 오탐 경고', async () => {
+  it('unitOptions 미주입: 같은 사진이 122dpi 로 오탐 경고', async () => {
     // 회귀 가드 — 이 케이스가 다시 "경고 없음"이 되면 폴백 의미가 바뀐 것이고,
     // "경고 있음"으로 남아 있는 한 addPage 주입 누락은 즉시 이 차이로 드러난다.
     const result = await runOn(undefined)
@@ -503,7 +503,7 @@ describe('autofillPhotosIntoFrames — 저해상도 경고는 캔버스 dpi 를 
     //   환산한다 — 즉 px 좌표를 settings.dpi(보통 150) 기준으로 본다. 여기 72(pt) 기준과
     //   서로 다르므로, px 상품에서 프레임 기능을 쓰게 되면 저해상도 경고가 dpi/72 배만큼
     //   과다 산출된다. 현재 프레임(사진틀)은 mm 상품 전용이라 노출이 없다.
-    //   정합화 여부는 오너 결정 대기 — RESUME 2026-08-24 §2 ④ 참조.
+    //   두 기준은 아직 정합화하지 않았다.
     const result = await runOn({ unit: 'px' })
     expect(result.lowResWarnings).toHaveLength(1)
     expect(result.lowResWarnings[0].effectiveDpi).toBe(122)

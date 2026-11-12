@@ -80,7 +80,7 @@ export const workerJobsApi = {
   getAll: async (
     status?: WorkerJobStatus,
     jobType?: WorkerJobType,
-    siteId?: string, // Phase C-3
+    siteId?: string,
   ): Promise<WorkerJob[]> => {
     const params = new URLSearchParams();
     if (status) params.append('status', status);

@@ -72,7 +72,7 @@ export default function EditorView() {
   // 페이지 네비게이션 위치 — 'right' (우측 패널) | 'bottom' (하단 패널)
   const navPosition = useResolvedPageNavPosition()
 
-  // Query parameters — Phase A-2 (2026-05-16): camelCase + snake_case 양쪽 수용.
+  // Query parameters — camelCase + snake_case 양쪽 수용.
   // 외부 사이트(특히 PHP)에서 snake_case 로 보내도 그대로 동작.
   const productId = getParamCompat(searchParams, 'productId')
   const contentId = getParamCompat(searchParams, 'contentId')
@@ -92,7 +92,7 @@ export default function EditorView() {
    * Admin 전용 — 템플릿셋 자체를 디자인하는 모드.
    * Admin "템플릿셋 수정" 버튼이 `?templateSetId=...&adminEdit=templateSet&token=<admin_jwt>` 로 진입.
    * 이 모드에서 저장 시 각 페이지 fabric canvas → 해당 templates.canvas_data 로 PATCH 처리.
-   * 고객(PHP/bookmoa) 흐름은 이 파라미터를 보내지 않으므로 무관.
+   * 고객(외부 쇼핑몰) 흐름은 이 파라미터를 보내지 않으므로 무관.
    */
   const adminEdit = getParamCompat(searchParams, 'adminEdit')
   const isAdminTemplateSetEdit = adminEdit === 'templateSet' && !!templateSetId
@@ -118,13 +118,13 @@ export default function EditorView() {
   const usePageStrip = isSpreadMode || !hasCoverSlot
   const showRuler = useUiPrefStore((s) => s.showRuler)
 
-  // B0-① (2026-07-04): editMode 는 URL 파라미터만으로 부여하지 않는다.
+  // editMode 는 URL 파라미터만으로 부여하지 않는다.
   // setupEmptyEditor 가 항상 editMode=false 로 리셋하므로, 관리자 진입
   // (adminEdit=templateSet 또는 ?editMode= 단독 요청)은 checkAuth 로 me.role 이
-  // ADMIN/SUPER_ADMIN 임이 확인된 뒤 여기서만 켠다. 고객(embed/PHP/bookmoa)은
+  // ADMIN/SUPER_ADMIN 임이 확인된 뒤 여기서만 켠다. 고객(embed/외부 쇼핑몰)은
   // role 검증을 통과할 수 없어 관리자 토글·applyObjectPermissions 무력화가 차단된다.
   const storeEditMode = useSettingsStore((s) => s.currentSettings.editMode)
-  // L3 B-3: 고객 시점 미리보기 중에는 editMode 자동 승격을 억제(미리보기가 즉시 되돌아가는 것 방지)
+  // 고객 시점 미리보기 중에는 editMode 자동 승격을 억제(미리보기가 즉시 되돌아가는 것 방지)
   const customerPreview = useSettingsStore((s) => s.customerPreview)
   const editModeRequested = isAdminTemplateSetEdit || (!!editMode && !contentId && !productId)
   useEffect(() => {
@@ -335,8 +335,8 @@ export default function EditorView() {
     return () => window.removeEventListener('resize', handleResize)
   }, [handleResize])
 
-  // [REVERTED 2026-05-04] OpenCV warmup — 운영에서 모든 메뉴 클릭 차단 발생
-  // 원인 진단 후 재시도 예정 (warmup 함수는 canvas-core에 export 유지)
+  // OpenCV warmup 은 여기서 하지 않는다 — 메뉴 클릭을 차단한다
+  // (warmup 함수는 canvas-core 가 export 한다)
 
   // ============================================================
   // 마운트 시 캔버스 초기화 + 콘텐츠 로드 (단일 useEffect)
@@ -543,21 +543,21 @@ export default function EditorView() {
     loadContentRef.current?.(params)
   }, [productId, contentId, contentType, editMode, size, templateSetId, pageCount, paperType, bindingType, width, height, ready])
 
-  // Spread 모드 신규 객체 region 메타 자동 부여 (cover.md §7 / D5 Phase 3b-ii)
+  // Spread 모드 신규 객체 region 메타 자동 부여
   useSpreadAutoAnchor(ready)
-  // 책등 폭 변경 후 캔버스 밖 객체 toast (cover.md §7 / D5 Phase 3b-iv)
+  // 책등 폭 변경 후 캔버스 밖 객체 toast
   useSpreadOutOfBoundsToast(ready)
-  // P2: 재단선(트림박스) 이탈 객체 경고 toast (화면 가이드 — 일반/스프레드 공통)
+  // 재단선(트림박스) 이탈 객체 경고 toast (화면 가이드 — 일반/스프레드 공통)
   useObjectOutOfTrimToast(ready)
-  // E1 §5-5: 재단/안전영역 침범 실시간 경고 toast (SafeZoneWarningPlugin 이벤트 브리지)
+  // 재단/안전영역 침범 실시간 경고 toast (SafeZoneWarningPlugin 이벤트 브리지)
   useSafeZoneWarningToast(ready)
-  // R8: 배치 이미지 유효 DPI(<150) 실시간 경고 toast (ImageDpiWarningPlugin 이벤트 브리지)
+  // 배치 이미지 유효 DPI(<150) 실시간 경고 toast (ImageDpiWarningPlugin 이벤트 브리지)
   useImageLowDpiToast(ready)
   // 미등록 폰트 → 기본 폰트 대체 안내 toast (FontPlugin fontSubstituted 이벤트 브리지, embed 와 대칭)
   useFontSubstitutionToast(ready)
-  // A-3① (트랙 C): 무선 얇은 책등(3mm 미만) 텍스트 배치 경고 toast
+  // 무선 얇은 책등(3mm 미만) 텍스트 배치 경고 toast
   useSpineNarrowTextWarningToast(ready)
-  // 캔버스 측 다크 모드 동기화 — 룰러 + 객체 선택 핸들 (§8.3 다크 모드 Phase 3)
+  // 캔버스 측 다크 모드 동기화 — 룰러 + 객체 선택 핸들
   useCanvasThemeSync(ready)
   // 5초마다 캔버스를 localStorage 에 백업 — iOS Safari WebContent 크래시 후 reload 시
   // 사용자 작업 회복용. sessionKey 는 contentId/templateSetId/'session-default' 우선순위.
@@ -584,11 +584,11 @@ export default function EditorView() {
   }, [showRuler, ready])
 
   // 컨테이너 크기 변화 감지 → 모든 캔버스 dim 동기화 + 워크스페이스 재센터링.
-  // T6 (2026-07-13): 로직을 useCanvasContainerSizeSync 훅으로 무변경 추출 —
+  // 로직을 useCanvasContainerSizeSync 훅으로 무변경 추출 —
   // /template·/embed 와 공유 (iOS Safari 3중 방어 가드 포함).
   useCanvasContainerSizeSync(ready, canvasContainerRef)
 
-  // §6-3: 스냅 설정(useUiPrefStore) → 플러그인 setter 배선(전 에디터). embed/Template 과 동형.
+  // 스냅 설정(useUiPrefStore) → 플러그인 setter 배선(전 에디터). embed/Template 과 동형.
   useSnapSettingsSync(ready)
 
   // Toggle side panel
@@ -602,7 +602,7 @@ export default function EditorView() {
     setLoadingMessage(message || '')
   }, [])
 
-  // 드래그 앤 드롭 이미지 업로드 (트랙 S)
+  // 드래그 앤 드롭 이미지 업로드
   const [dragActive, setDragActive] = useState(false)
   const uploadFile = useImageStore((s) => s.uploadFile)
   const dragCounterRef = useRef(0)
@@ -698,16 +698,16 @@ export default function EditorView() {
         screenMode={screenMode}
         onLoadingChange={handleLoadingChange}
         isAdminTemplateSetEdit={isAdminTemplateSetEdit}
-        /* L1⑤ (2026-07-06): 헤더 Layers 버튼과 연결 — EditorView 에도 레이어 패널 진입점 */
+        /* 헤더 Layers 버튼과 연결 — EditorView 에도 레이어 패널 진입점 */
         onToggleSidePanel={toggleSidePanel}
       />
 
-      {/* 인쇄 워크플로우 v1 Phase 5-D (2026-05-19) — 면지/PDF첨부/레더커버 floating controls.
-          침습 최소 통합: 캔버스/페이지 로직 미변경, 우측 상단 floating UI 만 추가. */}
+      {/* 인쇄 워크플로우 v1 — 면지/PDF첨부/레더커버 floating controls.
+          캔버스/페이지 로직과 분리된 우측 상단 floating UI. */}
       {!isAdminTemplateSetEdit && templateSetId && (
         <EditorWorkflowControls
           templateSetId={templateSetId}
-          /* 우측 세로 페이지 네비(150px) 위에 겹치지 않게 비켜 놓는다 (2026-08-13 실기 적발) */
+          /* 우측 세로 페이지 네비(150px) 위에 겹치지 않게 비켜 놓는다 */
           offsetRight={navPosition === 'right' ? 166 : 16}
         />
       )}
@@ -733,7 +733,7 @@ export default function EditorView() {
         </div>
       )}
 
-      {/* CoverFocusBar — 활성 페이지가 표지 그룹일 때만 표시 (cover.md §6) */}
+      {/* CoverFocusBar — 활성 페이지가 표지 그룹일 때만 표시 */}
       {!isSpreadMode && <CoverFocusBar />}
 
       {/* Main Layout */}
@@ -758,7 +758,7 @@ export default function EditorView() {
             <FeatureSidebar mobileOverlay={screenMode !== 'desktop'} />
             {ready && <ControlBar mobileOverlay={screenMode !== 'desktop'} />}
 
-            {/* Canvas Area — 이미지 드래그 앤 드롭 영역 (트랙 S)
+            {/* Canvas Area — 이미지 드래그 앤 드롭 영역
                 NOTE: ControlBar 가 모바일에서 fixed bottom 시트(45vh) 로 떠 있지만,
                 이전에 pb-[45vh] 로 main 을 줄이면 selection 마다 ResizeObserver →
                 setDimensions → 캔버스 재렌더 → 다시 selection 이벤트의 캐스케이드가
@@ -787,7 +787,7 @@ export default function EditorView() {
               {/* 빈 캔버스 안내 (사용자 객체 없을 때) */}
               <EmptyCanvasHint />
 
-              {/* 선택 객체 플로팅 액션 바 (E1 §5-3) — 플래그 게이팅은 컴포넌트 내부 */}
+              {/* 선택 객체 플로팅 액션 바 — 플래그 게이팅은 컴포넌트 내부 */}
               {ready && <ObjectActionBar />}
 
               {/* Canvas Container */}
@@ -816,7 +816,7 @@ export default function EditorView() {
                 <BookNavigation orientation="vertical" />
               ))}
 
-            {/* L1⑤ (2026-07-06): SidePanel 마운트 갭 해소 — import/toggle 배선만 있고
+            {/* SidePanel 마운트 갭 해소 — import/toggle 배선만 있고
                 JSX 렌더가 없어 디자이너 화면에서 레이어 패널이 열 수 없었다(embed:1786 과 동일 패턴). */}
             <SidePanel show={showSidePanel} onClose={() => setShowSidePanel(false)} />
           </div>

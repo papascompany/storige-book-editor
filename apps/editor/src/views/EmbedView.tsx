@@ -1,7 +1,7 @@
 /**
  * EmbedView — iframe 임베드 전용 라우트 (`/embed`).
  *
- * 외부 서비스(bookmoa-mobile 등)가 편집기를 iframe URL 로 띄울 때 진입하는 경로.
+ * 외부 서비스(파트너 사이트 등)가 편집기를 iframe URL 로 띄울 때 진입하는 경로.
  * 기존 `/`(EditorView) 와 달리, **완전 배선된** `EmbeddedEditor`(embed.tsx) 를 그대로
  * 마운트한다 → 세션 자동저장 / 세션 영속 / 정식 postMessage 엔벨로프 / **sessionId 재편집**
  * 을 별도 구현 없이 재사용한다.
@@ -9,7 +9,7 @@
  * 진입 형태 2종:
  *   - 신규 편집: `/embed?templateSetId=<id>&token=<jwt>&orderSeqno=<n>&pageCount=&paperType=&bindingType=&parentOrigin=`
  *   - 재편집  : `/embed?sessionId=<id>&token=<jwt>&parentOrigin=`  (templateSetId 는 생략 권장 — 세션에서 자동 도출.
- *     W8-2b: 명시해도 세션 세트가 우선하고, 다르면 editor.ready·storige:ready 에 templateSetMismatch 가 실린다)
+ *     명시해도 세션 세트가 우선하고, 다르면 editor.ready·storige:ready 에 templateSetMismatch 가 실린다)
  *   - 게스트 세션 재편집: 위 재편집 URL 에 `#guestToken=<게스트 토큰>` fragment 를 붙인다.
  *     편집기는 fragment 에서만 읽고(쿼리 `guestToken` 은 읽지 않음) 주소창에서 곧바로 지운다.
  *
@@ -113,7 +113,7 @@ export default function EmbedView() {
     async function build() {
       const get = (key: string) => getParamCompat(searchParams, key) || undefined
 
-      // 관리자 편집 탭(2026-09-29): adminEdit=session 일 때만 토큰을 URL fragment 에서 받아
+      // 관리자 편집 탭: adminEdit=session 일 때만 토큰을 URL fragment 에서 받아
       // 탭 단위 sessionStorage 에 둔다. 일반(파트너) 임베드는 플래그를 해제 → 종전 localStorage 경로.
       const adminEdit = getParamCompat(searchParams, 'adminEdit') === 'session'
       setAdminEditTab(adminEdit)
@@ -133,34 +133,34 @@ export default function EmbedView() {
       const contentFileId = get('contentFileId')
       const apiBaseUrl = get('apiBaseUrl')
       const pageCount = get('pageCount') ? Number(get('pageCount')) : undefined
-      // S5 (R-195): trim 후 '' 또는 '-'(호스트의 미지정 표기) → undefined.
+      // trim 후 '' 또는 '-'(호스트의 미지정 표기) → undefined.
       const paperType = normalizeSpineCode(get('paperType'))
       const bindingType = normalizeSpineCode(get('bindingType'))
-      // R-195: 호스트(주문) 지정 책등 폭(mm). 유한수 ≥ 0 만 수용('0' → 0),
+      // 호스트(주문) 지정 책등 폭(mm). 유한수 ≥ 0 만 수용('0' → 0),
       // ''·NaN·음수 → undefined(비어있지 않은 무효값은 console.warn). snake `spine_width_mm` 허용.
       const spineWidthMm = parseSpineWidthMmParam(getParamCompat(searchParams, 'spineWidthMm'))
-      // R-196 host page limits (2026-09-29): 상품별 내지 쪽수 범위·배수(물리 페이지). 템플릿셋
+      // host page limits: 상품별 내지 쪽수 범위·배수(물리 페이지). 템플릿셋
       // pageCountRange/pageStep 보다 우선. 정수만 수용(min/max 1~500, pageStep 1~500 — 1 = 배수 제약 없음, 템플릿셋 단위도 쓰지 않음),
       // 무효값은 console.warn 후 undefined → 기존 동작. snake `page_count_min`·`page_count_max`·`page_step` 허용.
       const pageCountMin = parsePageCountLimitParam(getParamCompat(searchParams, 'pageCountMin'), 'pageCountMin')
       const pageCountMax = parsePageCountLimitParam(getParamCompat(searchParams, 'pageCountMax'), 'pageCountMax')
       const pageStep = parsePageStepParam(getParamCompat(searchParams, 'pageStep'))
-      // 표지 날개(2026-08-03): 날개는 종전까지 템플릿 spec 전용 정적값이라, 같은 표지 템플릿으로
-      // 상품별 날개 유무를 가를 수 없었다. 호스트(bookmoa 관리자)가 상품 세팅을 주문 옵션으로
+      // 표지 날개: 템플릿 spec 의 날개는 정적값이라, 같은 표지 템플릿으로
+      // 상품별 날개 유무를 가를 수 없다. 호스트 관리자가 상품 세팅을 주문 옵션으로
       // 전달하면 편집기가 반영한다. 미전달이면 템플릿 값 그대로 = 기존 동작 불변.
       const wingEnabledRaw = get('wingEnabled')
       const wingEnabled =
         wingEnabledRaw === undefined ? undefined : wingEnabledRaw === '1' || wingEnabledRaw === 'true'
       const wingWidthMmRaw = get('wingWidthMm')
       const wingWidthMm = wingWidthMmRaw ? Number(wingWidthMmRaw) : undefined
-      // 내지 PDF 첨부 진입점(W1-G2, 2026-08-13): book 모드면 기본 노출.
+      // 내지 PDF 첨부 진입점: book 모드면 기본 노출.
       // 첨부를 쓰지 않는 호스트는 `contentPdfAttach=0|false` 로 끈다(미전달=노출).
       const contentPdfAttachRaw = get('contentPdfAttach')
       const contentPdfAttach =
         contentPdfAttachRaw === undefined
           ? undefined
           : !(contentPdfAttachRaw === '0' || contentPdfAttachRaw === 'false')
-      // 주문 메타 스냅샷용 (2026-06-11) — admin 세션/삭제 리스트에서 부수·인쇄제목·상품명 노출
+      // 주문 메타 스냅샷용 — admin 세션/삭제 리스트에서 부수·인쇄제목·상품명 노출
       const quantity = get('quantity') ? Number(get('quantity')) : undefined
       const title = get('title')
       const productName = get('productName')
@@ -199,7 +199,7 @@ export default function EmbedView() {
       }
 
       // 재편집: sessionId 만 받고 templateSetId 가 없으면 세션에서 도출.
-      // (templateSetId 를 함께 보내면 이 조회는 생략되지만, 편집기는 W8-2b 규칙대로 세션 세트를 우선한다 —
+      // (templateSetId 를 함께 보내면 이 조회는 생략되지만, 편집기는 세션 세트를 우선한다 —
       //  세션 세트 조회가 404 일 때만 함께 보낸 세트로 연다)
       // 게스트 토큰이 있으면 게스트 조회 경로 → 기억된 토큰 → 기존 조회 경로 순(EmbeddedEditor 와 같은 순서).
       // 조회 실패 시 화면 문구는 호스트에 보낸 message 와 같은 고정 문구다.
@@ -273,7 +273,7 @@ export default function EmbedView() {
           pageCountMin, pageCountMax, pageStep,
         },
         // 레거시 dual-emit (정식 엔벨로프는 EmbeddedEditor 가 별도 발신)
-        // W8-2b: templateSetId 는 편집기가 실제로 연 세트(info 미전달이면 종전 URL/도출 값),
+        // templateSetId 는 편집기가 실제로 연 세트(info 미전달이면 종전 URL/도출 값),
         // 재편집 불일치가 있으면 templateSetMismatch 를 additive 동봉(editor.ready 와 같은 값).
         onReady: (info?: EditorReadyInfo) =>
           emitLegacy(parentOrigin, 'storige:ready', {
@@ -289,17 +289,17 @@ export default function EmbedView() {
             orderSeqno: r.orderSeqno,
             status: 'completed',
             completedAt: r.savedAt,
-            // S2 (2026-07-04): 실측 페이지수/규격/가격메타 — 정식 envelope 와 동일하게
-            // legacy 형식에도 additive 동봉 (bookmoa-mobile 은 storige:completed 를 주 수신).
+            // 실측 페이지수/규격/가격메타 — 정식 envelope 와 동일하게
+            // legacy 형식에도 additive 동봉 (storige:completed 를 주로 수신하는 호스트가 있다).
             //
-            // 🔴 2026-09-21: needsAuth·guestToken 도 동봉한다. **이 2키가 없으면 게스트 완료가
+            // 🔴 needsAuth·guestToken 도 동봉한다. **이 2키가 없으면 게스트 완료가
             //    파트너에게 "완료"로 전달된다.** 게스트 완료 분기(embed.tsx)의 발신 순서가
             //      ① onComplete(=이 legacy) → ② 'editor.complete'(needsAuth 보유) → ③ 'editor.needAuth'
             //    이라, legacy 를 먼저 처리하고 중복방지 플래그를 세우는 호스트는 ②③을 버린다.
-            //    그 결과 파트너가 구현해 둔 needsAuth 분기와 needAuthRef 폴백이 **구조적으로
-            //    발화하지 못했다**(needAuth 는 완료보다 먼저 나가는 경로가 없다 — 발신처는
+            //    그러면 파트너가 구현해 둔 needsAuth 분기와 needAuthRef 폴백이 **구조적으로
+            //    발화하지 못한다**(needAuth 는 완료보다 먼저 나가는 경로가 없다 — 발신처는
             //    embed.tsx 의 완료 분기 2곳뿐이고 GuestAuthPromptModal 은 사용처 0건).
-            //    실피해 확인: bookmoa 장바구니 2건이 files 0·guestToken null 로 담겼다.
+            //    그 경우 주문이 files 0·guestToken null 로 담긴다.
             // ⚠️ 위의 `status: 'completed'` 는 **게스트 완료에도 하드코딩 리터럴**이다.
             //    수신 측은 status 로 판정하면 안 되고 needsAuth·files 로 판정해야 한다.
             //    (교정하면 리터럴을 읽는 미확인 파트너를 깨뜨릴 수 있어 의도적으로 유지 —
@@ -308,7 +308,7 @@ export default function EmbedView() {
             // 🔒 `needsAuth` 는 무조건 동봉(불리언 — 자격증명 아님).
             //    `guestToken` 은 **`parentOrigin` 이 지정된 경우에만** 동봉한다.
             //    emitLegacy 는 `parentOrigin` 이 없으면 `targetOrigin='*'` 로 송신하므로(emitLegacy 본문 참조),
-            //    무조건 동봉하면 임베드 페이지의 다른 스크립트·프레임에 게스트 토큰이 샌다.
+            //    와일드카드 송신에는 게스트 토큰을 싣지 않는다.
             //    PLATFORM_INTEGRATION_GUIDE §3.2 가 "레거시 페이로드는 필드 화이트리스트라
             //    token·guestToken 같은 자격증명은 실리지 않는다"(와일드카드 송신 한정) 를 완화 근거로
             //    명시하고 있어, 그 보안 속성을 깨지 않으려면 오리진 고정이 전제여야 한다.
@@ -320,17 +320,17 @@ export default function EmbedView() {
             ...(r.pageCount != null ? { pageCount: r.pageCount } : {}),
             ...(r.size ? { size: r.size } : {}),
             ...(r.pricing ? { pricing: r.pricing } : {}),
-            // R-195: 적용 책등 폭(mm, 스프레드 책만) — 정의된 경우에만 additive.
+            // 적용 책등 폭(mm, 스프레드 책만) — 정의된 경우에만 additive.
             ...(r.spineWidthMm != null ? { spineWidthMm: r.spineWidthMm } : {}),
-            // W8-2b (additive): 이번 편집을 앉힌 템플릿셋·재편집 불일치 — editor.complete 와 같은 값.
-            //   bookmoa·printy 는 legacy 를 먼저 받아 완료를 확정하므로 legacy 에도 싣는다.
-            //   자격증명이 아니므로 와일드카드 송신에도 싣는다(D24·D25 불변식 범위 밖).
+            // additive: 이번 편집을 앉힌 템플릿셋·재편집 불일치 — editor.complete 와 같은 값.
+            //   일부 호스트는 legacy 를 먼저 받아 완료를 확정하므로 legacy 에도 싣는다.
+            //   자격증명이 아니므로 와일드카드 송신에도 싣는다(불변식 범위 밖).
             ...(r.templateSetId ? { templateSetId: r.templateSetId } : {}),
             ...(r.templateSetMismatch ? { templateSetMismatch: r.templateSetMismatch } : {}),
-            // P1 캘린더 (2026-10-17): 상품 프로파일 요약 — 정식 envelope 와 같은 additive 키(프로파일 없는 세트는 키 없음)
+            // 캘린더: 상품 프로파일 요약 — 정식 envelope 와 같은 additive 키(프로파일 없는 세트는 키 없음)
             ...(r.product ? { product: r.product } : {}),
-            // P2-d 사진인화 (2026-10-19, 계약 row ②): 사진별 항목 — 정식 envelope 와 같은 additive 키(사진인화 세트 회원 완료만;
-            //   캘린더/NULL 세트는 키 없음). 자격증명이 아니므로 와일드카드 송신에도 싣는다(D24·D25 불변식 범위 밖).
+            // 사진인화: 사진별 항목 — 정식 envelope 와 같은 additive 키(사진인화 세트 회원 완료만;
+            //   캘린더/NULL 세트는 키 없음). 자격증명이 아니므로 와일드카드 송신에도 싣는다(불변식 범위 밖).
             ...(r.items ? { items: r.items } : {}),
             files: {
               coverFileId: r.files.coverFileId ?? null,

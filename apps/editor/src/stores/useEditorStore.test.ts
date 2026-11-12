@@ -384,7 +384,7 @@ describe('useEditorStore', () => {
       expect(useEditorStore.getState().canDeletePage('page-1')).toBe(true);
     });
 
-    // 펼침면(2-up) 내지: 캔버스 1장 = 물리 2페이지 (2026-08-03)
+    // 펼침면(2-up) 내지: 캔버스 1장 = 물리 2페이지
     // pageCountRange/제본 제약은 물리 페이지 기준이라 캔버스 수를 그대로 비교하면 상·하한이
     // 정확히 절반으로 잘못 걸린다.
     describe('pagesPerCanvas (펼침면 2-up 환산)', () => {
@@ -451,7 +451,7 @@ describe('useEditorStore', () => {
       });
     });
 
-    // S8 (2026-09-28): 내지 증감 단위(pageStep) — 물리 페이지 수를 step 배수로 유지
+    // 내지 증감 단위(pageStep) — 물리 페이지 수를 step 배수로 유지
     describe('pageStep (내지 증감 단위)', () => {
       // 로더(useEditorContents)가 적재하는 산정 기준 — 완료 가드와 같은 산식
       const COVER_SPREAD = { isSpreadMode: true, regionScope: 'cover' };
@@ -610,8 +610,8 @@ describe('useEditorStore', () => {
         expect(st.getPageDeleteUnit()).toBe(1); // 10 → 8
       });
 
-            // S8 리뷰 회귀: 실제 로더는 펼침면 내지를 TemplateType.SPREAD 로 만든다(PAGE 아님).
-      // 종전 산식은 PAGE 만 세어 물리 0p 로 보고 항상 2장씩 움직여, 홀수 시드면 배수에 영영 도달 못 했다.
+            // 실제 로더는 펼침면 내지를 TemplateType.SPREAD 로 만든다(PAGE 아님).
+      // PAGE 만 세면 물리 0p 로 보고 항상 2장씩 움직여, 홀수 시드면 배수에 영영 도달하지 못한다.
       const mkSpreadInner = (n: number, anchorRequired = true) =>
         Array.from({ length: n }, (_, i) =>
           createMockPage({
@@ -648,7 +648,7 @@ describe('useEditorStore', () => {
         expect(st2.getDeleteGroup('s-2')).toEqual(['s-2', 's-3']);
       });
 
-      it('pageStep=4 + 표지+펼침면 내지(SPREAD): 내지 캔버스 1장 = 2쪽(2026-09-28 오너 결정)', () => {
+      it('pageStep=4 + 표지+펼침면 내지(SPREAD): 내지 캔버스 1장 = 2쪽', () => {
         useEditorStore.setState({
           pagesPerCanvas: 2,
           pageStepBasis: COVER_SPREAD,
@@ -665,7 +665,7 @@ describe('useEditorStore', () => {
         expect(st.getPageDeleteUnit()).toBe(1); // 6 → 4
       });
 
-      // 2026-09-28: 펼침면 내지는 TemplateType.SPREAD — 유형으로 세면 0p 가 되어 최소/최대가 무력화됐다.
+      // 펼침면 내지는 TemplateType.SPREAD — 유형으로 세면 0p 가 되어 최소/최대가 무력화된다.
       describe('펼침면 내지 최소/최대 쪽수 (SPREAD 유형 실경로)', () => {
         const setup = (basis: typeof COVER_SPREAD | typeof INNER_SPREAD, range: number[]) =>
           useEditorStore.setState({
@@ -711,10 +711,10 @@ describe('useEditorStore', () => {
         });
       });
 
-      // R-196 host page limits (2026-09-29): 로더가 호스트 병합 범위(예: [16,300])를 pageCountRange 에
+      // host page limits: 로더가 호스트 병합 범위(예: [16,300])를 pageCountRange 에
       // 넣었을 때 스토어 게이트가 그대로 따르는지 고정한다. 호스트 범위 표시(hostPageLimitSides)가 없으면
-      // 제본 min/max·pageStep 이 계속 위에 얹히고, 표시된 쪽은 제본 값 대신 범위만 적용된다(W5 키별 대체).
-      describe('호스트 쪽수 한도 병합 범위 (R-196 회귀 가드)', () => {
+      // 제본 min/max·pageStep 이 계속 위에 얹히고, 표시된 쪽은 제본 값 대신 범위만 적용된다(키별 대체).
+      describe('호스트 쪽수 한도 병합 범위 (회귀 가드)', () => {
         const setupHost = (overrides: Record<string, unknown> = {}) =>
           useEditorStore.setState({
             pagesPerCanvas: 2,

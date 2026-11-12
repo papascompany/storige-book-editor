@@ -24,7 +24,7 @@ export const PageNavigation = memo(function PageNavigation({
   const pageCount = usePageCount()
 
   const setPage = useAppStore((state) => state.setPage)
-  // 포토북 내지(O-2): 펼침면 모드면 현재 펼침면의 좌/우 페이지 번호 라벨(예: 'p.1–2')을 표시.
+  // 포토북 내지: 펼침면 모드면 현재 펼침면의 좌/우 페이지 번호 라벨(예: 'p.1–2')을 표시.
   // 한 캔버스=한 펼침면이라 currentPageIndex 가 곧 펼침면 인덱스. 비-내지면 null(기존 표시 불변).
   const isInnerSpread = useSettingsStore((s) => s.spreadConfig?.regionScope === 'inner')
   const pairLabel = useMemo(() => {

@@ -4,7 +4,7 @@ import { PluginBase, PluginOption } from '../plugin'
 import { pxToMmDisplay } from '../utils/math'
 
 /**
- * ImageDpiWarningPlugin (R8) — 배치 이미지 유효 DPI 실시간 경고
+ * ImageDpiWarningPlugin — 배치 이미지 유효 DPI 실시간 경고
  *
  * object:added / object:modified 시 fabric.Image 계열 사용자 객체의 **유효 DPI**
  * (원본 픽셀 ÷ 인쇄 크기 inch)를 계산해, 인쇄 최소 기준(기본 150DPI) 미만으로

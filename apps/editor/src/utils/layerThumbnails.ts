@@ -1,7 +1,7 @@
 /**
- * L5-② (2026-07-11): 레이어 행 미니 썸네일 — 캐시(stale-while-revalidate) + 안전 생성.
+ * 레이어 행 미니 썸네일 — 캐시(stale-while-revalidate) + 안전 생성.
  *
- * 미리캔버스 행 규약(LAYER_UX_REDESIGN_2026-07-06.md §0-4·§5 2차): 텍스트 행은
+ * 미리캔버스 행 규약: 텍스트 행은
  * 내용 미리보기 유지, 이미지·도형류(image/frame 채워진 것/shape/svg 계열)만
  * 타입 아이콘 자리를 24px 급 미니 썸네일로 대체. 실패/미생성 시 아이콘 fallback.
  *
@@ -10,7 +10,7 @@
  *   재생성 전까지 이전 썸네일 계속 표시 = stale-while-revalidate, 아이콘 깜빡임 방지).
  * - 무효화: canvas 'object:modified' 시에만(SidePanel 에서 배선).
  * - 생성: requestIdleCallback 디바운스 + 패스당 상한(THUMBS_PER_IDLE_PASS).
- * - 순수 뷰 상태 — 직렬화/저장 무접촉, canvas-core 공개 API 불변(§8).
+ * - 순수 뷰 상태 — 직렬화/저장 무접촉, canvas-core 공개 API 불변.
  */
 import { SelectionType } from '@storige/canvas-core'
 

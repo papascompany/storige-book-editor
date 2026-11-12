@@ -16,7 +16,7 @@ class Editor extends EventEmitter {
 
   private contextMenu: ContextMenu | undefined
 
-  // C6: 터치 롱프레스 컨텍스트 메뉴 트리거 정리 함수(enableTouchContextMenu 가 설정, dispose 가 호출)
+  // 터치 롱프레스 컨텍스트 메뉴 트리거 정리 함수(enableTouchContextMenu 가 설정, dispose 가 호출)
   private touchContextMenuCleanup: (() => void) | undefined
 
   private plugins: Map<string, PluginBase> = new Map()
@@ -48,7 +48,7 @@ class Editor extends EventEmitter {
   }
 
   /**
-   * C9 §6-2: 등록된 모든 플러그인 hotkey 를 pluginName 과 함께 열람(도움말 모달 자동 생성용).
+   * 등록된 모든 플러그인 hotkey 를 pluginName 과 함께 열람(도움말 모달 자동 생성용).
    * 열람 전용 — plugins Map 은 private 유지. bindingContextItems 와 동일 소스(plugin.hotkeys)라
    * 모달·컨텍스트 메뉴·단축키 등록이 단일 진실을 공유(수동 동기화 드리프트 0).
    */
@@ -117,7 +117,7 @@ class Editor extends EventEmitter {
     }
     this.hotkeyBindings = []
 
-    // C6: 터치 롱프레스 트리거(wrapperEl pointer 리스너 4종 + 대기 타이머) 해제. 정리 함수는
+    // 터치 롱프레스 트리거(wrapperEl pointer 리스너 4종 + 대기 타이머) 해제. 정리 함수는
     // 부착 시점의 wrapperEl 을 클로저로 보유하므로 this.canvas=null 순서와 무관하나, 컨텍스트
     // 메뉴 정리와 인접 배치. 멱등(undefined 가드).
     this.touchContextMenuCleanup?.()
@@ -186,7 +186,7 @@ class Editor extends EventEmitter {
   }
 
   /**
-   * C6: 모바일 터치 롱프레스 컨텍스트 메뉴를 활성화한다. 앱(createCanvas)이 coarse-pointer
+   * 모바일 터치 롱프레스 컨텍스트 메뉴를 활성화한다. 앱(createCanvas)이 coarse-pointer
    * 환경에서 호출. wrapperEl 에 pointer 트리거를 부착하고, 롱프레스 발화 시 contextMenu.showAt
    * 를 연다(이중발화 억제는 showAt/ContextMenu 내부가 처리 — Editor 는 트리거만 배선).
    * 재호출 시 기존 트리거를 먼저 해제하며, dispose 에서 정리한다(멱등).
@@ -204,8 +204,8 @@ class Editor extends EventEmitter {
   }
 
   /**
-   * C6-fix: 컨텍스트 메뉴 강제 닫기. 모달 등 상위 오버레이가 열릴 때 앱이 호출해
-   * 메뉴가 오버레이 위에 잔류(버튼 가림)하는 것을 막는다(2026-08-01 실측 결함 ②).
+   * 컨텍스트 메뉴 강제 닫기. 모달 등 상위 오버레이가 열릴 때 앱이 호출해
+   * 메뉴가 오버레이 위에 잔류(버튼 가림)하는 것을 막는다.
    * 포인터 경유가 아닌 오픈 경로(DEL 핫키 등)까지 커버하는 벨트-앤-서스펜더.
    * 메뉴 미표시 상태에선 무해 no-op(멱등).
    */

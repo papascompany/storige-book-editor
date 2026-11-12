@@ -27,9 +27,9 @@ export function useCanvasLocalBackup(sessionKey: string | null | undefined, read
 
     const save = () => {
       try {
-        // L3 B-3: 고객 시점 미리보기 중 백업 중단 — 강제 hasControls:false 가 백업에 굳는 것 방지.
+        // 고객 시점 미리보기 중 백업 중단 — 강제 hasControls:false 가 백업에 굳는 것 방지.
         if (useSettingsStore.getState().customerPreview) return
-        // L4-②: PDF 생성 창(excludeFromExport 임시 플래깅) 동안 toJSON 백업 시 printExclude/
+        // PDF 생성 창(excludeFromExport 임시 플래깅) 동안 toJSON 백업 시 printExclude/
         // moldIcon 객체 누락 — 생성 완료 후 1회 지연 실행(5초 인터벌 재시도와 별개 즉시 보장).
         if (isAutosaveSuspended()) {
           deferUntilAutosaveResumed('canvasLocalBackup.save', save)

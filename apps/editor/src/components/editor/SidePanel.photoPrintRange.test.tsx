@@ -17,7 +17,7 @@ import { usePhotoPrintStore } from '@/stores/usePhotoPrintStore'
 import { DEFAULT_PAGE_STEP_BASIS } from '@/utils/pageStep'
 
 /**
- * P2-d 사진인화 (2026-10-19): productProfile pages.kind=range 세트는 SidePanel '페이지' 섹션의 추가/삭제 UI 를 그대로 쓰고
+ * 사진인화: productProfile pages.kind=range 세트는 SidePanel '페이지' 섹션의 추가/삭제 UI 를 그대로 쓰고
  * (fixed 와 달리 숨기지 않음), digital 은 pageStep=2 경로로 2장 단위 추가/삭제한다. 추가한 캔버스마다
  * seedPhotoPrintCanvas(k) 를 부르고, 추가/삭제 뒤 항목 수를 캔버스 수에 동기화한다. NULL 프로파일은 시드/동기화 호출 없음.
  */
@@ -114,7 +114,7 @@ function seedItems(profile: ProductProfile, canvasCount: number) {
 }
 const itemSummary = () => usePhotoPrintStore.getState().items.map((i) => [i.index, i.canvasIndex, i.copies])
 
-describe('SidePanel — range 프로파일 (P2-d 사진인화)', () => {
+describe('SidePanel — range 프로파일 (사진인화)', () => {
   it('digital range(2~40, pageStep 2) 6캔버스: 추가 버튼 노출 → 2장 추가 + 캔버스마다 시드 + 동기화 1회', async () => {
     wire({ canvasCount: 6, profile: digitalProfile, pageStep: 2, min: 2, max: 40 })
     expect(screen.queryByLabelText('페이지 추가')).not.toBeNull()
@@ -184,7 +184,7 @@ describe('SidePanel — range 프로파일 (P2-d 사진인화)', () => {
   })
 })
 
-describe('SidePanel — 사진 단위 삭제 (editor-flow-2 / api-sheetmap-1 / tests-1)', () => {
+describe('SidePanel — 사진 단위 삭제', () => {
   it('digital 6캔버스: 뒷면 c3(사진 2 뒤) 삭제 → 사진 2 의 [c2, c3] 묶음([뒤_i, 앞_{i+1}] 아님) + 스토어 항목 B 제거 → [A, C] 옵션·매수 유지', () => {
     wire({ canvasCount: 6, profile: digitalProfile, pageStep: 2, min: 2, max: 40 })
     seedItems(digitalProfile, 6)

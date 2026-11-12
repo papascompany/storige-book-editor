@@ -1,4 +1,4 @@
-// RulerPlugin 중앙 스냅 토글 게이트 (C9/E2 W4 §6-3, 적대 리뷰 #6 가드)
+// RulerPlugin 중앙 스냅 토글 게이트
 //
 // 생성자(CanvasRuler init)가 무거워 Object.create 로 프로토타입 인스턴스만 만들어
 // handleObjectMoving(private) 를 직접 호출한다.

@@ -1,4 +1,4 @@
-// ObjectPlugin 화살표 이동(nudge) 단일화 회귀 테스트 (C9/E2 W4 §6-1)
+// ObjectPlugin 화살표 이동(nudge) 단일화 회귀 테스트
 //
 // ControlsPlugin 의 중복 window keydown 핸들러를 제거하고 ObjectPlugin.hotkeys 로 일원화한 뒤:
 //  ① 1px 이동(left/right/up/down) + setCoords + object:modified(undo 1엔트리) + 렌더

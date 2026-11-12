@@ -208,7 +208,7 @@ class ControlsPlugin extends PluginBase {
     // 커스텀 핸들 모양 적용 (한 번만)
     applyCustomControls()
 
-    // W4 §6-1: 방향키 이동은 ObjectPlugin.hotkeys 로 일원화(잠금 가드·Shift 10px). 여기서
+    // 방향키 이동은 ObjectPlugin.hotkeys 로 일원화(잠금 가드·Shift 10px). 여기서
     // 중복 등록하던 window keydown 핸들러(잠금 미가드)는 제거 — 합산 2px·Shift 잠금우회 결함 해소.
 
     // 텍스트 객체 유니폼 스케일 강제 및 폰트 크기 동기화

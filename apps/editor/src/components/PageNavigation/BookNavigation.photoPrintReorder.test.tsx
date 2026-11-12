@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 //
-// P2-d 사진인화 (2026-10-19, editor-flow-1): BookNavigation drag-to-reorder 는 kind 'photo-print' 세트에서 비활성.
+// 사진인화: BookNavigation drag-to-reorder 는 kind 'photo-print' 세트에서 비활성.
 //  - 항목(metadata.items)이 캔버스 위치(index×stride)에 묶여 있고 digital 은 2i/2i+1 앞·뒤 쌍이라 1장 단위 재정렬이
 //    옵션·매수·sheet-map 짝을 깨뜨린다 → 썸네일 draggable=false·드래그 핸들러로 reorderByIndex 미호출.
 //  - NULL 프로파일(legacy) 단일 모드는 종전대로 draggable=true(바이트 동일).
@@ -90,7 +90,7 @@ afterEach(() => {
   })
 })
 
-describe('BookNavigation — 사진인화 세트 순서 변경 비활성 (editor-flow-1)', () => {
+describe('BookNavigation — 사진인화 세트 순서 변경 비활성', () => {
   it('photo-print 4캔버스: 모든 썸네일 draggable=false, 라벨은 "사진 N 앞/뒤", drop 해도 reorderByIndex 미호출', () => {
     wire(photoProfile, 4)
     expect(thumbs().map((t) => t.getAttribute('data-draggable'))).toEqual(['false', 'false', 'false', 'false'])

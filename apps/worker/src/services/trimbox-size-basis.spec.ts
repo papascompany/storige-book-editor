@@ -1,12 +1,12 @@
 /**
- * X1 (2026-09-30): TrimBox 기준 내지 판형 판정 spec (CTO 결정 X1 §1·§5).
+ * TrimBox 기준 내지 판형 판정 spec.
  *
  * - 파일 A(재단선 13mm·BleedBox=TrimBox) / B(BleedBox=trim+3) / 사방 4mm / C(TrimBox 부재·동일)
- * - CTO X1-R2: 통과 조건 = 엄격 기하 조건 + known 목표(Trim+B_order) ⊂ MediaBox.
+ * - 통과 조건 = 엄격 기하 조건 + known 목표(Trim+B_order) ⊂ MediaBox.
  *   '합성 산출 박스 = 허용 크기' 조건 제거 → B+bleed1·사방 4mm(BleedBox 유무 무관) 통과.
  *   도련은 명시 BleedBox − TrimBox 최소값(부재 0) ≥ 주문 bleed − tol/2 일 때만 hasBleed.
  * - 불통과: TrimBox 불일치·페이지 혼합·회전·UserUnit → SIZE_MISMATCH 유지(message·details.actual 불변)
- * - 회귀: 표지·후가공·정상 작업사이즈·100p(MediaBox 판형+블리드×2)·stale TrimBox → 플래그 ON≡OFF
+ * - 회귀: 표지·후가공·정상 작업사이즈·MediaBox 만 있는 파일(판형+블리드×2)·stale TrimBox → 플래그 ON≡OFF
  * - 킬스위치 OFF → 종전 결과
  * - 표준(pdf-lib) ↔ 경량(qpdf) 결과 deep-equal(파일 크기·색상 등 비박스 항목 포함)
  *
@@ -70,7 +70,7 @@ const M4_PAGE: PageSpec = {
   trim: mmBox(4, 4, 210, 297),
   bleed: mmBox(0, 0, 218, 305),
 };
-/** 사방 4mm 여백 + BleedBox 없음(X1-R2 기대 결과 대상) */
+/** 사방 4mm 여백 + BleedBox 없음 */
 const M4_NO_BLEED_PAGE: PageSpec = { media: M4_PAGE.media, trim: M4_PAGE.trim };
 /** 파일 C 박스(pt): 0 7.92 810 817.92 */
 const C_BOX = [0, 7.92, 810, 817.92];
@@ -123,7 +123,7 @@ const HAS_QPDF = qpdfAvailable();
 
 const codes = (arr: Array<{ code: string }>): string[] => arr.map((x) => x.code);
 
-describe('X1 TrimBox 기준 내지 판형 판정', () => {
+describe('TrimBox 기준 내지 판형 판정', () => {
   const service = new PdfValidatorService();
   const lightweight = (u: string, o: ValidationOptions): Promise<ValidationResultDto> =>
     (
@@ -218,7 +218,7 @@ describe('X1 TrimBox 기준 내지 판형 판정', () => {
       expect(r.metadata.bleedSize).toBe(3);
     });
 
-    it('X1-R2 파일 B(운영 실측: 236x323, Trim 사방 13, Bleed 사방 3) + 주문 210x297 bleed 1 → 통과, BLEED_MISSING 없음', async () => {
+    it('파일 B(운영 실측: 236x323, Trim 사방 13, Bleed 사방 3) + 주문 210x297 bleed 1 → 통과, BLEED_MISSING 없음', async () => {
       const p = await writePdf(repeat(B_PAGE, 4));
       const r = await validateOn(p, opts({ pages: 4 }));
       expect(r.isValid).toBe(true);
@@ -230,7 +230,7 @@ describe('X1 TrimBox 기준 내지 판형 판정', () => {
       expect(r.metadata.bleedSize).toBe(3);
     });
 
-    it('X1-R2 사방 4mm·BleedBox 없음(218x305) + bleed 1 → 통과 + BLEED_MISSING(도련 0)', async () => {
+    it('사방 4mm·BleedBox 없음(218x305) + bleed 1 → 통과 + BLEED_MISSING(도련 0)', async () => {
       const p = await writePdf(repeat(M4_NO_BLEED_PAGE, 4));
       const r = await validateOn(p, opts({ pages: 4 }));
       expect(r.isValid).toBe(true);
@@ -456,7 +456,7 @@ describe('X1 TrimBox 기준 내지 판형 판정', () => {
       expect(plan.action).toBe('none');
     });
 
-    it('100p 약속: MediaBox 만 있는 판형+블리드×2(214x301, 내지 bleed 2) → isValid·errors·warnings·metadata 완전 동일', async () => {
+    it('불변 약속: MediaBox 만 있는 판형+블리드×2(214x301, 내지 bleed 2) → isValid·errors·warnings·metadata 완전 동일', async () => {
       const p = await writePdf(repeat({ media: mmBox(0, 0, 214, 301) }, 8));
       const r = await expectOnEqualsOff(p, opts({ pages: 8, bleed: 2 }));
       expect(r.isValid).toBe(true);
@@ -471,7 +471,7 @@ describe('X1 TrimBox 기준 내지 판형 판정', () => {
     });
   });
 
-  // 2026-10-28 네이처링 무선책자 내지(PScript5/Distiller): 230x317, 재단선은 A4 위치인데
+  // 2026-10-28 고객 접수 무선책자 내지(PScript5/Distiller): 230x317, 재단선은 A4 위치인데
   // TrimBox=216x303(도련 영역)·BleedBox=210x297(재단)로 두 값이 뒤바뀌어 기록됨.
   describe('TrimBox·BleedBox 역전 파일', () => {
     const REV_PAGE: PageSpec = {

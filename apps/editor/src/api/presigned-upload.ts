@@ -1,5 +1,5 @@
 /**
- * R2 presigned 직결 업로드 클라이언트 (2026-06-19).
+ * R2 presigned 직결 업로드 클라이언트.
  *
  * 대용량 PDF(>50MB)를 호스트 프록시/API multer(50MB)를 우회해 브라우저 → R2 직결 PUT
  * 으로 업로드한다. presign 발급/complete 만 `apiClient`(직결 base) 경유, 실제 PUT 은
@@ -24,7 +24,7 @@ const EXT_TO_MIME: Record<string, string> = {
   png: 'image/png',
   webp: 'image/webp',
   gif: 'image/gif',
-  // svg 제외: API 화이트리스트와 동기(게스트 presigned SVG XSS 차단). SVG 는 ≤50MB 레거시 경로.
+  // svg 제외: API 화이트리스트와 동기(게스트 presigned 업로드는 SVG 를 받지 않는다). SVG 는 ≤50MB 레거시 경로.
 }
 const DEFAULT_MIME = 'application/pdf'
 
@@ -66,7 +66,7 @@ function rawPut(
     }
     xhr.onload = () => {
       if (xhr.status >= 200 && xhr.status < 300) {
-        // R2 가 ETag 헤더를 노출하도록 버킷 CORS 에 ExposeHeaders: ETag 필요(인프라 메모 참조)
+        // R2 가 ETag 헤더를 노출하도록 버킷 CORS 에 ExposeHeaders: ETag 필요
         resolve(xhr.getResponseHeader('ETag'))
       } else {
         reject(new Error(`R2 PUT 실패 (${xhr.status})`))

@@ -4,14 +4,14 @@ import { useAppStore } from '@/stores/useAppStore'
 import { formatItemNames } from '@/utils/requiredEditCheck'
 
 /**
- * L7 (2026-07-11): 필수 편집 요소 미편집 경고 모달 — 비차단(Zakeke 'mandatory to edit' 보수 설계).
+ * 필수 편집 요소 미편집 경고 모달 — 비차단(Zakeke 'mandatory to edit' 보수 설계).
  *
  * '편집완료' 직전 requiredEditGate 가 미편집 필수 요소(견본 문구 텍스트/빈 사진틀)를 발견하면
  * 이 모달로 확인을 받는다. 차단이 아니다 — [그래도 완료]로 원 플로우를 그대로 속행한다
  * (editor.complete payload·파트너 postMessage 계약 무변경, 모달은 emit '이전' 단계).
  * [계속 편집]은 완료를 중단하고 첫 미편집 요소를 선택·페이지 이동(발견성).
  *
- * EditorHeader 에 마운트(embed·legacy EditorView 공통) — ObjectDeleteConfirm(S2) 모달 계열 패턴.
+ * EditorHeader 에 마운트(embed·legacy EditorView 공통) — ObjectDeleteConfirm 모달 계열 패턴.
  * 상태/응답은 useAppStore.requestRequiredEditConfirm ↔ resolveRequiredEditConfirm promise 배선.
  */
 export function RequiredEditConfirmModal() {

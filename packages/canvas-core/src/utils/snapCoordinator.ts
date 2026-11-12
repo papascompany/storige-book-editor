@@ -1,5 +1,5 @@
 /**
- * snapCoordinator — 객체 간 정렬 스냅 계산 (E1 §5-1, 순수 로직)
+ * snapCoordinator — 객체 간 정렬 스냅 계산 (순수 로직)
  *
  * SmartGuidesPlugin 의 계산 코어. fabric 비의존 순수 함수로 분리해
  * node 환경에서 스냅 정확성을 직접 검증할 수 있게 한다.
@@ -133,7 +133,7 @@ export function computeSnap(
 }
 
 /**
- * 회전 각도 스냅 (E1 C7) — step 배수 ±tolerance 이내면 라운딩된 각을 반환.
+ * 회전 각도 스냅 — step 배수 ±tolerance 이내면 라운딩된 각을 반환.
  * 전역 fabric snapAngle 설정 대신 이벤트 방식에서 호출한다(개별 off 가능).
  *
  * @returns 스냅된 각도 또는 null(허용 오차 밖 — 스냅 없음)

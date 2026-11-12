@@ -4,7 +4,7 @@ import type { fabric } from 'fabric'
 import { selectSingleModePdfCanvases } from './singleModePdfCanvases'
 
 /**
- * 비스프레드 편집완료 PDF 대상 캔버스 선택(P0 낱장 N장 PDF).
+ * 비스프레드 편집완료 PDF 대상 캔버스 선택(낱장 N장 PDF).
  * 캔버스·에디터는 참조 동일성만 보면 되므로 빈 객체 더미를 쓴다.
  */
 const fakeCanvas = (id: string): fabric.Canvas => ({ id } as unknown as fabric.Canvas)

@@ -1,5 +1,5 @@
 /**
- * 스트리밍 다운로드 → 임시파일 (트랙 B-(d) — 2GB 상수메모리 검증 ON 경로 전용)
+ * 스트리밍 다운로드 → 임시파일 (2GB 상수메모리 검증 ON 경로 전용)
  *
  * 기존 downloadFile(pdf-validator.service.ts) / downloadViaApi(api-file-download.ts)는
  * responseType:'arraybuffer' 로 파일 전체를 메모리(Uint8Array)에 올린다 → 2GB OOM.
@@ -95,8 +95,8 @@ export async function downloadToTempFile(url: string): Promise<DownloadedFile> {
     return { path: filePath, size: stat.size, cleanup: async () => {} };
   }
 
-  // SSRF 방어(P0-1): 임의 외부 URL 페치 전 스킴/사설IP 검증. api://·로컬 분기는 위에서
-  // 이미 분기 처리돼 여기 도달하지 않음 → 정당 내부 흐름 무영향. 리다이렉트 우회 차단(maxRedirects:0).
+  // SSRF 방어: 임의 외부 URL 페치 전 스킴/사설IP 검증. api://·로컬 분기는 위에서
+  // 이미 분기 처리돼 여기 도달하지 않음 → 정당 내부 흐름 무영향. 리다이렉트는 따르지 않는다(maxRedirects:0).
   await assertSafeDownloadUrl(url);
   logger.log(`Streaming from URL to temp: ${url}`);
   return streamToTemp(async () => {

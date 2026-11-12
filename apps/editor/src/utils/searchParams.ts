@@ -1,5 +1,5 @@
 /**
- * Search params 양방향(snake_case/camelCase) 호환 헬퍼 (Phase A-2, 2026-05-16).
+ * Search params 양방향(snake_case/camelCase) 호환 헬퍼.
  *
  * 외부 사이트(특히 PHP)는 URL 쿼리를 snake_case 로 쓰는 관행이 강한 반면,
  * 내부 코드와 DTO 는 camelCase 를 사용한다. 본 헬퍼는 camelCase 키와

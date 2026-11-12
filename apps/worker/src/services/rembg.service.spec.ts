@@ -8,7 +8,7 @@ const mockedAxios = axios as jest.Mocked<typeof axios>;
 /**
  * RembgService 스펙 — multipart 를 **손으로 조립**하는 코드라 회귀 그물이 필요하다.
  * CRLF 하나·boundary 종료 마커가 어긋나면 사이드카가 422 를 주고, 그 실패는 로컬이 아니라
- * VPS 첫 실사용에서만 드러난다(리뷰 지적). 에러 분류 경로도 여기서만 실행된다 —
+ * 운영 서버 첫 실사용에서만 드러난다. 에러 분류 경로도 여기서만 실행된다 —
  * cutout.processor.spec 은 이 서비스를 통째로 목킹하기 때문이다.
  */
 
@@ -50,7 +50,7 @@ describe('RembgService', () => {
       expect(new RembgService().resolveModel()).toBe('birefnet-general-lite');
     });
 
-    it('env 미설정이면 코드 기본값은 compose 기본값과 같은 u2net_human_seg 이다 (D-12b 재결정)', () => {
+    it('env 미설정이면 코드 기본값은 compose 기본값과 같은 u2net_human_seg 이다', () => {
       delete process.env.REMBG_MODEL;
       // ⚠️ birefnet 계열로 바꾸면 프로덕션 박스에서 cgroup OOM 한다(2026-08-06 실측).
       //    u2net 으로 되돌리면 인물 사진에서 몸통이 반투명하게 지워진다(실측 반투명 24.2%).
@@ -58,14 +58,14 @@ describe('RembgService', () => {
       expect(new RembgService().resolveModel()).toBe('u2net_human_seg');
     });
 
-    it('허용 문자 밖(경로·쿼리 오염 시도)은 거부한다', () => {
+    it('허용 문자 밖의 모델 키는 거부한다', () => {
       const svc = new RembgService();
       for (const bad of ['u2net/../etc', 'a b', 'x?y=1', '../../secret', 'a'.repeat(65)]) {
         expect(() => svc.resolveModel(bad)).toThrow(DomainError);
       }
     });
 
-    it('`*_custom` 세션은 거부한다 — CVE-2026-40086 경로 순회 벡터', () => {
+    it('`*_custom` 세션은 거부한다 (CVE-2026-40086)', () => {
       const svc = new RembgService();
       // 밑줄은 허용 문자라 정규식만으로는 통과한다 — 별도 차단이 실제로 동작해야 한다.
       for (const bad of ['u2net_custom', 'ben_custom', 'DIS_CUSTOM', 'x_custom_y']) {

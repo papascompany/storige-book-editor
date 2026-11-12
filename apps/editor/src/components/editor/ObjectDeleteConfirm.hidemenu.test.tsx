@@ -1,5 +1,5 @@
 /**
- * C6-fix(2026-08-01 실측 결함 ②) 회귀 가드: 삭제 확인 모달 오픈 시 컨텍스트 메뉴 강제 닫기.
+ * 회귀 가드: 삭제 확인 모달 오픈 시 컨텍스트 메뉴 강제 닫기.
  *
  * 포인터 경유 오픈(휴지통 탭 등)은 canvas-core 의 document pointerdown 해제가 선처리하지만,
  * DEL/Backspace 핫키 등 비-포인터 경로에선 메뉴가 모달 위에 잔류해 취소/삭제 버튼을 가렸다.
@@ -24,7 +24,7 @@ beforeEach(() => {
   })
 })
 
-describe('ObjectDeleteConfirm — 모달 오픈 시 컨텍스트 메뉴 강제 닫기 (C6-fix)', () => {
+describe('ObjectDeleteConfirm — 모달 오픈 시 컨텍스트 메뉴 강제 닫기', () => {
   it('deleteConfirmOpen 전이(false→true) 시 editor.hideContextMenu 를 1회 호출한다', () => {
     render(<ObjectDeleteConfirm />)
     expect(hideContextMenu).not.toHaveBeenCalled()

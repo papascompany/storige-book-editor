@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest'
 import { computeInnerSpreadLayout } from './SpreadLayoutEngine'
 import type { SpreadInnerSpec } from '@storige/types'
 
-// 포토북 펼침면 내지(2-up) 레이아웃 (O-2)
+// 포토북 펼침면 내지(2-up) 레이아웃
 const mmToPx = (mm: number, dpi: number) => (mm / 25.4) * dpi
 
 const spec: SpreadInnerSpec = {

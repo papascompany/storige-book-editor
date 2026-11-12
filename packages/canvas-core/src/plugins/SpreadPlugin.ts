@@ -56,7 +56,7 @@ interface SpreadPluginOptions extends PluginOption {
    */
   conversionMode?: SpreadConversionMode
   /**
-   * 포토북(O-2): 표지(cover) vs 내지 펼침면(inner). 미지정 시 'cover'(기존 호환·byte-identical).
+   * 포토북: 표지(cover) vs 내지 펼침면(inner). 미지정 시 'cover'(기존 호환·byte-identical).
    * 'inner' 일 때만 좌/우 면 + 거터 렌더 경로(initInner)가 활성화된다. cover 경로는 불변.
    */
   regionScope?: 'cover' | 'inner'
@@ -297,13 +297,13 @@ class SpreadPlugin extends PluginBase {
     this.renderGuides(this.currentLayout)
     this.renderLabels(this.currentLayout)
     this.renderBleedBorder(this.currentLayout)
-    this.renderSpineSafeInset(this.currentLayout) // A-3② 책등 세이프존 inset
+    this.renderSpineSafeInset(this.currentLayout) // 책등 세이프존 inset
 
     this._editor.emit('spreadLayoutUpdate', { layout: this.currentLayout })
   }
 
   /**
-   * 포토북 내지(2-up 펼침면) 초기화 — 표지 init() 과 별개 경로(O-2, 2026-06-24).
+   * 포토북 내지(2-up 펼침면) 초기화 — 표지 init() 과 별개 경로.
    *
    * 좌/우 면 라벨 + 중앙 거터 제본선(+ 옵션 안전 밴드) + bleed 경계를 렌더한다.
    * 좌표계는 표지와 동일한 중앙원점 규약(getContentOrigin 이 inner 분기로 펼침면 trim 중앙을 원점으로).
@@ -548,7 +548,7 @@ class SpreadPlugin extends PluginBase {
       this.renderGuides(newLayout)
       this.renderLabels(newLayout)
       this.renderBleedBorder(newLayout)
-      this.renderSpineSafeInset(newLayout) // A-3② 책등 세이프존 inset (spine 폭 추종)
+      this.renderSpineSafeInset(newLayout) // 책등 세이프존 inset (spine 폭 추종)
 
       // 6. 레이아웃 갱신
       const oldLayout = this.currentLayout
@@ -746,7 +746,7 @@ class SpreadPlugin extends PluginBase {
       // 영역 객체: 재배치 — content 좌표계로 변환(엔진 입력용, old origin 기준).
       const boundingRect = this.getContentBoundingRect(obj)
 
-      // 자가치유 가드(meta 오염 방어, 라이브 P1 2026-06-11/12): regionRef/anchor 는
+      // 자가치유 가드(meta 오염 방어): regionRef/anchor 는
       // 외부(편집기 훅·DB 기저장 데이터)에서 오염될 수 있다 — 실측 사고에서는 편집기 훅이
       // viewport 좌표 bbox 로 front 객체를 back-cover/xNorm0.6466 으로 재앵커했고,
       // 이 분기가 오염 anchor 를 무비판 적용해 객체를 반대편 표지로 텔레포트시켰다.
@@ -896,7 +896,7 @@ class SpreadPlugin extends PluginBase {
   }
 
   /**
-   * 캔버스 밖 객체 경고 + 자동 재배치 (P1-5)
+   * 캔버스 밖 객체 경고 + 자동 재배치
    *
    * 책등 폭 변경(`resizeSpine`) 후 작업 영역을 벗어난 객체가 있으면:
    *  1. 영역 안으로 위치 자동 클립 (multi-region 정밀 좌표)
@@ -988,7 +988,7 @@ class SpreadPlugin extends PluginBase {
   }
 
   /**
-   * 책등 콘텐츠 오버플로우 경고 (SF-5).
+   * 책등 콘텐츠 오버플로우 경고.
    *
    * 책등이 좁아질 때 책등 객체(세로쓰기 제목 등)가 책등 영역을 벗어나 앞/뒤표지를 침범하면
    * `spreadSpineOverflow` 이벤트로 알린다. ⚠️ 텍스트 자동 축소는 하지 않는다 — 폰트 렌더링
@@ -1118,7 +1118,7 @@ class SpreadPlugin extends PluginBase {
   }
 
   /**
-   * A-3② (트랙 C, 2026-07-23): 책등 영역 세이프존 inset 가이드.
+   * 책등 영역 세이프존 inset 가이드.
    * 책등 좌우 경계에서 safeSizeMm 안쪽으로 세로 점선 2개 — 책등 텍스트가
    * 접힘·재단 편차로 표지면에 걸리는 배치를 시각적으로 방지한다.
    * 화면 전용(excludeFromExport — 저장/PDF 원천 제외), safe-zone-border 스타일 준용.
@@ -1353,7 +1353,7 @@ class SpreadPlugin extends PluginBase {
    *
    * ⚠️ 편집기 훅(useSpreadAutoAnchor, MoveToCoverRegion 등)은 반드시 이 API 를 사용할 것.
    * `obj.getBoundingRect()`(무인자)는 viewport(줌·팬 적용) 좌표라 엔진(content 좌표)과
-   * 비교하면 영역을 오판한다 — 라이브 P1(2026-06-11/12): fit-zoom(≈0.49)에서 front-cover
+   * 비교하면 영역을 오판한다 — 실측 사고: fit-zoom(≈0.49)에서 front-cover
    * textbox 가 back-cover 로 재앵커돼 다음 책등가변 때 반대편 표지로 텔레포트.
    * (플러그인 내부 호출부는 getBoundingRect(true,true) 로 이미 정합 — 외부 호출부용 정식 통로가 이 메서드.)
    *
@@ -1459,7 +1459,7 @@ class SpreadPlugin extends PluginBase {
     if (this._focusOverlay) {
       this._canvas.remove(this._focusOverlay)
       this._focusOverlay = null
-      // destroyed() 가 Editor.dispose 경유로 실제 호출되면서(ED-2) 캔버스 dispose 이후에도
+      // destroyed() 가 Editor.dispose 경유로 실제 호출되면서 캔버스 dispose 이후에도
       // 도달 가능 — disposed 캔버스에 RAF 렌더를 예약하면 비동기 TypeError 가 나므로 가드
       if (!(this._canvas as any).disposed) {
         this._canvas.requestRenderAll()

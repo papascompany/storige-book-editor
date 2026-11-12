@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 
 /**
- * 컷아웃(배경제거) 서버 오프로드 클라이언트 회귀 잠금 — S-P2A-B 샤드3.
+ * 컷아웃(배경제거) 서버 오프로드 클라이언트 회귀 잠금.
  *
  * 잠그는 불변식:
  *  - 업로드는 `/storage/upload-public` 으로, **직결 base**(임베드 호스트 프록시 우회)로 간다.
@@ -80,7 +80,7 @@ describe('uploadCutoutSource', () => {
     const [url, body, config] = post.mock.calls[0] as [string, FormData, { baseURL?: string }]
     expect(url).toBe('/storage/upload-public?category=uploads')
     expect(body).toBeInstanceOf(FormData)
-    // 임베드 호스트가 base 를 자사 프록시로 덮어써도 업로드는 Storige API 원본으로 간다(413 전례).
+    // 임베드 호스트가 base 를 자사 프록시로 덮어써도 업로드는 Storige API 원본으로 간다(413 방지).
     expect(config.baseURL).toBe('https://api.example.com/api')
   })
 
@@ -166,7 +166,7 @@ describe('pollCutoutJob', () => {
   }
 
   it('★ 서버는 status 를 **대문자**로 준다(COMPLETED) — 실측 계약, 소문자 비교로 되돌리지 말 것', async () => {
-    // 2026-08-06 프로덕션 실측: GET /worker-jobs/:id/cutout-status → {"status":"COMPLETED"}.
+    // 서버 응답 형태: GET /worker-jobs/:id/cutout-status → {"status":"COMPLETED"}.
     // WorkerJobStatus enum 값이 대문자라, 여기서 toLowerCase 정규화를 빼면 폴링이 영원히 끝나지 않는다.
     get.mockResolvedValueOnce({ ...completed, data: { ...completed.data, status: 'COMPLETED' } })
 

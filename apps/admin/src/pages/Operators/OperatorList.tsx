@@ -56,7 +56,7 @@ interface ResetFormValues {
 }
 
 /**
- * P3a 멀티테넌시 — 운영자 관리 페이지.
+ * 멀티테넌시 — 운영자 관리 페이지.
  *
  * 전역 admin 이 사이트별 운영자(SITE_ADMIN/SITE_MANAGER) 계정을 발급·배정한다.
  * SiteList.tsx 패턴(List + Modal Form CRUD, React Query, antd) 클론.

@@ -223,7 +223,7 @@ describe('SynthesisProcessor', () => {
   });
 
   // ============================================================================
-  // Split Synthesis 테스트 (★ v1.1.4 설계서)
+  // Split Synthesis 테스트
   // ============================================================================
 
   describe('handleSplitSynthesis (mode: split)', () => {
@@ -379,8 +379,8 @@ describe('SynthesisProcessor', () => {
     });
   });
 
-  // ── ⓔ 멱등 가드 (2026-06-23): 재시도/stalled 재배달 시 유료주문 중복합성 방지 ──
-  describe('ⓔ 멱등 가드 (completion marker)', () => {
+  // ── 멱등 가드: 재시도/stalled 재배달 시 유료주문 중복합성 방지 ──
+  describe('멱등 가드 (completion marker)', () => {
     it('writeCompletionMarker → loadCompletionMarker 왕복(COMPLETED 만 반환)', async () => {
       const jobId = 'idem-roundtrip';
       const payload = {
@@ -467,8 +467,8 @@ describe('SynthesisProcessor', () => {
     });
   });
 
-  // ── D-4 (2026-07-06, C-4 Track 3): compose-mixed cover 검증 output 우선·total 폴백 + 커버 3종 정합 ──
-  describe('D-4 스프레드 cover 기대치 — output 우선 · total 폴백', () => {
+  // ── compose-mixed cover 검증 output 우선·total 폴백 + 커버 3종 정합 ──
+  describe('스프레드 cover 기대치 — output 우선 · total 폴백', () => {
     it('output(wrap 포함) 사이즈가 있으면 output 을 기대치로 사용 (total 무시)', () => {
       const exp = (processor as any).resolveSpreadCoverExpectation({
         composeSpreadTotalWidthMm: 450,
@@ -549,7 +549,7 @@ describe('SynthesisProcessor', () => {
     });
   });
 
-  describe('D-4 compose-mixed 통합 — 커버 3종 정합 회귀', () => {
+  describe('compose-mixed 통합 — 커버 3종 정합 회귀', () => {
     const { PDFDocument } = require('pdf-lib');
     const mmToPt = (mm: number) => (mm * 72) / 25.4;
 
@@ -581,7 +581,7 @@ describe('SynthesisProcessor', () => {
           composeContentWidthMm: 210,
           composeContentHeightMm: 297,
           composeOutputMode: 'separate',
-          // 기존(trim 기준 total) + D-4 신규(output wrap) 동시 존재 → output 우선
+          // 기존(trim 기준 total) + output wrap 기대치 동시 존재 → output 우선
           composeSpreadTotalWidthMm: 450,
           composeSpreadTotalHeightMm: 300,
           composeSpreadOutputWidthMm: 466,
@@ -683,8 +683,8 @@ describe('SynthesisProcessor', () => {
     });
   });
 
-  // ── X1F-1: 잡 contentTrim(주문 재단·도련) → 내지 정규화 컨텍스트 배선 ──
-  describe('X1F-1 contentTrim 배선', () => {
+  // ── 잡 contentTrim(주문 재단·도련) → 내지 정규화 컨텍스트 배선 ──
+  describe('contentTrim 배선', () => {
     type SynthesisJobArg = Parameters<SynthesisProcessor['handleSynthesis']>[0];
     const asJob = (data: Record<string, unknown>): SynthesisJobArg =>
       createMockJob(data) as unknown as SynthesisJobArg;
@@ -695,7 +695,7 @@ describe('SynthesisProcessor', () => {
         }
       ).loadCompletionMarker(jobId);
     const mmToPt = (mm: number) => (mm * 72) / 25.4;
-    /** 계약 fixture(L-A1 spec 과 같은 리터럴) */
+    /** 계약 fixture(API 쪽 spec 과 같은 리터럴) */
     const CONTRACT_FIXTURE_TEMPLATE_SET =
       '{"trimWidthMm":210,"trimHeightMm":297,"bleedMm":3,"source":"templateSet"}';
     const EXPECTED_CTX = { expectedTrimMm: { width: 210, height: 297 }, bleedMm: 3, tolMm: 1 };

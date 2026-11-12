@@ -1,5 +1,5 @@
 /**
- * 2026-09-29 (T1) — 명시 sessionId 조회 실패 시 SESSION_NOT_FOUND 로 중단(폴백 금지).
+ * 명시 sessionId 조회 실패 시 SESSION_NOT_FOUND 로 중단(폴백 금지).
  *
  * 잠그는 것:
  *   ⓐ 404/410 → reason 'not_found', 403 → 'forbidden', 400/422 → 'invalid_id' 로
@@ -7,7 +7,7 @@
  *      findByOrder / create / createGuest 로 폴백하지 않으며 editor.ready 도 없다.
  *   ⓑ 중단 화면: '편집 작업을 불러올 수 없습니다' + '돌아가기'(editor.cancel reason session_not_found).
  *      '다시 시도'(새로고침)는 렌더하지 않는다.
- *   ⓒ 네트워크 끊김·5xx 는 NETWORK_ERROR 1회(INVALID_DATA 아님, fatal:true — T4), 401 은 이 경로에서 발신 0회.
+ *   ⓒ 네트워크 끊김·5xx 는 NETWORK_ERROR 1회(INVALID_DATA 아님, fatal:true), 401 은 이 경로에서 발신 0회.
  *   ⓓ 치명 초기화 실패 후 instance.save 는 PATCH 없이 reject.
  *   ⓔ 회귀: 게스트 세션 재오픈(GET 성공)과 sessionId 없는 orderSeqno+mode 최초 편집은 불변.
  *
@@ -167,7 +167,7 @@ function expectNoFallback() {
   expect(api.createGuest).not.toHaveBeenCalled()
 }
 
-describe('EmbeddedEditor — 명시 sessionId 조회 실패 = SESSION_NOT_FOUND 중단 (T1)', () => {
+describe('EmbeddedEditor — 명시 sessionId 조회 실패 = SESSION_NOT_FOUND 중단', () => {
   const realParent = Object.getOwnPropertyDescriptor(window, 'parent')
 
   beforeEach(() => {
@@ -281,7 +281,7 @@ describe('EmbeddedEditor — 명시 sessionId 조회 실패 = SESSION_NOT_FOUND 
       code: 'NETWORK_ERROR',
       message: '편집 작업을 불러오지 못했습니다. 네트워크 연결을 확인한 뒤 다시 시도해주세요.',
     })
-    // T4: 초기화 실패는 치명(fatal:true) — 이 iframe 에서 더 진행 불가
+    // 초기화 실패는 치명(fatal:true) — 이 iframe 에서 더 진행 불가
     expect(errors[0]).toMatchObject({ fatal: true })
     expectNoFallback()
     expect(posted('editor.ready')).toHaveLength(0)

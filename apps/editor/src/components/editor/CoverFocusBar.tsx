@@ -7,7 +7,7 @@ import { buildPageMeta, type PageMeta } from '@/components/PageNavigation/BookNa
 import { cn } from '@/lib/utils'
 
 /**
- * CoverFocusBar — 표지 편집 포커스 바 (cover.md §6 / Phase 2)
+ * CoverFocusBar — 표지 편집 포커스 바
  *
  * 활성 페이지가 표지 그룹(WING/COVER/SPINE/SPREAD)일 때만 EditorHeader 바로 아래에 표시.
  * 표지 영역들의 합쳐진 미니맵을 보여주고 박스 클릭으로 해당 캔버스에 포커싱.

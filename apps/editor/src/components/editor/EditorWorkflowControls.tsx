@@ -1,5 +1,5 @@
 /**
- * 인쇄 워크플로우 v1 Phase 5-D (2026-05-19) — Editor floating workflow controls.
+ * 인쇄 워크플로우 v1 — Editor floating workflow controls.
  *
  * 침습 최소 통합: EditorView 의 핵심 로직 (캔버스/페이지 패널) 건드리지 않고
  * 우측 상단 floating UI 로 다음 기능 노출.
@@ -8,12 +8,12 @@
  *   - templateSet.coverEditable=false → 페브릭·기성 소재 잠금 안내 배너 (레거시 `/` 만)
  *   - 게스트 세션 자동 생성 (token 없을 때, templateSetId 있을 때만)
  *
- * W1(2026-08-13) — 사용처 2곳 대칭(G2·G3):
+ * 사용처 2곳 대칭:
  *   - EditorView(`/`, 레거시): `<EditorWorkflowControls templateSetId="..." />`
  *     → 게스트 세션을 스스로 만들고(기존 동작), 그 세션이 underlay 면 로드 시 자동으로 앉힌다.
  *   - EmbeddedEditor(`/embed`, 파트너 정본): `sessionId`(+게스트면 `guestToken`) 를 명시 주입
  *     → 게스트 세션 자동생성·자동 앉히기를 하지 않는다(세션 소유·로드 앉히기는 embed 가 수행).
- *   두 경우 모두 **첨부 완료 시점**에는 여기서 `seatContentPdf` 로 즉시 앉힌다(G1·G5).
+ *   두 경우 모두 **첨부 완료 시점**에는 여기서 `seatContentPdf` 로 즉시 앉힌다.
  */
 import { useEffect, useRef, useState } from 'react'
 import { templateSetsApi } from '../../api/template-sets'
@@ -87,7 +87,7 @@ export function EditorWorkflowControls({
     let cancelled = false
     // ⚠️ 공개 엔드포인트(`/with-templates`, @Public)로 읽는다 — `GET /template-sets/:id` 는
     //    JWT 필수라 **비로그인 고객(게스트)에게 401**이고, 그러면 templateSet 이 null 로 남아
-    //    이 컨트롤 전체가 렌더되지 않는다(= 첨부 진입점 자체가 사라짐). 2026-08-13 실기 적발.
+    //    이 컨트롤 전체가 렌더되지 않는다(= 첨부 진입점 자체가 사라짐).
     templateSetsApi
       .getTemplateSetWithTemplates(templateSetId)
       .then((res) => {
@@ -134,10 +134,10 @@ export function EditorWorkflowControls({
       try {
         const session: EditSessionResponse = await fetchSessionForReopen(attachSessionId, { presented: readToken })
         if (cancelled) return
-        // R5(2026-08-18): 편집완료 산출물 content.pdf(contentFileId 로 저장됨)를 고객 첨부로
+        // 편집완료 산출물 content.pdf(contentFileId 로 저장됨)를 고객 첨부로
         // 오인하지 않는다. 진짜 고객 첨부 = contentPdfFileId 존재 또는 contentPdfMode==='underlay'.
         // contentFileId 폴백의 산출물 판별은 contentPdfGuide.isEditorOutputContentFile 단일 판별식
-        // (R5 정밀화: metadata.editorOutputContentFileId 일치 → 레거시 마커/status 폴백).
+        // (정밀화: metadata.editorOutputContentFileId 일치 → 레거시 마커/status 폴백).
         const contentPdfMode = (
           session as EditSessionResponse & { contentPdfMode?: 'replace' | 'underlay' | null }
         ).contentPdfMode
@@ -197,8 +197,8 @@ export function EditorWorkflowControls({
         }}
       >
         {/* 레더커버·면지 안내 배너는 레거시 `/` 경로에서만 유지한다.
-            임베드(명시 세션)의 안내 배선은 G8(레더커버 배선·면지) 트랙에서 별도로 다룬다 —
-            W1 의 파트너 UI 변경 면적을 '첨부 진입점' 하나로 묶기 위한 의도적 제한. */}
+            임베드(명시 세션)에는 이 안내를 띄우지 않는다 —
+            파트너 화면에 노출되는 UI 를 '첨부 진입점' 하나로 묶기 위한 의도적 제한. */}
         {ownsSession && isLeather && (
           <div
             style={{
@@ -274,9 +274,9 @@ export function EditorWorkflowControls({
           guestToken={guestToken}
           currentContentPageCount={currentContentPageCount}
           canAddPage={!!templateSet.canAddPage}
-          // C+ G1(2026-07-11): 검증 기준을 A4 하드코드 대신 templateSet 판형으로 주입.
+          // 검증 기준은 templateSet 판형으로 주입한다.
           trimSize={{ width: templateSet.width, height: templateSet.height }}
-          // T3(2026-07-13): 도련 자동변환 — 모달 orderOptions.bleed 하드코드(3) 치환용
+          // 도련 자동변환 — 모달 orderOptions.bleed 하드코드(3) 치환용
           // templateSet.bleedMm + BLEED_MISSING 시 fix-bleed 잡 생성용 templateSetId 주입.
           // (bleedMm 은 API 컬럼(float, 기본 3)이나 @storige/types TemplateSet 미반영 —
           //  useEditorContents 의 기존 읽기 패턴과 동일하게 옵셔널 캐스팅.)
@@ -293,7 +293,7 @@ export function EditorWorkflowControls({
               contentPdfFileId: result.contentPdfFileId,
               contentPdfPageCount: result.contentPdfPageCount,
             })
-            // W1-G1·G5: 재로드 없이 즉시 앉히기 — 내지 페이지를 PDF 페이지 수로 확장하고
+            // 재로드 없이 즉시 앉히기 — 내지 페이지를 PDF 페이지 수로 확장하고
             // 방금 래스터된 가이드를 각 내지에 배치한다. 모달이 세션 PATCH 를 이미 끝냈으므로
             // 여기서는 같은 payload 로 만든 세션 형태 객체를 그대로 쓴다(재조회 불필요).
             void seatContentPdf(

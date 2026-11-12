@@ -115,8 +115,8 @@ describe('buildCalendarTemplateRefs — 26개 refs', () => {
   });
 });
 
-describe('연달력 yearPolicy 예시 (T3b, 2026-10-24)', () => {
-  /** T3b 이전 프리셋 프로파일(키 순서 포함) — 픽스처 diff 기준 */
+describe('연달력 yearPolicy 예시', () => {
+  /** yearPolicy 추가 전 프리셋 프로파일(키 순서 포함) — 픽스처 diff 기준 */
   function legacyProfile(editorType: string, layout: string) {
     return {
       version: 1,
@@ -157,7 +157,7 @@ describe('연달력 yearPolicy 예시 (T3b, 2026-10-24)', () => {
   });
 
   it.each(NON_WALL1_PRESETS.map((p) => [p.key, p] as const))(
-    '%s — yearPolicy 를 뺀 JSON 이 T3b 이전과 바이트 동일(yearPolicy 는 calendar 블록 끝)',
+    '%s — yearPolicy 를 뺀 JSON 이 yearPolicy 추가 전과 바이트 동일(yearPolicy 는 calendar 블록 끝)',
     (_key, preset) => {
       const legacy = legacyProfile(preset.key, preset.profile.calendar?.layout ?? '');
       const { yearPolicy, ...calendarRest } = preset.profile.calendar ?? ({} as NonNullable<typeof preset.profile.calendar>);

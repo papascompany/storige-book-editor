@@ -1,5 +1,5 @@
 /**
- * 2026-09-30 — 게스트 세션 재오픈: 현재 탭에 기억된 게스트 토큰이 있으면 게스트 조회 경로를 먼저 쓴다.
+ * 게스트 세션 재오픈: 현재 탭에 기억된 게스트 토큰이 있으면 게스트 조회 경로를 먼저 쓴다.
  *
  * 잠그는 것:
  *   E2 미만료 기록 → getGuest 1회, get 0회, editor.ready
@@ -10,12 +10,12 @@
  *   E6b getGuest 응답 없는 연결 실패(ERR_NETWORK) → get 폴백(최종 판정은 기존 경로)
  *   E7 세션 로드·createGuest 생성 후 기록(expiresAt 포함). 회원 세션·guestToken 없는 응답은 미기록
  *   E8 만료 기록 → getGuest 미호출, get 경로
- *   E9 config guestToken: 게스트 조회 경로 우선, 기억된 토큰보다 먼저, 거절되면 기억된 토큰 1회
- *   E10 SESSION_NOT_FOUND 사유: 토큰 없이 GUEST_TOKEN_REQUIRED → guest_token_required,
+ *   config guestToken: 게스트 조회 경로 우선, 기억된 토큰보다 먼저, 거절되면 기억된 토큰 1회
+ *   SESSION_NOT_FOUND 사유: 토큰 없이 GUEST_TOKEN_REQUIRED → guest_token_required,
  *       제시 토큰 GUEST_SESSION_EXPIRED → not_found, GUEST_TOKEN_MISMATCH → forbidden,
  *       기억된 토큰이 만료로 지워진 뒤 GUEST_TOKEN_REQUIRED → not_found
  *
- * 2026-10-01 — orderSeqno 진입(주문별 세션 목록)에서 고른 항목이 게스트 토큰 없이 실린 비회원 세션
+ * orderSeqno 진입(주문별 세션 목록)에서 고른 항목이 게스트 토큰 없이 실린 비회원 세션
  * (guestToken 없음 + guestExpiresAt 있음)이면 현재 탭에 기억된 게스트 토큰으로만 연다:
  *   O1 기억 기록 → getGuest 1회 → editor.ready (get·create·createGuest 0회)
  *   O2 기억 기록 없음·저장소 접근 불가 → SESSION_NOT_FOUND(guest_token_required) fatal 1회

@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import type { ProductProfile } from '@storige/types'
 
 /**
- * B11-b (2026-10-25): 배경 업로드(upload(..., SelectionType.background)) 래스터 원본은 프로파일 세트에서 storage 업로드 URL.
+ * 배경 업로드(upload(..., SelectionType.background)) 래스터 원본은 프로파일 세트에서 storage 업로드 URL.
  *  - 프로파일 세트(캘린더·사진인화 등): uploadFilePublic → 절대 URL 로 core.imageFromURL(crossOrigin anonymous), fileToImage 미호출.
  *    배경은 자동편집 입력이 아니므로 uploadedPhotoMeta·uploaded 에 등록하지 않는다(종전과 같음).
  *  - 업로드 실패·URL 로드 실패: 종전 core.fileToImage(data URL) 폴백.
@@ -125,7 +125,7 @@ beforeEach(() => {
   useSettingsStore.getState().setProductProfile(null)
 })
 
-describe('upload — 배경(B11-b)', () => {
+describe('upload — 배경', () => {
   it('프로파일 NULL 세트: core.fileToImage(canvas, file, imagePlugin) 한 번만 — 업로드·URL 로드 없음', async () => {
     const canvas = fakeCanvas()
     const img = fakeImage('legacy-bg')

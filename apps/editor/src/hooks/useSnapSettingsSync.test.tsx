@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 //
-// useSnapSettingsSync 배선 테스트 (C9/E2 W4 §6-3, 적대 리뷰 #7 가드)
+// useSnapSettingsSync 배선 테스트
 //  ① 3토글 → 정확한 세터 매핑
 //  ② 중앙스냅 커플링: snapCenterEnabled → setCenterYieldEnabled + ruler.setCenterSnapEnabled 동시(데드존 방지)
 //  ③ allEditors 전체 적용(다중 에디터)

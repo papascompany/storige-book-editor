@@ -2,7 +2,7 @@ import { PDFArray, PDFDict, PDFDocument, PDFName, PDFRef } from 'pdf-lib';
 import { compactPdfDocument, pruneUnreferencedXObjects } from './pdf-prune-xobjects';
 
 /**
- * P2-d D13 (2026-10-21) 회귀 잠금 — jsPDF 식 "모든 이미지를 매 페이지 /Resources/XObject 에 등재" 문서를
+ * 회귀 잠금 — jsPDF 식 "모든 이미지를 매 페이지 /Resources/XObject 에 등재" 문서를
  * copyPages 로 2쪽 분리했을 때 content 가 참조하지 않는 이미지가 분리본에서 빠지는지.
  *
  * 픽스처는 pdf-lib 로 만든다: 이미지 N개(각 ~40KB 의 Image XObject 스트림), 페이지 M개가 전부 N개를 등재하되
@@ -89,7 +89,7 @@ function xobjectNames(doc: PDFDocument, pageIndex: number): string[] {
   return dict ? dict.keys().map((k) => k.asString()) : [];
 }
 
-describe('pruneUnreferencedXObjects / compactPdfDocument (D13)', () => {
+describe('pruneUnreferencedXObjects / compactPdfDocument', () => {
   it('copyPages 분리본: 각 페이지 content 가 Do 하는 이미지만 남기고 저장 크기가 줄어든다', async () => {
     const bytes = await buildJsPdfLikeDocument({ images: 6, pages: 4 });
     const bloated = await splitFirstTwoPages(bytes);

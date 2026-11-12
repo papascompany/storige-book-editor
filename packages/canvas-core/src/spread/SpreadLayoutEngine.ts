@@ -143,7 +143,7 @@ export function computeLayout(spec: SpreadSpec): SpreadLayout {
 }
 
 /**
- * 펼침면 내지(2-up) 레이아웃 계산 — 포토북 (O-2, 2026-06-24).
+ * 펼침면 내지(2-up) 레이아웃 계산 — 포토북.
  *
  * 표지 computeLayout 과 별개. 입력 SpreadInnerSpec(mm), 출력 SpreadInnerLayout(workspace px, trim 기준).
  * - trim = pageWidthMm*2 × pageHeightMm (블리드 제외 — 표지와 동일하게 WorkspacePlugin 이 bleed 처리).

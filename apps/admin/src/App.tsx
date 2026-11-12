@@ -69,11 +69,11 @@ function App() {
             >
               <Route index element={<Dashboard />} />
               <Route path="profile" element={<Profile />} />
-              {/* 기본설정 (Phase A) — P3b: 전역 admin 전용 라우트 가드 */}
+              {/* 기본설정 — 전역 admin 전용 라우트 가드 */}
               <Route path="sites" element={<GlobalOnlyRoute><SiteList /></GlobalOnlyRoute>} />
-              {/* 운영자 관리 (P3a 멀티테넌시) */}
+              {/* 운영자 관리 (멀티테넌시) */}
               <Route path="operators" element={<GlobalOnlyRoute><OperatorList /></GlobalOnlyRoute>} />
-              {/* 내 사이트 — 파트너 포털 v0 (S2-4, SITE_ADMIN 셀프 뷰) */}
+              {/* 내 사이트 — 파트너 포털 v0 (SITE_ADMIN 셀프 뷰) */}
               <Route path="my-site" element={<MySitePage />} />
               <Route path="storage-settings" element={<GlobalOnlyRoute><StorageSettings /></GlobalOnlyRoute>} />
               {/* 템플릿 그룹 */}

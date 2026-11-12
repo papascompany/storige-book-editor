@@ -1,5 +1,5 @@
 /**
- * 2026-09-29 (T5) — SpreadPagePanel 내지 순서 저장이 바인딩된 세션의 guestToken 을 쓴다.
+ * SpreadPagePanel 내지 순서 저장이 바인딩된 세션의 guestToken 을 쓴다.
  *
  *  - /embed 는 currentSession.guestToken 을 prop 으로 넘긴다(embed 는 useGuestStore 를 채우지 않음).
  *  - prop 이 있으면 스토어 값보다 우선 → 게스트 세션은 게스트 경로(updateGuest)로 저장한다.
@@ -127,7 +127,7 @@ describe('resolveReorderGuestToken', () => {
   })
 })
 
-describe('SpreadPagePanel — 내지 순서 저장 경로 (T5)', () => {
+describe('SpreadPagePanel — 내지 순서 저장 경로', () => {
   beforeEach(() => {
     sessionUpdate.mockClear()
     sessionUpdateGuest.mockClear()

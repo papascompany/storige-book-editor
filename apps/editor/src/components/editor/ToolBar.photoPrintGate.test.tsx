@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 //
-// P2-d 사진인화 (2026-10-19): ToolBar PHOTO_PRINT 메뉴 게이트.
+// 사진인화: ToolBar PHOTO_PRINT 메뉴 게이트.
 //  (1) photo-print 세트(productProfile kind=photo-print)에서만 '사진인화' 메뉴 노출
 //  (2) NULL(legacy)·캘린더 세트는 enabledMenus 와 무관하게 숨김
 //  (3) photo-print 세트도 enabledMenus 배열에 'PHOTO_PRINT' 가 없으면 숨김(화이트리스트 존중), null 이면 노출
@@ -69,7 +69,7 @@ afterEach(() => {
   cleanup()
 })
 
-describe('ToolBar — PHOTO_PRINT 메뉴 게이트 (P2-d 사진인화)', () => {
+describe('ToolBar — PHOTO_PRINT 메뉴 게이트 (사진인화)', () => {
   it('photo-print 세트(enabledMenus null): 사진인화 노출, 달력 숨김', () => {
     wire({ profile: photoProfile })
     expect(photoPrintButton()).not.toBeNull()

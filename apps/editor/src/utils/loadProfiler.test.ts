@@ -12,7 +12,7 @@ function fakeClock(steps: number[]) {
   return () => steps[Math.min(i++, steps.length - 1)]
 }
 
-describe('loadProfiler (P1-5 재진입 로드 단계 계측)', () => {
+describe('loadProfiler (재진입 로드 단계 계측)', () => {
   it('mark 는 직전 mark 대비 delta 와 누적 at 을 기록한다', () => {
     const p = createLoadProfiler(fakeClock([0, 100, 350, 350]))
     p.mark('a')

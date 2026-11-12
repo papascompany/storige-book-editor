@@ -1,5 +1,5 @@
 /**
- * calendar/types.ts — 캘린더 날짜 데이터·순수 함수 계약 (P1, 2026-10-17)
+ * calendar/types.ts — 캘린더 날짜 데이터·순수 함수 계약
  *
  * 데이터는 `data/<version>.ts` 정적 모듈(외부 API 호출 없음). 출처: 공공데이터포털 특일정보(공휴일·대체공휴일),
  * KASI 음양력·24절기. 갱신은 데이터 파일 교체 + `@storige/types` `CALENDAR_DATA_VERSIONS` 등록 + 오너 승인.
@@ -26,7 +26,7 @@ export interface CalendarSolarTerm {
 }
 
 /**
- * 잡절(雜節) 중 삼복(T4, 2026-10-24). KASI 월력요항 규칙: 초복 = 하지부터 셋째 경일(庚日), 중복 = 넷째 경일,
+ * 잡절(雜節) 중 삼복. KASI 월력요항 규칙: 초복 = 하지부터 셋째 경일(庚日), 중복 = 넷째 경일,
  * 말복 = 입추부터 첫째 경일 — 하지·입추 당일이 경일이면 그날을 첫째로 센다.
  */
 export interface CalendarMinorTerm {
@@ -65,7 +65,7 @@ export interface CalendarData {
   /** 양력 연도 → 24절기(날짜 오름차순) */
   solarTerms: Record<string, CalendarSolarTerm[]>;
   /**
-   * 양력 연도 → 잡절(삼복: 초복·중복·말복, 날짜 오름차순). 선택(T4 additive) — 키가 없는 데이터는 잡절 없음.
+   * 양력 연도 → 잡절(삼복: 초복·중복·말복, 날짜 오름차순). 선택(additive) — 키가 없는 데이터는 잡절 없음.
    * 표기는 `show.minorTerms`(기본 off)일 때만.
    */
   minorTerms?: Record<string, CalendarMinorTerm[]>;
@@ -81,7 +81,7 @@ export interface LunarDate {
 }
 
 /**
- * 기념일 문구 스타일(D1(b) 최소, T3b 2026-10-24) — 월 그리드 칸 문구 텍스트에만 적용.
+ * 기념일 문구 스타일 — 월 그리드 칸 문구 텍스트에만 적용.
  * `fill` 은 '#rgb'/'#rrggbb' 만 유효(그 밖은 무시 = 기본 문구색), `fontWeight` 는 'normal'|'bold'.
  */
 export interface AnniversaryTextStyle {
@@ -133,7 +133,7 @@ export interface MonthMatrix {
   usedRows: number;
 }
 
-/** 연달력(그리드 variant 'year', 설계 C8, v1.26) — 첫 달부터 연속 개월의 월 행렬 */
+/** 연달력(그리드 variant 'year', v1.26) — 첫 달부터 연속 개월의 월 행렬 */
 export interface YearMatrix {
   /** 첫 달 */
   year: number;

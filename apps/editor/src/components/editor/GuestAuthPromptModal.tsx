@@ -1,12 +1,12 @@
 /**
- * 게스트 편집완료 로그인 유도 모달 — 인쇄 워크플로우 v1 Phase 6-A (2026-05-19).
+ * 게스트 편집완료 로그인 유도 모달 — 인쇄 워크플로우 v1.
  *
- * 결정 3-6: 게스트가 편집완료/저장을 누르면 로그인/회원가입을 안내.
+ * 게스트가 편집완료/저장을 누르면 로그인/회원가입을 안내.
  * 로그인 성공 후에는 호출자가 useGuestStore.guestToken 으로 migrate API 호출.
  *
  * UI 정책:
  * - 로그인 / 회원가입 / 게스트로 계속 (저장 안 함) 3개 옵션 노출
- * - 외부 사이트 임베드 (iframe) 환경에서는 부모에 'editor.needAuth' postMessage 가능 (Phase 7 PHP 가이드)
+ * - 외부 사이트 임베드 (iframe) 환경에서는 부모에 'editor.needAuth' postMessage 가능
  *   본 컴포넌트는 콜백 props 로 위임 — 통합 측에서 처리.
  */
 import { apiClient } from '../../api/client'

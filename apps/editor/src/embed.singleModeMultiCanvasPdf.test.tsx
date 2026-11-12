@@ -1,5 +1,5 @@
 /**
- * P0 (2026-10-16): 비스프레드(단일 모드) 편집완료 PDF 대상 캔버스 + IIFE save/complete canvasData.
+ * 비스프레드(단일 모드) 편집완료 PDF 대상 캔버스 + IIFE save/complete canvasData.
  *   - 1캔버스 세션: saveMultiPagePDFAsBlob 호출 인자가 종전 `[canvas], [editor], session-<id>, size, undefined, 300`
  *     과 완전히 같다(바이트 동일 경로 고정). watchdog 한도(Math.max(120000, 15000×n) → 1장=120000)는
  *     여기서 단언하지 않는다 — withWatchdog 가 embed.tsx 내부 함수라 spy 대상이 아니다.
@@ -179,7 +179,7 @@ const COMPLETED_SESSION = {
 /** 종전 단일 분기의 size 인자 — options.size 미전달 폴백(210×297), bleed 기본 3, printMarkConfig null. */
 const LEGACY_SIZE_ARG = { width: 210, height: 297, cutSize: 3, bleedMm: undefined, cropMarkEnabled: undefined }
 
-describe('EmbeddedEditor — 단일모드 낱장 N장 PDF / IIFE canvasData (P0)', () => {
+describe('EmbeddedEditor — 단일모드 낱장 N장 PDF / IIFE canvasData', () => {
   const realParent = Object.getOwnPropertyDescriptor(window, 'parent')
 
   beforeEach(() => {
@@ -220,7 +220,7 @@ describe('EmbeddedEditor — 단일모드 낱장 N장 PDF / IIFE canvasData (P0)
     return outcome
   }
 
-  it('P0-1 1캔버스 세션: saveMultiPagePDFAsBlob 인자가 종전 [canvas],[editor]·size·undefined·300 과 동일, canvasData 단일 객체', async () => {
+  it('1캔버스 세션: saveMultiPagePDFAsBlob 인자가 종전 [canvas],[editor]·size·undefined·300 과 동일, canvasData 단일 객체', async () => {
     const { canvas, editor } = seedCanvases(1, 0, [{ templateType: 'page' }])
     renderEmbed({ sessionId: 'sess-1' })
 
@@ -239,7 +239,7 @@ describe('EmbeddedEditor — 단일모드 낱장 N장 PDF / IIFE canvasData (P0)
     expect(api.update).toHaveBeenCalledWith('sess-1', { canvasData: { id: 'c0', props: core.extendFabricOption } })
   })
 
-  it('P0-2 같은 판형 낱장 3장(page 만): 전 캔버스/에디터가 한 PDF 로 넘어가고 canvasData 는 3개 배열', async () => {
+  it('같은 판형 낱장 3장(page 만): 전 캔버스/에디터가 한 PDF 로 넘어가고 canvasData 는 3개 배열', async () => {
     const { allCanvas, allEditors } = seedCanvases(3, 1, [
       { templateType: 'page' },
       { templateType: 'page' },
@@ -265,7 +265,7 @@ describe('EmbeddedEditor — 단일모드 낱장 N장 PDF / IIFE canvasData (P0)
     })
   })
 
-  it('P0-3 spine 포함(낱장 표지 분할 세트): 종전처럼 현재 캔버스 1장으로 폴백(인자 형태 동일)', async () => {
+  it('spine 포함(낱장 표지 분할 세트): 종전처럼 현재 캔버스 1장으로 폴백(인자 형태 동일)', async () => {
     const { canvas, editor } = seedCanvases(3, 2, [
       { templateType: 'cover' },
       { templateType: 'spine' },
@@ -289,7 +289,7 @@ describe('EmbeddedEditor — 단일모드 낱장 N장 PDF / IIFE canvasData (P0)
     )
   })
 
-  it('P0-4 instance.save: 멀티페이지면 canvasData 배열(현재 캔버스 1장으로 덮어쓰지 않음)', async () => {
+  it('instance.save: 멀티페이지면 canvasData 배열(현재 캔버스 1장으로 덮어쓰지 않음)', async () => {
     seedCanvases(2, 1, [{ templateType: 'page' }, { templateType: 'page' }])
     api.update.mockResolvedValue({ id: 'sess-1', updatedAt: '2026-10-16T00:00:00.000Z', coverFile: null })
     renderEmbed({ sessionId: 'sess-1' })
@@ -306,7 +306,7 @@ describe('EmbeddedEditor — 단일모드 낱장 N장 PDF / IIFE canvasData (P0)
     })
   })
 
-  it('P0-5 instance.save / complete: allCanvas 가 비어 있으면(IIFE·레거시) 종전과 같은 단일 객체', async () => {
+  it('instance.save / complete: allCanvas 가 비어 있으면(IIFE·레거시) 종전과 같은 단일 객체', async () => {
     const canvas = fakeCanvas('legacy')
     act(() => {
       useAppStore.setState({ ready: true, canvas, editor: null, allCanvas: [], allEditors: [], activeSelection: [] } as never)
@@ -331,7 +331,7 @@ describe('EmbeddedEditor — 단일모드 낱장 N장 PDF / IIFE canvasData (P0)
     expect(saveMultiPagePDFAsBlob).not.toHaveBeenCalled()
   })
 
-  it('P0-6 instance.complete: 멀티페이지면 canvasData 배열', async () => {
+  it('instance.complete: 멀티페이지면 canvasData 배열', async () => {
     seedCanvases(2, 0, [{ templateType: 'page' }, { templateType: 'page' }])
     renderEmbed({ sessionId: 'sess-1' })
 

@@ -114,14 +114,14 @@ export const EditSessionList = () => {
   const [synthesizeTarget, setSynthesizeTarget] = useState<StaffSessionItem | null>(null);
   const [jobsTarget, setJobsTarget] = useState<StaffSessionItem | null>(null);
   const [downloadingKey, setDownloadingKey] = useState<string | null>(null);
-  // 파트너 주문 연결 세션(주문번호 있음)의 편집기 열기·완료·삭제·합성은 확인 창을 거친다(3-B 운영 원칙).
+  // 파트너 주문 연결 세션(주문번호 있음)의 편집기 열기·완료·삭제·합성은 확인 창을 거친다.
   const [orderConfirm, setOrderConfirm] = useState<OrderLinkedTarget | null>(null);
   const { copyingId: copyingNoticeId, copyNotice } = usePartnerNoticeCopy();
   // 확인 창을 거쳐 시작한 작업(작업·세션 id 별) — 성공하면 사후 통지를 안내한다.
   // 호출별 mutate 콜백은 마지막 호출만 받으므로 mutation 수준 onSuccess 에서 이 표를 본다.
   // 같은 작업·세션이 겹쳐 실행돼도 호출마다 안내하도록 진행 중 호출 수를 센다.
   const pendingNotice = useRef(new Map<string, { record: StaffSessionItem; count: number }>());
-  // P3b — 헤더 테넌트 스위처가 컨텍스트를 고정하면 페이지 로컬 site 필터보다 우선.
+  // 헤더 테넌트 스위처가 컨텍스트를 고정하면 페이지 로컬 site 필터보다 우선.
   const currentSiteId = useAuthStore((s) => s.currentSiteId) ?? undefined;
   // GET /sites 는 전역 관리자 전용(사이트 운영자는 403) — 전역 관리자일 때만 드롭다운을 조회한다.
   // 역할 미하이드레이션(undefined)이면 종전처럼 조회한다(permissions.ts 보수 정책).
@@ -497,7 +497,7 @@ export const EditSessionList = () => {
       </div>
 
       <Space style={{ marginBottom: 16 }} wrap>
-        {/* P3b — 헤더 스위처가 site 를 고정하면 로컬 필터 숨김(이중 컨트롤 방지) */}
+        {/* 헤더 스위처가 site 를 고정하면 로컬 필터 숨김(이중 컨트롤 방지) */}
         {!currentSiteId && (
           <Select
             placeholder="사이트 선택"

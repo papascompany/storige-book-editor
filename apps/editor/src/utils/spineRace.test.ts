@@ -3,9 +3,9 @@ import axios from 'axios'
 import { recalculateSpineWidth } from './spineCalculator'
 
 /**
- * recalculateSpineWidth — 스테일 응답 경합 마감 (2026-08-26).
+ * recalculateSpineWidth — 스테일 응답 경합 마감.
  *
- * 배경: 542fa18 의 runBulkPageOps 구간 게이트로 재진입 증설 루프 기인 다중 in-flight 는
+ * 배경: runBulkPageOps 구간 게이트로 재진입 증설 루프 기인 다중 in-flight 는
  * 구조적으로 사라졌지만, **구간 밖 사용자 연타**('+내지'를 400~600ms 간격으로 누름 +
  * API 응답 지연)는 여전히 여러 요청을 동시에 띄운다. 이때 늦게 도착한 구(舊) pageCount
  * 응답이 최신 응답보다 나중에 효과를 적용하면 최종 책등 폭이 스테일 값으로 확정됐다.
@@ -329,7 +329,7 @@ describe('recalculateSpineWidth — 스테일 응답 경합(세대 가드)', () 
   })
 
   it('S7c [비스프레드 대칭] 단일 모드 취소도 superseded 로 삼키고 로그를 남기지 않는다', async () => {
-    // 스프레드(S7)와 비스프레드는 catch 가 서로 다른 블록이다 — 한쪽만 고치면
+    // 스프레드와 비스프레드는 catch 가 서로 다른 블록이다 — 한쪽만 고치면
     // 나머지는 취소 때마다 console.error 를 뿜는다. 두 경로를 대칭으로 고정한다.
     setupSingle(9)
     calc.mockRejectedValueOnce(new axios.CanceledError('canceled'))

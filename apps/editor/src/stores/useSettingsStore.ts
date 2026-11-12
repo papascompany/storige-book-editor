@@ -116,7 +116,7 @@ export interface EmptyEditorSetupConfig {
   unit?: 'mm' | 'px'
   name?: string
   /**
-   * B0-① (2026-07-04): empty 프리셋의 editMode:true 가 스프레드로 전 호출자(특히 embed
+   * empty 프리셋의 editMode:true 가 스프레드로 전 호출자(특히 embed
    * loadTemplateSetEditor)에 새어 나가 고객 화면에 관리자 토글이 노출되던 오염 수정.
    * 명시적으로 요청한 호출자만 true — 기본 false. 관리자 화면은 로드 후 role 검증 effect 가 켠다.
    */
@@ -153,7 +153,7 @@ const defaultControls: CanvasControls = {
   borderOpacityWhenMoving: 0.8,
 }
 
-// 다크 모드 객체 선택 핸들 (editor_layout_custom.md §8.3 다크 모드 Phase 3).
+// 다크 모드 객체 선택 핸들.
 // 어두운 surface 위 가독성: 브랜드 그린 보더 + 어두운 코너 + 같은 그린 코너 stroke.
 export const defaultControlsDark: CanvasControls = {
   transparentCorners: false,
@@ -246,23 +246,23 @@ export interface SpineConfig {
   bindingType: string | null
   calculatedSpineWidth: number | null  // 계산된 책등 너비 (mm)
   /**
-   * R-195: 호스트(주문)가 전달한 책등 폭(mm, ≥0). null/미설정 = 미전달 → 기존 수식 경로 그대로.
+   * 호스트(주문)가 전달한 책등 폭(mm, ≥0). null/미설정 = 미전달 → 기존 수식 경로 그대로.
    * initSpineConfig 가 매 로드마다 설정/초기화한다.
    */
   hostSpineWidthMm?: number | null
-  /** R-195: 호스트 값 고정(편집 중 재계산 스킵) 여부 — utils/hostSpine.isHostSpineFixed */
+  /** 호스트 값 고정(편집 중 재계산 스킵) 여부 — utils/hostSpine.isHostSpineFixed */
   hostFixed?: boolean
-  /** R-195: 호스트 값을 적용한 시점의 내지 인쇄 페이지 수(비고정 모드 기준선). 미적용 = null */
+  /** 호스트 값을 적용한 시점의 내지 인쇄 페이지 수(비고정 모드 기준선). 미적용 = null */
   hostBaselinePageCount?: number | null
   /**
-   * R-195: 현재 적용된 책등 폭의 출처(완료 metadata.appliedSpine.source 용).
+   * 현재 적용된 책등 폭의 출처(완료 metadata.appliedSpine.source 용).
    * 'host' = 고정 호스트 값, 'formula' = 수식(API 계산 또는 비고정 호스트 값), null = 템플릿 값 그대로.
    */
   appliedSource?: 'host' | 'formula' | null
 }
 
 /**
- * P3 (2026-06-10): 작업사이즈(재단+블리드) PDF 출력 설정.
+ * 작업사이즈(재단+블리드) PDF 출력 설정.
  * templateSet 의 bleedMm/cropMarkEnabled 를 그대로 운반하기만 한다(편집 동작 무변경).
  * PDF 저장 시 ServicePlugin 게이트(cropMarkEnabled && bleedMm>0)에 전달.
  * null = 미설정 → 게이트 OFF(현행 trim 출력 그대로).
@@ -278,14 +278,14 @@ export interface PrintMarkConfig {
 interface SettingsState {
   currentSettings: CanvasSettings
   currentUseCase: EditorUseCase
-  /** L3 B-3: 고객 시점 미리보기 중 여부(디자이너 전용 일시 모드 — 비영속·직렬화 무접촉) */
+  /** 고객 시점 미리보기 중 여부(디자이너 전용 일시 모드 — 비영속·직렬화 무접촉) */
   customerPreview: boolean
   editorTemplates: EditorTemplate[]
   renderType: EditorRenderType
   spineConfig: SpineConfig  // 책등 계산 설정
   spreadConfig: SpreadConfig | null  // 스프레드 편집 설정 (null이면 비-스프레드 모드)
   /**
-   * P3: 작업사이즈/재단마커 PDF 출력 설정 (templateSet 에서 운반). null = 미설정(게이트 OFF).
+   * 작업사이즈/재단마커 PDF 출력 설정 (templateSet 에서 운반). null = 미설정(게이트 OFF).
    */
   printMarkConfig: PrintMarkConfig | null
   /**
@@ -297,7 +297,7 @@ interface SettingsState {
    */
   enabledMenus: EditorMenuKey[] | null
   /**
-   * P1 캘린더 (2026-10-17): 템플릿셋 `productProfile` 판정 결과(`resolveProductProfile`).
+   * 캘린더: 템플릿셋 `productProfile` 판정 결과(`resolveProductProfile`).
    * - null: legacy 세트(기존 동작 그대로)
    * - 값: 페이지 정책(fixed 캔버스 수)·라벨·CALENDAR 메뉴 게이트의 단일 소스.
    * loadTemplateSetEditor 가 applyTemplateSetProductProfile 로 채운다.
@@ -361,7 +361,7 @@ interface SettingsActions {
   setupProductBased: (config: ProductBasedSetupConfig) => Promise<void>
   setupContentEdit: (config: ContentEditSetupConfig) => Promise<void>
   setupEmptyEditor: (config?: EmptyEditorSetupConfig) => Promise<void>
-  /** L3 B-3: 고객 시점 미리보기(디자이너 전용, 일시 모드 — 저장·직렬화 무접촉) */
+  /** 고객 시점 미리보기(디자이너 전용, 일시 모드 — 저장·직렬화 무접촉) */
   setCustomerPreview: (on: boolean) => void
   setupGeneral: (config?: GeneralSetupConfig) => Promise<void>
 
@@ -404,7 +404,7 @@ interface SettingsActions {
 
   // 도구 메뉴 화이트리스트 관리 (템플릿셋이 지정)
   setEnabledMenus: (menus: EditorMenuKey[] | null) => void
-  // P1 캘린더: 상품 프로파일(null = legacy)
+  // 캘린더: 상품 프로파일(null = legacy)
   setProductProfile: (profile: ProductProfile | null) => void
   setCoverFinishing: (locked: boolean, allowed: CoverFinishingKind[]) => void
   setLinkedPrintTemplates: (templates: LinkedPrintTemplate[]) => void
@@ -412,7 +412,7 @@ interface SettingsActions {
   setPageTrimMm: (size: { width: number; height: number } | null) => void
   setHardcoverWrap: (mode: HardcoverWrapMode | null) => void
 
-  // P3: 작업사이즈/재단마커 출력 설정 관리 (templateSet 에서 운반)
+  // 작업사이즈/재단마커 출력 설정 관리 (templateSet 에서 운반)
   setPrintMarkConfig: (config: PrintMarkConfig | null) => void
 }
 
@@ -432,7 +432,7 @@ const initialState: SettingsState = {
     reduced: false,
   },
   currentUseCase: 'general',
-  // L3 B-3: 고객 시점 미리보기 중 여부 — EditorView B0 승격 effect 억제용(비영속)
+  // 고객 시점 미리보기 중 여부 — EditorView 의 editMode 승격 effect 억제용(비영속)
   customerPreview: false,
   editorTemplates: [],
   renderType: 'bounded',
@@ -670,7 +670,7 @@ export const useSettingsStore = create<SettingsState & SettingsActions>()((set, 
 
     await get().updateSettings({
       ...defaultConfig,
-      // B0-①: 프리셋 editMode:true 스프레드 차단 — 명시 인자만 적용(기본 false).
+      // 프리셋 editMode:true 스프레드 차단 — 명시 인자만 적용(기본 false).
       editMode: config?.editMode ?? false,
       size: mergedSize,
       unit: config?.unit || defaultConfig.unit,
@@ -862,8 +862,8 @@ export const useSettingsStore = create<SettingsState & SettingsActions>()((set, 
     if (!spreadConfig) return
 
     // 책등 폭 변경 시 spec.spineWidthMm + totalWidthMm/totalHeightMm 를 함께 재계산한다.
-    // (이전엔 spec.spineWidthMm 만 갱신해 totalWidthMm 가 책등 변경 전 값으로 stale → 펼침면
-    //  cover PDF 가 stale 총폭으로 생성되어 실제 펼침면 크기와 어긋나는 인쇄크기 결함이 있었음.
+    // (spec.spineWidthMm 만 갱신하면 totalWidthMm 가 책등 변경 전 값으로 stale → 펼침면
+    //  cover PDF 가 stale 총폭으로 생성되어 실제 펼침면 크기와 어긋난다.
     //  computeSpreadDimensions 단일소스로 재계산해 cover 생성·스냅샷·검증이 모두 동일 총폭을 쓰게 한다.)
     const newSpec = { ...spreadConfig.spec, spineWidthMm: newWidthMm }
     const dims = computeSpreadDimensions(newSpec)
@@ -883,7 +883,7 @@ export const useSettingsStore = create<SettingsState & SettingsActions>()((set, 
     set({ enabledMenus: menus ?? null })
   },
 
-  // P1 캘린더: 상품 프로파일 설정. null = legacy. applyTemplateSetProductProfile 이 호출.
+  // 캘린더: 상품 프로파일 설정. null = legacy. applyTemplateSetProductProfile 이 호출.
   setProductProfile: (profile) => {
     set({ productProfile: profile ?? null })
   },
@@ -912,7 +912,7 @@ export const useSettingsStore = create<SettingsState & SettingsActions>()((set, 
     set({ hardcoverWrap: mode ?? null })
   },
 
-  // P3: 작업사이즈/재단마커 출력 설정. null = 미설정(게이트 OFF). loadTemplateSetEditor 가 호출.
+  // 작업사이즈/재단마커 출력 설정. null = 미설정(게이트 OFF). loadTemplateSetEditor 가 호출.
   setPrintMarkConfig: (config) => {
     set({ printMarkConfig: config ?? null })
   },

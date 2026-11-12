@@ -8,7 +8,7 @@ import { useSettingsStore } from '@/stores/useSettingsStore'
 import { DEFAULT_PAGE_STEP_BASIS } from '@/utils/pageStep'
 
 /**
- * P1 캘린더 (2026-10-17): productProfile pages.kind=fixed 세트는 SidePanel '페이지' 섹션의
+ * 캘린더: productProfile pages.kind=fixed 세트는 SidePanel '페이지' 섹션의
  * 추가 버튼을 렌더하지 않고 삭제 버튼도 없다. NULL 프로파일(legacy)은 기존 min/max 게이트 그대로.
  */
 function makeFakeCanvas(id: string) {
@@ -86,7 +86,7 @@ afterEach(() => {
   })
 })
 
-describe('SidePanel — 고정 캔버스 수 프로파일 (P1 캘린더)', () => {
+describe('SidePanel — 고정 캔버스 수 프로파일 (캘린더)', () => {
   it('fixed 26 세트: "페이지 추가" 버튼 없음, 삭제 버튼 없음', () => {
     wire({ canvasCount: 26, profile: calendarProfile, min: 26, max: 26 })
     expect(screen.queryByLabelText('페이지 추가')).toBeNull()

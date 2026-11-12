@@ -4,7 +4,7 @@ import { useAuthStore } from '@/stores/useAuthStore'
 
 /**
  * BrowseContentsView - Content browser for templates and designs
- * This is a placeholder that will be fully implemented in Phase 3
+ * This is a placeholder view.
  */
 export default function BrowseContentsView() {
   const [searchParams] = useSearchParams()

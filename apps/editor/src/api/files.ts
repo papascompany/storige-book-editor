@@ -2,7 +2,7 @@ import { apiClient } from './client'
 
 /**
  * 파일 타입 (백엔드 FileType enum과 일치)
- * apps/api/src/files/entities/file.entity.ts:11
+ * apps/api/src/files/entities/file.entity.ts 의 FileType
  */
 export type FileType = 'cover' | 'content' | 'template' | 'other'
 

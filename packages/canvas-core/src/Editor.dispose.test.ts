@@ -1,4 +1,4 @@
-// Editor.dispose 정리 보강 테스트 (ED-2)
+// Editor.dispose 정리 보강 테스트
 //
 // 검증 대상:
 //  (a) dispose() 가 dispose 규약 플러그인과 destroyed 규약(Lifecycle) 플러그인을

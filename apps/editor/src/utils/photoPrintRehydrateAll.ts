@@ -8,7 +8,7 @@ import { isPhotoPrintProfile } from '@/utils/productProfile'
 import { applyPhotoPrintCanvas, applyPhotoPrintForCanvas } from '@/utils/photoPrintRehydrate'
 
 /**
- * photoPrintRehydrateAll.ts — 사진인화 세션 메타의 편집기 측 배선 (P2-d, 2026-10-19; calendarRehydrateAll 모방)
+ * photoPrintRehydrateAll.ts — 사진인화 세션 메타의 편집기 측 배선 (calendarRehydrateAll 과 같은 구조)
  *
  * 1. `applyAllPhotoPrint()` — 항목 옵션이 바뀐 뒤 모든 캔버스에 PhotoPrintPlugin.apply 를 순서대로 호출하고
  *    1개 이상 처리했으면 dirty 마킹(자동저장이 metadata.items 변경을 서버에 반영).
@@ -16,7 +16,7 @@ import { applyPhotoPrintCanvas, applyPhotoPrintForCanvas } from '@/utils/photoPr
  * 3. `photoPrintSessionMetadataFields()` — 세션 PATCH 에 동봉할 `{ metadata: { productProfile, items } }`.
  * 4. `photoPrintResultFields()` — editor.complete 에 싣는 `{ items }`.
  * 5. `bindPhotoPrintCanvasEvents()` — undo/redo 완료(`history:undo`/`history:redo`)·채운 사진 삭제(`object:removed` fillImage) 뒤
- *    `applyPhotoPrintForCanvas(canvas)` 한 번(캔버스별 coalesce) — date-overlay·흑백·clip 창이 자가 복구된다(D5/serialization-6).
+ *    `applyPhotoPrintForCanvas(canvas)` 한 번(캔버스별 coalesce) — date-overlay·흑백·clip 창이 자가 복구된다.
  *
  * 모든 함수는 profile 이 null/legacy/캘린더면 no-op(`{}`·0·false)이라 기존 세트의 payload 키 집합이 바뀌지 않는다.
  */

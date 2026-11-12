@@ -1,5 +1,5 @@
 /**
- * 곡선(패스) 텍스트 유틸 — S-E3 (2026-08-04)
+ * 곡선(패스) 텍스트 유틸
  *
  * fabric 5.x text-on-path 를 사용하는 곡선 텍스트의 패스 수식·적용 로직 단일 정본.
  * TextEffect(후편집)와 AppText 곡선 프리셋(삽입)이 공유한다 — 수식을 한 곳에 두어
@@ -9,7 +9,7 @@
  * - path/pathSide/pathAlign/pathStartOffset 은 fabric Text 의 additionalProps 라
  *   toObject 에 항상 포함(화이트리스트 불필요).
  * - curvePathType/curveRadius/curveDirection/curveArcDeg/extensionType 은
- *   core.extendFabricOption 등재 필수(누락 시 저장 왕복에서 침묵 소실 — L7 전례).
+ *   core.extendFabricOption 등재 필수(누락 시 저장 왕복에서 침묵 소실).
  */
 
 import type { fabric } from 'fabric'
@@ -56,7 +56,7 @@ export function generateArcPathData(r: number, reverse: boolean = false, deg: nu
 }
 
 /**
- * 웨이브(1주기 사인형) 패스 데이터 생성 — 신규 (S-E3).
+ * 웨이브(1주기 사인형) 패스 데이터 생성.
  * 좌→우 진행 S-커브: 산→골(upward 기준). reverse 시 위상 반전(골→산).
  * quadratic 2개로 근사 — getPathSegmentsInfo 가 Q 를 지원한다.
  */

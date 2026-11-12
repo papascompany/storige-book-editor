@@ -2,12 +2,12 @@ import { describe, it, expect, beforeEach, vi } from 'vitest'
 import axios from 'axios'
 
 /**
- * spineApi.calculate 의 signal 관통 + isRequestCancelled 판별식 (2026-08-26).
+ * spineApi.calculate 의 signal 관통 + isRequestCancelled 판별식.
  *
  * 왜 별도 파일인가: `utils/spineRace.test.ts` 는 `@/api/spine` 의 `spineApi` 를 통째로
  * 대체하므로, 거기서는 "spineCalculator 가 2번째 인자로 {signal} 을 넘긴다"까지만 증명된다.
- * **그 signal 이 axios config 로 실제로 넘어가는지**는 무커버리지였고(적대검증 2026-08-26
- * 지적), `spine.ts` 의 포워딩 3줄을 지워도 그 파일 12스펙이 전부 초록이었다.
+ * **그 signal 이 axios config 로 실제로 넘어가는지**는 다른 테스트가 덮지 않는다 —
+ * `spine.ts` 의 포워딩 3줄을 지워도 그 파일의 스펙은 전부 통과한다.
  *
  * 이 파일이 그 마지막 한 칸을 채운다 — apiClient 를 대체해 3번째 인자(axios config)를 직접
  * 단언한다. 관통이 끊기면 실패 모드는 '스테일 책등 폭'(정확성)이 아니라 '취소된 요청이

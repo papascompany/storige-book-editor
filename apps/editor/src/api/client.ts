@@ -297,7 +297,7 @@ class ApiClient {
 
         // 재시도 로직
         const retryCount = config?.__retryCount || 0;
-        // P1-4 (2026-08-22): 비멱등 POST(예: 버전 복원 — 매 호출마다 restore 스냅샷이 쌓임)는
+        // 비멱등 POST(예: 버전 복원 — 매 호출마다 restore 스냅샷이 쌓임)는
         // 호출측이 __noRetry 로 자동 재시도를 끈다. 기본 동작(재시도)은 불변.
         const noRetry = !!config?.__noRetry;
         // 요청별 __retryStatuses 가 있으면 그 상태 코드만 자동 재시도한다(예: 세션 생성은 429 만).

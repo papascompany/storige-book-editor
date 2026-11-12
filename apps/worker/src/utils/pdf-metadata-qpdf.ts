@@ -31,7 +31,7 @@ export interface QpdfPageSize {
   widthPt: number;
   /** 페이지 높이(pt) = 상속 해석된 MediaBox 의 (ury - lly). 회전 스왑 없음. */
   heightPt: number;
-  // ── C-2a: crop mark 검증용 박스 기하 (qpdf --json 경로에서만 채워짐 — pdfinfo 폴백은 미지원) ──
+  // ── crop mark 검증용 박스 기하 (qpdf --json 경로에서만 채워짐 — pdfinfo 폴백은 미지원) ──
   /** 상속 해석된 MediaBox [llx, lly, urx, ury] (pt). */
   mediaBoxPt?: number[];
   /**
@@ -49,15 +49,15 @@ export interface QpdfPageSize {
    *   (pdfinfo 는 부재 박스를 사양 기본값으로 합성해 명시 여부 판별 불가) → 검증 skip 대상.
    */
   boxesAuthoritative?: boolean;
-  // ── X1: TrimBox 기준 판정 가드용 (qpdf --json 경로에서만 채워짐 — pdfinfo 폴백은 undefined) ──
+  // ── TrimBox 기준 판정 가드용 (qpdf --json 경로에서만 채워짐 — pdfinfo 폴백은 undefined) ──
   /** 상속 해석된 /Rotate(도, 0/90/180/270 정규화). null = 해석 불가(비정형·미해석 참조). */
   rotate?: number | null;
   /** 페이지 /UserUnit(비상속, 부재 시 1). null = 해석 불가. */
   userUnit?: number | null;
   /**
-   * X1: 명시 ArtBox 가 있으나 해석 불가(비정형·미해석 참조)일 때만 true(그 외 키 부재).
+   * 명시 ArtBox 가 있으나 해석 불가(비정형·미해석 참조)일 때만 true(그 외 키 부재).
    * TrimBox 기준 판정·크롭을 비신뢰로 강등해 pdf-lib 경로(ArtBox 읽기 예외 → 강등)와 맞춘다.
-   * C-2a 의 boxesAuthoritative 의미는 불변.
+   * crop mark 검증용 boxesAuthoritative 의미는 불변.
    */
   artBoxMalformed?: boolean;
 }
@@ -129,7 +129,7 @@ function resolveInheritedMediaBox(
 const INDIRECT_REF_RE = /^\d+ \d+ R$/;
 
 /**
- * C-2a: 페이지 딕셔너리에 **명시 선언된** 비상속 박스(/TrimBox, /BleedBox)를 해석한다.
+ * 페이지 딕셔너리에 **명시 선언된** 비상속 박스(/TrimBox, /BleedBox)를 해석한다.
  *
  * 간접참조 함정은 기존 MediaBox 처리 방식(qpdf objmap 해석)을 재사용하되,
  * 비상속 속성이므로 parent-walk 는 하지 않는다(사양: TrimBox/BleedBox 는 상속 불가).
@@ -177,7 +177,7 @@ function resolveNumberValue(objmap: Record<string, any>, raw: unknown): number {
 }
 
 /**
- * X1: /Rotate 를 페이지트리 상속 규칙으로 해석(사양: 상속 가능 속성, 기본 0).
+ * /Rotate 를 페이지트리 상속 규칙으로 해석(사양: 상속 가능 속성, 기본 0).
  * 0/90/180/270 으로 정규화(음수·360 초과 포함). 비정형(90 배수 아님·미해석 참조)은 null.
  */
 function resolveInheritedRotate(
@@ -204,7 +204,7 @@ function resolveInheritedRotate(
   return 0;
 }
 
-/** X1: 페이지 /UserUnit(비상속, 부재=1). 해석 불가·비양수는 null. */
+/** 페이지 /UserUnit(비상속, 부재=1). 해석 불가·비양수는 null. */
 function resolveUserUnit(objmap: Record<string, any>, pageDict: any): number | null {
   const raw = pageDict?.['/UserUnit'];
   if (raw === undefined) return 1;
@@ -220,7 +220,7 @@ function resolveUserUnit(objmap: Record<string, any>, pageDict: any): number | n
  *   를 내야 한다. pdf-lib getSize 는 상속 해석된 MediaBox 의 (urx-llx, ury-lly) 이며
  *   회전(/Rotate)에 따른 폭·높이 스왑은 하지 않는다 → 여기서도 스왑하지 않는다.
  *
- * 기존 전체버퍼 경로(pdf-validator.service.ts:84, PDFDocument.load(전체바이트))는
+ * 기존 전체버퍼 경로(PdfValidatorService.validate 의 PDFDocument.load(전체바이트))는
  * 2GB 에서 OOM 이므로, 이 함수는 새 ON 경로 전용이다. 기존 OFF 경로는 불변.
  *
  * @param filePath 로컬 파일 경로(이미 디스크에 존재해야 함)
@@ -320,7 +320,7 @@ export async function extractPdfMetadataQpdf(
         throw new Error(`non-finite MediaBox for page object: ${ref}`);
       }
 
-      // C-2a: 비상속 박스(TrimBox/BleedBox) 명시 선언 직독 — 실패해도 치수 추출은 불변.
+      // 비상속 박스(TrimBox/BleedBox) 명시 선언 직독 — 실패해도 치수 추출은 불변.
       // null(해석 불가)이 하나라도 있으면 boxesAuthoritative=false 로 강등해
       // 검증기가 오탐(TRIMBOX_MISSING 허위 경고) 없이 skip 하게 한다.
       const trimBox = resolveExplicitBox(objmap, pageDict, '/TrimBox');
@@ -334,7 +334,7 @@ export async function extractPdfMetadataQpdf(
         trimBoxPt: trimBox ?? undefined,
         bleedBoxPt: bleedBox ?? undefined,
         boxesAuthoritative,
-        // X1: TrimBox 기준 판정 가드(회전·UserUnit·ArtBox 비정형) — additive, 치수 추출 불변.
+        // TrimBox 기준 판정 가드(회전·UserUnit·ArtBox 비정형) — additive, 치수 추출 불변.
         rotate: resolveInheritedRotate(objmap, pageDict, ref),
         userUnit: resolveUserUnit(objmap, pageDict),
         ...(resolveExplicitBox(objmap, pageDict, '/ArtBox') === null
@@ -381,7 +381,7 @@ export async function extractPdfMetadataQpdf(
  * PDF 에서 파리티가 깨지므로 사용하지 않는다. 반드시 페이지별 -box 를 사용한다.
  */
 /**
- * 트랙 B-(f): getPdfInfo(ghostscript.ts) 의 상수메모리 대체.
+ * getPdfInfo(ghostscript.ts) 의 상수메모리 대체.
  *
  * 기존 getPdfInfo 는 pdf-lib `PDFDocument.load(전체바이트)` 로 첫 페이지를 실측 →
  * 2GB 에서 OOM. 이 함수는 extractPdfMetadataQpdf(qpdf, 파일기반) 로 첫 페이지 치수를
@@ -467,10 +467,10 @@ async function extractPageSizesPdfinfo(
 }
 
 // ============================================================
-// X1 (2026-09-30): TrimBox 크롭 정규화용 페이지 딕셔너리 추출
+// TrimBox 크롭 정규화용 페이지 딕셔너리 추출
 // ============================================================
 
-/** X1: qpdf --json(v2) 페이지 1개의 원본 딕셔너리 + 해석된 박스 기하. */
+/** qpdf --json(v2) 페이지 1개의 원본 딕셔너리 + 해석된 박스 기하. */
 export interface QpdfPageDict {
   /** 페이지 객체 참조(예: "4 0 R") — --update-from-json 패치 키 `obj:<ref>` 로 사용. */
   ref: string;
@@ -499,7 +499,7 @@ export interface QpdfPageDictsResult {
 }
 
 /**
- * X1: 크롭 정규화(normalizeTrimBoxFile)용 페이지 딕셔너리·박스 추출.
+ * 크롭 정규화(normalizeTrimBoxFile)용 페이지 딕셔너리·박스 추출.
  *
  * extractPdfMetadataQpdf 와 같은 qpdf --json(v2) 호출·해석 규칙(unwrapObject/
  * resolveInheritedMediaBox/resolveExplicitBox)을 쓰되, 패치를 만들 수 있도록 페이지 ref·

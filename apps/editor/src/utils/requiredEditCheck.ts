@@ -1,7 +1,7 @@
 /**
- * L7 (2026-07-11) — 필수 편집 요소(requiredEdit) 미편집 판정 유틸 (순수함수).
+ * 필수 편집 요소(requiredEdit) 미편집 판정 유틸 (순수함수).
  *
- * Zakeke 'mandatory to edit' 패턴(LAYER_UX_REDESIGN_2026-07-06.md §5):
+ * Zakeke 'mandatory to edit' 패턴:
  * 템플릿 제작자(admin)가 requiredEdit=true 로 지정한 텍스트/사진틀을 고객이 바꾸지
  * 않고 편집완료하면 견본 문구('이름을 입력하세요' 등)가 그대로 인쇄되는 사고를
  * **비차단 경고 모달**로 예방한다. '그래도 완료' 로 진행 가능 — editor.complete

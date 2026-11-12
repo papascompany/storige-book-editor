@@ -1,4 +1,4 @@
-// useUiPrefStore 스냅 설정 + persist 마이그레이션 (C9/E2 W4 §6-3)
+// useUiPrefStore 스냅 설정 + persist 마이그레이션
 //
 //  ① 기본값: 스냅 3종 전부 true(현행 상시-ON 거동)
 //  ② setter 동작

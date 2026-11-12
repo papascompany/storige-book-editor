@@ -3,11 +3,11 @@ import { Trash2 as Trash, AlertTriangle as Warning, X } from 'lucide-react'
 import { useAppStore } from '@/stores/useAppStore'
 
 /**
- * S2 (공유 계층, 2026-06-23): 객체 삭제 확인 모달 + DEL/Backspace 핫키 인터셉터.
+ * 공유 계층: 객체 삭제 확인 모달 + DEL/Backspace 핫키 인터셉터.
  *
- * ⚠️ 아키텍처(R1 — 외부 임베더 회귀 방지):
+ * ⚠️ 아키텍처(외부 임베더 회귀 방지):
  *   DEL/Backspace 객체삭제 핫키는 **canvas-core 의 hotkeys-js**(document keydown, bubble)가 처리한다.
- *   거기에 모달을 넣으면 모달 UI 가 없는 외부 임베더(ShareSnap/100p/MD2Books)가 깨지므로,
+ *   거기에 모달을 넣으면 모달 UI 가 없는 외부 임베더(파트너 사이트)가 깨지므로,
  *   삭제 확인은 **상품 앱(editor)이 소유**한다. 본 컴포넌트가 document 캡처단계(capture=true)에서
  *   키를 먼저 가로채 stopImmediatePropagation 으로 hotkeys-js 도달을 막고 확인 모달을 띄운다.
  *   실제 삭제는 기존 ObjectPlugin.del() 재사용(삭제잠금·lid·fillImage 가드 그대로) = canvas-core 0 변경.
@@ -67,7 +67,7 @@ export function ObjectDeleteConfirm() {
     return () => document.removeEventListener('keydown', onKeyDownCapture, true)
   }, [requestDeleteSelection])
 
-  // C6-fix(2026-08-01 실측 결함 ②): 모달 오픈 시 컨텍스트 메뉴 강제 닫기.
+  // 모달 오픈 시 컨텍스트 메뉴 강제 닫기.
   // 포인터 경유 오픈은 canvas-core 의 document pointerdown 해제가 선처리하지만,
   // DEL/Backspace 핫키 등 비-포인터 경로에서 메뉴가 모달 위에 잔류(취소/삭제 버튼 가림)하는
   // 것을 막는 벨트-앤-서스펜더.

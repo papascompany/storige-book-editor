@@ -8,7 +8,7 @@ import { traceEnter, traceStep, yieldToBrowser } from '../utils/perfTrace'
 // 알파 윤곽 추출은 워커로 오프로드된다(주입식) — contourExtractor.ts 헤더 참조.
 import { getContourExtractor } from '../utils/contourExtractor'
 import { extractContoursPure } from '../utils/pureContour'
-// R7(2026-08-11): 정밀 경로(구 cv distanceTransform→findContours)의 순수 JS 이식 코어.
+// 정밀 경로(구 cv distanceTransform→findContours)의 순수 JS 이식 코어.
 // 이 플러그인은 더 이상 OpenCV 를 임포트하지 않는다 — openCv.ts 로더는 다른 소비자용으로만 남는다.
 import { computePreciseOutline } from '../utils/preciseOutline'
 
@@ -52,11 +52,11 @@ class ImageProcessingPlugin extends PluginBase {
 
   constructor(canvas: fabric.Canvas, editor: Editor) {
     super(canvas, editor, {})
-    // D-6b① (2026-07-15): eager preload 제거 — 기존엔 여기서 startService() 를 즉시 실행해
+    // eager preload 제거 — 기존엔 여기서 startService() 를 즉시 실행해
     // ONNX 모델(≈88MB)+ort wasm(≈23MB)을 모든 캔버스 생성마다 받았다.
-    // D-12d (2026-08-06, 샤드3): 배경제거 추론 자체가 서버(rembg 사이드카)로 이관되면서
+    // 배경제거 추론 자체가 서버(rembg 사이드카)로 이관되면서
     // `@imgly/background-removal`(AGPL-3.0) 의존을 제거했다.
-    // R7 (2026-08-11): 마지막 OpenCV 의존(정밀 경로 3종)도 순수 JS 로 이식/제거 —
+    // 마지막 OpenCV 의존(정밀 경로 3종)도 순수 JS 로 이식/제거 —
     // 이 플러그인에는 무거운 초기화가 아예 없다.
     // 플러그인 생성은 어떤 네트워크/무거운 초기화도 트리거하지 않는다.
   }
@@ -216,7 +216,7 @@ class ImageProcessingPlugin extends PluginBase {
       multiplier?: number
     }
   ): Promise<fabric.Path | undefined> {
-    // R7: OpenCV 선행 로드 제거 — createPrecisePathFromObject 는 순수 JS 다.
+    // OpenCV 선행 로드 없음 — createPrecisePathFromObject 는 순수 JS 다.
     const maskImage = await this.extractMaskImageFromObject(object, opts)
 
 
@@ -280,7 +280,7 @@ class ImageProcessingPlugin extends PluginBase {
       multiplier?: number
     }
   ): Promise<fabric.Path | undefined> {
-    // R7: OpenCV 선행 로드 제거 — createPrecisePathFromObject 는 순수 JS 다.
+    // OpenCV 선행 로드 없음 — createPrecisePathFromObject 는 순수 JS 다.
     const multiplier = opts?.multiplier ?? 3
     const strokeWidthPx = Math.max(0, Math.round(opts?.strokeWidth ?? 0))
 
@@ -345,7 +345,7 @@ class ImageProcessingPlugin extends PluginBase {
     return path
   }
 
-  // R7(2026-08-11): ensureCvReady() 제거 — 이 플러그인의 cv 사용부(정밀 경로 3종)가 전부
+  // ensureCvReady() 제거 — 이 플러그인의 cv 사용부(정밀 경로 3종)가 전부
   // 순수 JS 로 이식/삭제되어 로더 위임 자체가 사라졌다. openCv.ts 는 삭제하지 않는다(별도 소비자).
 
   /**
@@ -540,7 +540,7 @@ class ImageProcessingPlugin extends PluginBase {
     //    알파가 없는 이미지(= 일반 JPEG 사진)의 칼선은 createExpandedPath 로 끝나 OpenCV 가
     //    전혀 필요 없는데, 종전에는 진입점에서 무조건 로드해 10MB 파싱/컴파일이 메인 스레드를
     //    점유했다 → 모양컷 업로드 직후 브라우저 '응답 없는 페이지'.
-    //    R7(2026-08-11): hasAlpha 경로도 순수 JS 추출기(pureContour)라 cv 로드는 어디에도 없다.
+    //    hasAlpha 경로도 순수 JS 추출기(pureContour)라 cv 로드는 어디에도 없다.
     const pathData = await this.getObjectPathData(item)
     if (!pathData) {
       console.error('Failed to generate path data')
@@ -563,10 +563,10 @@ class ImageProcessingPlugin extends PluginBase {
   }
 
   /**
-   * ⚠️ 제거됨 — 배경제거 추론은 서버(rembg 사이드카)가 한다. D-12d(2026-08-06, 샤드3).
+   * ⚠️ 제거됨 — 배경제거 추론은 서버(rembg 사이드카)가 한다.
    *
    * 종전 `getForeground()` 는 `@imgly/background-removal`(AGPL-3.0)로 브라우저에서 ONNX 추론을
-   * 했다. 라이선스 의무(D-12d)와 모바일 메모리 문제로 서버 오프로드로 전환했고, 진입점은
+   * 했다. 라이선스 의무와 모바일 메모리 문제로 서버 오프로드로 전환했고, 진입점은
    * editor 의 `useImageStore.segmentImage()`(→ `api/cutout.ts`)다.
    * 이 플러그인에는 결과 후처리(알파 기준 트림 `processImage`, 윤곽 `getObjectPath`)만 남는다.
    */
@@ -1245,7 +1245,7 @@ class ImageProcessingPlugin extends PluginBase {
   }
 
   /**
-   * 알파 기반 정밀 경로 추출 — 순수 JS (R7, 2026-08-11 cv 이식).
+   * 알파 기반 정밀 경로 추출 — 순수 JS (cv 이식).
    *
    * 종전 cv 파이프라인(split→threshold→distanceTransform→findContours→hull)을
    * `computePreciseOutline`(preciseOutline.ts)으로 대체했다 — opencv-js 는 이 프로젝트의
@@ -1477,7 +1477,7 @@ class ImageProcessingPlugin extends PluginBase {
     return line(points)
   }
 
-  // R7(2026-08-11): cv 전용 헬퍼 getSimpleContourPoints(호출부 0건) 제거.
+  // cv 전용 헬퍼 getSimpleContourPoints(호출부 0건) 제거.
 
   // 추출된 윤곽선을 부드럽게 만든 후 포인터 반환
   /**
@@ -1496,7 +1496,7 @@ class ImageProcessingPlugin extends PluginBase {
     return sampled
   }
 
-  // R7(2026-08-11): 레거시 cv 경로 전면 제거 —
+  // 레거시 cv 경로 전면 제거 —
   //  - drawCaseOutlinePrecise: 호출부 0건 → 삭제
   //  - findLargestContour: 위 삭제로 사용처 소멸(순수 대체는 pureContour.extractContoursFromMask)
   //  이 플러그인은 더 이상 cv 를 참조하지 않는다. openCv.ts 로더 자체는 별도 소비자용으로 유지.

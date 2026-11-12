@@ -1,5 +1,5 @@
 /**
- * B10 (2026-10-25): 편집완료 진행 표시(단계·캔버스 진행 수) + 진행 중 이탈 경고(beforeunload).
+ * 편집완료 진행 표시(단계·캔버스 진행 수) + 진행 중 이탈 경고(beforeunload).
  *   - 회원 단일모드: 저장 → PDF 생성(ServicePlugin onProgress 로 캔버스 n/총수) → 업로드 → 완료 단계 갱신,
  *     진행 중 beforeunload 는 preventDefault, editor.complete 발신 시점엔 이미 해제(호스트 즉시 이동에 경고 없음)
  *   - 실패: 오버레이 닫힘·경고 해제, editor.error 페이로드는 종전과 같음
@@ -211,7 +211,7 @@ const COMPLETED_SESSION = {
   updatedAt: '2026-10-25T00:00:00.000Z',
 }
 
-describe('EmbeddedEditor — B10 편집완료 진행 표시·이탈 경고', () => {
+describe('EmbeddedEditor — 편집완료 진행 표시·이탈 경고', () => {
   const realParent = Object.getOwnPropertyDescriptor(window, 'parent')
 
   beforeEach(() => {
@@ -245,7 +245,7 @@ describe('EmbeddedEditor — B10 편집완료 진행 표시·이탈 경고', () 
     })
   })
 
-  it('B10-1 회원: 저장 → 생성(n/총수) → 업로드 → 완료 단계 갱신, 진행 중 경고, editor.complete 발신 전 해제', async () => {
+  it('회원: 저장 → 생성(n/총수) → 업로드 → 완료 단계 갱신, 진행 중 경고, editor.complete 발신 전 해제', async () => {
     seedCanvases(3)
     const save = deferred<{ id: string }>()
     api.update.mockReturnValueOnce(save.promise)
@@ -323,7 +323,7 @@ describe('EmbeddedEditor — B10 편집완료 진행 표시·이탈 경고', () 
     expect(fireBeforeUnload()).toBe(false)
   })
 
-  it('B10-2 회원 완료 실패: 오버레이 닫힘·경고 해제, editor.error 페이로드 종전 그대로', async () => {
+  it('회원 완료 실패: 오버레이 닫힘·경고 해제, editor.error 페이로드 종전 그대로', async () => {
     seedCanvases(1)
     const failed = new Error('complete boom')
     api.complete.mockRejectedValueOnce(failed)
@@ -345,7 +345,7 @@ describe('EmbeddedEditor — B10 편집완료 진행 표시·이탈 경고', () 
     expect(fireBeforeUnload()).toBe(false)
   })
 
-  it('B10-3 비회원: 저장 단계 같은 오버레이·경고, editor.complete → editor.needAuth 순서 유지·발신 전 해제', async () => {
+  it('비회원: 저장 단계 같은 오버레이·경고, editor.complete → editor.needAuth 순서 유지·발신 전 해제', async () => {
     act(() => {
       useAppStore.setState({ ready: false, canvas: null, activeSelection: [] } as never)
     })
@@ -388,7 +388,7 @@ describe('EmbeddedEditor — B10 편집완료 진행 표시·이탈 경고', () 
     expect(saveMultiPagePDFAsBlob).not.toHaveBeenCalled()
   })
 
-  it('B10-4 세션 없음(skipped): 오버레이·경고 없음', async () => {
+  it('세션 없음(skipped): 오버레이·경고 없음', async () => {
     seedCanvases(1)
     renderEmbed()
     await act(async () => {

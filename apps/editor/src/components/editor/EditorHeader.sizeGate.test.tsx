@@ -4,7 +4,7 @@ import EditorHeader from './EditorHeader'
 import { useSettingsStore } from '@/stores/useSettingsStore'
 
 /**
- * S1 (2026-07-04): 주문 컨텍스트(embed) 사이즈 게이팅 회귀 테스트.
+ * 주문 컨텍스트(embed) 사이즈 게이팅 회귀 테스트.
  * - orderContext + 비-editMode(고객) → 사이즈 편집 Popover 트리거 부재, 읽기전용 라벨만.
  * - orderContext + editMode(관리자) → 편집 Popover 유지.
  * - 비-orderContext(standalone) → 현행 유지.
@@ -30,8 +30,8 @@ async function setEditMode(editMode: boolean) {
   await useSettingsStore.getState().updateSettings({ editMode })
 }
 
-describe('EditorHeader 사이즈 게이팅 (S1)', () => {
-  // assertion 실패 시에도 editMode 잔류 방지 (리뷰 지적 — 견고성)
+describe('EditorHeader 사이즈 게이팅', () => {
+  // assertion 실패 시에도 editMode 잔류 방지
   afterEach(async () => {
     await useSettingsStore.getState().updateSettings({ editMode: false })
   })

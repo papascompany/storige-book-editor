@@ -11,15 +11,15 @@ import type { CutoutSubject } from '@/api/cutout'
 export type PageNavPosition = 'auto' | 'right' | 'bottom'
 
 /**
- * 표지 편집 모드 (cover.md §3 / §5.1)
+ * 표지 편집 모드
  * - auto: 시스템이 템플릿 메타로 결정 (default — 안전)
  * - separated: 분리 캔버스로 편집 (현재 동작 강제)
- * - composite: 페이지 네비 그룹화 + 향후 합쳐진 미니맵 (Phase 1: 그룹화만)
+ * - composite: 페이지 네비 그룹화 + 향후 합쳐진 미니맵 (현재는 그룹화만)
  */
 export type CoverEditMode = 'auto' | 'separated' | 'composite'
 
 /**
- * UI 테마 (트랙 D)
+ * UI 테마
  * - light: 명시적 라이트 (default)
  * - dark: 명시적 다크
  * - system: prefers-color-scheme 따라 자동
@@ -41,7 +41,7 @@ interface UiPrefState {
   showRuler: boolean
   setShowRuler: (show: boolean) => void
   toggleRuler: () => void
-  /** §6-3 스냅 설정 (기본 전부 ON = 현행 거동). canvasData·PDF 산출물과 무관한 UI pref. */
+  /** 스냅 설정 (기본 전부 ON = 현행 거동). canvasData·PDF 산출물과 무관한 UI pref. */
   snapGuidesEnabled: boolean // 스마트 정렬 가이드(객체 스냅)
   snapCenterEnabled: boolean // 워크스페이스 중앙 스냅(룰러)
   snapAngleEnabled: boolean // 회전 각도 스냅
@@ -55,7 +55,7 @@ interface UiPrefState {
   sidebarCollapsed: boolean
   setSidebarCollapsed: (v: boolean) => void
   toggleSidebarCollapsed: () => void
-  /** 표지 편집 모드 (cover.md §3) — 기본 'auto' */
+  /** 표지 편집 모드 — 기본 'auto' */
   coverEditMode: CoverEditMode
   setCoverEditMode: (mode: CoverEditMode) => void
   /**
@@ -183,7 +183,7 @@ export const useUiPrefStore = create<UiPrefState>()(
           state.autoSaveToastEnabled = false
         }
         if (version < 8) {
-          // §6-3: 기존 사용자는 스냅 상시-ON 이 기본이었으므로 true 로 승격(얕은 병합이라
+          // 기존 사용자는 스냅 상시-ON 이 기본이었으므로 true 로 승격(얕은 병합이라
           // 미이관 시 undefined→OFF 회귀). 신규 사용자는 impl 기본값(true) 사용.
           state.snapGuidesEnabled = state.snapGuidesEnabled ?? true
           state.snapCenterEnabled = state.snapCenterEnabled ?? true

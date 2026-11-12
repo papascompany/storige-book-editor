@@ -4,7 +4,7 @@ import {
 } from './annotations-qpdf';
 
 /**
- * R4a 주석/양식 검출 파서 회귀 잠금.
+ * 주석/양식 검출 파서 회귀 잠금.
  * 픽스처는 qpdf --json v2 형태(pages + qpdf[1] 객체맵, {value:{...}} 래퍼).
  */
 
@@ -116,7 +116,7 @@ describe('parseAnnotationsFromQpdfJson', () => {
   });
 });
 
-describe('parsePageGeometryFromQpdfJson (R4b)', () => {
+describe('parsePageGeometryFromQpdfJson', () => {
   it('UserUnit≠1·Rotate≠0·명시 CropBox≠상속 MediaBox 를 페이지별로 집계한다', () => {
     const d = doc(
       [{ object: '1 0 R' }, { object: '2 0 R' }, { object: '3 0 R' }],

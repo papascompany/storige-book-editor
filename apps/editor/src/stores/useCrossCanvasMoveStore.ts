@@ -1,7 +1,7 @@
 import { create } from 'zustand'
 
 /**
- * cross-canvas 객체 이동 추적 store (cover.md §7 / D5 Phase 3b-v Phase 2-B).
+ * cross-canvas 객체 이동 추적 store.
  *
  * MoveToCoverRegion이 이동을 수행한 후 마지막 이동 정보를 보관해서
  * "방금 이동 되돌리기" 액션이 양쪽 캔버스에 동기 undo를 트리거할 수 있게 한다.
@@ -11,7 +11,7 @@ import { create } from 'zustand'
  * - timestamp 기반 자동 만료 (default 30초) — UI 클릭 가능 윈도우 한정
  * - 다른 액션이 일어나도 별도 invalidate는 안 함 (사용자가 명시 클릭만)
  *
- * 양 캔버스 history 분리 정책(CC-1)은 그대로 유지 — Cmd+Z는 단일 캔버스 동작.
+ * 양 캔버스 history 분리 정책은 그대로 유지 — Cmd+Z는 단일 캔버스 동작.
  * 이 store는 명시 "되돌리기" 액션의 보조 로그 역할.
  */
 

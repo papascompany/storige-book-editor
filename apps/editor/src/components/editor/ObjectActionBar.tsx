@@ -7,24 +7,24 @@ import { useSettingsStore } from '@/stores/useSettingsStore'
 import { useIsCoarsePointer } from '@/hooks/useIsCoarsePointer'
 
 /**
- * ObjectActionBar (E1 §5-3) — 선택 객체 상단 플로팅 액션 바.
+ * ObjectActionBar — 선택 객체 상단 플로팅 액션 바.
  *
  * - 객체 선택 시 선택 경계 상단 중앙에 복제·삭제 버튼 2종(v1)을 띄운다.
  * - selection:created/updated/cleared 구독, 변형 중(moving/scaling/rotating) 숨김
  *   → object:modified/mouse:up 재표시 (TransformFeedback 과 동일 3이벤트 정합).
  * - 뷰포트 clamp: 임베드 소형 뷰포트 포함, 바가 캔버스 영역 밖으로 이탈하지 않는다.
- * - 게이팅 (레이어 UX L1④ 규약 정합 — SidePanel 복제/삭제 가드와 동일 판정):
+ * - 게이팅 (SidePanel 복제/삭제 가드와 동일 판정):
  *   · 삭제: 비-editMode 에서 deleteable===false 포함 선택이면 숨김
  *   · 복제: CopyPlugin.isCloneProtected() 판정 재사용(움직임/삭제/내용 잠금 + designer+ 고급잠금)
  *   · LockPlugin 4단계: designer/admin/system 잠금 포함 선택은 두 버튼 모두 숨김(방어적 —
  *     통상 해당 객체는 고객 선택 자체가 차단되지만 프로그래매틱 선택 경로를 봉쇄)
  *   · 두 버튼 모두 숨김이면 바 자체 미표시
  * - 멀티 선택(ActiveSelection) 지원: CopyPlugin.clone() 은 copyActiveSelection 경로,
- *   삭제는 requestDeleteSelection(S2 확인 모달) → ObjectPlugin.del() 다중 경로가 실물
+ *   삭제는 requestDeleteSelection(확인 모달) → ObjectPlugin.del() 다중 경로가 실물
  *   지원함을 확인함 — 멤버 전체가 게이트를 통과할 때만 노출.
  * - 액션은 기존 경로 재사용(신규 복제/삭제 로직 없음):
  *   복제 = CopyPlugin.clone() (ctrl+d 핫키·SidePanel 행 버튼과 동일),
- *   삭제 = useAppStore.requestDeleteSelection() (휴지통 버튼·DEL 핫키 공통 S2 모달 경로).
+ *   삭제 = useAppStore.requestDeleteSelection() (휴지통 버튼·DEL 핫키 공통 삭제 확인 모달 경로).
  * - 플래그 VITE_ENABLE_OBJECT_ACTION_BAR (기본 on) — React 컴포넌트라 createCanvas 가
  *   아닌 렌더 지점 게이팅(컴포넌트 내부 early-return).
  * - 시스템 객체(EmptyCanvasHint 와 동일 정책) 포함 선택에는 표시하지 않는다.
@@ -130,7 +130,7 @@ export default function ObjectActionBar() {
     if (!selection || selection.length === 0) return null
     if (selection.some((obj) => isSystemObject(obj))) return null
 
-    // ── 게이팅 (L1④·잠금 4단계 규약) ──
+    // ── 게이팅 (잠금 4단계 규약) ──
     let showClone: boolean
     let showDelete: boolean
     if (editMode) {
@@ -251,7 +251,7 @@ export default function ObjectActionBar() {
   }, [getPlugin])
 
   const handleDelete = useCallback(() => {
-    // 기존 경로 재사용: S2 확인 모달 → ObjectPlugin.del() (삭제잠금·fillImage 가드 내장)
+    // 기존 경로 재사용: 삭제 확인 모달 → ObjectPlugin.del() (삭제잠금·fillImage 가드 내장)
     requestDeleteSelection()
   }, [requestDeleteSelection])
 

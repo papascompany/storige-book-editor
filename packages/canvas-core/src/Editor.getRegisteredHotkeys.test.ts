@@ -1,4 +1,4 @@
-// Editor.getRegisteredHotkeys 테스트 (C9/E2 W4 §6-2)
+// Editor.getRegisteredHotkeys 테스트
 //
 // 등록된 플러그인 hotkey 를 pluginName 과 함께 flatMap 열람 — 도움말 모달 자동 생성의 단일 소스.
 //  ① 여러 플러그인 hotkey 를 pluginName 태깅해 모두 반환

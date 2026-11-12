@@ -1,5 +1,5 @@
 /**
- * P0-1(2026-06-22) SSRF 방어 회귀 테스트.
+ * SSRF 방어 회귀 테스트.
  *
  * assertSafeDownloadUrl 가 사설/링크로컬/루프백 IP 와 비-http(s) 스킴을 거부하고,
  * 공인 IP·허용 호스트는 통과시키는지 검증한다. isBlockedIp 는 순수 함수라 DNS 불필요.

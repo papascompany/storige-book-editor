@@ -5,7 +5,7 @@ import CanvasHotkey from '../models/CanvasHotkey'
 import { PluginBase, PluginOption } from '../plugin'
 
 /**
- * Alt+드래그 복제(C5)의 이동 임계 — 화면 px. 이 거리 미만은 단순 alt+클릭/지터로
+ * Alt+드래그 복제의 이동 임계 — 화면 px. 이 거리 미만은 단순 alt+클릭/지터로
  * 간주해 복제하지 않는다(첫 object:moving 에서 판정). Ctrl+D 복제와 무관.
  */
 const ALT_DRAG_CLONE_THRESHOLD_PX = 4
@@ -42,11 +42,11 @@ class CopyPlugin extends PluginBase {
   // 핫키로 붙여넣기 실행 중 플래그
   private isHotkeyPasting: boolean = false
 
-  // ── C5 (E2): Alt+드래그 복제 ─────────────────────────────────────────
+  // ── Alt+드래그 복제 ─────────────────────────────────────────
   // 기본 on. createCanvas 가 VITE_ENABLE_ALT_DRAG_CLONE 를 주입(옵션 부재 시 on).
   private altDragCloneEnabled: boolean = true
   // mouse:down 에서 잡은 복제 후보 — 첫 이동에서 사본 삽입.
-  // 단일: source=원본 객체. 다중(C5): source=ActiveSelection + multi 페이로드(판별식, source===multi.sel).
+  // 단일: source=원본 객체. 다중: source=ActiveSelection + multi 페이로드(판별식, source===multi.sel).
   private altCandidate: {
     source: fabric.Object
     startLeft: number
@@ -84,7 +84,7 @@ class CopyPlugin extends PluginBase {
     this.boundPasteListener = this.pasteListener.bind(this)
     this.boundDuplicateListener = this.duplicateListener.bind(this)
 
-    // C5: Alt+드래그 복제 — 옵션 부재 시 on(기본 활성), 명시적 false 만 비활성
+    // Alt+드래그 복제 — 옵션 부재 시 on(기본 활성), 명시적 false 만 비활성
     this.altDragCloneEnabled = this._options?.altDragClone !== false
     this.boundAltMouseDown = this.altMouseDown.bind(this)
     this.boundAltObjectMoving = this.altObjectMoving.bind(this)
@@ -95,12 +95,12 @@ class CopyPlugin extends PluginBase {
   }
 
   /**
-   * L1④ (2026-07-06): 관리자 보호 객체(위치고정/삭제잠금/내용잠금/고급잠금)는 고객
+   * 관리자 보호 객체(위치고정/삭제잠금/내용잠금/고급잠금)는 고객
    * (비-editMode)이 복제할 수 없다 — 보호 플래그가 사본에 복사돼 삭제 불가한 유령
    * 사본이 쌓이는 것 방지. ObjectPlugin.del 의 삭제 가드와 동일 규약(_options.editMode).
    * 핫키(ctrl+d)·우클릭 컨텍스트 메뉴·SidePanel 버튼이 전부 clone() 을 거치므로 일괄 방어.
    *
-   * public (E1 §5-3): ObjectActionBar 가 복제 버튼 노출 게이팅에 동일 판정을 재사용한다
+   * public: ObjectActionBar 가 복제 버튼 노출 게이팅에 동일 판정을 재사용한다
    * — 규칙 이원화(드리프트) 방지. 판정 로직 불변.
    */
   isCloneProtected(obj: fabric.Object): boolean {
@@ -111,7 +111,7 @@ class CopyPlugin extends PluginBase {
       o?.deleteable === false ||
       o?.contentEditable === false ||
       // user 레벨 고급잠금은 본인이 건 '내 잠금' — 복제 허용(레이어 행 mine 판정과 정합).
-      // designer+ 레벨만 템플릿 보호로 간주해 차단(적대 리뷰: 판정 불일치 해소).
+      // designer+ 레벨만 템플릿 보호로 간주해 차단(판정 불일치 해소).
       (o?.lockInfo?.isLocked === true && o?.lockInfo?.lockLevel !== 'user')
     )
   }
@@ -167,7 +167,7 @@ class CopyPlugin extends PluginBase {
     window.removeEventListener('paste', this.boundPasteListener)
     window.removeEventListener('keydown', this.boundDuplicateListener)
 
-    // C5: Alt+드래그 복제 캔버스 리스너 해제(누수 방지) + 잔여 상태 마감
+    // Alt+드래그 복제 캔버스 리스너 해제(누수 방지) + 잔여 상태 마감
     if (this.altDragCloneEnabled) {
       this._canvas.off('mouse:down', this.boundAltMouseDown)
       this._canvas.off('object:moving', this.boundAltObjectMoving)
@@ -184,7 +184,7 @@ class CopyPlugin extends PluginBase {
   }
 
   /**
-   * C5 (E2): Alt+드래그 복제 트리거 등록. 데스크탑 전용(alt 키). 임베드 포함 전 경로에
+   * Alt+드래그 복제 트리거 등록. 데스크탑 전용(alt 키). 임베드 포함 전 경로에
    * canvas-core 레벨로 자동 적용된다. 플래그 off 면 리스너를 아예 걸지 않는다(무비용).
    *
    * 시맨틱(Canva/PowerPoint): 원본이 드래그되어 나가고 사본이 시작 위치에 남는다.
@@ -449,7 +449,7 @@ class CopyPlugin extends PluginBase {
 
   /**
    * 원본을 fabric `clone(cb)` 파이프라인으로 복제해 콜백에 전달하는 공유 프리미티브.
-   * 붙여넣기/복제(copyObject)와 Alt+드래그 복제(C5)가 이 경로를 공유한다 — `clone(cb)` 은
+   * 붙여넣기/복제(copyObject)와 Alt+드래그 복제가 이 경로를 공유한다 — `clone(cb)` 은
    * 붙여넣기 프로덕션 경로와 동일한 커스텀 속성 상속 규약을 그대로 따르므로 신규 직렬화
    * 경로가 생기지 않는다(canvasData 왕복·PDF 계약 무접촉). left/top 미정의 클론은 무시.
    */
@@ -460,7 +460,7 @@ class CopyPlugin extends PluginBase {
     })
   }
 
-  // ── C5 (E2): Alt+드래그 복제 핸들러 ─────────────────────────────────
+  // ── Alt+드래그 복제 핸들러 ─────────────────────────────────
   /** mouse/pointer 이벤트에서 화면 좌표+altKey 안전 추출(터치 폴백 — alt 는 데스크탑뿐). */
   private altPoint(e: unknown): { x: number; y: number; altKey: boolean; hasPoint: boolean } {
     type TouchPointList = { [i: number]: { clientX: number; clientY: number } }
@@ -480,7 +480,7 @@ class CopyPlugin extends PluginBase {
    * mouse:down — alt + 비보호 객체(단일) 또는 다중 선택 위에서 시작하면 복제 후보로 표시
    * (아직 clone 안 함). 시작 위치 스냅샷만 잡아 두고, 실제 사본 삽입은 첫 이동에서 수행한다.
    * - 빈 곳(target 없음): DraggingPlugin 의 alt-팬에 양보(후보 미설정).
-   * - 다중 선택(ActiveSelection): 멤버 일괄 복제(C5). 멤버 1개라도 보호면 복제 생략(일반 이동 폴백).
+   * - 다중 선택(ActiveSelection): 멤버 일괄 복제. 멤버 1개라도 보호면 복제 생략(일반 이동 폴백).
    * - 단일 보호객체: Ctrl+D 와 동일한 isCloneProtected 판정 재사용(규칙 이원화 금지).
    */
   private altMouseDown(opt: fabric.IEvent) {
@@ -494,7 +494,7 @@ class CopyPlugin extends PluginBase {
     const active = this._canvas.getActiveObject() as fabric.Object | undefined
 
     if (active && (active as { type?: string }).type === 'activeSelection') {
-      // 다중 선택(C5): 멤버 전체를 원본(들) 시작 위치에 일괄 복제(Ctrl+D 다중 규약 미러).
+      // 다중 선택: 멤버 전체를 원본(들) 시작 위치에 일괄 복제(Ctrl+D 다중 규약 미러).
       const sel = active as fabric.ActiveSelection
       const members = (this._canvas.getActiveObjects?.() ?? []) as fabric.Object[]
       // 멤버 2개 미만이면 다중 아님(방어) — 후보 미설정.
@@ -548,7 +548,7 @@ class CopyPlugin extends PluginBase {
     canvas.offHistory()
     this.altHistoryOff = true
 
-    // 다중 선택(C5): ActiveSelection 멤버 일괄 복제 경로.
+    // 다중 선택: ActiveSelection 멤버 일괄 복제 경로.
     if (cand.multi) {
       this.altCloneActiveSelection(cand.multi.sel, cand.multi.sources, cand.startLeft, cand.startTop, gen)
       return
@@ -577,7 +577,7 @@ class CopyPlugin extends PluginBase {
   }
 
   /**
-   * C5 다중: ActiveSelection 을 복제해 각 멤버 사본을 원본(들) 시작 절대좌표·대응 원본 직하에
+   * 다중 선택: ActiveSelection 을 복제해 각 멤버 사본을 원본(들) 시작 절대좌표·대응 원본 직하에
    * 삽입한다. 원본 AS 는 fabric transform 으로 계속 드래그된다 — **discardActiveObject/
    * setActiveObject 호출 금지**(원본 선택·드래그 유지).
    *

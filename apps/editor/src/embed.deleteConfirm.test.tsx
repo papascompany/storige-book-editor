@@ -1,5 +1,5 @@
 /**
- * 임베드 삭제 확인 모달 마운트 테스트 (적대 리뷰 P1-2, 2026-07-15)
+ * 임베드 삭제 확인 모달 마운트 테스트
  *
  * ObjectActionBar 삭제 버튼(과 DEL/Backspace 인터셉터)은 requestDeleteSelection() 으로
  * deleteConfirmOpen 상태만 세팅하고, 실제 모달 UI 는 <ObjectDeleteConfirm /> 소비자가
@@ -87,7 +87,7 @@ afterEach(() => {
   })
 })
 
-describe('EmbeddedEditor — ObjectDeleteConfirm 마운트 (S2 모달 규약)', () => {
+describe('EmbeddedEditor — ObjectDeleteConfirm 마운트 (삭제 확인 모달 규약)', () => {
   it('삭제 요청(requestDeleteSelection — ObjectActionBar 삭제 버튼 경로) 시 확인 모달이 열린다', () => {
     renderEmbed()
 

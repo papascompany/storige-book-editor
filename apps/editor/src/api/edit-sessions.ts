@@ -38,7 +38,7 @@ async function withGuestTokenRedacted<T>(guestToken: string, call: () => Promise
 }
 
 /**
- * Edit Session 상태 (bookmoa 연동용)
+ * Edit Session 상태 (외부 쇼핑몰 연동용)
  */
 export type SessionStatus = 'draft' | 'editing' | 'complete'
 
@@ -78,7 +78,7 @@ export interface EditSessionResponse {
   completedAt?: string | null
   createdAt: string
   updatedAt: string
-  // 인쇄 워크플로우 v1 Phase 4 (2026-05-19)
+  // 인쇄 워크플로우 v1
   contentPdfFileId?: string | null
   contentPdfPageCount?: number | null
   contentPdfValidationResult?: Record<string, any> | null
@@ -97,9 +97,9 @@ export interface CreateEditSessionRequest {
   templateSetId?: string
   canvasData?: any
   metadata?: Record<string, any>
-  /** Worker 완료 시 콜백 URL (bookmoa 웹훅 수신용) */
+  /** Worker 완료 시 콜백 URL (연동 사이트 웹훅 수신용) */
   callbackUrl?: string
-  /** 인쇄 워크플로우 v1 Phase 4 — 게스트 모드 진입 */
+  /** 인쇄 워크플로우 v1 — 게스트 모드 진입 */
   asGuest?: boolean
 }
 
@@ -113,16 +113,16 @@ export interface UpdateEditSessionRequest {
   templateSetId?: string
   canvasData?: any
   metadata?: Record<string, any>
-  // 인쇄 워크플로우 v1 Phase 4 (2026-05-19)
+  // 인쇄 워크플로우 v1
   contentPdfFileId?: string | null
   contentPdfPageCount?: number | null
   contentPdfValidationResult?: Record<string, any> | null
-  /** 내지 PDF 첨부 모드 — 표시전용 (2026-06-08): 'replace' | 'underlay' */
+  /** 내지 PDF 첨부 모드 — 표시전용: 'replace' | 'underlay' */
   contentPdfMode?: 'replace' | 'underlay' | null
 }
 
 /**
- * P1-4 (2026-08-22) — 세션 canvasData 스냅샷(서버 버전 이력) 항목.
+ * 세션 canvasData 스냅샷(서버 버전 이력) 항목.
  * 서버 `file_edit_session_versions` 의 경량 목록 필드(canvasData 제외).
  *  - reason: autosave(60s debounce 보존) | shrink(페이지 수 감소 직전 즉시 보존) | restore(복원 직전 상태 보존)
  *  - pageCount: 스냅샷에 담긴(=덮어쓰이기 직전) 페이지 수, nextPageCount: 그때 덮어쓴 새 페이지 수
@@ -139,7 +139,7 @@ export interface EditSessionVersionSummary {
 }
 
 /**
- * Edit Sessions API (bookmoa 연동용)
+ * Edit Sessions API (외부 쇼핑몰 연동용)
  */
 export const editSessionsApi = {
   /**
@@ -252,7 +252,7 @@ export const editSessionsApi = {
   },
 
   /**
-   * 게스트 편집 세션 생성 — 인쇄 워크플로우 v1 Phase 4 (2026-05-19).
+   * 게스트 편집 세션 생성 — 인쇄 워크플로우 v1.
    * 응답의 guestToken 을 sessionStorage 에 저장하고 이후 updateGuest 호출 시 토큰 동봉.
    * 클라이언트 기본 재시도(408·429·5xx)를 쓴다 — 응답으로 받은 토큰의 세션을 이어 연다.
    */
@@ -265,7 +265,7 @@ export const editSessionsApi = {
   },
 
   /**
-   * P1-4 — 세션 스냅샷 목록(회원: 소유자/staff). 게스트 세션은 listGuestVersions 사용.
+   * 세션 스냅샷 목록(회원: 소유자/staff). 게스트 세션은 listGuestVersions 사용.
    */
   listVersions: async (id: string): Promise<EditSessionVersionSummary[]> => {
     const response = await apiClient.get<EditSessionVersionSummary[]>(`/edit-sessions/${id}/versions`)
@@ -273,7 +273,7 @@ export const editSessionsApi = {
   },
 
   /**
-   * P1-4 — 스냅샷 복원(회원). 서버가 복원 직전 현재 상태를 reason='restore' 로 보존한 뒤
+   * 스냅샷 복원(회원). 서버가 복원 직전 현재 상태를 reason='restore' 로 보존한 뒤
    * canvasData 를 교체하고 갱신된 세션(canvasData 포함)을 돌려준다.
    */
   restoreVersion: async (id: string, versionId: string): Promise<EditSessionResponse> => {
@@ -287,7 +287,7 @@ export const editSessionsApi = {
   },
 
   /**
-   * P1-4 — 게스트 세션 스냅샷 목록. 토큰은 `x-guest-token` 헤더로만 보낸다(URL·쿼리에 싣지 않음).
+   * 게스트 세션 스냅샷 목록. 토큰은 `x-guest-token` 헤더로만 보낸다(URL·쿼리에 싣지 않음).
    * 실패 오류의 토큰 원문은 가린다.
    */
   listGuestVersions: async (id: string, guestToken: string): Promise<EditSessionVersionSummary[]> =>
@@ -300,7 +300,7 @@ export const editSessionsApi = {
     }),
 
   /**
-   * P1-4 — 게스트 세션 스냅샷 복원. 응답 세션에는 guestToken 이 없을 수 있으므로 호출측이 보존한다.
+   * 게스트 세션 스냅샷 복원. 응답 세션에는 guestToken 이 없을 수 있으므로 호출측이 보존한다.
    * 토큰은 `x-guest-token` 헤더로만 보낸다(URL·쿼리에 싣지 않음). 실패 오류의 토큰 원문은 가린다.
    */
   restoreGuestVersion: async (

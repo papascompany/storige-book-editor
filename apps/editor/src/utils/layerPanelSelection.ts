@@ -1,5 +1,5 @@
 /**
- * A1 (2026-07-06): 레이어 패널 다중선택(shift/ctrl 클릭)·모바일 ↑↓ 순서변경 보조 로직.
+ * 레이어 패널 다중선택(shift/ctrl 클릭)·모바일 ↑↓ 순서변경 보조 로직.
  * SidePanel 에서 분리해 fabric 인스턴스 없이 단위테스트 가능하게 유지(구조적 타입).
  */
 
@@ -32,7 +32,7 @@ export interface MultiSelectCandidate {
  * - selectable === false — 캔버스 드래그 선택에서도 제외되는 객체(동작 일관성)
  *
  * editMode(관리자)는 잠금 미강제(applyObjectPermissions editMode 면제·LockPlugin admin
- * 바이패스)라 제외하지 않는다 — B1 잔여 ⑤(admin 다중선택 드래그 동반 이동 수용)와 동일.
+ * 바이패스)라 제외하지 않는다 — admin 다중선택 드래그의 동반 이동 허용과 같은 규약이다.
  */
 export function isMultiSelectableInLayerPanel(
   obj: MultiSelectCandidate | null | undefined,

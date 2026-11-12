@@ -93,7 +93,7 @@ export default function ColorPicker({
     [onUpdateValue, onUpdateCmykValue]
   )
 
-  // 빠른 색상 팔레트 — 최근 사용 8개 (트랙 R)
+  // 빠른 색상 팔레트 — 최근 사용 8개
   const recentColors = useRecentColorsStore((s) => s.recent).slice(0, 8)
   const pushRecentColor = useRecentColorsStore((s) => s.push)
 

@@ -5,11 +5,11 @@ import type {
 } from '@/api/edit-sessions'
 
 /**
- * P1-4 (2026-08-22) — 서버 세션 버전 스냅샷(file_edit_session_versions) 표시/복원 순수 헬퍼.
+ * 서버 세션 버전 스냅샷(file_edit_session_versions) 표시/복원 순수 헬퍼.
  * UI(HistoryPanel) 와 임베드 복원 핸들러(embed.tsx) 가 공유한다. DOM/스토어 의존 없음.
  */
 
-/** 스냅샷 사유 → 사용자 문구/톤. shrink 는 R2 절단 복구의 핵심 시점이라 강조한다. */
+/** 스냅샷 사유 → 사용자 문구/톤. shrink 는 캔버스 절단 복구의 핵심 시점이라 강조한다. */
 export function describeVersionReason(reason: EditSessionVersionReason | string | null | undefined): {
   label: string
   tone: 'neutral' | 'warning' | 'info'
@@ -32,7 +32,7 @@ export function describeVersionReason(reason: EditSessionVersionReason | string 
 /**
  * 장 수 문구. 서버 pageCount 는 **캔버스 수**(표지·펼침면 각 1장) — 물리 페이지가 아니므로 '장' 으로 표기한다.
  * pageCount 는 "그 시점에 보관된(덮어쓰이기 직전) 장 수", nextPageCount 는 "그때 새로 덮어쓴 장 수".
- * 줄어든 경우만 드러낸다(R2 절단 복구의 단서).
+ * 줄어든 경우만 드러낸다(캔버스 절단 복구의 단서).
  */
 export function formatVersionPages(v: Pick<EditSessionVersionSummary, 'pageCount' | 'nextPageCount'>): string {
   const base = `${v.pageCount}장`

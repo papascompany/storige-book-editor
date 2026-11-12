@@ -7,7 +7,7 @@ interface AuthState {
   refreshToken: string | null;
   isAuthenticated: boolean;
   /**
-   * P3b 테넌트 스위처 — 현재 선택된 site 컨텍스트.
+   * 테넌트 스위처 — 현재 선택된 site 컨텍스트.
    * null = 전체 보기(전역 admin 기본). 사이트 운영자는 TenantSwitcher 가 자기 site 로 자동 고정.
    * 서버가 권위(테넌트 격리는 API 스코프가 강제) — 이 값은 목록 필터 파라미터로만 쓰인다.
    */

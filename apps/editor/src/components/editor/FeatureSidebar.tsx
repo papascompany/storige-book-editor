@@ -49,7 +49,7 @@ const LazyLoading = () => (
 const COLLAPSED_WIDTH = 28
 
 /**
- * W8-2b D4: 편집 중인 디자인은 AI 패널에서 다른 템플릿셋으로 바꾸지 않는다.
+ * 편집 중인 디자인은 AI 패널에서 다른 템플릿셋으로 바꾸지 않는다.
  * 재편집은 세션 템플릿셋으로 열리므로(세션 세트 우선) URL 의 templateSetId 만 바꾸면 전환이 조용히
  * 무효가 된다. 편집 중인 디자인 = URL 에 sessionId 가 있거나, 같은 주소로 다시 열면 기존 세션을 다시
  * 찾는 경우(주문번호 진입의 회원 세션 재사용·생성 — embed 가 sessionPinned 로 알려 준다).
@@ -97,7 +97,7 @@ interface FeatureSidebarProps {
    */
   mobileOverlay?: boolean
   /**
-   * W8-2b D4: 같은 진입 주소로 다시 열면 기존 세션(세션 세트)으로 열리는가 — `true` 면 AI 패널의 템플릿셋
+   * 같은 진입 주소로 다시 열면 기존 세션(세션 세트)으로 열리는가 — `true` 면 AI 패널의 템플릿셋
    * 전환을 막고 '새로 편집' 안내를 띄운다(URL 에 sessionId 가 없는 주문번호 진입 포함). embed 가 넘긴다.
    */
   aiTemplateSetSwitchBlocked?: boolean
@@ -112,7 +112,7 @@ export default function FeatureSidebar({
   const currentMenu = useAppStore((state) => state.currentMenu)
   const tapMenu = useAppStore((state) => state.tapMenu)
   const activeSelection = useAppStore((state) => state.activeSelection)
-  // P1 캘린더(2026-10-17): 날짜칸 더블클릭 → 달력 패널 + 기념일 폼. 그리드를 클릭하면 선택 패널로 바뀌어
+  // 캘린더: 날짜칸 더블클릭 → 달력 패널 + 기념일 폼. 그리드를 클릭하면 선택 패널로 바뀌어
   // CalendarPanel 이 언마운트되므로 항상 마운트되는 이 컴포넌트가 구독한다(날짜는 store.pendingDate 로 전달).
   const isCalendarProduct = useSettingsStore((s) => s.productProfile?.kind === 'calendar')
   useCalendarGridDblClick(
@@ -292,10 +292,10 @@ export default function FeatureSidebar({
       case 'SMART_CODE':
         return <SmartCodes />
       case 'CALENDAR':
-        // P1 캘린더 (2026-10-17): ToolBar 가 productProfile kind=calendar 세트에서만 메뉴를 노출
+        // 캘린더: ToolBar 가 productProfile kind=calendar 세트에서만 메뉴를 노출
         return <CalendarPanel />
       case 'PHOTO_PRINT':
-        // P2-d 사진인화 (2026-10-19): ToolBar 가 productProfile kind=photo-print 세트에서만 메뉴를 노출
+        // 사진인화: ToolBar 가 productProfile kind=photo-print 세트에서만 메뉴를 노출
         return <PhotoPrintPanel />
       case 'EDIT':
         return ENABLE_IMAGE_PROCESSING ? (
@@ -310,11 +310,11 @@ export default function FeatureSidebar({
             dimensions={undefined}
             onSelectTemplate={(templateSetId: string) => {
               // 추천 받은 템플릿셋 선택 시: 신규 편집이면 페이지 새로고침으로 templateSetId 적용,
-              // 편집 중인 디자인(sessionId·주문 세션 재사용)이면 전환하지 않고 '새로 편집' 안내(W8-2b D4)
+              // 편집 중인 디자인(sessionId·주문 세션 재사용)이면 전환하지 않고 '새로 편집' 안내
               applyAiTemplateSetSwitch(templateSetId, aiTemplateSetSwitchBlocked)
             }}
             onGenerated={(templateSetId: string) => {
-              // AI 생성 결과를 새 templateSet으로 적용 — 규칙은 위와 같다(W8-2b D4)
+              // AI 생성 결과를 새 templateSet으로 적용 — 규칙은 위와 같다
               applyAiTemplateSetSwitch(templateSetId, aiTemplateSetSwitchBlocked)
             }}
           />

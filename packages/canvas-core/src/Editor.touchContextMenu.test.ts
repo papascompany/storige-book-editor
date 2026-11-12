@@ -1,4 +1,4 @@
-// Editor.enableTouchContextMenu 배선 테스트 (C6 / E2 W3)
+// Editor.enableTouchContextMenu 배선 테스트
 //
 // 검증 대상:
 //  ① enableTouchContextMenu → attachTouchContextMenu(canvas, contextMenu, options) 호출

@@ -1,10 +1,10 @@
 /**
- * WK-2/WK-3/WK-5 회귀 테스트 (2026-06-13)
+ * Ghostscript 블리드 인자·타임아웃·동시 실행 제한 회귀 테스트
  *
- * - WK-2: buildAddBleedArgs 인자 공식 고정 — DEVICEWIDTHPOINTS=(원본W+2*bleed)*2.83465,
+ * - buildAddBleedArgs 인자 공식 고정 — DEVICEWIDTHPOINTS=(원본W+2*bleed)*2.83465,
  *         HEIGHT 동일, -dFIXEDMEDIA + BeginPage translate 유지, dead psCode 제거.
- * - WK-3: runGhostscript timeoutMs — 만료 시 SIGTERM(→5s 후 SIGKILL), close 시 타이머 정리.
- * - WK-5: 모듈 레벨 카운팅 세마포어(GS_CONCURRENCY, 기본 2)로 GS spawn 동시 수 제한.
+ * - runGhostscript timeoutMs — 만료 시 SIGTERM(→5s 후 SIGKILL), close 시 타이머 정리.
+ * - 모듈 레벨 카운팅 세마포어(GS_CONCURRENCY, 기본 2)로 GS spawn 동시 수 제한.
  */
 import { setImmediate } from 'node:timers';
 import {
@@ -17,7 +17,7 @@ import {
 
 const MM_TO_PT = 2.83465;
 
-describe('WK-2: buildAddBleedArgs (블리드 인자 공식)', () => {
+describe('buildAddBleedArgs (블리드 인자 공식)', () => {
   it('A4(210x297) + 3mm 블리드 → 페이지 크기 (216x303)mm 를 pt 로 지정해야 한다', () => {
     const args = buildAddBleedArgs('/in.pdf', '/out.pdf', 3, 210, 297);
 
@@ -61,14 +61,14 @@ describe('WK-2: buildAddBleedArgs (블리드 인자 공식)', () => {
     expect(args).toContain('-dPreserveOverprintSettings=true');
     expect(args).toContain('-dPreserveSeparation=true');
     expect(args).toContain('-dPreserveDeviceN=true');
-    // R4a: 재증류 시 주석/폼 제거(교정 코멘트 사고 대응) — 제거되면 재발
+    // 재증류 시 주석/폼 제거(교정 코멘트 사고 대응) — 제거되면 재발
     expect(args).toContain('-dPreserveAnnots=false');
     expect(args).toContain('-sDEVICE=pdfwrite');
     expect(args).toContain('-sOutputFile=/out.pdf');
   });
 });
 
-describe('WK-3: 타임아웃 상수', () => {
+describe('타임아웃 상수', () => {
   it('기본 120s / pdfwrite 60s / 래스터 30s 정책이 고정되어야 한다', () => {
     expect(DEFAULT_GS_TIMEOUT_MS).toBe(120_000);
     expect(GS_PDFWRITE_TIMEOUT_MS).toBe(60_000);
@@ -76,7 +76,7 @@ describe('WK-3: 타임아웃 상수', () => {
   });
 });
 
-describe('WK-3: runGhostscript 타임아웃 (GHOSTSCRIPT_PATH=/bin/sh 대역)', () => {
+describe('runGhostscript 타임아웃 (GHOSTSCRIPT_PATH=/bin/sh 대역)', () => {
   // GS_PATH 는 모듈 로드 시 읽히므로 isolateModules + 신선한 require 로 주입한다.
   function loadWithEnv(env: Record<string, string | undefined>) {
     let mod: typeof import('./ghostscript');
@@ -126,7 +126,7 @@ describe('WK-3: runGhostscript 타임아웃 (GHOSTSCRIPT_PATH=/bin/sh 대역)', 
     expect(Date.now() - started).toBeLessThan(3_000);
   }, 10_000);
 
-  it('GS_CONCURRENCY=1 이면 두 spawn 이 직렬화되어야 한다 (WK-5 배선 확인)', async () => {
+  it('GS_CONCURRENCY=1 이면 두 spawn 이 직렬화되어야 한다 (배선 확인)', async () => {
     const gs = loadWithEnv({ GHOSTSCRIPT_PATH: '/bin/sh', GS_CONCURRENCY: '1' });
     expect(gs.gsSemaphore.limit).toBe(1);
 
@@ -159,7 +159,7 @@ describe('WK-3: runGhostscript 타임아웃 (GHOSTSCRIPT_PATH=/bin/sh 대역)', 
   });
 });
 
-describe('WK-5: CountingSemaphore', () => {
+describe('CountingSemaphore', () => {
   it('한도 내 acquire 는 즉시 통과해야 한다', async () => {
     const sem = new CountingSemaphore(2);
     await sem.acquire();

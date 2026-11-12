@@ -735,9 +735,9 @@ describe('Ghostscript Utilities', () => {
   });
 
   // ============================================================
-  // R3 (2026-08-11): parseInkTacOutput — ink_cov 페이지 평균 TAC 파싱
+  // parseInkTacOutput — ink_cov 페이지 평균 TAC 파싱
   // ============================================================
-  describe('parseInkTacOutput (R3)', () => {
+  describe('parseInkTacOutput', () => {
     it('페이지별 채널 합(이미 % 스케일)으로 TAC 를 계산하고 최대 페이지를 짚는다', () => {
       // ⚠️ ink_cov 실출력은 inkcov(0~1 분율)와 달리 **0~100 퍼센트** 스케일이다 —
       // 2026-08-11 프로덕션 GS 10.x 컨테이너 실측으로 확정(전면 CMYK 0.9/0.85/0.8/0.95

@@ -1,9 +1,9 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 
 /**
- * 내지 PDF '앉히기' 회귀 잠금 (W1, 2026-08-13).
+ * 내지 PDF '앉히기' 회귀 잠금.
  *
- * 종전 결함(G1·G5): 첨부가 끝나도 화면은 그대로였다 — 페이지 확장은 로드 경로
+ * 종전 결함: 첨부가 끝나도 화면은 그대로였다 — 페이지 확장은 로드 경로
  * (loadTemplateSetEditor 의 underlayPageCount)에만, 가이드 배치는 /embed 세션 로드에만 있어
  * `?sessionId` 로 **재진입해야** 보였다.
  *
@@ -31,7 +31,7 @@ vi.mock('./fontManager', () => ({
   resolveStorageUrl: (u: string) => `https://api.example.com${u}`,
 }))
 
-/** 공개 엔드포인트만 쓴다 — `GET /template-sets/:id` 는 게스트 401(2026-08-13 적발) */
+/** 공개 엔드포인트만 쓴다 — `GET /template-sets/:id` 는 게스트 401 */
 const getTemplateSetWithTemplates = vi.fn()
 vi.mock('../api/template-sets', () => ({
   templateSetsApi: {
@@ -191,7 +191,7 @@ beforeEach(() => {
   })
 })
 
-describe('ensureUnderlayPages — 첨부 직후 내지 즉시 확장(G5)', () => {
+describe('ensureUnderlayPages — 첨부 직후 내지 즉시 확장', () => {
   it('부족분만 추가한다', async () => {
     setCanvases(2)
     const added = await ensureUnderlayPages(5)
@@ -486,7 +486,7 @@ describe('resolveUnderlaySource', () => {
     ).toBeNull()
   })
 
-  it('편집완료 마커(spreadContentPageCount)가 있으면 status=editing 이어도 contentFileId 를 승격하지 않는다 (R5)', () => {
+  it('편집완료 마커(spreadContentPageCount)가 있으면 status=editing 이어도 contentFileId 를 승격하지 않는다', () => {
     // 자동저장이 status 를 'editing' 으로 되돌린 재편집 세션 — 자기 산출물 재승격 루프 차단
     expect(
       resolveUnderlaySource({
@@ -497,7 +497,7 @@ describe('resolveUnderlaySource', () => {
     ).toBeNull()
   })
 
-  it('진짜 첨부(contentPdfFileId)는 편집완료 마커가 있어도 우선 유지된다 (W1 계약)', () => {
+  it('진짜 첨부(contentPdfFileId)는 편집완료 마커가 있어도 우선 유지된다 (첨부 우선 계약)', () => {
     expect(
       resolveUnderlaySource({
         contentPdfFileId: 'pdf-1',
@@ -509,7 +509,7 @@ describe('resolveUnderlaySource', () => {
     ).toEqual({ fileId: 'pdf-1', pageCount: 4 })
   })
 
-  it('정밀 마커(editorOutputContentFileId)가 contentFileId 와 일치하면 승격하지 않는다 (R5 정밀화)', () => {
+  it('정밀 마커(editorOutputContentFileId)가 contentFileId 와 일치하면 승격하지 않는다 (정밀 마커)', () => {
     expect(
       resolveUnderlaySource({
         contentFileId: 'out-1',
@@ -519,7 +519,7 @@ describe('resolveUnderlaySource', () => {
     ).toBeNull()
   })
 
-  it('정밀 마커가 있고 contentFileId 가 다르면(정당한 재첨부) 레거시 마커/완료 이력이 있어도 승격한다 (R5 정밀화)', () => {
+  it('정밀 마커가 있고 contentFileId 가 다르면(정당한 재첨부) 레거시 마커/완료 이력이 있어도 승격한다 (정밀 마커)', () => {
     expect(
       resolveUnderlaySource({
         contentFileId: 'shop-2',

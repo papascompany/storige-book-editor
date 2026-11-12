@@ -37,19 +37,19 @@ import {
 } from './calendarPanelUtils'
 
 /**
- * CalendarPanel — 좌측 메뉴 `CALENDAR`(달력) 패널 (P1-d 캘린더, 2026-10-17)
+ * CalendarPanel — 좌측 메뉴 `CALENDAR`(달력) 패널 (캘린더)
  *
  * 세 섹션: 시작연월(allowedRange 안만 허용) · 표기 옵션(공휴일/임시공휴일/음력/24절기/잡절) · 기념일 관리(목록 + 추가/수정/삭제).
  * 변경은 useCalendarStore 에 쓰고 `rehydrateAllCalendarGrids()` 로 모든 캔버스의 그리드를 다시 그린다
  * (사진·텍스트 보존, dirty 마킹 → 자동저장). 활성 캔버스의 날짜칸 더블클릭은 그 날짜로 기념일 폼을 연다.
  * editMode(관리자 템플릿 제작)에서는 그리드 배치 도구(CalendarGridTools)를 추가로 노출한다.
  *
- * T3b 연달력(2026-10-24): 캔버스에 연달력(variant 'year')이 있으면 '연달력' 섹션을 보인다 —
+ * 연달력: 캔버스에 연달력(variant 'year')이 있으면 '연달력' 섹션을 보인다 —
  *  - 연도 제목 표시 on/off → `metadata.calendar.show.yearTitle`(템플릿 `style.showTitle=false` 면 제목 자리 자체가 없다).
  *  - 표지·에필로그 연도 선택 → `metadata.calendar.yearDeltas`. 프로파일 `calendar.yearPolicy.select` 가 있고 그 역할 캔버스에
- *    연달력이 있을 때만 노출, 후보는 허용 폭(minDelta~maxDelta)만. 값은 시작연도 기준 상대값이라 시작연월을 바꿔도 유지된다(Q4).
- * 기념일 폼은 문구 스타일 최소(글자색, D1(b))를 받아 `anniversaries[].style` 에 저장한다. 굵게 입력은 두지 않는다
- * (T3b-1a, 오너 결정 2026-10-25 — 완료 PDF 벡터화가 fontWeight 를 적용하지 않아 화면·인쇄가 달라짐). 저장분의 fontWeight 등 다른 키는 보존한다.
+ *    연달력이 있을 때만 노출, 후보는 허용 폭(minDelta~maxDelta)만. 값은 시작연도 기준 상대값이라 시작연월을 바꿔도 유지된다.
+ * 기념일 폼은 문구 스타일 최소(글자색)를 받아 `anniversaries[].style` 에 저장한다. 굵게 입력은 두지 않는다
+ * (완료 PDF 벡터화가 fontWeight 를 적용하지 않아 화면·인쇄가 달라짐). 저장분의 fontWeight 등 다른 키는 보존한다.
  * ToolBar 가 productProfile.kind==='calendar' 세트 또는 editMode 에서만 메뉴를 노출한다.
  */
 
@@ -58,7 +58,7 @@ export const START_MONTH_CONFIRM_MESSAGE =
 export const DUPLICATE_DATE_MESSAGE = '이미 등록된 날짜입니다'
 export const LUNAR_DATA_PENDING_MESSAGE = '음력 환산 데이터 준비 중'
 export const OUT_OF_RANGE_BADGE = '범위 밖 — 수정 또는 삭제'
-/** 임시공휴일·선거일 체크박스 라벨 — 기본 해제(키 없음 = false = 법정 공휴일만, 2026-10-17 오너 결정) */
+/** 임시공휴일·선거일 체크박스 라벨 — 기본 해제(키 없음 = false = 법정 공휴일만) */
 export const TEMPORARY_HOLIDAYS_LABEL = '임시공휴일·선거일 표시(공표분)'
 /** 잡절(초복·중복·말복) 체크박스 라벨 — 기본 해제(키 없음 = false, 계약 v1.27 `show.minorTerms`). 월 그리드 칸 문구에만 나온다 */
 export const MINOR_TERMS_LABEL = '잡절(복날) 표시'
@@ -299,7 +299,7 @@ function DisplayOptionsSection({ show }: { show: CalendarDisplayOptions }) {
   )
 }
 
-// ─── 연달력(T3b) ───────────────────────────────────────────────────────────
+// ─── 연달력 ───────────────────────────────────────────────────────────
 
 const YEAR_ROLE_LABEL: Record<CalendarYearRole, string> = { cover: '표지', epilogue: '에필로그' }
 

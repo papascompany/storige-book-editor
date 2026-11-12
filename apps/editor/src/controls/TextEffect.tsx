@@ -31,7 +31,7 @@ export default function TextEffect() {
   const [curveDirection, setCurveDirection] = useState<CurveDirectionType>('upward')
   // 호 각도(도) — 180=반원(기본), 키우면 원 둘레를 더 감쌈 (배지/병뚜껑/라벨)
   const [arcDeg, setArcDeg] = useState(180)
-  // S-E3: 패스 모양(아치|웨이브) + Flip(패스 반대편 — fabric pathSide)
+  // 패스 모양(아치|웨이브) + Flip(패스 반대편 — fabric pathSide)
   const [pathType, setPathType] = useState<CurvePathType>('arc')
   const [flipped, setFlipped] = useState(false)
 

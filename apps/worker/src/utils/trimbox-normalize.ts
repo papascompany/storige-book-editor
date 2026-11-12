@@ -1,18 +1,18 @@
 /**
- * X1 (2026-09-30): TrimBox(재단 크기) 기준 판정 + 재단선 영역 크롭 정규화 — 공용 순수 모듈.
+ * TrimBox(재단 크기) 기준 판정 + 재단선 영역 크롭 정규화 — 공용 순수 모듈.
  *
- * 원칙(CTO 결정 X1):
+ * 원칙:
  *   1) 지금 통과하는 파일의 결과·산출물은 바뀌지 않는다.
  *   2) 통과시킨 파일은 산출물이 주문 크기와 정확히 맞는다.
  *   둘 중 하나라도 보장하지 못하면 적용하지 않는다(skip + 로그).
  *
  * - 판정(evaluateTrimSizeBasis): 검증기 표준(pdf-lib)·경량(qpdf) 경로가 **같은 함수**로 판정(파리티).
- *   X1-R2: 통과 조건 = 엄격 기하 조건 + known 목표(Trim+B_order) ⊂ MediaBox. 합성 산출 박스
+ *   통과 조건 = 엄격 기하 조건 + known 목표(Trim+B_order) ⊂ MediaBox. 합성 산출 박스
  *   크기는 통과 조건이 아니다(도련은 명시 BleedBox 기준 hasBleed/BLEED_MISSING 으로만 판정).
  * - 크롭(planTrimBoxCrop): 합성·변환 입력의 임시 사본에서 페이지별 MediaBox·CropBox 를
  *   'TrimBox 를 사방 균등 B 만큼 확장한 박스'로 재설정. TrimBox·BleedBox 는 유지(BleedBox 가
  *   목표 밖이면 목표로 clamp). 원본 파일에는 절대 쓰지 않는다.
- * - 산출물 크기(X1F-1, 2026-10): 잡에 `contentTrim`(주문 재단·도련)이 실린 합성·첨부 채움
+ * - 산출물 크기: 잡에 `contentTrim`(주문 재단·도련)이 실린 합성·첨부 채움
  *   (merge·compose-mixed 자동조립/관리자·attach-page-pad)은 trimCropContextFromJob 으로 읽어
  *   '아는 경로'(TrimCropContext.expectedTrimMm+bleedMm)로 주문 작업사이즈(재단+2·도련)에 맞춘다.
  *   키가 없거나 값이 유효하지 않은 잡은 '모르는 경로' — 선언 도련 B = min(BleedBox 대칭 도련,
@@ -163,7 +163,7 @@ function expandBoxMm(b: BoxRectPt, bxMm: number, byMm: number): BoxRectPt {
 export const TRIMBOX_REVERSED_MIN_BLEED_MM = 0.5;
 
 /**
- * TrimBox·BleedBox 역전 보정(2026-10-28, 네이처링 무선책자 내지 — PScript5/Distiller 출력).
+ * TrimBox·BleedBox 역전 보정(PScript5/Distiller 출력 무선책자 내지에서 관측).
  * 명시 BleedBox 가 TrimBox **안에** 사방 균등(±tol)하게 TRIMBOX_REVERSED_MIN_BLEED_MM~TRIMBOX_MAX_BLEED_MM
  * 만큼 들어가 있으면(PDF 규격상 TrimBox ⊂ BleedBox 위반) 두 박스 값이 뒤바뀌어 기록된 것으로 보고
  * 맞바꾼 사본을 돌려준다. 정상(TrimBox ⊂ BleedBox)·동일·비대칭·부재 박스는 입력 그대로(swapped=false).
@@ -379,11 +379,11 @@ export type TrimSizeBasisResult =
  *   known 목표(TrimBox 를 사방 균등 targetBleedMm 확장) ⊂ MediaBox.
  * 경량 비신뢰(pages=null)·페이지 수 불일치는 적용하지 않는다.
  *
- * CTO X1-R2(2026-09-30): '모르는 경로(합성) 산출 박스 = validatePageSize 허용 크기' 조건은
- * 제거했다(운영 실측 파일 B 가 다시 SIZE_MISMATCH 가 되던 회귀). 따라서 통과 파일이라도
+ * '모르는 경로(합성) 산출 박스 = validatePageSize 허용 크기'는 통과 조건이 아니다
+ * (이 조건을 두면 운영 실측 파일 B 가 SIZE_MISMATCH 가 된다). 따라서 통과 파일이라도
  * 주문 bleed 를 모르는 합성은 선언 도련 ≤ DEFAULT_BLEED_MM(3) 크롭 또는 원본 박스로 산출한다
  * (예: B+주문 bleed 1 → 216x303, 사방 4mm·BleedBox 없음 → 원본 218x305).
- * 후속: API 가 합성 잡에 주문 bleed·기대 재단을 전달하면 '아는 경로'로 정확히 맞출 수 있다.
+ * API 가 합성 잡에 contentTrim(주문 재단·도련)을 실으면 '아는 경로'로 정확히 맞춘다.
  *
  * 도련: effectiveBleedMm = 전 페이지·전 변 (명시 BleedBox(MediaBox 로 clip) − TrimBox) 최소값,
  * BleedBox 없는 페이지가 있으면 0. hasBleed = 원값 도련 ≥ orderBleedMm − tolMm/2
@@ -424,7 +424,7 @@ export function evaluateTrimSizeBasis(input: TrimSizeBasisInput): TrimSizeBasisR
     ok: true,
     trimMm: boxSizeMm(p1.trimBox as BoxRectPt),
     mediaMm: boxSizeMm(p1.mediaBox),
-    // 표시(metadata.bleedSize)만 소수1 반올림 — 판정은 원값으로 한다(X1-R2 결정 원문).
+    // 표시(metadata.bleedSize)만 소수1 반올림 — 판정은 원값으로 한다.
     effectiveBleedMm: round1(rawBleedMm),
     hasBleed: rawBleedMm + TRIMBOX_BLEED_COMPARE_EPS_MM >= orderBleedMm - tolMm / 2,
     ...(boxesSwapped ? { boxesSwapped: true as const } : {}),
@@ -479,7 +479,7 @@ function isKnownOrderPath(ctx: TrimCropContext): boolean {
 }
 
 // ─────────────────────────────────────────────────────────────
-// 잡 페이로드 contentTrim → TrimCropContext (X1F-1, API ↔ worker 공유 계약)
+// 잡 페이로드 contentTrim → TrimCropContext (API ↔ worker 공유 계약)
 // ─────────────────────────────────────────────────────────────
 
 /** contentTrim 허용오차 상한(mm). 초과는 비정상 입력으로 보고 무시한다. */
@@ -626,7 +626,7 @@ export type TrimCropPlan =
  *   2) 명시 BleedBox 가 있고(부재면 도련과 slug 를 구분할 수 없음) TrimBox 를 감싼다
  *   3) 모든 변에서 MediaBox − BleedBox ≥ TRIMBOX_SLUG_MIN_MARGIN_MM
  *      (선언 도련 **바깥**의 추가 여백만 slug 로 인정 — BleedBox≈MediaBox 인 도련 5mm 이상
- *       정상 파일·편집기 P3 산출물(MediaBox=BleedBox=작업사이즈)은 크롭하지 않는다)
+ *       정상 파일·편집기 산출물(MediaBox=BleedBox=작업사이즈)은 크롭하지 않는다)
  */
 function checkSlugEvidence(
   p: PageBoxesPt,

@@ -19,7 +19,7 @@ import { usePhotoPrintStore } from '@/stores/usePhotoPrintStore'
 import { useCalendarSkinStore } from '@/stores/useCalendarSkinStore'
 
 /**
- * productProfile.ts — 템플릿셋 `productProfile` 을 편집기 스토어에 배선하는 헬퍼 (P1 캘린더, 2026-10-17)
+ * productProfile.ts — 템플릿셋 `productProfile` 을 편집기 스토어에 배선하는 헬퍼 (캘린더)
  *
  * 모든 함수는 profile 이 null/legacy 이면 no-op 또는 null 을 돌려줘 기존 경로를 바꾸지 않는다.
  */
@@ -30,7 +30,7 @@ export function isCalendarProfile(profile: ProductProfile | null | undefined): p
   return !!profile && profile.kind === 'calendar' && !!profile.calendar
 }
 
-/** P2-d 사진인화 (2026-10-19): kind 'photo-print' + photoPrint 블록이 있는 프로파일 */
+/** 사진인화: kind 'photo-print' + photoPrint 블록이 있는 프로파일 */
 export type PhotoPrintProductProfile = ProductProfile & { kind: 'photo-print'; photoPrint: PhotoPrintProfile }
 
 export function isPhotoPrintProfile(profile: ProductProfile | null | undefined): profile is PhotoPrintProductProfile {
@@ -68,7 +68,7 @@ export function applyTemplateSetProductProfile(
   const profile = resolveProductProfile(templateSet, (m) => console.warn(`[EditorContents] ${m}`))
   useSettingsStore.getState().setProductProfile(profile)
   useCalendarStore.getState().setFromProfile(profile)
-  // P2-d 사진인화: photo-print 가 아니면 reset(null) — 캘린더 스토어와 같은 규약
+  // 사진인화: photo-print 가 아니면 reset(null) — 캘린더 스토어와 같은 규약
   usePhotoPrintStore.getState().setFromProfile(profile)
   // 캘린더 디자인(스킨) 적용의 기준 세트 id — 적용 직전 이 세트를 다시 받아 호환을 재검사한다. 세트가 없으면 reset
   const setId = templateSet?.id
@@ -111,7 +111,7 @@ export function makeCalendarLabelResolver(
 }
 
 /**
- * P2-d 사진인화 페이지 라벨 resolver — digital '사진 3 앞'/'사진 3 뒤', chemical '사진 3'(types formatPhotoPageLabel 재사용).
+ * 사진인화 페이지 라벨 resolver — digital '사진 3 앞'/'사진 3 뒤', chemical '사진 3'(types formatPhotoPageLabel 재사용).
  * 사진인화 프로파일이 아니면 모든 인덱스에 undefined(기존 라벨 유지).
  */
 export function makePhotoLabelResolver(
@@ -138,7 +138,7 @@ export function resolveProfilePdfRequestSize(
 }
 
 /**
- * 단일모드 완료 PDF 의 프로파일 세트 전용 export 옵션(P1 캘린더, 2026-10-17).
+ * 단일모드 완료 PDF 의 프로파일 세트 전용 export 옵션(캘린더).
  * 프로파일이 있으면 워커 preflight 경고(FONT_NOT_EMBEDDED / TRANSPARENCY_DETECTED)의 편집기 측 원인을 끄는
  * 세 옵션을 모두 켠다. 프로파일 NULL 세트는 undefined → ServicePlugin 종전 경로·바이트 그대로.
  */
@@ -149,7 +149,7 @@ export function resolveProfilePdfExportOptions(
   return { omitUnusedFonts: true, excludeWorkspaceFromExport: true, neutralizeTransparentFills: true }
 }
 
-// ─── P2-d 사진인화 시드·단위 보정 (2026-10-19 결함 수정 D1/D2/api-sheetmap-3) ─────────────────────────
+// ─── 사진인화 시드·단위 보정 ─────────────────────────
 
 /** 항목 1건이 차지하는 캔버스 수 — chemical 1 / digital 2 (photoPrintRehydrate.photoPrintStride 와 같은 산식) */
 export function photoPrintCanvasStride(profile: PhotoPrintProductProfile): 1 | 2 {
@@ -176,8 +176,8 @@ export interface PhotoPrintSeedResult {
 
 /**
  * 사진인화(range) 세트의 시드 캔버스 수.
- * - 재오픈(restoredCanvasCount ≥ 1)은 저장본 수를 하한으로 — 호스트 pageCount/한도와 무관하게 마지막 캔버스를 잃지 않는다(D1).
- * - 신규 세션에 런처 items N건이 있으면 N × stride 를 하한으로(D2) — 초기 캔버스보다 많은 항목이 잘리지 않는다.
+ * - 재오픈(restoredCanvasCount ≥ 1)은 저장본 수를 하한으로 — 호스트 pageCount/한도와 무관하게 마지막 캔버스를 잃지 않는다.
+ * - 신규 세션에 런처 items N건이 있으면 N × stride 를 하한으로 — 초기 캔버스보다 많은 항목이 잘리지 않는다.
  * - 셋 다 없으면 null(종전 흐름 — 템플릿셋 refs 그대로). 결과는 refs 수 이상, pages.max 이하(초과분은 truncated).
  */
 export function resolvePhotoPrintSeedCount(
@@ -207,7 +207,7 @@ export function resolvePhotoPrintSeedCount(
 }
 
 /**
- * 사진인화 세트의 증감 단위 — 프로파일 pages.step 이 템플릿셋 pageStep·호스트 pageStep 보다 우선한다(api-sheetmap-3).
+ * 사진인화 세트의 증감 단위 — 프로파일 pages.step 이 템플릿셋 pageStep·호스트 pageStep 보다 우선한다.
  * 호스트가 다른 pageStep 을 보냈으면 console.warn 1회 뒤 무시한다. 사진인화가 아니면 템플릿셋 값 그대로(종전 동작).
  */
 export function resolvePhotoPrintPageStep(

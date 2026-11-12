@@ -1,11 +1,11 @@
 /**
- * 내지 PDF 첨부 진입점 배선 테스트 (W1-G1·G2·G3, 2026-08-13).
+ * 내지 PDF 첨부 진입점 배선 테스트.
  *
  * 종전 결함:
- *  - G2: 첨부 진입점이 레거시 `/`(EditorView) 에만 있어 파트너 정본 경로(/embed)에서는
+ *  - 첨부 진입점이 레거시 `/`(EditorView) 에만 있어 파트너 정본 경로(/embed)에서는
  *        고객이 내지 PDF 를 첨부할 방법 자체가 없었다.
- *  - G1: 첨부가 끝나도 화면은 그대로 — 세션을 재로드해야 PDF 가 보였다.
- *  - G3: EditorView 는 재로드해도 가이드를 깔지 않았다(applyContentPdfGuides 호출 0건).
+ *  - 첨부가 끝나도 화면은 그대로 — 세션을 재로드해야 PDF 가 보였다.
+ *  - EditorView 는 재로드해도 가이드를 깔지 않았다(applyContentPdfGuides 호출 0건).
  *
  * 잠그는 불변식:
  *  - 명시 세션(임베드)을 주입하면 **게스트 세션을 새로 만들지 않는다** — 만들면 첨부가
@@ -18,7 +18,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, waitFor, fireEvent } from '@testing-library/react'
 import { AxiosError, AxiosHeaders, type InternalAxiosRequestConfig } from 'axios'
 
-/** 공개 엔드포인트(with-templates)만 쓴다 — JWT 필수 라우트는 게스트에서 401(2026-08-13 적발) */
+/** 공개 엔드포인트(with-templates)만 쓴다 — JWT 필수 라우트는 게스트에서 401 */
 const getTemplateSetWithTemplates = vi.fn()
 vi.mock('../../api/template-sets', () => ({
   templateSetsApi: {
@@ -201,7 +201,7 @@ describe('EditorWorkflowControls — 임베드(명시 세션) 마운트', () => 
     warn.mockRestore()
   })
 
-  it('레더·면지 안내 배너는 임베드에 노출하지 않는다 (W1 변경면적 제한)', async () => {
+  it('레더·면지 안내 배너는 임베드에 노출하지 않는다', async () => {
     render(<EditorWorkflowControls templateSetId="ts-book" sessionId="sess-1" />)
 
     await screen.findByRole('button', { name: /내지 PDF 첨부/ })
@@ -266,7 +266,7 @@ describe('EditorWorkflowControls — 임베드(명시 세션) 마운트', () => 
 })
 
 describe('EditorWorkflowControls — 레거시 `/`(소유 세션)', () => {
-  it('ready 후 세션을 조회해 underlay 면 앉힌다 (G3 대칭)', async () => {
+  it('ready 후 세션을 조회해 underlay 면 앉힌다', async () => {
     guestState.sessionId = 'guest-sess'
     sessionGet.mockResolvedValue({
       id: 'guest-sess',
@@ -298,7 +298,7 @@ describe('EditorWorkflowControls — 레거시 `/`(소유 세션)', () => {
     expect(await screen.findByRole('button', { name: /첨부됨 \(8p\)/ })).toBeTruthy()
   })
 
-  it('편집완료 산출물(contentFileId + spreadContentPageCount 마커)은 첨부 배지로 오인하지 않는다 (R5)', async () => {
+  it('편집완료 산출물(contentFileId + spreadContentPageCount 마커)은 첨부 배지로 오인하지 않는다', async () => {
     guestState.sessionId = 'guest-sess'
     sessionGet.mockResolvedValue({
       id: 'guest-sess',
@@ -316,7 +316,7 @@ describe('EditorWorkflowControls — 레거시 `/`(소유 세션)', () => {
     expect(screen.queryByRole('button', { name: /첨부됨/ })).toBeNull()
   })
 
-  it('완료 이력(status=complete) 세션의 contentFileId 도 첨부로 간주하지 않는다 (R5)', async () => {
+  it('완료 이력(status=complete) 세션의 contentFileId 도 첨부로 간주하지 않는다', async () => {
     guestState.sessionId = 'guest-sess'
     sessionGet.mockResolvedValue({
       id: 'guest-sess',
@@ -333,7 +333,7 @@ describe('EditorWorkflowControls — 레거시 `/`(소유 세션)', () => {
     expect(screen.queryByRole('button', { name: /첨부됨/ })).toBeNull()
   })
 
-  it('정밀 마커(editorOutputContentFileId)와 다른 contentFileId 는 완료 이력이 있어도 첨부 배지로 복귀한다 (R5 정밀화)', async () => {
+  it('정밀 마커(editorOutputContentFileId)와 다른 contentFileId 는 완료 이력이 있어도 첨부 배지로 복귀한다 (정밀 마커)', async () => {
     guestState.sessionId = 'guest-sess'
     sessionGet.mockResolvedValue({
       id: 'guest-sess',
@@ -349,7 +349,7 @@ describe('EditorWorkflowControls — 레거시 `/`(소유 세션)', () => {
     expect(await screen.findByRole('button', { name: /첨부됨 \(16p\)/ })).toBeTruthy()
   })
 
-  it('정밀 마커와 일치하는 contentFileId 는 첨부 배지로 오인하지 않는다 (R5 정밀화)', async () => {
+  it('정밀 마커와 일치하는 contentFileId 는 첨부 배지로 오인하지 않는다 (정밀 마커)', async () => {
     guestState.sessionId = 'guest-sess'
     sessionGet.mockResolvedValue({
       id: 'guest-sess',
@@ -384,7 +384,7 @@ describe('EditorWorkflowControls — 레거시 `/`(소유 세션)', () => {
     expect(await screen.findByRole('button', { name: /첨부됨 \(24p\)/ })).toBeTruthy()
   })
 
-  it('pageCount 가 없으면 "(0p)" 대신 페이지 수 표기를 생략한다 (R5)', async () => {
+  it('pageCount 가 없으면 "(0p)" 대신 페이지 수 표기를 생략한다', async () => {
     guestState.sessionId = 'guest-sess'
     sessionGet.mockResolvedValue({
       id: 'guest-sess',

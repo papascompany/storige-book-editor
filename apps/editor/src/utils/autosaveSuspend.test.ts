@@ -7,7 +7,7 @@ import {
 } from './autosaveSuspend'
 
 /**
- * L4-② (2026-07-11): PDF 생성 중 autosave suspend 회귀 테스트.
+ * PDF 생성 중 autosave suspend 회귀 테스트.
  * 계약: suspend 창에서 발화한 자동저장은 **스킵이 아니라 지연** — 창이 닫히면 1회 실행.
  */
 

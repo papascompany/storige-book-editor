@@ -73,7 +73,7 @@ interface EditorHeaderProps {
   screenMode?: 'mobile' | 'tablet' | 'desktop'
   onToggleSidePanel?: () => void
   onLoadingChange?: (loading: boolean, message?: string) => void
-  /** 편집완료 콜백 (bookmoa 연동용). 결과(FinishOutcome)에 따라 안내 토스트를 고른다 — 결과값이 없으면 완료 안내 */
+  /** 편집완료 콜백 (외부 쇼핑몰 연동용). 결과(FinishOutcome)에 따라 안내 토스트를 고른다 — 결과값이 없으면 완료 안내 */
   onFinish?: () => Promise<FinishOutcome | void>
   /** 내 작업에 저장 콜백 */
   onSaveWork?: () => Promise<void>
@@ -85,17 +85,17 @@ interface EditorHeaderProps {
    */
   isAdminTemplateSetEdit?: boolean
   /**
-   * S1 (2026-07-04): 주문 컨텍스트(embed 임베드) — true 면 규격의 권위가 상품 옵션에
+   * 주문 컨텍스트(embed 임베드) — true 면 규격의 권위가 상품 옵션에
    * 있으므로 '작업 사이즈'를 읽기전용 라벨로 강등(클릭 시 안내 토스트). 관리자(editMode)
    * 는 템플릿 제작 목적이라 편집 가능 유지. EmbeddedEditor 가 true 로 전달.
    * 배경: 편집기 내 규격 변경이 세션 metadata·가격·주문 옵션에 전파되지 않아
-   * SIZE_MISMATCH/가격 불일치 사고 소지 — EDITOR_SAVE_LOAD_AND_SIZE_GAP_WORKORDER §3.
+   * SIZE_MISMATCH/가격 불일치로 이어질 수 있다.
    */
   orderContext?: boolean
   /**
-   * P1-4 (2026-08-22): 임베드 세션 버전 이력 소스(목록/여기로 복원). embed.tsx 가 주입.
+   * 임베드 세션 버전 이력 소스(목록/여기로 복원). embed.tsx 가 주입.
    * 주어지면 변경 이력 패널이 서버 스냅샷 목록을 보여주고, 모바일(< sm)에서도 숨기지 않는다
-   * (bookmoa-mobile 등 모바일 호스트 고객도 절단 복구 진입점이 필요).
+   * (모바일 호스트 고객도 절단 복구 진입점이 필요).
    */
   sessionVersions?: SessionVersionsSource | null
   /** false 면 변경 이력 패널의 레거시(/editor/sessions + persist sessionId) 시점 분기를 끈다(임베드). 기본 true */
@@ -127,7 +127,7 @@ export default function EditorHeader({
   // 룰러 토글 (기본 OFF, 사용자 선호로 영속)
   const showRuler = useUiPrefStore((s) => s.showRuler)
   const toggleRuler = useUiPrefStore((s) => s.toggleRuler)
-  // §6-3 스냅 설정
+  // 스냅 설정
   const snapGuidesEnabled = useUiPrefStore((s) => s.snapGuidesEnabled)
   const snapCenterEnabled = useUiPrefStore((s) => s.snapCenterEnabled)
   const snapAngleEnabled = useUiPrefStore((s) => s.snapAngleEnabled)
@@ -153,9 +153,9 @@ export default function EditorHeader({
   const { artwork, currentSettings, spreadConfig, updateSettings, setArtworkName } = useSettingsStore()
   const isAdmin = useIsAdmin()
 
-  // 3D 미리보기 — 표지 스프레드 캔버스(항상 index 0, useEditorContents §10-1)를 영역별로
+  // 3D 미리보기 — 표지 스프레드 캔버스(항상 index 0)를 영역별로
   // 캡처해 모달에 전달한다. 이미지 prop 이 비어 있어 앞표지/책등/뒷표지가 전부 빈 흰 판으로
-  // 보이던 결함 복구(2026-07-27). 캡처 실패(오염 캔버스 등)는 placeholder 로 폴백.
+  // 보이던 결함 복구. 캡처 실패(오염 캔버스 등)는 placeholder 로 폴백.
   const open3DMockup = useCallback(() => {
     const spec = useSettingsStore.getState().spreadConfig?.spec
     const coverCanvas = (allCanvas[0] ?? canvas) as unknown as SpreadCaptureCanvas | null
@@ -177,7 +177,7 @@ export default function EditorHeader({
     setMockupImages({})
   }, [])
 
-  // L3 B-3 (2026-07-06): 고객 시점 미리보기 — 디자이너가 보호 강제를 고객 모드 그대로
+  // 고객 시점 미리보기 — 디자이너가 보호 강제를 고객 모드 그대로
   // 체험(저장 없는 일시 모드). editMode 를 실제로 내리되 customerPreview 플래그가
   // ① 복귀 버튼 게이트 ② EditorView/TemplateEditorView 의 editMode 자동 승격 억제
   // ③ 저장 차단을 담당한다. 종료 시 revert+재승격으로 정확 원복.
@@ -193,7 +193,7 @@ export default function EditorHeader({
         (ed?.getPlugin?.('LockPlugin') as { setUserRole?: (r: string) => void } | undefined)?.setUserRole?.('user')
       )
       cvs.forEach((c: unknown) => applyObjectPermissions(c as never, false))
-      // B-5 stale 방지: 레이어 목록의 template-element 노출 분기를 즉시 재계산
+      // stale 방지: 레이어 목록의 template-element 노출 분기를 즉시 재계산
       useAppStore.getState().updateObjects()
       showToast('고객 화면 미리보기 중 — 저장은 잠겨 있어요.', 'info')
     } else {
@@ -271,7 +271,7 @@ export default function EditorHeader({
     [onLoadingChange]
   )
 
-  // K-1: 작업명 핸들러는 input JSX 인라인 (closure 단순화)
+  // 작업명 핸들러는 input JSX 인라인 (closure 단순화)
 
   // 인쇄 미리보기 토글
   const handlePreview = useCallback(async () => {
@@ -333,7 +333,7 @@ export default function EditorHeader({
       const cutline = allCanvas[0].getObjects().find((obj: { id?: string }) => obj.id === 'cutline-template')
 
       // 여러 페이지 PDF 저장 함수 호출
-      // L4-②: PDF 생성 창(excludeFromExport 임시 플래깅) 동안 autosave suspend — 누락 방지.
+      // PDF 생성 창(excludeFromExport 임시 플래깅) 동안 autosave suspend — 누락 방지.
       await runWithAutosaveSuspended(() => servicePlugin.saveMultiPagePDF(
         allCanvas,
         allEditors,
@@ -345,7 +345,7 @@ export default function EditorHeader({
           printSize: size.printSize,
         },
         cutline,
-        // P0-3 (2026-06-02): 인쇄 화질 정합 — embed/스프레드 경로(300 DPI)와 통일.
+        // 인쇄 화질 정합 — embed/스프레드 경로(300 DPI)와 통일.
         // 기존 72 DPI는 px→mm 변환이 ~4배 어긋나 인쇄물 물리 크기 불일치 원인이었음.
         300
       ))
@@ -421,7 +421,7 @@ export default function EditorHeader({
   const handleFinish = useCallback(async () => {
     if (!ready || !canvas) return
 
-    // S8: 내지 페이지 수가 증감 단위(pageStep) 배수가 아니면 완료 차단 — editor.complete 미발신.
+    // 내지 페이지 수가 증감 단위(pageStep) 배수가 아니면 완료 차단 — editor.complete 미발신.
     // (pageStep 미설정 셋은 null → 기존 흐름 그대로)
     const pageStepBlock = getPageStepBlockMessage()
     if (pageStepBlock) {
@@ -429,7 +429,7 @@ export default function EditorHeader({
       return
     }
 
-    // L7: 필수 편집 요소(requiredEdit) 미편집 경고 — 비차단 확인 모달.
+    // 필수 편집 요소(requiredEdit) 미편집 경고 — 비차단 확인 모달.
     // setLoading '이전'(오버레이 충돌 방지) + editor.complete emit '이전'(파트너 계약 무변경).
     // [계속 편집] 선택 시 완료 중단 + 첫 미편집 요소 페이지 이동·선택. 관리자(editMode)는 무간섭.
     const proceedRequired = await confirmRequiredEditsBeforeComplete()
@@ -448,7 +448,7 @@ export default function EditorHeader({
         }
       }
 
-      // onFinish 콜백이 있으면 (bookmoa 연동 모드) 해당 콜백 호출
+      // onFinish 콜백이 있으면 (호스트 연동 모드) 해당 콜백 호출
       if (onFinish) {
         const toast = finishToastFor(await onFinish())
         showToast(toast.message, toast.type)
@@ -483,7 +483,7 @@ export default function EditorHeader({
   const handleSaveForAdmin = useCallback(
     async (closeWindow: boolean = false) => {
       if (!ready || !canvas) return
-      // L3 B-3: 미리보기 강제 상태(lockMovement 등)가 저장본에 새는 것 방지
+      // 미리보기 강제 상태(lockMovement 등)가 저장본에 새는 것 방지
       if (useSettingsStore.getState().customerPreview) {
         showToast('고객 화면 미리보기 중에는 저장할 수 없어요 — 미리보기를 끄고 저장해주세요.', 'info')
         return
@@ -566,7 +566,7 @@ export default function EditorHeader({
   }, [onOpenWorkspace])
 
   /**
-   * Phase 2-F — Admin "템플릿셋 수정" 저장 직전 확인.
+   * Admin "템플릿셋 수정" 저장 직전 확인.
    *
    * 같은 templateSetId 로 진입하는 모든 사용자에게 새 디자인이 노출되므로
    * 운영 사고(실수로 빈 캔버스 저장 등) 방지를 위해 명시적 확인 단계를 둔다.
@@ -574,7 +574,7 @@ export default function EditorHeader({
    */
   const confirmAndSaveTemplateSet = useCallback(
     (closeWindow: boolean) => {
-      // L3 B-3: 미리보기 강제 상태가 템플릿 저장본에 새는 것 방지
+      // 미리보기 강제 상태가 템플릿 저장본에 새는 것 방지
       if (useSettingsStore.getState().customerPreview) {
         showToast('고객 화면 미리보기 중에는 저장할 수 없어요 — 미리보기를 끄고 저장해주세요.', 'info')
         return
@@ -656,7 +656,7 @@ export default function EditorHeader({
   // 작업 사이즈 표시 (mm 단위)
   const sizeLabel = `${Math.round(size.width)} × ${Math.round(size.height)} mm`
 
-  // S1 (2026-07-04): 주문 컨텍스트(embed 고객)에서는 규격 편집 차단 — 읽기전용 라벨.
+  // 주문 컨텍스트(embed 고객)에서는 규격 편집 차단 — 읽기전용 라벨.
   // 규격 권위 = 상품 옵션(파트너 장바구니). 관리자(editMode)는 편집 가능 유지.
   const sizeReadOnly = orderContext && !currentSettings.editMode
 
@@ -717,7 +717,7 @@ export default function EditorHeader({
       <nav className="h-14 bg-editor-panel border-b border-editor-border shadow-sm flex items-center px-4 z-[100]">
         {/* 좌측: 로고 + Undo/Redo + 자동저장 인디케이터 */}
         <div className="flex items-center gap-2 shrink-0">
-          {/* P1-4: 임베드 세션 버전 소스가 있으면 <sm 에서 변경 이력 버튼(36px)을 노출하는 대신
+          {/* 임베드 세션 버전 소스가 있으면 <sm 에서 변경 이력 버튼(36px)을 노출하는 대신
               워드마크를 숨겨 좌측 그룹 폭을 유지한다(360~375px 호스트에서 편집완료 클리핑 방지). */}
           <span
             className={
@@ -775,16 +775,16 @@ export default function EditorHeader({
           )}
 
           {/* 변경 이력 요약 popover — 모바일(< sm) 에서 숨김. 단 임베드 세션 버전 소스가 있으면
-              모바일에서도 노출(P1-4 절단 복구 진입점). */}
+              모바일에서도 노출(절단 복구 진입점). */}
           <span className={sessionVersions ? 'contents' : 'hidden sm:contents'}>
             <HistoryPanel sessionVersions={sessionVersions} legacyVersions={legacySessionVersions} />
           </span>
         </div>
 
         {/* 중앙: 작업명 + 사이즈 표시.
-            P1-4 실기(2026-08-23, 375px): flex-1 컨테이너에 min-w-0 이 없고 input 이 고유폭(≈140px)+min-w-[80px]
-            을 고수해 nav 가 396px 로 넘쳐 우측 '편집완료' 가 잘렸다(기존 결함, 변경 이력 버튼 모바일 노출로 체감↑).
-            컨테이너/입력을 축소 가능하게 하고 좌·우 그룹은 shrink-0 으로 보호한다. */}
+            375px 폭에서 flex-1 컨테이너에 min-w-0 이 없고 input 이 고유폭(≈140px)+min-w-[80px]
+            을 고수하면 nav 가 396px 로 넘쳐 우측 '편집완료' 가 잘린다.
+            그래서 컨테이너/입력을 축소 가능하게 하고 좌·우 그룹은 shrink-0 으로 보호한다. */}
         <div className="flex-1 min-w-0 flex items-center justify-center gap-3">
           <input
             key={artwork.name || 'untitled'}
@@ -815,7 +815,7 @@ export default function EditorHeader({
             }}
           />
           {sizeReadOnly ? (
-            /* S1: 주문 컨텍스트 — 규격 읽기전용 라벨. 클릭 시 안내만(권위=상품 옵션). */
+            /* 주문 컨텍스트 — 규격 읽기전용 라벨. 클릭 시 안내만(권위=상품 옵션). */
             <button
               type="button"
               aria-label="작업 사이즈 (상품 옵션에서 변경)"
@@ -933,7 +933,7 @@ export default function EditorHeader({
             <TooltipContent>룰러 {showRuler ? '끄기' : '켜기'}</TooltipContent>
           </Tooltip>
 
-          {/* 스냅 설정 팝오버 (§6-3) — 모바일(< sm) 에서 숨김. 3토글 전부 기본 ON. */}
+          {/* 스냅 설정 팝오버 — 모바일(< sm) 에서 숨김. 3토글 전부 기본 ON. */}
           {enableSnapSettings && (
             <Popover>
               <PopoverTrigger asChild>
@@ -1061,9 +1061,9 @@ export default function EditorHeader({
             </Button>
           )}
 
-          {/* L1② (2026-07-06): 레이어 패널 진입점 복원 — cefe2d4 에서 제거된 뒤 고객이
-              SidePanel 을 열 방법이 0이던 갭. onToggleSidePanel prop 은 embed/EditorView
-              양쪽에서 배선되므로 이 버튼 하나로 두 화면 진입점 동시 복원. */}
+          {/* 레이어 패널 진입점 — 이 버튼이 없으면 고객이
+              SidePanel 을 열 방법이 없다. onToggleSidePanel prop 은 embed/EditorView
+              양쪽에서 배선되므로 이 버튼 하나가 두 화면의 진입점이다. */}
           {onToggleSidePanel && (
             <Tooltip>
               <TooltipTrigger asChild>
@@ -1081,7 +1081,7 @@ export default function EditorHeader({
             </Tooltip>
           )}
 
-          {/* L3 B-3: 고객 시점 미리보기 토글 — editMode(디자이너)일 때 노출, 미리보기 중에는
+          {/* 고객 시점 미리보기 토글 — editMode(디자이너)일 때 노출, 미리보기 중에는
               복귀 버튼으로 유지(editMode 가 내려가 있으므로 customerPreview 로 게이트). */}
           {(currentSettings.editMode || customerPreview) && (
             <>
@@ -1198,7 +1198,7 @@ export default function EditorHeader({
       {/* 단축키 도움말 모달 */}
       <KeyboardShortcutsModal open={shortcutsOpen} onClose={() => setShortcutsOpen(false)} />
 
-      {/* L7: 필수 편집 요소 미편집 경고 모달 (편집완료 게이트 — embed·legacy 공통 마운트) */}
+      {/* 필수 편집 요소 미편집 경고 모달 (편집완료 게이트 — embed·legacy 공통 마운트) */}
       <RequiredEditConfirmModal />
 
       {/* 커맨드 팔레트 (Cmd+K) — admin "템플릿셋 수정" 모드는 confirm 거친 저장 경로 사용 */}

@@ -30,7 +30,7 @@ export interface UpdateSessionRequest {
 export interface AutoSavePayload {
   pages?: EditPage[]
   currentPageIndex?: number
-  /** BB-Phase 3 follow-up — 시점 스냅샷 썸네일 URL (없으면 null/생략) */
+  /** 시점 스냅샷 썸네일 URL (없으면 null/생략) */
   thumbnailUrl?: string | null
 }
 
@@ -83,7 +83,7 @@ export interface ReplaceTemplateSetPayload {
  *
  * ⚠️ 워커 PDF 검증 결과가 아니다. 이 엔드포인트는 API 의
  * editorService.validateSession(세션 구성 검증: 필수 페이지·내지 수량)이
- * `{valid, errors, warnings}` 를 그대로 반환한다(런타임 일치 확인, S-1 2026-07-15).
+ * `{valid, errors, warnings}` 를 그대로 반환한다.
  * 워커 PDF 검증 결과의 정본 타입은 @storige/types 의
  * `WorkerValidationResult`({isValid, metadata}) — 혼동 금지.
  */
@@ -182,7 +182,7 @@ export const sessionsApi = {
     return response.data
   },
 
-  // BB-Phase 3 ─ 자동저장 시점 versions
+  // 자동저장 시점 versions
   listVersions: async (
     id: string,
     userId?: string

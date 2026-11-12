@@ -1,5 +1,5 @@
 /**
- * P2-d D13 (2026-10-21): 분리본 PDF 의 미참조 XObject 정리.
+ * 분리본 PDF 의 미참조 XObject 정리.
  *
  * jsPDF(편집기 완료 PDF)는 문서의 모든 이미지 XObject 를 **각 페이지** /Resources/XObject 에 올린다.
  * pdf-lib `copyPages` 는 페이지 리소스 사전을 그대로 복사하므로 sheet-map/duplex-split 의 2쪽 분리본에도

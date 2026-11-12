@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 //
-// R6 (2026-08-18): PDF 저장 전 글리프 검증 수집기(ServicePlugin.collectGlyphValidationTargets)
+// PDF 저장 전 글리프 검증 수집기(ServicePlugin.collectGlyphValidationTargets)
 // 회귀 테스트.
 //
 // 배경: 글리프 검증이 excludeFromExport/시스템 마커 객체(SpreadPlugin 치수 라벨 —
@@ -34,8 +34,8 @@ function makeObj(init: MockObjectInit): fabric.Object {
   return init as unknown as fabric.Object
 }
 
-describe('ServicePlugin.collectGlyphValidationTargets (R6)', () => {
-  it('calendar-grid 그룹(P1 캘린더)의 내부 날짜 텍스트는 인쇄 대상이라 재귀 수집된다', () => {
+describe('ServicePlugin.collectGlyphValidationTargets', () => {
+  it('calendar-grid 그룹(캘린더)의 내부 날짜 텍스트는 인쇄 대상이라 재귀 수집된다', () => {
     const day = makeObj({ type: 'text', text: '15', fontFamily: 'Pretendard' })
     const holiday = makeObj({ type: 'text', text: '신정', fontFamily: 'Pretendard' })
     const grid = makeObj({ type: 'group', _objects: [makeObj({ type: 'rect' }), day, holiday] })

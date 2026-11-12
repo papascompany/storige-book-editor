@@ -19,23 +19,23 @@ interface ValidationJobData {
   orderOptions: {
     size: { width: number; height: number };
     pages: number;
-    // R-44: bookmoa canonical hardcover/spiral additive('spring'=레거시 표기 보존)
+    // 파트너 사이트 canonical hardcover/spiral additive('spring'=레거시 표기 보존)
     binding: 'perfect' | 'saddle' | 'spring' | 'spiral' | 'hardcover';
     bleed: number;
     paperThickness?: number;
-    /** 책등 폭(mm) — R-44 이후 API injectServerSpine 재계산 권위 값(있으면 우선 사용) */
+    /** 책등 폭(mm) — API injectServerSpine 재계산 권위 값(있으면 우선 사용) */
     spineWidthMm?: number;
-    /** R-44: 내지 지종 라벨(감사 추적용) */
+    /** 내지 지종 라벨(감사 추적용) */
     paperType?: string;
-    /** R-44: 표지 spine 검증 허용오차(mm) 오버라이드 */
+    /** 표지 spine 검증 허용오차(mm) 오버라이드 */
     spineToleranceMm?: number;
-    /** R-44: spineWidthMm 출처 스탬프 */
+    /** spineWidthMm 출처 스탬프 */
     spineSource?: 'server' | 'client';
-    /** R-44: 서버 덮어쓰기 전 클라 원본 */
+    /** 서버 덮어쓰기 전 클라 원본 */
     clientSpineWidthMm?: number;
-    /** R-53: API 주입 실패 사유 스탬프(UNMAPPED_PAPER/V1_FALLBACK) */
+    /** API 주입 실패 사유 스탬프(UNMAPPED_PAPER/V1_FALLBACK) */
     spineUnresolvedReason?: 'UNMAPPED_PAPER' | 'V1_FALLBACK';
-    /** S6: 표지 레이아웃 — 'separate'=앞/뒤 낱장(단일 판형 검증), 미전송/'spread'=현행 */
+    /** 표지 레이아웃 — 'separate'=앞/뒤 낱장(단일 판형 검증), 미전송/'spread'=현행 */
     coverLayout?: 'spread' | 'separate';
     /** 날개 사용 여부 */
     wingEnabled?: boolean;
@@ -43,25 +43,25 @@ interface ValidationJobData {
     wingWidthMm?: number;
     /**
      * 사방(per-edge) 블리드 mm — 상품별 설정값.
-     * P1: 수신만(optional), 사용은 P4에서.
+     * 이 프로세서는 수신만(optional) — 사용은 PdfValidatorService.
      */
     bleedMm?: number;
     /**
      * 재단선 마커 표기 ON/OFF 토글(블리드와 별개 명시 스위치).
-     * P1: 수신만(optional), 사용은 P4에서.
+     * 이 프로세서는 수신만(optional) — 사용은 PdfValidatorService.
      */
     cropMarkEnabled?: boolean;
     /**
      * 고객 업로드 PDF 사이즈 검증 허용오차(mm).
-     * P1: 수신만(optional), 사용은 P4에서.
+     * 이 프로세서는 수신만(optional) — 사용은 PdfValidatorService.
      */
     sizeToleranceMm?: number;
-    /** 재단(완성) 사이즈(mm). P1: 수신만(optional). */
+    /** 재단(완성) 사이즈(mm). 수신만(optional). */
     trimSize?: { width: number; height: number };
-    /** 작업 사이즈(재단 + bleedMm*2, mm). P1: 수신만(optional). */
+    /** 작업 사이즈(재단 + bleedMm*2, mm). 수신만(optional). */
     workSize?: { width: number; height: number };
     /**
-     * 주문 의도 페이지 방향 (R3). 수신만(optional) — 사용은 validate() 의
+     * 주문 의도 페이지 방향. 수신만(optional) — 사용은 validate() 의
      * validatePageOrientation 에서. 미제공/'auto' 면 혼재 시에만 집계 경고.
      */
     expectedOrientation?: 'portrait' | 'landscape' | 'auto';
@@ -81,7 +81,7 @@ interface ValidationJobData {
     productKind?: 'sheet' | 'book';
     /** 2026-10-17(낱장 분류 검증): 낱장 증감 단위(상품/템플릿셋 설정값). 1 이하·미제공=배수 검사 없음. */
     pageStep?: number;
-    /** 2026-10-17 P1-e: 표지 책등 없음. 'none'=cover 슬롯 단일 판형 검증(spine 게이트 우회). 미제공=현행. */
+    /** 2026-10-17(상품 프로파일): 표지 책등 없음. 'none'=cover 슬롯 단일 판형 검증(spine 게이트 우회). 미제공=현행. */
     coverSpine?: 'none';
     /** 2026-10-17(낱장 분류 검증): 후가공 파일 색 규칙. 'spot-only'=CMYK 사용 시 오류. 미제공='any'(오류·경고 없음). */
     postProcessColorRule?: 'any' | 'spot-only';
@@ -118,7 +118,7 @@ export function validationCodeSummary(
 @Processor('pdf-validation')
 export class ValidationProcessor {
   private readonly logger = new Logger(ValidationProcessor.name);
-  // WK-4 — 상태 업데이트 재시도 공유 서비스 (생성자 주입 대신 직접 생성:
+  // 상태 업데이트 재시도 공유 서비스 (생성자 주입 대신 직접 생성:
   //   기존 스펙들이 생성자 시그니처를 고정하고 있어 DI 파라미터 추가 불가)
   private readonly jobStatusService = new JobStatusService();
 
@@ -126,8 +126,7 @@ export class ValidationProcessor {
 
   // 검증 동시성: 기본 1이라 cover+content 등 다건 검증이 순차 처리되어 느렸음.
   // env VALIDATION_CONCURRENCY 로 조정(기본 3).
-  // ⚠️ 주석 정정 (WK-5, 2026-06-13): 종전 주석은 "Ghostscript 는 별도 GS_CONCURRENCY 로
-  //   보호된다"고 했으나 당시 그런 가드는 존재하지 않았다(허위). 현재는
+  // GS 동시 실행은 이 값과 별개다:
   //   utils/ghostscript.ts 의 모듈 레벨 카운팅 세마포어(gsSemaphore, env GS_CONCURRENCY,
   //   기본 2)가 GS spawn 동시 수를 실제로 제한한다.
   // 파일당 PDF 메모리 상한(100MB)을 고려해도 3~4는 안전.
@@ -220,7 +219,7 @@ export class ValidationProcessor {
   }
 
   /**
-   * JD-4: pdf-validation 큐의 failed 리스너. stalled 한도 초과 실패만 FAILED(JOB_STALLED)로 기록한다.
+   * pdf-validation 큐의 failed 리스너. stalled 한도 초과 실패만 FAILED(JOB_STALLED)로 기록한다.
    */
   @OnQueueFailed()
   async onQueueFailed(job: Job<unknown> | null, err: Error): Promise<void> {
@@ -235,7 +234,7 @@ export class ValidationProcessor {
   /**
    * API를 통해 Job 상태 업데이트.
    *
-   * WK-4: 무재시도 axios.patch → 공유 JobStatusService(재시도 5회·최대 30s 백오프,
+   * 무재시도 axios.patch → 공유 JobStatusService(재시도 5회·최대 30s 백오프,
    * 최종 실패 시 Sentry capture)로 대체. 최종 실패해도 throw 하지 않는 기존
    * 동작(검증 결과 반환은 보존)은 유지된다.
    */

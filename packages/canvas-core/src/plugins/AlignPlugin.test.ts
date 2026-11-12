@@ -1,11 +1,11 @@
-// AlignPlugin — 균등 분배(distributeH/V) 테스트 (E1 §5-4 + E2 §3-2a)
+// AlignPlugin — 균등 분배(distributeH/V) 테스트
 //
-// ControlBar 트랙 T 구현을 공개 API 로 이관한 회귀 스펙:
+// ControlBar 와 같은 동작의 공개 API 회귀 스펙:
 //  ① 첫/끝 고정 + 중간 center-to-center 균등 재배치 (가로/세로)
 //  ② offHistory/onHistory 쌍 (히스토리 일시 중단 규약 — 쌍 불일치 = undo/redo 파손)
 //  ③ 3개 미만 no-op / ActiveSelection 재생성 + object:modified 발화
 //  ④ 선택 순서 무관 — 공간 좌표 기준 정렬로 첫/끝 판정
-//  ⑤ 보호객체 제외 가드 (E2 §3-2a) — movable=false·lockMovementX/Y 는 이동 대상·기준점
+//  ⑤ 보호객체 제외 가드 — movable=false·lockMovementX/Y 는 이동 대상·기준점
 //     후보에서 제외, 잔여 이동가능 < 3 이면 no-op, editMode(관리자)는 제외 면제.
 //     ActiveSelection 재생성에는 보호객체 포함 선택 전체 유지(제외는 이동만).
 // fabric 은 node 에서 native canvas 바인딩이 필요해 최소 mock (SmartGuidesPlugin.test 패턴).
@@ -63,9 +63,9 @@ interface FakeObjectInit {
   top: number
   width: number
   height: number
-  /** E2 §3-2a 보호 플래그 — 관리자 위치고정 */
+  /** 보호 플래그 — 관리자 위치고정 */
   movable?: boolean
-  /** E2 §3-2a 보호 플래그 — fabric 이동잠금 */
+  /** 보호 플래그 — fabric 이동잠금 */
   lockMovementX?: boolean
   lockMovementY?: boolean
 }
@@ -254,7 +254,7 @@ describe('AlignPlugin.distribute — 히스토리 쌍/이벤트/가드', () => {
   })
 })
 
-describe('AlignPlugin.distribute — 보호객체 제외 가드 (E2 §3-2a)', () => {
+describe('AlignPlugin.distribute — 보호객체 제외 가드', () => {
   it('movable=false 객체는 위치 불변, 잔여 4개만 균등 분배 — 기준점 후보에서도 제외', () => {
     // 이동가능 센터 0/30/60/300 → 분배 후 0/100/200/300 (기존 4개 케이스와 동일 수치).
     // 보호객체(cx 500)가 공간상 최우측이지만 기준점(끝) 후보로도 쓰이지 않아야 한다.
@@ -334,7 +334,7 @@ describe('AlignPlugin.distribute — 보호객체 제외 가드 (E2 §3-2a)', ()
   })
 })
 
-describe('AlignPlugin — 분배 단축키 등록 (D-E2-1)', () => {
+describe('AlignPlugin — 분배 단축키 등록', () => {
   it('hotkeys 2건: alt+shift+h/v · category:arrange · onlyForActiveObject · 함수형 hideContext', () => {
     const { plugin } = setup([])
     const keys = plugin.hotkeys
@@ -350,7 +350,7 @@ describe('AlignPlugin — 분배 단축키 등록 (D-E2-1)', () => {
     expect(v!.name).toBe('세로 균등 분포')
     for (const k of [h!, v!]) {
       expect(k.onlyForActiveObject).toBe(true)
-      // ★ category:'arrange' 누락 시 C9 도움말 모달이 '객체'로 오분류(폴백) — 회귀 방지 앵커
+      // ★ category:'arrange' 누락 시 도움말 모달이 '객체'로 오분류(폴백) — 회귀 방지 앵커
       expect(k.category).toBe('arrange')
       // hideContext 는 boolean 이 아닌 함수형이어야 선택 수에 반응해 은폐/노출한다
       expect(typeof k.hideContext).toBe('function')

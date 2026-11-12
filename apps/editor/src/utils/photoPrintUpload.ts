@@ -3,7 +3,7 @@ import { showToast } from '@/stores/useToastStore'
 import { isPhotoPrintProfile } from '@/utils/productProfile'
 
 /**
- * photoPrintUpload.ts — 사진인화 업로드 한도(P2-d, 2026-10-19; checkMobileFileSize 패턴)
+ * photoPrintUpload.ts — 사진인화 업로드 한도(checkMobileFileSize 와 같은 패턴)
  *
  * 프로파일 `photoPrint.upload { maxPhotos, maxMb }` 를 selectFiles 직후에 강제한다.
  * - 현재 사진 수 + 선택 파일 수 > maxPhotos → 토스트 + false

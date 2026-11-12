@@ -7,8 +7,8 @@ import { useSettingsStore } from '@/stores/useSettingsStore'
 import { DEFAULT_PAGE_STEP_BASIS } from '@/utils/pageStep'
 
 /**
- * S8 (2026-09-28): SidePanel '페이지' 섹션의 pageStep 단위 추가/삭제 회귀 스펙.
- * 단일 모드에서 이 섹션이 유일한 추가/삭제 진입점이라(2402462), 1장 단위 우회가 되살아나지 않게 고정한다.
+ * SidePanel '페이지' 섹션의 pageStep 단위 추가/삭제 회귀 스펙.
+ * 단일 모드에서 이 섹션이 유일한 추가/삭제 진입점이라, 1장 단위 우회가 되살아나지 않게 고정한다.
  * - 추가: 배수까지 모자란 만큼(정렬 상태면 step 만큼) addPage 반복
  * - 삭제: 대상 + 인접(뒤쪽 우선) 묶음 삭제, 최소 페이지 수를 깨면 차단
  * - pageStep=null: 기존 1장 단위 동작
@@ -67,7 +67,7 @@ afterEach(() => {
   })
 })
 
-describe('SidePanel — pageStep 단위 추가/삭제 (S8)', () => {
+describe('SidePanel — pageStep 단위 추가/삭제', () => {
   it('pageStep=2, 4장(정렬됨): 추가 1회에 2장 추가', async () => {
     wire({ canvasCount: 4, pageStep: 2 })
     await act(async () => {
@@ -124,9 +124,9 @@ describe('SidePanel — pageStep 단위 추가/삭제 (S8)', () => {
   })
 })
 
-// R-196 host page limits (2026-09-29): 로더가 호스트 병합 범위로 settings.page 를 넓히면
+// host page limits: 로더가 호스트 병합 범위로 settings.page 를 넓히면
 // (단일 [16,300] + 비내지 1장 → {17,301}) 종전 기본 상한(99)을 넘어 추가할 수 있어야 한다.
-describe('SidePanel — 호스트 쪽수 한도 settings.page (R-196 회귀 가드)', () => {
+describe('SidePanel — 호스트 쪽수 한도 settings.page (회귀 가드)', () => {
   it('page {min:17, max:301} 이면 150장에서 추가 허용', async () => {
     wire({ canvasCount: 150, pageStep: null, min: 17, max: 301 })
     await act(async () => {

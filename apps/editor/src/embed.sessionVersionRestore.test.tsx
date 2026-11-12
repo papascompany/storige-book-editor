@@ -1,10 +1,10 @@
 /**
- * P1-4 (2026-08-22) — 서버 버전 스냅샷 "여기로 복원" 임베드 배선.
+ * 서버 버전 스냅샷 "여기로 복원" 임베드 배선.
  *
  * 잠그는 것:
  *   ① 헤더에 sessionVersions 소스가 주입된다(세션 id 기반 list = 회원 API).
  *   ② restore 순서: dirty 면 saveNow 플러시 → 자동저장 차단(debounce cancel + markClean) →
- *      서버 restore → 로컬 백업 폐기 + R2 기준선 갱신(markServerSynced(복원 길이)) → in-place 재초기화.
+ *      서버 restore → 로컬 백업 폐기 + 덮어쓰기 가드 기준선 갱신(markServerSynced(복원 길이)) → in-place 재초기화.
  *   ③ 플러시 실패 시 서버 restore 를 호출하지 않는다(미저장 편집 유실 금지).
  *   ④ 서버 restore 실패 시 throw(패널이 토스트) + 부수효과 없음.
  *   ⑤ 재초기화는 복원 응답 세션을 주입해 세션 재조회(GET :id)/재생성 경로를 타지 않는다.
@@ -140,7 +140,7 @@ const RESTORED = {
   guestToken: null,
 }
 
-describe('EmbeddedEditor — 서버 버전 복원 배선 (P1-4)', () => {
+describe('EmbeddedEditor — 서버 버전 복원 배선', () => {
   beforeEach(() => {
     captured.sessionVersions = null
     spies.order.length = 0

@@ -18,7 +18,7 @@ const controlsUtils = (
   }
 ).controlsUtils
 
-describe('A1-2 선행 재현: fabric 5.5.2 ActiveSelection 드래그의 자식 lockMovement 존중 여부', () => {
+describe('선행 재현: fabric 5.5.2 ActiveSelection 드래그의 자식 lockMovement 존중 여부', () => {
   it('대조군 — 단일 객체 드래그는 자신의 lockMovementX/Y 를 존중한다', () => {
     const rect = new fabric.Rect({
       left: 0,
@@ -105,7 +105,7 @@ describe('isMultiSelectableInLayerPanel — 잠긴 객체 제외 가드', () => 
     expect(isMultiSelectableInLayerPanel({ selectable: false }, false)).toBe(false)
   })
 
-  it('editMode(관리자): 잠긴 객체도 포함 — 잠금 미강제 규약(B1 잔여 ⑤ 수용)', () => {
+  it('editMode(관리자): 잠긴 객체도 포함 — 잠금 미강제 규약', () => {
     expect(isMultiSelectableInLayerPanel({ lockMovementX: true, movable: false }, true)).toBe(true)
     expect(isMultiSelectableInLayerPanel({ lockInfo: { isLocked: true } }, true)).toBe(true)
   })

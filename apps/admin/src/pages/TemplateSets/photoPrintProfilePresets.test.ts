@@ -179,7 +179,7 @@ describe('photoPrintPresetApplyHint — ② 만 backTemplateId 치환 안내', (
   });
 });
 
-describe('productProfileSectionHint — 상품 프로파일 섹션 안내(D7, kind 중립)', () => {
+describe('productProfileSectionHint — 상품 프로파일 섹션 안내(kind 중립)', () => {
   it('미선택: 공통 안내 — 캘린더 전용 문구(페이지 수 26·내지 추가 불가)가 없다', () => {
     const hint = productProfileSectionHint({ calendar: false, photoPrint: false });
     expect(hint).toBe(PRODUCT_PROFILE_SECTION_HINT_COMMON);
@@ -190,7 +190,7 @@ describe('productProfileSectionHint — 상품 프로파일 섹션 안내(D7, ki
     expect(hint).toContain('비워 두면 프로파일 없음(기존 동작)');
   });
 
-  it('캘린더만 선택: P1 캘린더 안내(페이지 수 26·내지 추가 불가)를 그대로 유지', () => {
+  it('캘린더만 선택: 캘린더 안내(페이지 수 26·내지 추가 불가)를 그대로 유지', () => {
     const hint = productProfileSectionHint({ calendar: true, photoPrint: false });
     expect(hint).toBe(PRODUCT_PROFILE_SECTION_HINT_CALENDAR);
     expect(hint).toContain('내지 추가 불가');

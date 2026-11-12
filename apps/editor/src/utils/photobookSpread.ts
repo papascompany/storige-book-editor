@@ -144,7 +144,7 @@ export function innerSpecToPlaceholderSpec(spec: SpreadInnerSpec): SpreadSpec {
 }
 
 // ============================================================================
-// 출력 계약 헬퍼 (Track 1, 2026-07-06) — D-1 1단계 · D-4 이중경계 · D-3 pageCount
+// 출력 계약 헬퍼 — 내지 페이지 크기 · 표지 출력 크기 · pageCount
 // embed.tsx(handleFinish/instance.complete)와 useWorkSave.completeSpreadWork 두 완료 경로가
 // **반드시 이 헬퍼를 단일 진실원으로** 사용한다(경로별 출력 크기 불일치 회귀 방지).
 // ============================================================================
@@ -165,10 +165,10 @@ export interface OutputPageSizeMm {
 }
 
 /**
- * D-1 1단계: 포토북 내지 content.pdf 의 **페이지 크기**를 계산한다.
+ * 포토북 내지 content.pdf 의 **페이지 크기**를 계산한다.
  * 'content.pdf 1페이지 = 1펼침면' 계약 — 2-up trim = pageWidthMm×2 × pageHeightMm.
  *
- * R7 (2026-08-18): 표지+내지 결합 세션(regionScope 미지정/'cover')이라도 innerSpec 이
+ * 표지+내지 결합 세션(regionScope 미지정/'cover')이라도 innerSpec 이
  * 실려 있으면(useEditorContents — innerUnit==='spread' 세트) 내지 content.pdf 페이지
  * 크기는 innerSpec 2-up 이다. 종전 regionScope==='inner' 게이트만으로는 이 경우 null
  * → 호출측 폴백 spec.coverWidthMm(표지 패널 247.4×276)로 흘러 내지 content PDF 가
@@ -214,7 +214,7 @@ export function resolveSpreadInnerPdfSizeMm(i: {
 }
 
 /**
- * D-4: 하드커버(caseBind) 표지 cover.pdf 의 **출력(wrap 포함) 페이지 크기**를 계산한다.
+ * 하드커버(caseBind) 표지 cover.pdf 의 **출력(wrap 포함) 페이지 크기**를 계산한다.
  * 화면은 trim 뷰 그대로(computeSpreadDimensions 불변) — PDF 페이지 크기에만 적용.
  *
  * caseBind 미설정/비유효/내지(inner) config → null 반환 → 호출측은 기존
@@ -237,7 +237,7 @@ export function computeCoverOutputSizeMm(
 }
 
 /**
- * templateSet 응답의 optional 커버 메타(coverType varchar + coverConfig JSON — Track 3 데이터 소스)를
+ * templateSet 응답의 optional 커버 메타(coverType varchar + coverConfig JSON)를
  * 옵셔널 체이닝으로 읽는다. 값 없으면 null(전 경로 기존 동작).
  */
 export function resolveTemplateSetCoverMeta(templateSet: unknown): TemplateSetCoverMeta | null {
@@ -256,17 +256,17 @@ export function resolveTemplateSetCoverMeta(templateSet: unknown): TemplateSetCo
 }
 
 /**
- * D-3: 완료/가격 이벤트용 라이브 물리 페이지 수 단일 진실원.
+ * 완료/가격 이벤트용 라이브 물리 페이지 수 단일 진실원.
  * 포토북 내지(inner) 펼침면은 캔버스 1개 = 2 물리페이지(×2),
  * 그 외는 캔버스 수 − coverCanvasCount(표지 캔버스 제외분).
  * 캔버스가 0개면 fallbackPages(주문 시점 pages, 최소 1)로 폴백 — 기존 두 경로 동작과 동일.
  *
- * T5 (2026-07-13): coverCanvasCount 파라미터 추가 — 표지+내지 단일 세션 spread 세트
+ * coverCanvasCount 파라미터 추가 — 표지+내지 단일 세션 spread 세트
  * (비-inner)에서 표지 캔버스 1장이 물리 페이지 수에 섞여 21로 집계되던 것을 20으로 정정.
  * 기본값 0 = 기존 호출 byte-parity(BOOK/LEAFLET/포토북 inner ×2 산식 불변).
  * 호출측 게이트: 표지 단독 세션(캔버스 1)은 0 을 전달해야 한다(physical=0 방지).
  *
- * 2026-09-28: innerPagesPerCanvas — 표지+내지펼침면 세트는 내지 캔버스 1장 = 2쪽(오너 결정,
+ * innerPagesPerCanvas — 표지+내지펼침면 세트는 내지 캔버스 1장 = 2쪽(
  * 책등 산식 innerPrintPageCount 와 같은 기준). 호출측은 스프레드 세션에서 useEditorStore.pagesPerCanvas
  * 를 넘긴다. 기본 1 = 낱장 내지·단일 모드 byte-parity.
  */
@@ -292,9 +292,9 @@ export function computeLivePageCount(
  * - **내지 전용 펼침면 세트(regionScope='inner'): 표지가 없다.** 캔버스 0 도 '펼침면 1' 이므로
  *   전량이 content.pdf 이고 cover.pdf 는 생성하지 않는다.
  *
- * 종전에는 regionScope 와 무관하게 항상 0번을 표지로 떼어내, 내지 전용 세트에서
+ * regionScope 와 무관하게 항상 0번을 표지로 떼어내면, 내지 전용 세트에서
  * 첫 펼침면이 cover.pdf 로 새고 content 가 (N−1) 이 되어 완료 payload 의
- * pageCount(=N×2)와 어긋났다(2026-08-03 수정).
+ * pageCount(=N×2)와 어긋난다.
  */
 export function splitSpreadOutputCanvases<T>(
   canvases: readonly T[],

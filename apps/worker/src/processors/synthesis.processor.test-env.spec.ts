@@ -1,5 +1,5 @@
 /**
- * S2-5 (2026-07-16) — 워커 test env(isTest) 더미 합성 분기.
+ * 워커 test env(isTest) 더미 합성 분기.
  *
  * 잠그는 계약:
  *  1. job.data.isTest===true → 실합성 미수행(synthesizer 서비스 무호출) +
@@ -27,7 +27,7 @@ jest.mock('axios', () => ({
 
 const axios = require('axios').default;
 
-describe('SynthesisProcessor — S2-5 test env(isTest) 더미 합성 분기', () => {
+describe('SynthesisProcessor — test env(isTest) 더미 합성 분기', () => {
   let processor: SynthesisProcessor;
   let synthesizerService: jest.Mocked<PdfSynthesizerService>;
 

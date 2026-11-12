@@ -50,13 +50,13 @@ interface UseLibraryPanelResult {
 }
 
 /**
- * 에셋 패널 공통 라이브러리 조회 훅 (P3-b 패널 일관화).
+ * 에셋 패널 공통 라이브러리 조회 훅 (패널 일관화).
  *
  * AppElement(정본)에 인라인되어 있던 아래 로직을 추출·공통화한다:
  *  1. 태그 디스커버리(마운트 1회, 큰 표본 1회 조회 후 tags 집합화·정렬)
  *  2. 검색어 디바운스(300ms) — AppSectionSearch 자체 디바운스(500ms)와 별개로 안전망
  *  3. selectedTag + search + templateSetId 로 추천 콘텐츠 조회
- *  4. P1 빈화면 방지: templateSetId 큐레이션이 0건이면 전역으로 1회 폴백 재조회
+ *  4. 빈화면 방지: templateSetId 큐레이션이 0건이면 전역으로 1회 폴백 재조회
  *
  * 배경 패널(tags/검색 컬럼 부재)은 enableSearch=false, enableTags=false 로 호출해
  * 안전하게 검색/태그 파라미터를 보내지 않는다(백엔드 SQL 오류 회피).
@@ -73,7 +73,7 @@ export function useLibraryPanel({
 }: UseLibraryPanelOptions): UseLibraryPanelResult {
   const templateSetId = useEditorStore((state) => state.templateSetId)
   const isCustomer = useIsCustomer()
-  // A1-4: 관리자(editMode) 템플릿 제작 화면에도 라이브러리 fetch 허용 (렌더 게이트 완화와 짝).
+  // 관리자(editMode) 템플릿 제작 화면에도 라이브러리 fetch 허용 (렌더 게이트 완화와 짝).
   // editMode 는 관리자 확인 후 비동기 승격되므로 deps 에 반드시 포함(누락 시 fetch 미발화).
   const editMode = useSettingsStore((state) => state.currentSettings.editMode)
 
@@ -148,7 +148,7 @@ export function useLibraryPanel({
           templateSetId: templateSetId ?? undefined,
         })
 
-        // P1 빈화면 방지: 템플릿셋 큐레이션 결과가 0건이면(별도 세팅 안 됨/매칭 실패)
+        // 빈화면 방지: 템플릿셋 큐레이션 결과가 0건이면(별도 세팅 안 됨/매칭 실패)
         // templateSetId 없이 전역 에셋으로 한 번 더 폴백 조회한다(기본 에셋 디폴트).
         const isEmpty = !result.success || !result.data || result.data.items.length === 0
         if (isEmpty && templateSetId) {

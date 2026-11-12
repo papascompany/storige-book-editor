@@ -1,9 +1,9 @@
 /**
- * L5-① (2026-07-11): 레이어 패널 '겹침만 보기' 필터 — AABB 교차 판정 순수 로직.
+ * 레이어 패널 '겹침만 보기' 필터 — AABB 교차 판정 순수 로직.
  *
- * Canva 'Overlapping' 패턴(LAYER_UX_REDESIGN_2026-07-06.md §0 보너스·§5 2차) —
+ * Canva 'Overlapping' 패턴 —
  * 포토북 펼침면처럼 요소가 수십 개 겹치는 화면에서 "지금 선택한 요소와 겹치는
- * 요소만" 목록을 좁힌다. 순수 뷰 상태 — 직렬화/저장/canvas-core 무접촉(§8 불변).
+ * 요소만" 목록을 좁힌다. 순수 뷰 상태 — 직렬화/저장/canvas-core 무접촉.
  *
  * 교차 판정은 fabric getBoundingRect(true, true) 절대좌표 AABB 기준.
  * 다중선택(ActiveSelection)은 합집합(union) 박스 기준으로 판정한다.

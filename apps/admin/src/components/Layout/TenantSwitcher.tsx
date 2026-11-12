@@ -10,7 +10,7 @@ import { portalApi } from '../../api/portal';
 const ALL_SITES = '__ALL__';
 
 /**
- * P3b 멀티테넌시 — 상단 헤더 테넌트 스위처.
+ * 멀티테넌시 — 상단 헤더 테넌트 스위처.
  *
  * - 전역 admin(SUPER_ADMIN/ADMIN/MANAGER): 전체 site 드롭다운 + "전체 사이트" 옵션.
  *   선택값은 authStore.currentSiteId 로 저장되어 목록 페이지의 siteId 필터로 주입된다.

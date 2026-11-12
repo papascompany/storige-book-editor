@@ -19,9 +19,9 @@ import { useSettingsStore } from '@/stores/useSettingsStore'
 import { initPhotoPrintSeededCanvas, lockSeededObjects, seedPhotoPrintCanvas } from './photoPrintSeed'
 
 /**
- * P2-d 사진인화 (2026-10-19): 페이지 추가 시 캔버스 k 를 refs[k % refs.length] 로 시드(digital [앞, 뒤]) +
+ * 사진인화: 페이지 추가 시 캔버스 k 를 refs[k % refs.length] 로 시드(digital [앞, 뒤]) +
  * composition 'per-photo-fixed-back' 의 뒷면(홀수 캔버스)은 로드 객체 잠금.
- * editor-flow-7/D6: 시드 캔버스는 초기 페이지와 같은 초기화 — applyObjectPermissions(canvas, editMode)·trackRequiredEdits 를
+ * 시드 캔버스는 초기 페이지와 같은 초기화 — applyObjectPermissions(canvas, editMode)·trackRequiredEdits 를
  * 항상 적용하고, editMode(관리자)에서는 잠그지 않는다.
  */
 function profile(composition: 'per-photo-free-back' | 'per-photo-fixed-back'): ProductProfile {
@@ -121,7 +121,7 @@ describe('seedPhotoPrintCanvas', () => {
     const bg = objects[1]
     expect(bg.props).toEqual({ scaleX: mmToPxDisplay(108) / 200, scaleY: mmToPxDisplay(158) / 100 })
     expect(objects[2].props).toEqual({})
-    // editor-flow-7: 비잠금 시드 캔버스도 초기 페이지와 같은 applyObjectPermissions(고객 세션 = editMode false)·trackRequiredEdits
+    // 비잠금 시드 캔버스도 초기 페이지와 같은 applyObjectPermissions(고객 세션 = editMode false)·trackRequiredEdits
     expect(applyObjectPermissions).toHaveBeenCalledTimes(1)
     expect(applyObjectPermissions).toHaveBeenCalledWith(canvas, false)
     expect(trackRequiredEdits).toHaveBeenCalledWith(canvas)
@@ -130,7 +130,7 @@ describe('seedPhotoPrintCanvas', () => {
     expect(canvas.requestRenderAll).toHaveBeenCalled()
   })
 
-  it('D6: editMode(관리자) 에서는 applyObjectPermissions(canvas, true) — 고정 뒷면 잠금 플래그는 기록하되 편집은 잠그지 않는다', async () => {
+  it('editMode(관리자) 에서는 applyObjectPermissions(canvas, true) — 고정 뒷면 잠금 플래그는 기록하되 편집은 잠그지 않는다', async () => {
     useSettingsStore.setState((s) => ({ currentSettings: { ...s.currentSettings, editMode: true } }))
     const { objects, canvas } = wire({ profile: profile('per-photo-fixed-back'), canvasCount: 2 })
     expect(await seedPhotoPrintCanvas(1)).toBe(true)
@@ -193,7 +193,7 @@ describe('lockSeededObjects', () => {
   })
 })
 
-describe('initPhotoPrintSeededCanvas (D11, 2026-10-21)', () => {
+describe('initPhotoPrintSeededCanvas', () => {
   // 템플릿셋 초기 로드(useEditorContents 2번째 이후 페이지)와 페이지 추가 시드가 공유하는 초기화 —
   // 초기 뒷면 textbox 가 TemplatePlugin.afterLoad 뒤 hasControls true·editable true 로 남던 결함의 수정 지점.
   const editor = { getPlugin: () => undefined } as never

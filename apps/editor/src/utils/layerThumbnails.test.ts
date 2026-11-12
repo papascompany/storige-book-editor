@@ -9,7 +9,7 @@ import {
   type FabricThumbSource,
 } from './layerThumbnails'
 
-describe('createThumbCache — 무효화 시맨틱 (L5-②)', () => {
+describe('createThumbCache — 무효화 시맨틱', () => {
   it('set 후 get=fresh 값, getStale 도 동일', () => {
     const cache = createThumbCache()
     cache.set('a', 'data:1')

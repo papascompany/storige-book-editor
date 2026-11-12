@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import { shouldReemitPricing } from './pricingChangeReemit'
 
-describe('shouldReemitPricing (S9 책등 확정값 재발신)', () => {
+describe('shouldReemitPricing (책등 확정값 재발신)', () => {
   it('직전 발신이 없으면 재발신하지 않는다', () => {
     expect(shouldReemitPricing(null, 12.3)).toBe(false)
   })

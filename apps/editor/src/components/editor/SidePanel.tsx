@@ -36,9 +36,9 @@ import {
   type RowRect,
 } from '@/utils/layerTouchSheet'
 
-// S3 (공유 계층, 2026-06-23): 레이어 패널 DnD 재정렬.
+// 공유 계층: 레이어 패널 DnD 재정렬.
 // 모바일/터치 환경에서는 native HTML5 drag 가 long-press·터치 스크롤과 충돌하므로 비활성.
-// L6 (2026-07-11): 터치는 바텀시트 + 롱프레스 터치 DnD 로 대체(isTouchEnv 는 공용 유틸로 이동).
+// 터치는 바텀시트 + 롱프레스 터치 DnD 로 대체(isTouchEnv 는 공용 유틸로 이동).
 const TOUCH_ENV = isTouchEnv()
 
 // Icon mapping by selection type
@@ -68,10 +68,10 @@ interface SidePanelProps {
   onClose?: () => void
 }
 
-/** L5-①: 객체 목록 필터 — '전체'(기본) | '겹침'(선택 객체와 AABB 교차만) */
+/** 객체 목록 필터 — '전체'(기본) | '겹침'(선택 객체와 AABB 교차만) */
 type LayerListFilter = 'all' | 'overlap'
 
-/** L5-②: object:modified 이벤트 target 서브셋(ActiveSelection 이면 _objects 전개) */
+/** object:modified 이벤트 target 서브셋(ActiveSelection 이면 _objects 전개) */
 interface ModifiedTargetLike {
   id?: string
   type?: string
@@ -102,36 +102,36 @@ export default function SidePanel({ show, onClose }: SidePanelProps) {
   const updateObjects = useAppStore((state) => state.updateObjects)
   const getPlugin = useAppStore((state) => state.getPlugin)
   const reorderObject = useAppStore((state) => state.reorderObject)
-  // A1-1: 레이어 행 삭제 — S2 확인 모달 공통 경로(ControlBar 휴지통·DEL 핫키와 동일)
+  // 레이어 행 삭제 — 삭제 확인 모달 공통 경로(ControlBar 휴지통·DEL 핫키와 동일)
   const requestDeleteSelection = useAppStore((state) => state.requestDeleteSelection)
 
   const pageInfo = useSettingsStore((state) => state.currentSettings.page)
-  // P1 캘린더 (2026-10-17): 고정 캔버스 수 상품(productProfile pages.kind=fixed)은 페이지 추가/삭제 UI 를 숨긴다.
+  // 캘린더: 고정 캔버스 수 상품(productProfile pages.kind=fixed)은 페이지 추가/삭제 UI 를 숨긴다.
   // legacy(null) 세트는 false → 기존 min/max 게이트 그대로.
   const fixedPageCount = useSettingsStore((state) => state.productProfile?.pages.kind === 'fixed')
-  // P2-d 사진인화 (2026-10-19): 페이지 추가 뒤 템플릿셋 refs 로 시드 + 항목 수 동기화. legacy(null)·캘린더 세트는 false.
+  // 사진인화: 페이지 추가 뒤 템플릿셋 refs 로 시드 + 항목 수 동기화. legacy(null)·캘린더 세트는 false.
   const isPhotoPrintProduct = useSettingsStore((state) => state.productProfile?.kind === 'photo-print')
-  // B0-② (2026-07-04): 잠금 해제 권한 게이트용 — 관리자 위치고정은 비-editMode 에서 해제 불가
+  // 잠금 해제 권한 게이트용 — 관리자 위치고정은 비-editMode 에서 해제 불가
   const editMode = useSettingsStore((state) => state.currentSettings.editMode)
 
   const [editingObject, setEditingObject] = useState<CanvasObject | null>(null)
   const [editName, setEditName] = useState('')
   const nameInputRef = useRef<HTMLInputElement>(null)
 
-  // T4-① (2026-07-13): '페이지' 섹션은 하단 collapsible 로 강등(기본 접힘) — 헤더 Layers
+  // '페이지' 섹션은 하단 collapsible 로 강등(기본 접힘) — 헤더 Layers
   // 아이콘이 여는 이 패널의 1차 목적은 레이어('요소')다. 페이지 섹션 제거는 금지:
   // 비-spread 모드에서 페이지 추가/삭제의 유일한 진입점(BookNavigation 은 순수 네비).
   const [pagesExpanded, setPagesExpanded] = useState(false)
 
-  // L2 A-3: 보호 요소 안내 토스트 — 세션당 1회(반복 클릭 시 소음 방지)
+  // 보호 요소 안내 토스트 — 세션당 1회(반복 클릭 시 소음 방지)
   const protectedToastShownRef = useRef(false)
 
-  // S3: 레이어 패널 DnD 재정렬 상태 (데스크톱 전용)
+  // 레이어 패널 DnD 재정렬 상태 (데스크톱 전용)
   const [dragSourceId, setDragSourceId] = useState<string | null>(null)
   const [dragOver, setDragOver] = useState<{ id: string; above: boolean } | null>(null)
 
   // -------------------------------------------------------------------------
-  // L5-①: '겹침만 보기' 필터 (Canva Overlapping 패턴 — 순수 뷰 상태)
+  // '겹침만 보기' 필터 (Canva Overlapping 패턴 — 순수 뷰 상태)
   // -------------------------------------------------------------------------
   const activeSelection = useAppStore((state) => state.activeSelection)
   const hasSelection = activeSelection.length > 0
@@ -174,7 +174,7 @@ export default function SidePanel({ show, onClose }: SidePanelProps) {
   }, [objects, listFilter, canvas, activeSelection])
 
   // -------------------------------------------------------------------------
-  // L5-②: 행 미니 썸네일 — 캐시 + object:modified 무효화 + idle 생성
+  // 행 미니 썸네일 — 캐시 + object:modified 무효화 + idle 생성
   // -------------------------------------------------------------------------
   const thumbCacheRef = useRef<ThumbCache | null>(null)
   if (thumbCacheRef.current === null) thumbCacheRef.current = createThumbCache()
@@ -303,8 +303,8 @@ export default function SidePanel({ show, onClose }: SidePanelProps) {
     const object = canvas?.getObjects().find((obj: any) => obj.id === objectId)
 
     if (object && objectPlugin) {
-      // B0-②: 관리자 위치고정(movable===false)은 비-editMode 에서 해제 차단.
-      // L1⑥: silent 실패 → 안내 토스트(왜 안 되는지 피드백).
+      // 관리자 위치고정(movable===false)은 비-editMode 에서 해제 차단.
+      // silent 실패 → 안내 토스트(왜 안 되는지 피드백).
       if (!editMode && (object as any).movable === false) {
         showToast('관리자가 보호한 요소예요. 잠금을 해제할 수 없어요.', 'info')
         return
@@ -341,7 +341,7 @@ export default function SidePanel({ show, onClose }: SidePanelProps) {
     const object = canvas?.getObjects().find((obj: any) => obj.id === objectId)
 
     if (object && objectPlugin) {
-      // L1④ 대칭 가드: 관리자 보호 객체(위치고정/삭제잠금/내용잠금)는 고객이 숨길 수 없다 —
+      // 대칭 가드: 관리자 보호 객체(위치고정/삭제잠금/내용잠금)는 고객이 숨길 수 없다 —
       // visible=false 는 저장에 영속돼 필수 요소(로고 등) 미인쇄 사고 벡터(삭제 가드와 대칭).
       const o = object as { movable?: boolean; deleteable?: boolean; contentEditable?: boolean }
       if (!editMode && (o.movable === false || o.deleteable === false || o.contentEditable === false)) {
@@ -358,7 +358,7 @@ export default function SidePanel({ show, onClose }: SidePanelProps) {
     const object = canvas.getObjects().find((obj: any) => obj.id === objectId)
     if (!object) return
 
-    // A1-2: shift/ctrl(⌘) 클릭 → fabric ActiveSelection 다중선택.
+    // shift/ctrl(⌘) 클릭 → fabric ActiveSelection 다중선택.
     // ⚠️ fabric 5.5.2 ActiveSelection 드래그는 자식 lockMovementX/Y 를 존중하지 않는다
     //   (layerPanelSelection.test.ts 재현) → 비-editMode 에서 잠긴 객체는 제외
     //   (buildNextMultiSelection 내 가드 — LockPlugin.handleSelection 선례).
@@ -376,7 +376,7 @@ export default function SidePanel({ show, onClose }: SidePanelProps) {
       return
     }
 
-    // L2 A-3: 보호 요소 행 클릭 — 선택은 허용하되 1회성 안내(내용 편집 가능 여부로 문구 분기)
+    // 보호 요소 행 클릭 — 선택은 허용하되 1회성 안내(내용 편집 가능 여부로 문구 분기)
     if (!editMode && !protectedToastShownRef.current) {
       const o = object as { movable?: boolean; deleteable?: boolean; contentEditable?: boolean; lockInfo?: { isLocked?: boolean; lockLevel?: string } }
       const isProtected =
@@ -384,7 +384,7 @@ export default function SidePanel({ show, onClose }: SidePanelProps) {
         (o.lockInfo?.isLocked === true && o.lockInfo.lockLevel !== 'user')
       if (isProtected) {
         protectedToastShownRef.current = true
-        // 축별 실상에 맞춘 문구(적대 리뷰): 내용잠금 > 위치고정 > 삭제잠금 단독 순.
+        // 축별 실상에 맞춘 문구: 내용잠금 > 위치고정 > 삭제잠금 단독 순.
         showToast(
           o.contentEditable === false
             ? '템플릿 보호 요소예요 — 변경할 수 없어요.'
@@ -402,8 +402,8 @@ export default function SidePanel({ show, onClose }: SidePanelProps) {
     canvas.renderAll()
   }, [canvas, editMode])
 
-  // A1-1: 레이어 행 삭제 버튼 — 대상 객체를 먼저 선택한 뒤 공통 경로(requestDeleteSelection)
-  // 호출 → S2 확인 모달 → ObjectPlugin.del() (삭제잠금·lid·fillImage 동반제거 가드 그대로).
+  // 레이어 행 삭제 버튼 — 대상 객체를 먼저 선택한 뒤 공통 경로(requestDeleteSelection)
+  // 호출 → 삭제 확인 모달 → ObjectPlugin.del() (삭제잠금·lid·fillImage 동반제거 가드 그대로).
   const handleDeleteObject = useCallback((e: React.MouseEvent, objectId: string) => {
     e.preventDefault()
     e.stopPropagation()
@@ -421,7 +421,7 @@ export default function SidePanel({ show, onClose }: SidePanelProps) {
     requestDeleteSelection()
   }, [canvas, editMode, requestDeleteSelection])
 
-  // A1-1: 레이어 행 복제 버튼 — CopyPlugin.clone(기존 ctrl+d 핫키 로직) 재사용, 시그니처 불변.
+  // 레이어 행 복제 버튼 — CopyPlugin.clone(기존 ctrl+d 핫키 로직) 재사용, 시그니처 불변.
   // 복제 후 목록 갱신은 canvas 'object:added' → _updateObjectsHandler 가 처리(직접 호출 불필요).
   const handleDuplicateObject = useCallback((e: React.MouseEvent, objectId: string) => {
     e.preventDefault()
@@ -429,7 +429,7 @@ export default function SidePanel({ show, onClose }: SidePanelProps) {
 
     const object = canvas?.getObjects().find((obj: any) => obj.id === objectId)
     if (!object) return
-    // L1④ 대칭 가드: 보호 객체(비-editMode)는 복제 차단 — 보호 플래그가 사본에 복사되더라도
+    // 대칭 가드: 보호 객체(비-editMode)는 복제 차단 — 보호 플래그가 사본에 복사되더라도
     // 필수 요소 중복 배치는 디자인/인쇄 오염(삭제·숨김 가드와 대칭).
     const o = object as { movable?: boolean; deleteable?: boolean; contentEditable?: boolean }
     if (!editMode && (o.movable === false || o.deleteable === false || o.contentEditable === false)) {
@@ -439,7 +439,7 @@ export default function SidePanel({ show, onClose }: SidePanelProps) {
     getPlugin<CopyPlugin>('CopyPlugin')?.clone(object)
   }, [canvas, getPlugin, editMode])
 
-  // A1-3: 모바일(TOUCH_ENV) ↑↓ 순서변경 — reorderObject 재사용(fabric 라이브 스택 기준,
+  // 모바일(TOUCH_ENV) ↑↓ 순서변경 — reorderObject 재사용(fabric 라이브 스택 기준,
   // reverse 방향 함정·fillImage 동반이동·setUnchangeable 재고정·updateObjects 전부 내장).
   const handleStepReorder = useCallback((e: React.MouseEvent, index: number, dir: 'up' | 'down') => {
     e.preventDefault()
@@ -451,13 +451,13 @@ export default function SidePanel({ show, onClose }: SidePanelProps) {
   }, [objects, reorderObject])
 
   const startEditing = (obj: CanvasObject) => {
-    // L1④ 대칭 가드: 보호 객체(비-editMode)는 이름변경 진입 차단(레이어 식별 오염 방지).
+    // 대칭 가드: 보호 객체(비-editMode)는 이름변경 진입 차단(레이어 식별 오염 방지).
     if (!editMode && (obj.movable === false || obj.deleteable === false || obj.contentEditable === false)) {
       showToast('관리자가 보호한 요소는 이름을 바꿀 수 없어요.', 'info')
       return
     }
     setEditingObject(obj)
-    // L2: 자동 생성 이름(textbox3 등)은 빈칸으로 seed — 행 표시명(미리보기/타입명)과
+    // 자동 생성 이름(textbox3 등)은 빈칸으로 seed — 행 표시명(미리보기/타입명)과
     // 프리필이 어긋나는 혼동 방지. 사용자 지정 이름은 그대로 편집.
     setEditName(obj.name && !isAutoGeneratedName(obj.name) ? obj.name : '')
   }
@@ -465,7 +465,7 @@ export default function SidePanel({ show, onClose }: SidePanelProps) {
   const finishEditing = () => {
     if (editingObject && editName.trim()) {
       const fabricObject = canvas?.getObjects().find((obj: any) => obj.id === editingObject.id)
-      // L1④: commit 경로 이중 가드 — startEditing 차단과 대칭(리뷰 지적, 유일 진입이지만 방어적).
+      // commit 경로 이중 가드 — startEditing 차단과 대칭(유일 진입이지만 방어적).
       const o = fabricObject as { movable?: boolean; deleteable?: boolean; contentEditable?: boolean } | undefined
       const isProtected = !editMode && !!o && (o.movable === false || o.deleteable === false || o.contentEditable === false)
       if (fabricObject && !isProtected) {
@@ -481,7 +481,7 @@ export default function SidePanel({ show, onClose }: SidePanelProps) {
   }
 
   // Page actions
-  // S8: 내지 증감 단위(pageStep) — 단일 모드도 이 섹션이 추가/삭제 진입점이라 여기서 단위를 지킨다.
+  // 내지 증감 단위(pageStep) — 단일 모드도 이 섹션이 추가/삭제 진입점이라 여기서 단위를 지킨다.
   // 단위는 캔버스 수를 완료 가드와 같은 산식(pageStepMetric)으로 환산해 계산(pageStep=null → 1, 기존 동작).
   const pageStep = useEditorStore((state) => state.pageStep)
   const pageStepUnit = useCallback(
@@ -496,7 +496,7 @@ export default function SidePanel({ show, onClose }: SidePanelProps) {
   )
 
   const handleAddPage = useCallback(async () => {
-    if (fixedPageCount) return // P1 캘린더: 고정 캔버스 수 — 버튼 미렌더의 2차 방어
+    if (fixedPageCount) return // 캘린더: 고정 캔버스 수 — 버튼 미렌더의 2차 방어
     const maxPages = pageInfo?.max || 100
     const unit = pageStepUnit('add')
     if (allCanvas.length + unit > maxPages) {
@@ -510,7 +510,7 @@ export default function SidePanel({ show, onClose }: SidePanelProps) {
     try {
       for (let i = 0; i < unit; i++) {
         await addPage()
-        // P2-d 사진인화: 새 캔버스 k 를 템플릿셋 refs[k % refs.length] 로 시드(digital [앞, 뒤] / chemical [앞])
+        // 사진인화: 새 캔버스 k 를 템플릿셋 refs[k % refs.length] 로 시드(digital [앞, 뒤] / chemical [앞])
         if (isPhotoPrintProduct) await seedPhotoPrintCanvas(useAppStore.getState().allCanvas.length - 1)
       }
       if (isPhotoPrintProduct) syncPhotoPrintItemsWithCanvases()
@@ -524,9 +524,9 @@ export default function SidePanel({ show, onClose }: SidePanelProps) {
     e.preventDefault()
     e.stopPropagation()
 
-    if (fixedPageCount) return // P1 캘린더: 고정 캔버스 수 — 버튼 미렌더의 2차 방어
+    if (fixedPageCount) return // 캘린더: 고정 캔버스 수 — 버튼 미렌더의 2차 방어
     const minPages = pageInfo?.min || 1
-    // P2-d 사진인화(editor-flow-2/api-sheetmap-1): 삭제는 '사진 단위' — 선택 캔버스가 속한 사진 p 의 캔버스
+    // 사진인화: 삭제는 '사진 단위' — 선택 캔버스가 속한 사진 p 의 캔버스
     // [p·stride .. p·stride+stride−1](digital 앞·뒤 쌍 / chemical 1장)을 함께 지우고, 스토어는 그 사진 항목만 제거해
     // 뒤 항목의 index/canvasIndex 를 재부여한다(끝 잘림 금지 — 매수·옵션이 다른 사진으로 밀리지 않는다).
     const photoProfile = useSettingsStore.getState().productProfile
@@ -559,7 +559,7 @@ export default function SidePanel({ show, onClose }: SidePanelProps) {
       return
     }
 
-    // S8: 단위만큼 인접 페이지를 함께 삭제(뒤쪽 우선). 순차 삭제 중 인덱스가 밀리므로 id 를 먼저 확정한다.
+    // 단위만큼 인접 페이지를 함께 삭제(뒤쪽 우선). 순차 삭제 중 인덱스가 밀리므로 id 를 먼저 확정한다.
     const targetIdx = allCanvas.findIndex((c) => c.id === canvasId)
     const ids = unit === 1
       ? [canvasId]
@@ -574,7 +574,7 @@ export default function SidePanel({ show, onClose }: SidePanelProps) {
 
     try {
       for (const id of ids) deletePage(id)
-      // P2-d 사진인화: 삭제 뒤 항목 수를 캔버스 수에 맞춘다(metadata.items 와 캔버스 불일치 방지)
+      // 사진인화: 삭제 뒤 항목 수를 캔버스 수에 맞춘다(metadata.items 와 캔버스 불일치 방지)
       if (isPhotoPrintProduct) syncPhotoPrintItemsWithCanvases()
       if (ids.length > 1) {
         showToast(`${pageStep}페이지 단위 상품이라 인접 페이지까지 ${ids.length}페이지가 삭제되었습니다.`, 'info', 2500)
@@ -590,8 +590,8 @@ export default function SidePanel({ show, onClose }: SidePanelProps) {
     }
   }, [currentIndex, setPage])
 
-  // S3: 레이어 DnD 핸들러 (데스크톱 전용 — 모바일은 dragEnabled=false 로 미부여)
-  // ⚠️ 단일 진실원(R2): 목록은 z-order reverse 라 "위 = 맨앞". 따라서 target 카드 상단 절반에
+  // 레이어 DnD 핸들러 (데스크톱 전용 — 모바일은 dragEnabled=false 로 미부여)
+  // ⚠️ 단일 진실원: 목록은 z-order reverse 라 "위 = 맨앞". 따라서 target 카드 상단 절반에
   //    드롭 = source 를 그 위(앞/front)로 → reorderObject(.., placeAbove=true). 하단 절반 = 뒤.
   const dragEnabled = !TOUCH_ENV
 
@@ -636,7 +636,7 @@ export default function SidePanel({ show, onClose }: SidePanelProps) {
     if (source === objectId) return
     const rect = e.currentTarget.getBoundingClientRect()
     const above = e.clientY < rect.top + rect.height / 2
-    // L2 A-6: 순서 잠금 '소스' 드래그는 reorderObject 내부 가드(source 만 검사)가
+    // 순서 잠금 '소스' 드래그는 reorderObject 내부 가드(source 만 검사)가
     // silent 차단 — 같은 조건으로 사유 안내. target 옆 드롭은 기존대로 허용(과다 차단 금지).
     const src = objects.find((o) => o.id === source)
     if (src?.lockLayerOrder === true) {
@@ -652,13 +652,13 @@ export default function SidePanel({ show, onClose }: SidePanelProps) {
   }
 
   // -------------------------------------------------------------------------
-  // L6: 터치 롱프레스 DnD (TOUCH_ENV 전용 — HTML5 DnD 는 터치 미지원)
+  // 터치 롱프레스 DnD (TOUCH_ENV 전용 — HTML5 DnD 는 터치 미지원)
   // 롱프레스(~350ms, 이동 시 취소=스크롤 양보) 후에만 드래그 모드 진입.
   // 드래그 모드에서는 touchmove preventDefault(비-passive)로 시트 스크롤을 잠그고
   // 기존 dragSourceId/dragOver 상태를 재사용해 삽입 라인 인디케이터를 그린다.
   // 드롭은 데스크톱과 동일 시맨틱으로 reorderObject 재사용(fabric 라이브 스택 기준).
   // -------------------------------------------------------------------------
-  // T4-③: 행 요소 맵은 터치 DnD(collectRowRects) 외에 패널 열림 시 선택 행
+  // 행 요소 맵은 터치 DnD(collectRowRects) 외에 패널 열림 시 선택 행
   // scrollIntoView 에도 쓰므로 데스크톱에서도 항상 ref 를 부착한다(수집 자체는 무비용).
   const rowElsRef = useRef(new Map<string, HTMLElement>())
   const rowRefCbsRef = useRef(new Map<string, (el: HTMLElement | null) => void>())
@@ -674,7 +674,7 @@ export default function SidePanel({ show, onClose }: SidePanelProps) {
     return cb
   }
 
-  // T4-③ (2026-07-13): 패널 열림(show false→true) 전환 시 activeSelection 이 있으면
+  // 패널 열림(show false→true) 전환 시 activeSelection 이 있으면
   // 선택 행을 목록 뷰포트로 1회 스크롤({block:'nearest'} — 과스크롤 금지). 열림 전환
   // 1회만 발화 — 패널이 열려 있는 동안의 선택 변경은 스크롤을 흔들지 않는다.
   const prevShowRef = useRef(show)
@@ -768,7 +768,7 @@ export default function SidePanel({ show, onClose }: SidePanelProps) {
         if (t) {
           const target = resolveTouchDropTarget(t.clientY, collectRowRects(), objectId)
           if (target) {
-            // L2 A-6 동일 가드: 순서 잠금 source 는 reorderObject 내부 silent 차단 — 사유 안내
+            // 동일 가드: 순서 잠금 source 는 reorderObject 내부 silent 차단 — 사유 안내
             const src = objects.find((o) => o.id === objectId)
             if (src?.lockLayerOrder === true) {
               showToast('순서가 잠긴 요소예요 — 순서를 바꿀 수 없어요.', 'info')
@@ -790,7 +790,7 @@ export default function SidePanel({ show, onClose }: SidePanelProps) {
     tracker.start(touch.clientX, touch.clientY)
   }
 
-  // L6: 바텀시트 핸들 스와이프 다운 닫힘(핸들 영역 한정 — 목록 스크롤과 무충돌)
+  // 바텀시트 핸들 스와이프 다운 닫힘(핸들 영역 한정 — 목록 스크롤과 무충돌)
   const sheetSwipeStartYRef = useRef<number | null>(null)
   const handleSheetHandleTouchStart = (e: React.TouchEvent<HTMLDivElement>) => {
     sheetSwipeStartYRef.current = e.touches[0]?.clientY ?? null
@@ -804,12 +804,12 @@ export default function SidePanel({ show, onClose }: SidePanelProps) {
     }
   }
 
-  // L6: 터치 행 액션 상시 노출 — hover 불가 환경, 터치 타깃 ≥40px(h-10 w-10)
+  // 터치 행 액션 상시 노출 — hover 불가 환경, 터치 타깃 ≥40px(h-10 w-10)
   const actionBtnClass = TOUCH_ENV ? 'h-10 w-10' : 'h-7 w-7'
 
   return (
     <div className={sidePanelContainerClass(TOUCH_ENV, show)}>
-      {/* L6: 터치=바텀시트 드래그 핸들(스와이프 다운 닫힘)+닫기 / 비터치=기존 모바일 닫기 바 */}
+      {/* 터치=바텀시트 드래그 핸들(스와이프 다운 닫힘)+닫기 / 비터치=기존 모바일 닫기 바 */}
       {TOUCH_ENV ? (
         <div
           className="top relative flex flex-col items-center pt-2.5 pb-1.5 w-full border-b border-editor-border touch-none"
@@ -830,8 +830,8 @@ export default function SidePanel({ show, onClose }: SidePanelProps) {
           </Button>
         </div>
       ) : (
-        // T4-② (2026-07-13): 데스크톱에서도 보이는 '레이어' 제목+닫기 헤더 — 구 닫기 바는
-        // lg:hidden 이라 데스크톱(≥1024px)에서 제목조차 없어 "페이지 네비"로 오인됐다.
+        // 데스크톱에서도 보이는 '레이어' 제목+닫기 헤더 — 모바일 닫기 바는
+        // lg:hidden 이라 데스크톱(≥1024px)에서 제목조차 없어 "페이지 네비"로 오인된다.
         <div className="top flex items-center justify-between pl-4 pr-2 py-2 w-full border-b border-editor-border">
           <h2 className="text-sm font-semibold text-editor-text">레이어</h2>
           <Button variant="ghost" size="icon" className="h-8 w-8" onClick={onClose} aria-label="레이어 패널 닫기">
@@ -840,12 +840,12 @@ export default function SidePanel({ show, onClose }: SidePanelProps) {
         </div>
       )}
 
-      {/* Objects Section — T4-①: 레이어('요소')가 이 패널의 1차 목적이라 최상단 배치 */}
+      {/* Objects Section — 레이어('요소')가 이 패널의 1차 목적이라 최상단 배치 */}
       {canvas && (
         <div
           id="objects"
           className={
-            // L6: 터치 드래그 모드 중 시트 스크롤 잠금(preventDefault 와 이중 방어)
+            // 터치 드래그 모드 중 시트 스크롤 잠금(preventDefault 와 이중 방어)
             TOUCH_ENV
               ? cn('flex-1 pb-4', dragSourceId ? 'overflow-hidden' : 'overflow-y-auto')
               : 'flex-1 overflow-y-auto pb-4'
@@ -853,7 +853,7 @@ export default function SidePanel({ show, onClose }: SidePanelProps) {
         >
           <div className="section-header flex items-center justify-between px-4 py-2">
             <h3 className="text-sm font-semibold text-editor-text">요소</h3>
-            {/* L5-①: 전체|겹침 토글 — 겹침은 선택 객체와 AABB 교차 행만(Canva Overlapping) */}
+            {/* 전체|겹침 토글 — 겹침은 선택 객체와 AABB 교차 행만(Canva Overlapping) */}
             <div className="filter-tabs flex items-center gap-0.5 rounded-md bg-editor-hover p-0.5" role="tablist" aria-label="요소 목록 필터">
               <button
                 type="button"
@@ -894,7 +894,7 @@ export default function SidePanel({ show, onClose }: SidePanelProps) {
               요소가 없습니다.
             </div>
           ) : visibleRows.length === 0 ? (
-            // L5-①: 선택 객체가 목록 은폐 대상(보호/구조 요소)이라 겹침 결과가 빈 경우
+            // 선택 객체가 목록 은폐 대상(보호/구조 요소)이라 겹침 결과가 빈 경우
             <div className="px-4 py-8 text-center text-editor-text-muted text-sm">
               선택한 요소와 겹치는 요소가 없습니다.
             </div>
@@ -902,10 +902,10 @@ export default function SidePanel({ show, onClose }: SidePanelProps) {
             <div className="items px-3">
               {visibleRows.map(({ row: obj, orderIndex: index }) => {
                 const Icon = getIconByType(obj.type)
-                // L2 A-2: 감산형 — 고객(비-editMode) 보호 행은 조작 버튼 자체를 제거
+                // 감산형 — 고객(비-editMode) 보호 행은 조작 버튼 자체를 제거
                 const lockState = resolveLayerLockState(obj)
                 const hideCustomerActions = !editMode && lockState === 'protected'
-                // L5-②: 캐시 조회만(생성은 idle 패스 전담) — stale 값으로 깜빡임 방지,
+                // 캐시 조회만(생성은 idle 패스 전담) — stale 값으로 깜빡임 방지,
                 // 미생성/실패('')는 기존 타입 아이콘 유지(빈칸 금지)
                 const thumbUrl = isThumbEligibleType(obj.type)
                   ? thumbCacheRef.current?.get(obj.id) || thumbCacheRef.current?.getStale(obj.id) || null
@@ -913,7 +913,7 @@ export default function SidePanel({ show, onClose }: SidePanelProps) {
                 return (
                   <div
                     key={obj.id}
-                    ref={getRowRef(obj.id)} /* T4-③: 터치 DnD + 열림 시 scrollIntoView 공용 */
+                    ref={getRowRef(obj.id)} /* 터치 DnD + 열림 시 scrollIntoView 공용 */
                     draggable={dragEnabled && editingObject?.id !== obj.id}
                     onDragStart={dragEnabled ? handleObjDragStart(obj.id) : undefined}
                     onDragOver={dragEnabled ? handleObjDragOver(obj.id) : undefined}
@@ -926,13 +926,13 @@ export default function SidePanel({ show, onClose }: SidePanelProps) {
                       'rounded-lg mb-2 cursor-pointer border border-transparent',
                       'hover:bg-editor-hover group',
                       obj.selected && 'bg-editor-accent/10 border-editor-accent/10',
-                      // S3: 드래그 중 source 흐리게 + 드롭 위치 힌트(위/아래 경계선)
+                      // 드래그 중 source 흐리게 + 드롭 위치 힌트(위/아래 경계선)
                       dragSourceId === obj.id && 'opacity-40',
                       dragOver?.id === obj.id && dragOver.above && 'border-t-2 border-t-editor-accent',
                       dragOver?.id === obj.id && !dragOver.above && 'border-b-2 border-b-editor-accent'
                     )}
                     onClick={(e) => {
-                      // L6: 롱프레스 드래그 직후의 합성 click 은 선택으로 처리하지 않는다
+                      // 롱프레스 드래그 직후의 합성 click 은 선택으로 처리하지 않는다
                       if (suppressRowClickRef.current) {
                         suppressRowClickRef.current = false
                         return
@@ -945,7 +945,7 @@ export default function SidePanel({ show, onClose }: SidePanelProps) {
                       <div className="drag-handle flex items-center cursor-move opacity-50">
                         <DotsSixVertical className="h-4 w-4 text-editor-text-muted" />
                       </div>
-                      {/* L5-②: 이미지·도형류는 24px 미니 썸네일(아이콘 fallback) */}
+                      {/* 이미지·도형류는 24px 미니 썸네일(아이콘 fallback) */}
                       {thumbUrl ? (
                         <img
                           src={thumbUrl}
@@ -977,7 +977,7 @@ export default function SidePanel({ show, onClose }: SidePanelProps) {
                           </span>
                         )}
                       </div>
-                      {/* L2 A-2/B-4: 배지 — 고객은 2어휘 상태 1개(템플릿 보호/내 잠금),
+                      {/* 배지 — 고객은 2어휘 상태 1개(템플릿 보호/내 잠금),
                           디자이너(editMode)는 축별 상세 배지 + 한국어 툴팁(ShieldCheck=잠김 통일) */}
                       <div className="badges flex items-center gap-0.5 shrink-0">
                         {!editMode ? (
@@ -1018,7 +1018,7 @@ export default function SidePanel({ show, onClose }: SidePanelProps) {
                         )}
                       </div>
                     </div>
-                    {/* A1-3: 모바일(TOUCH_ENV) ↑↓ 순서변경 — hover 가 없는 터치 환경이라 상시 표시 */}
+                    {/* 모바일(TOUCH_ENV) ↑↓ 순서변경 — hover 가 없는 터치 환경이라 상시 표시 */}
                     {TOUCH_ENV && obj.editable && (
                       <div className="mobile-reorder flex flex-col items-center shrink-0">
                         <Button
@@ -1045,9 +1045,9 @@ export default function SidePanel({ show, onClose }: SidePanelProps) {
                     )}
                     <div className={TOUCH_ENV ? 'right shrink-0' : 'right w-16 h-[30px] relative shrink-0'}>
                       {obj.editable && (
-                        /* A1-1: 4버튼(복제·삭제·잠금·표시)이 w-16 을 넘어 왼쪽으로 확장되므로
+                        /* 4버튼(복제·삭제·잠금·표시)이 w-16 을 넘어 왼쪽으로 확장되므로
                            행 hover 배경과 같은 색을 깔아 이름/배지 위에 겹쳐도 읽히게 한다.
-                           L6: 터치는 hover 부재 — 인라인 상시 노출(≥40px 타깃, 오버레이 배경 불필요) */
+                           터치는 hover 부재 — 인라인 상시 노출(≥40px 타깃, 오버레이 배경 불필요) */
                         <div
                           className={
                             TOUCH_ENV
@@ -1055,7 +1055,7 @@ export default function SidePanel({ show, onClose }: SidePanelProps) {
                               : 'actions absolute right-0 top-0 bottom-0 m-auto flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity bg-editor-hover rounded-lg'
                           }
                         >
-                          {/* L2 A-2 감산형: 고객 보호 행은 복제 버튼 미렌더 (L1 disabled 에서 승격) */}
+                          {/* 감산형: 고객 보호 행은 복제 버튼 미렌더 */}
                           {!hideCustomerActions && (
                             <Button
                               variant="ghost"
@@ -1067,7 +1067,7 @@ export default function SidePanel({ show, onClose }: SidePanelProps) {
                               <CopyIcon className="h-4 w-4" />
                             </Button>
                           )}
-                          {/* L2 A-2 감산형: 고객 보호 행은 삭제 버튼 미렌더 (A1 disabled 에서 승격) */}
+                          {/* 감산형: 고객 보호 행은 삭제 버튼 미렌더 */}
                           {!hideCustomerActions && (
                             <Button
                               variant="ghost"
@@ -1079,8 +1079,8 @@ export default function SidePanel({ show, onClose }: SidePanelProps) {
                               <Trash className="h-4 w-4" />
                             </Button>
                           )}
-                          {/* L2 A-2: 고객 보호 행은 잠금/해제 버튼 미렌더(B0-② 숨김에서 확장).
-                              '내 잠금'(mine) 행은 항상 해제 가능(A-5 행 해제 경로 보장). */}
+                          {/* 고객 보호 행은 잠금/해제 버튼 미렌더(숨김에서 확장).
+                              '내 잠금'(mine) 행은 항상 해제 가능(행 해제 경로 보장). */}
                           {!hideCustomerActions &&
                             (obj.locked ? (
                               <Button
@@ -1103,7 +1103,7 @@ export default function SidePanel({ show, onClose }: SidePanelProps) {
                                 <LockSimpleOpen className="h-4 w-4" />
                               </Button>
                             ))}
-                          {/* L2 A-2 감산형: 고객 보호 행은 숨김 버튼 미렌더 (L1 disabled 에서 승격) */}
+                          {/* 감산형: 고객 보호 행은 숨김 버튼 미렌더 */}
                           {hideCustomerActions ? null : obj.visible ? (
                             <Button
                               variant="ghost"
@@ -1137,7 +1137,7 @@ export default function SidePanel({ show, onClose }: SidePanelProps) {
 
       <hr className="border-editor-border mx-4" />
 
-      {/* Pages Section — T4-①: 하단 collapsible(기본 접힘). 제거 금지 — 비-spread 모드에서
+      {/* Pages Section — 하단 collapsible(기본 접힘). 제거 금지 — 비-spread 모드에서
           페이지 추가/삭제의 유일한 진입점(BookNavigation 은 순수 네비). */}
       {canvas && pageInfo && (
         <div id="pages" className="shrink-0">
@@ -1163,7 +1163,7 @@ export default function SidePanel({ show, onClose }: SidePanelProps) {
               </Button>
             )}
           </div>
-          {/* S8: 페이지 수가 증감 단위 배수가 아니면 접힘 여부와 무관하게 경고(편집완료 차단 사유) */}
+          {/* 페이지 수가 증감 단위 배수가 아니면 접힘 여부와 무관하게 경고(편집완료 차단 사유) */}
           <PageStepWarning variant="inline" />
           {pagesExpanded && (
             <div
@@ -1196,7 +1196,7 @@ export default function SidePanel({ show, onClose }: SidePanelProps) {
                           size="icon"
                           className={cn(
                             'delete-btn absolute top-1 right-1 h-8 w-8',
-                            // L6: 터치는 hover 불가 — 상시 노출(반투명 바탕으로 썸네일 위 가독 확보)
+                            // 터치는 hover 불가 — 상시 노출(반투명 바탕으로 썸네일 위 가독 확보)
                             TOUCH_ENV ? 'opacity-100 bg-white/70' : 'opacity-0 hover:opacity-100'
                           )}
                           onClick={(e) => handleDeletePage(e, c.id)}

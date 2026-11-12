@@ -2,7 +2,7 @@ import { describe, it, expect, vi } from 'vitest'
 import { normalizeRestoredFonts } from './fontRestore'
 
 /**
- * normalizeRestoredFonts (2026-11-05): 복원 직후 FontPlugin.normalizeCanvasFonts 위임 + 안전 가드.
+ * normalizeRestoredFonts: 복원 직후 FontPlugin.normalizeCanvasFonts 위임 + 안전 가드.
  * - FontPlugin 이 있으면 해당 캔버스로 위임하고 변경 수를 돌려준다
  * - editor/canvas/FontPlugin 부재, 구형 플러그인(메서드 없음), 예외 → 0 (복원은 계속)
  */

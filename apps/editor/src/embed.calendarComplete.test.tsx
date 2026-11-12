@@ -1,5 +1,5 @@
 /**
- * P1-d 캘린더 (2026-10-17): editor.complete additive `product` 키 + 세션 PATCH metadata.calendar.
+ * 캘린더: editor.complete additive `product` 키 + 세션 PATCH metadata.calendar.
  *   - calendar 프로파일 세트(26캔버스): result 에 product {kind:'calendar', editorType, canvasCount:26, sheetCount:13, faces:2},
  *     `files`·`pages` 중첩 구조 불변, 세션 update 에 metadata { productProfile, calendar } 동봉.
  *   - NULL 프로파일(legacy): result 에 product 키 없음, payload 키 집합이 기존과 동일, update payload 는 { canvasData } 그대로.
@@ -221,7 +221,7 @@ function completePayload(): EditorResult {
 
 const canvasDataOf = (n: number) => Array.from({ length: n }, (_, i) => ({ id: `c${i}`, props: core.extendFabricOption }))
 
-describe('EmbeddedEditor — editor.complete product (P1-d 캘린더)', () => {
+describe('EmbeddedEditor — editor.complete product (캘린더)', () => {
   const realParent = Object.getOwnPropertyDescriptor(window, 'parent')
 
   beforeEach(() => {
@@ -288,8 +288,8 @@ describe('EmbeddedEditor — editor.complete product (P1-d 캘린더)', () => {
       canvasData: canvasDataOf(26),
       metadata: { productProfile: calendarProfile, calendar: expectedCalendarMeta },
     })
-    // 프로파일 세트 전용 PDF export 옵션(2026-10-17): 8번째 인자로 세 옵션 true.
-    // 7번째(onProgress)는 B10(2026-10-25)부터 편집완료 진행 표시용 콜백(출력 무영향, 진행 보고 전용)
+    // 프로파일 세트 전용 PDF export 옵션: 8번째 인자로 세 옵션 true.
+    // 7번째(onProgress)는 편집완료 진행 표시용 콜백(출력 무영향, 진행 보고 전용)
     expect(saveMultiPagePDFAsBlob).toHaveBeenCalledTimes(1)
     const pdfArgs = saveMultiPagePDFAsBlob.mock.calls[0] as unknown[]
     expect(pdfArgs[4]).toBeUndefined()

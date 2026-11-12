@@ -165,7 +165,7 @@ export default function AppText() {
       </div>
 
       <div className="sections flex flex-col">
-        {/* S-E3 F5 — 스타일 프리셋 (구 '추천 콘텐츠' 빈 섹션을 프리셋 진입점으로 재사용) */}
+        {/* 스타일 프리셋 (구 '추천 콘텐츠' 빈 섹션을 프리셋 진입점으로 재사용) */}
         <AppSection id="app-text-style-presets" title="스타일">
           <div className="flex flex-col gap-1 px-4 pb-2">
             {TEXT_STYLE_PRESETS.map((preset) => (
@@ -191,7 +191,7 @@ export default function AppText() {
           </div>
         </AppSection>
 
-        {/* S-E3 F6 — 곡선 텍스트 프리셋 4종 (위 아치/아래 아치/웨이브/원형) */}
+        {/* 곡선 텍스트 프리셋 4종 (위 아치/아래 아치/웨이브/원형) */}
         <AppSection id="app-text-curve-presets" title="곡선 텍스트">
           <div className="grid grid-cols-2 gap-1 px-4 pb-2">
             {CURVE_TEXT_PRESETS.map((preset) => (

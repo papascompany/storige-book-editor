@@ -8,7 +8,7 @@ import {
 } from './sessionVersions'
 import type { EditSessionResponse } from '@/api/edit-sessions'
 
-describe('sessionVersions 헬퍼 (P1-4)', () => {
+describe('sessionVersions 헬퍼', () => {
   it('describeVersionReason: shrink 는 경고 톤, restore 는 정보, autosave/미상은 중립', () => {
     expect(describeVersionReason('shrink')).toEqual({ label: '페이지 감소 직전', tone: 'warning' })
     expect(describeVersionReason('restore')).toEqual({ label: '복원 직전', tone: 'info' })

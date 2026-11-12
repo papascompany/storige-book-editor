@@ -1,4 +1,4 @@
-// 곡선(패스) 텍스트 직렬화 왕복 회귀 — R9 (2026-08-11)
+// 곡선(패스) 텍스트 직렬화 왕복 회귀
 //
 // 실 fabric(5.5.2 dist) + 실 core.extendFabricOption / core.loadFromJSON 으로
 // 저장(canvas.toJSON) → 전송(JSON 문자열) → 복원 왕복을 고정한다.
@@ -11,7 +11,7 @@
 //      IText.fromObject 가 Path 로 enliven 해 복원한다
 //  (2) 커스텀 곡선 속성(extensionType/curvePathType/curveRadius/curveDirection/
 //      curveArcDeg)은 extendFabricOption 등재로만 살아남는다 — 등재 제거 시
-//      이 테스트가 침묵 소실을 적발한다 (L7 전례)
+//      이 테스트가 침묵 소실을 적발한다
 //  (3) per-char styles 는 stylesToArray/FromArray 왕복에서 보존된다
 //  (4) styles 키가 아예 없는 canvasData(외부 변환기 출력)도 core.loadFromJSON 의
 //      ensureTextStyles 보정으로 2차 저장이 크래시 없이 완주한다

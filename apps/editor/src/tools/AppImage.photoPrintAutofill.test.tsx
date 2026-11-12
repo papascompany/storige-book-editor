@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 //
-// P2-d 사진인화 (2026-10-19, editor-flow-5 / tests-5 / security-3): '사진 자동편집'(autofill) 경로.
+// 사진인화: '사진 자동편집'(autofill) 경로.
 //  (1) autofillPhotosIntoFrames 가 1틀 이상 채우면 그 뒤 applyAllPhotoPrint() 를 호출한다(흑백·촬영일·유테 창 재적용) —
 //      채운 틀이 0 이면 호출하지 않는다. 프로파일 NULL 세트는 applyAllPhotoPrint 자체가 즉시 0(여기서는 호출 여부만 고정).
 //  (2) checkPhotoPrintPhotoCount(입력 사진 수) 가 false 면 자동배치를 시작하지 않는다.
@@ -85,7 +85,7 @@ afterEach(() => {
   })
 })
 
-describe('AppImage — 자동편집 뒤 PhotoPrintPlugin.apply (editor-flow-5 / tests-5)', () => {
+describe('AppImage — 자동편집 뒤 PhotoPrintPlugin.apply', () => {
   it('2틀 채움 → autofill 완료 뒤 applyAllPhotoPrint() 1회(순서: autofill → applyAll), 수량 한도는 입력 사진 수(2)로 판정', async () => {
     spies.autofill.mockResolvedValue({ filledCount: 2, remainingFrames: 0, remainingPhotos: 0, lowResWarnings: [] })
     wire()
@@ -104,7 +104,7 @@ describe('AppImage — 자동편집 뒤 PhotoPrintPlugin.apply (editor-flow-5 / 
     expect(spies.applyAll).not.toHaveBeenCalled()
   })
 
-  it('security-3: checkPhotoPrintPhotoCount 가 false 면 자동배치·apply 모두 시작하지 않는다', async () => {
+  it('checkPhotoPrintPhotoCount 가 false 면 자동배치·apply 모두 시작하지 않는다', async () => {
     spies.checkCount.mockReturnValue(false)
     wire()
     await clickAutofill()

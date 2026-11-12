@@ -1,5 +1,5 @@
 /**
- * JD-2 (2026-10) — 합성 프로세서 실패 시도 정리(settleFailedAttempt) 고정.
+ * 합성 프로세서 실패 시도 정리(settleFailedAttempt) 고정.
  *
  * 잠그는 계약:
  *  1. attempts 미지정 잡(옛 api): 6개 경로 모두 FAILED payload·Sentry 횟수가 그대로, discard 없음, [SYNTH_RETRY] 없음.

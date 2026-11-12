@@ -1,12 +1,12 @@
 /**
- * D14 (2026-07-28) — 호스트→편집기 수신 명령 계약 v1 의 inbound 신뢰 게이트 잠금.
+ * 호스트→편집기 수신 명령 계약 v1 의 inbound 신뢰 게이트 잠금.
  *
- * 배경: 수신 3종(getState/saveNow/setBackGuard)은 GUIDE 에 이미 산문으로 노출돼 있던
- * 사실상의 계약이며, 계약 v1 등재는 그 **사후 추인**이다. 등재 시점에 맞춰 편집기 수신부에
- * `e.source === window.parent` 대조를 **additive** 로 봉합했다 —
- * 기존 게이트(origin + 봉투 source)만으로는 parentOrigin 과 같은 출처의 다른 프레임/윈도우가
- * `saveNow` 를 강제하거나 `setBackGuard{enabled:false}` 로 이탈 가드를 풀 수 있었다.
- * (호스트측 SDK 는 expectedSource 필수화로 이미 대칭 방어 완료 — 편집기측만 비대칭이었음.)
+ * 수신 3종(getState/saveNow/setBackGuard)은 GUIDE 에 서술된
+ * 계약 v1 명령이다. 편집기 수신부는
+ * `e.source === window.parent` 대조를 **additive** 로 수행한다 —
+ * origin + 봉투 source 가 맞아도 parentOrigin 과 같은 출처의 다른 프레임/윈도우가
+ * 보낸 명령(`saveNow`·`setBackGuard` 등)은 거부한다.
+ * (호스트측 SDK 의 expectedSource 검사와 대칭이다.)
  *
  * 본 테스트가 잠그는 것:
  *   ① 정상 부모(iframe·top-level 양쪽)가 보낸 명령은 **반드시 통과** — 既노출 발신자 호환
@@ -106,7 +106,7 @@ function messageEvent(opts: {
 }
 
 // ── ① 게이트 단위 테스트 ───────────────────────────────────────────────────────
-describe('isTrustedHostCommandEvent (D14 inbound 게이트)', () => {
+describe('isTrustedHostCommandEvent (inbound 게이트)', () => {
   const realParent = Object.getOwnPropertyDescriptor(window, 'parent')
 
   afterEach(() => {
@@ -139,7 +139,7 @@ describe('isTrustedHostCommandEvent (D14 inbound 게이트)', () => {
     ).toBe(true)
   })
 
-  it('같은 출처의 다른 프레임/윈도우 발신은 차단한다 (D14 핵심)', () => {
+  it('같은 출처의 다른 프레임/윈도우 발신은 차단한다', () => {
     const parent = makeWindowStub('parent')
     setParent(parent)
     const sibling = makeWindowStub('sibling') // origin 은 동일, 윈도우만 다름
@@ -213,7 +213,7 @@ function lastBackGuardEnabled(): boolean {
   return spies.backGuardEnabled[spies.backGuardEnabled.length - 1]
 }
 
-describe('EmbeddedEditor 인바운드 명령 배선 (D14 · 계약 v1 3종)', () => {
+describe('EmbeddedEditor 인바운드 명령 배선 (계약 v1 3종)', () => {
   beforeEach(() => {
     spies.saveNow.mockClear()
     spies.backGuardEnabled.length = 0

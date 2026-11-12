@@ -29,7 +29,7 @@ const { appState } = vi.hoisted(() => ({
     canvas: null as any,
     allCanvas: [] as any[],
     allEditors: [] as any[],
-    // R4 복원 교정: 부족분 증설 경로(spreadConfig 존재 시)가 호출 — 테스트별로 구현 주입.
+    // 복원 교정: 부족분 증설 경로(spreadConfig 존재 시)가 호출 — 테스트별로 구현 주입.
     addInnerPage: (async () => {}) as () => Promise<void>,
     // 전량 복원 성공 시 첫 페이지 복귀(setPage(0)) 호출 — no-op 목.
     setPage: ((_i: number) => {}) as (i: number) => void,
@@ -58,8 +58,8 @@ const SESSION_ID = 'sess-restore'
 /** 가짜 fabric 캔버스 — toJSON + on/off(이벤트 리스너 등록 가드용) */
 function fakeCanvas(id: string) {
   // 복원 경로가 호출하는 fabric 메서드 스텁: rebindFrameInteractivity / applyObjectPermissions
-  // (Part B·프레임픽스, 2026-06-16) 가 canvas.getObjects()·requestRenderAll() 를 호출하므로
-  // 실 fabric 캔버스와 동일하게 제공해야 복원이 throw 없이 완주한다(목 staleness 수정).
+  // (Part B·프레임픽스) 가 canvas.getObjects()·requestRenderAll() 를 호출하므로
+  // 실 fabric 캔버스와 동일하게 제공해야 복원이 throw 없이 완주한다.
   return {
     id,
     toJSON: () => ({ id, objects: [] }),
@@ -140,7 +140,7 @@ describe('useEmbedAutoSave — restore (복원 동작)', () => {
       // 존재하는 페이지는 복원 시도됨(부분 복원)
       expect(loadFromJSON).toHaveBeenCalledTimes(1)
       expect(loadFromJSON).toHaveBeenCalledWith(c0, { p: 0 })
-      // R4: 부분 복원은 성공이 아니다 — 부분본이 자동저장으로 서버 canvasData 를
+      // 부분 복원은 성공이 아니다 — 부분본이 자동저장으로 서버 canvasData 를
       // 절단 덮어쓰지 않게 dirty 마킹 없음 + 백업 보존(재시도 가능)
       expect(ok).toBe(false)
       expect(useSaveStore.getState().isDirty).toBe(false)
@@ -204,7 +204,7 @@ describe('useEmbedAutoSave — restore (복원 동작)', () => {
       expect(useSaveStore.getState().isDirty).toBe(false)
     })
 
-    it('캔버스 0장 + 배열 백업 → 복원 0건: false + 백업 보존 (종전 "성공 처리 후 백업 삭제" 체감 no-op 수정)', async () => {
+    it('캔버스 0장 + 배열 백업 → 복원 0건: false + 백업 보존', async () => {
       setCanvases([])
       writeBackup([{ p: 0 }, { p: 1 }])
 
@@ -279,7 +279,7 @@ describe('useEmbedAutoSave — restore (복원 동작)', () => {
     })
   })
 
-  describe('언마운트 백업 — 무편집 억제 (R4)', () => {
+  describe('언마운트 백업 — 무편집 억제', () => {
     it('실제 사용자 편집 0건이면 dirty 여도 언마운트 백업을 쓰지 않는다', () => {
       setCanvases([fakeCanvas('c0')])
       const { unmount } = renderRestoreHook()

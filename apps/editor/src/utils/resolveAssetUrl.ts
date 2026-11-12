@@ -1,8 +1,8 @@
-// 에셋/썸네일 URL 정규화 헬퍼 (트랙 EDITOR P0-B)
+// 에셋/썸네일 URL 정규화 헬퍼
 //
 // 백엔드(library 에셋·editor_contents·세션 썸네일)는 `/storage/...` 같은 **상대 경로**를
 // 반환한다. 이 경로를 그대로 <img src> 나 fabric loadSVGFromURL/imageFromURL 에 넘기면
-// Vercel editor origin(editor.papascompany.co.kr) 기준으로 해석돼 404 가 난다.
+// 편집기 origin 기준으로 해석돼 404 가 난다.
 // VITE_API_BASE_URL(= API origin, 기본 http://localhost:4000/api)을 prefix 해
 // 절대 경로로 만든다 (apiClient base 와 동일한 경로 규칙).
 //

@@ -54,11 +54,11 @@ interface AppState {
   activeSelection: FabricObject[]
   triggerSelectionRefresh: number
 
-  // S2 (공유): 객체 삭제 확인 모달 상태 (전 상품 적용)
+  // 공유: 객체 삭제 확인 모달 상태 (전 상품 적용)
   deleteConfirmOpen: boolean
   deleteConfirmCount: number
 
-  // L7 (2026-07-11): 필수 편집 요소 미편집 경고 모달 상태 (비차단 — '그래도 완료' 가능)
+  // 필수 편집 요소 미편집 경고 모달 상태 (비차단 — '그래도 완료' 가능)
   requiredEditConfirmOpen: boolean
   requiredEditConfirmItems: UneditedRequiredItem[]
 
@@ -100,7 +100,7 @@ interface AppActions {
   // 페이지 관리
   setPageName: (name: string) => void
   setPage: (index: number) => void
-  /** 페이지 순서 재배열 (DD-5) — newIndices는 0..N-1의 순열 (예: [2,0,1] = 새 순서[0]=기존[2]) */
+  /** 페이지 순서 재배열 — newIndices는 0..N-1의 순열 (예: [2,0,1] = 새 순서[0]=기존[2]) */
   reorderByIndex: (newIndices: number[]) => void
   addPage: () => Promise<void>
   addInnerPage: () => Promise<void>     // 내지 추가 → debouncedRecalcSpine()
@@ -116,7 +116,7 @@ interface AppActions {
   updateObjects: () => void
 
   /**
-   * 레이어 패널 DnD 재정렬 (S3, 공유 계층 — 전 상품 적용).
+   * 레이어 패널 DnD 재정렬 (공유 계층 — 전 상품 적용).
    * sourceId 객체를 targetId 객체의 위/아래로 z-order 이동.
    * @param sourceId 드래그한 객체 id
    * @param targetId 드롭 대상 객체 id
@@ -124,12 +124,12 @@ interface AppActions {
    */
   reorderObject: (sourceId: string, targetId: string, placeAbove: boolean) => void
 
-  // S2 (공유): 삭제 확인 — 휴지통 버튼/DEL 핫키 모두 이 액션을 거쳐 모달을 띄운다.
+  // 공유: 삭제 확인 — 휴지통 버튼/DEL 핫키 모두 이 액션을 거쳐 모달을 띄운다.
   requestDeleteSelection: () => void
   confirmDeleteSelection: () => void
   cancelDeleteSelection: () => void
 
-  // L7: 필수 편집 경고 — 완료 게이트(requiredEditGate)가 요청, 모달 버튼이 resolve.
+  // 필수 편집 경고 — 완료 게이트(requiredEditGate)가 요청, 모달 버튼이 resolve.
   requestRequiredEditConfirm: (items: UneditedRequiredItem[]) => Promise<'proceed' | 'edit'>
   resolveRequiredEditConfirm: (choice: 'proceed' | 'edit') => void
 
@@ -140,15 +140,15 @@ interface AppActions {
   updateAllWorkspaceSettings: (settings: CanvasSettings) => void
 
   // 스크린샷 — changedIndex 를 주면 해당 캔버스만 재캡처, 생략하면 전체 재캡처.
-  // P2: options 로 포맷/해상도(jpg·72dpi 등) 추가 지정 가능 (기본 png/320px = 기존 비파괴).
+  // options 로 포맷/해상도(jpg·72dpi 등) 추가 지정 가능 (기본 png/320px = 기존 비파괴).
   takeCanvasScreenshot: (changedIndex?: number, options?: ThumbnailFormatOptions) => void
 
   /**
    * 대량 페이지 생성/삭제를 한 덩어리로 감싼다 — 구간 내 썸네일 캡처를 미루고 종료 시 1회만 캡처.
    *
-   * 왜 필요한가(2026-08-24 §2 ⑤): 썸네일 debounce 는 200ms 인데 addPage 1회가 그보다 오래
+   * 왜 필요한가: 썸네일 debounce 는 200ms 인데 addPage 1회가 그보다 오래
    * 걸린다(재진입 시드 실측 ≈390ms/장). 그래서 루프 매 반복마다 debounce 가 만료돼 그 시점까지의
-   * **전 캔버스**를 재캡처했다(takeCanvasScreenshot() 무인자 = 'all'). N장 증설이면 toDataURL
+   * **전 캔버스**를 재캡처한다(takeCanvasScreenshot() 무인자 = 'all'). N장 증설이면 toDataURL
    * 호출이 1+2+…+N = O(N²) 회. 9장이면 45회다.
    *
    * 반드시 이 래퍼로 감싼다(try/finally 내장) — 수동 begin/end 는 예외 경로에서 썸네일이
@@ -224,7 +224,7 @@ const numberValues = [
 let blockedUpdate = false
 let debounceTimer: ReturnType<typeof setTimeout> | null = null
 
-// L7: 필수 편집 경고 모달 promise resolver (요청↔버튼 응답 연결 — state 밖 모듈 보관)
+// 필수 편집 경고 모달 promise resolver (요청↔버튼 응답 연결 — state 밖 모듈 보관)
 let requiredEditConfirmResolver: ((choice: 'proceed' | 'edit') => void) | null = null
 let throttleTimeout: ReturnType<typeof setTimeout> | null = null
 
@@ -249,7 +249,7 @@ const SCREENSHOT_DEBOUNCE_MS = TOUCH_ENV ? 2000 : 200
 // 풀해상도 PNG 인코딩(페이지당 수백 KB~수 MB)을 수십 KB 수준으로 축소.
 const THUMBNAIL_TARGET_WIDTH = 320
 
-// P2 (포토북, 2026-06-23): 썸네일 포맷/해상도 파라미터.
+// 포토북: 썸네일 포맷/해상도 파라미터.
 // ⚠️ 비파괴 — 기본값은 기존과 동일한 'png'/320px(THUMBNAIL_TARGET_WIDTH). 포토북(펼침면 72dpi
 //    jpg 썸네일 등)은 takeCanvasScreenshot 호출 시 옵션으로만 추가 지정한다. 기본 포맷을
 //    png→jpg 로 바꾸면 공유 변경=전 상품(BOOK/LEAFLET/카드) 회귀이므로 금지.
@@ -282,13 +282,13 @@ let bulkPageOpDepth = 0
 
 // 대량 구간 안에서 실제로 썸네일 재캡처 요청이 있었는지. 구간이 아무것도 하지 않았으면
 // 종료 시 전 캔버스 toDataURL 플러시를 돌릴 이유가 없다(내지 PDF 앉히기는 부족분이 0이어도
-// 구간을 무조건 연다 — contentPdfGuide.ts:388). 최외곽 진입에서 내리고 요청 시 올린다.
+// 구간을 무조건 연다 — contentPdfGuide.ts 의 내지 증설 루프). 최외곽 진입에서 내리고 요청 시 올린다.
 let bulkPageOpDirty = false
 
 // 대량 구간 안에서 책등 재계산 요청이 있었는지.
 // ⚠️ debounce(300ms)는 이 루프에서 배칭 도구가 아니다 — addPage 1회가 재진입 시드 실측
-//    ≈390ms 라 타이머가 매 반복 만료돼 9장 증설이 API 왕복 9회로 나간다(2026-08-26 적대검증
-//    CONFIRMED). 썸네일과 **같은 구간 게이트**로 통일해 구간 종료 후 1회만 발사한다.
+//    ≈390ms 라 타이머가 매 반복 만료돼 9장 증설이 API 왕복 9회로 나간다.
+//    썸네일과 **같은 구간 게이트**로 통일해 구간 종료 후 1회만 발사한다.
 //    부수효과로, 중간 pageCount 로 계산된 요청 자체가 생기지 않으므로 늦게 도착한 스테일
 //    응답이 최종 책등 폭을 덮어쓰는 경합도 이 경로에서는 구조적으로 사라진다.
 let spineRecalcPending = false
@@ -322,7 +322,7 @@ const debouncedTakeScreenshot = debounce((allCanvas: any[], set: any, get: any) 
       if (cvs && !cvs.disposed && cvs.getContext()) {
         // 워크스페이스 영역만 캡처 (회색 배경 제외)
         const workspace = cvs.getObjects().find((obj: any) => obj.id === 'workspace')
-        // P2: 포맷/목표폭/품질은 screenshotFormatOptions 에서 (기본=png/320/0.8 = 기존 동작)
+        // 포맷/목표폭/품질은 screenshotFormatOptions 에서 (기본=png/320/0.8 = 기존 동작)
         const { format, targetWidth, quality } = screenshotFormatOptions
         if (workspace) {
           const bound = workspace.getBoundingRect()
@@ -591,7 +591,7 @@ export const useAppStore = create<AppState & AppActions>()((set, get) => ({
 
       const canvasId = `canvas${index}`
 
-      // ── 재진입 증설 sub-lap 계측 (2026-08-26) ────────────────────────────
+      // ── 재진입 증설 sub-lap 계측 ────────────────────────────
       // restore:grow(총합 ≈390ms/장)를 항목별로 분해한다. embed 로드 구간에서만 활성이고
       // 그 밖에서는 lap() 이 공유 no-op 상수를 돌려주므로 평상시 '+페이지' 경로는 비용 0.
       const endCreate = lap('grow:createCanvas')
@@ -668,7 +668,7 @@ export const useAppStore = create<AppState & AppActions>()((set, get) => ({
         (spreadConfig.regionScope === 'inner' || get().allCanvas.length > 0)
       const pageTrim = settingsStore.pageTrimMm
       if (useInnerSpreadSize && spreadConfig?.innerSpec) {
-        // 포토북 내지(O-2): 2-up 펼침면 — 폭=한 면×2, 높이=한 면. (한 펼침면=1 캔버스라
+        // 포토북 내지: 2-up 펼침면 — 폭=한 면×2, 높이=한 면. (한 펼침면=1 캔버스라
         // 좌/우 페어가 구조적으로 함께 이동·삭제·재정렬 → 페어 무결성 보장.)
         const isp = spreadConfig.innerSpec
         pageSize = {
@@ -711,11 +711,11 @@ export const useAppStore = create<AppState & AppActions>()((set, get) => ({
       endCreate()
 
       const endPlugins = lap('grow:plugins')
-      // createCanvas 와 **동일한 플러그인 세트**를 등록한다(2026-08-03).
-      // 종전에는 WorkspacePlugin+PointerShiftGuard 2개만 붙어서, 스프레드 모드의 2번째 이후
+      // createCanvas 와 **동일한 플러그인 세트**를 등록한다.
+      // WorkspacePlugin+PointerShiftGuard 2개만 붙이면, 스프레드 모드의 2번째 이후
       // 캔버스가 ObjectPlugin(삭제)·HistoryPlugin(되돌리기)·FrameInteractionPlugin(사진틀)·
-      // SpreadPlugin(거터/좌우면 가이드) 없이 사실상 편집 불가였다. 특히 포토북 내지 펼침면은
-      // 전 캔버스가 이 경로를 타므로 첫 장 말고는 전부 죽은 캔버스였다.
+      // SpreadPlugin(거터/좌우면 가이드) 없이 사실상 편집 불가다. 특히 포토북 내지 펼침면은
+      // 전 캔버스가 이 경로를 타므로 첫 장 말고는 전부 죽은 캔버스가 된다.
       // ⚠️ registerCanvasPlugins 가 editor.init(canvas) 를 수행하므로 호출측에서 중복 init 금지
       //    (ContextMenu 가 두 번 생성돼 document 리스너가 중복된다).
       // ⚠️ 동적 import — createCanvas 가 useAppStore 를 참조하므로 정적 import 는 순환이 된다
@@ -808,7 +808,7 @@ export const useAppStore = create<AppState & AppActions>()((set, get) => ({
       // 재진입 시드(embed 복원의 restore:grow 루프)가 페이지마다 책등 API 왕복 +
       // 표지 캔버스 resizeSpine 을 발사한다(9장 = 9회). debounce(300ms)+AbortController 가
       // 그걸 마지막 1회로 접는다. 또 직접 호출분은 abort 대상이 아니라서, 늦게 도착한
-      // 중간 pageCount 응답이 최종 응답보다 나중에 resizeSpine 을 덮어쓸 여지도 있었다
+      // 중간 pageCount 응답이 최종 응답보다 나중에 resizeSpine 을 덮어쓸 여지도 있다
       // (경합 — 최종 책등 폭이 스테일 페이지 수로 확정될 수 있음).
       // 비스프레드(일반 책)는 debouncedRecalcSpine 이 즉시 return 하므로 직접 호출 유지.
       if (get().isSpreadMode) {
@@ -886,7 +886,7 @@ export const useAppStore = create<AppState & AppActions>()((set, get) => ({
   },
 
   reorderByIndex: (newIndices: number[]) => {
-    // DD-5: 페이지 순서 재배열 (drag-to-reorder 트리거)
+    // 페이지 순서 재배열 (drag-to-reorder 트리거)
     const { allCanvas, allEditors, canvas: currentCanvas } = get()
     if (newIndices.length !== allCanvas.length) {
       console.warn('[reorderByIndex] length mismatch', newIndices.length, allCanvas.length)
@@ -1146,14 +1146,14 @@ export const useAppStore = create<AppState & AppActions>()((set, get) => ({
       if (!Array.isArray(allObjects)) return
 
       const newObjects: CanvasObject[] = []
-      // L3 B-5 (2026-07-06): 디자이너(editMode)는 template-element 를 목록에 표시 —
+      // 디자이너(editMode)는 template-element 를 목록에 표시 —
       // 제작자가 보호 속성을 제어해야 하므로. 고객은 현행 은폐 유지(CC <LC> 패턴 정합).
       // fillImage 는 양쪽 모두 은폐(사진틀 내부 구현체).
       const isEditMode = useSettingsStore.getState().currentSettings.editMode === true
       const prevented = isEditMode
         ? ['overlay', 'outline', 'clipping', 'printguide', 'fillImage']
         : ['overlay', 'outline', 'clipping', 'printguide', 'template-element', 'fillImage']
-      // L3 B-5(적대 리뷰): 구조성 헬퍼는 editMode 에도 은폐 — 독립 조작 의미가 없고
+      // 구조성 헬퍼는 editMode 에도 은폐 — 독립 조작 의미가 없고
       // z-order/삭제가 저장본 구조를 오염시킨다(page-outline 계열·템플릿 배경).
       const structuralIds = ['page-outline', 'page-outline-clip', 'template-background', 'template-mockup']
 
@@ -1179,12 +1179,12 @@ export const useAppStore = create<AppState & AppActions>()((set, get) => ({
           visible: Boolean(obj.visible !== false),
           locked: !(obj.hasControls ?? true),
           selected: selected,
-          // B1: contentEditable 강제(applyObjectPermissions)가 fabric editable=false 를
+          // contentEditable 강제(applyObjectPermissions)가 fabric editable=false 를
           // 세팅해도 레이어 행 액션(잠금/가시성)은 유지 — 내용편집만 잠근다는 설계 의도 초과 방지.
           editable: (obj.editable ?? true) || (obj as { contentEditable?: boolean }).contentEditable === false,
-          // B0-②: 관리자 위치고정 여부 — SidePanel 이 비-editMode 에서 해제 버튼 숨김 판정에 사용
+          // 관리자 위치고정 여부 — SidePanel 이 비-editMode 에서 해제 버튼 숨김 판정에 사용
           movable: (obj as { movable?: boolean }).movable,
-          // B1: 레이어 행 배지용 속성 스냅샷
+          // 레이어 행 배지용 속성 스냅샷
           deleteable: (obj as { deleteable?: boolean }).deleteable,
           contentEditable: (obj as { contentEditable?: boolean }).contentEditable,
           printExclude: (obj as { printExclude?: boolean }).printExclude,
@@ -1192,7 +1192,7 @@ export const useAppStore = create<AppState & AppActions>()((set, get) => ({
           lockLevel: (obj as { lockInfo?: { isLocked?: boolean; lockLevel?: string } }).lockInfo?.isLocked
             ? ((obj as { lockInfo?: { lockLevel?: string } }).lockInfo?.lockLevel as CanvasObject['lockLevel'])
             : undefined,
-          // L2: 텍스트 내용 미리보기 — 행 표시명(자동 이름일 때 대체)용, 저장 무접촉
+          // 텍스트 내용 미리보기 — 행 표시명(자동 이름일 때 대체)용, 저장 무접촉
           textPreview: typeof (obj as { text?: unknown }).text === 'string'
             ? ((obj as { text?: string }).text as string).slice(0, 24)
             : undefined,
@@ -1216,9 +1216,9 @@ export const useAppStore = create<AppState & AppActions>()((set, get) => ({
     }
   },
 
-  // 레이어 패널 DnD 재정렬 (S3, 공유 계층 — BOOK/LEAFLET/카드 전 상품 적용)
+  // 레이어 패널 DnD 재정렬 (공유 계층 — BOOK/LEAFLET/카드 전 상품 적용)
   //
-  // ⚠️ 단일 진실원(R2): 레이어 목록은 updateObjects()에서 core.getObjects() 필터 결과를
+  // ⚠️ 단일 진실원: 레이어 목록은 updateObjects()에서 core.getObjects() 필터 결과를
   //    .reverse() 한 것이라 "목록 위 = 맨앞(front, 높은 z-index)"이다. 목록 인덱스로
   //    직접 계산하면 방향이 뒤집혀 "맨앞으로"가 뒤로 가는 회귀가 난다. 따라서 목록 인덱스가
   //    아니라 **fabric 라이브 스택(canvas.getObjects())의 실제 인덱스**를 기준으로 moveTo 한다.
@@ -1289,10 +1289,10 @@ export const useAppStore = create<AppState & AppActions>()((set, get) => ({
     updateObjects()
   },
 
-  // ── S2 (공유 계층, 2026-06-23): 객체 삭제 확인 (전 상품 BOOK/LEAFLET/카드 적용) ──
-  // ⚠️ canvas-core 무변경(R1): DEL/Backspace 핫키는 canvas-core 의 hotkeys-js(document keydown)가
+  // ── 공유 계층: 객체 삭제 확인 (전 상품 BOOK/LEAFLET/카드 적용) ──
+  // ⚠️ canvas-core 무변경: DEL/Backspace 핫키는 canvas-core 의 hotkeys-js(document keydown)가
   //    처리하므로, editor 의 ObjectDeleteConfirm 가 document 캡처단계에서 가로채(stopImmediatePropagation)
-  //    이 액션을 호출한다 → 외부 임베더(ShareSnap/100p/MD2Books)는 이 모달이 없어 영향 0.
+  //    이 액션을 호출한다 → 외부 임베더(파트너 사이트)는 이 모달이 없어 영향 0.
   //    실제 삭제는 기존 ObjectPlugin.del() 재사용(삭제잠금·lid·fillImage 동반제거 가드 그대로).
   requestDeleteSelection: () => {
     const { canvas, activeSelection } = get()
@@ -1315,7 +1315,7 @@ export const useAppStore = create<AppState & AppActions>()((set, get) => ({
   },
   cancelDeleteSelection: () => set({ deleteConfirmOpen: false, deleteConfirmCount: 0 }),
 
-  // ── L7 (2026-07-11): 필수 편집 요소 미편집 경고 (비차단) ──
+  // ── 필수 편집 요소 미편집 경고 (비차단) ──
   // requiredEditGate.confirmRequiredEditsBeforeComplete 가 요청하고 RequiredEditConfirmModal
   // 버튼이 resolve. 'proceed'=그래도 완료(원 플로우 속행) / 'edit'=계속 편집(완료 중단).
   requestRequiredEditConfirm: (items: UneditedRequiredItem[]) =>
@@ -1401,7 +1401,7 @@ export const useAppStore = create<AppState & AppActions>()((set, get) => ({
   // 스크린샷 (외부 debounce 함수 사용)
   // changedIndex 지정 시 해당 캔버스만 재캡처(나머지는 기존 썸네일 유지),
   // 생략 시 전체 재캡처(페이지 추가/삭제/재정렬 등 인덱스 이동 케이스)
-  // P2: options 지정 시 포맷/목표폭/품질을 덮어쓴다. 미지정 필드는 기본(png/320/0.8)으로
+  // options 지정 시 포맷/목표폭/품질을 덮어쓴다. 미지정 필드는 기본(png/320/0.8)으로
   //     리셋해 호출 간 상태 누수를 막는다 — 한 번 jpg 로 호출해도 다음 png 호출이 영향받지 않음.
   takeCanvasScreenshot: (changedIndex?: number, options?: ThumbnailFormatOptions) => {
     const { allCanvas } = get()

@@ -106,7 +106,7 @@ export const SpreadPagePanel = memo(function SpreadPagePanel({
 
   const handleAddPage = useCallback(async () => {
     if (!canAddMore) {
-      // A13: 제본 최대페이지(예: 중철 64p) 초과 — 안내
+      // 제본 최대페이지(예: 중철 64p) 초과 — 안내
       showToast(
         bindingType === BindingType.SADDLE
           ? '중철제본은 최대 64페이지까지 추가할 수 있습니다.'
@@ -117,7 +117,7 @@ export const SpreadPagePanel = memo(function SpreadPagePanel({
       return
     }
     try {
-      // S8: 증감 단위(pageStep)가 있으면 배수를 맞추는 캔버스 수만큼 연속 추가(null → 1장, 기존 동작).
+      // 증감 단위(pageStep)가 있으면 배수를 맞추는 캔버스 수만큼 연속 추가(null → 1장, 기존 동작).
       const unit = useEditorStore.getState().getPageAddUnit()
       for (let i = 0; i < unit; i++) {
         await addPage()
@@ -132,12 +132,12 @@ export const SpreadPagePanel = memo(function SpreadPagePanel({
   }, [canAddMore, addPage, bindingType, pageStep])
 
   const handleDeletePage = useCallback((pageId: string) => {
-    // A13: 제본 최소페이지(예: 무선 32p) 미만으로 삭제 차단.
-    //   W5: 호스트 pageCountMin 을 보낸 세션은 제본 최소가 적용되지 않으므로 일반 문구로 안내한다.
+    // 제본 최소페이지(예: 무선 32p) 미만으로 삭제 차단.
+    //   호스트 pageCountMin 을 보낸 세션은 제본 최소가 적용되지 않으므로 일반 문구로 안내한다.
     if (!canDeletePage(pageId)) {
       const store = useEditorStore.getState()
       const unit = store.getPageDeleteUnit()
-      // S8: 단위 삭제에 필요한 인접 페이지가 부족한 경우(필수 페이지 사이 등) 별도 안내
+      // 단위 삭제에 필요한 인접 페이지가 부족한 경우(필수 페이지 사이 등) 별도 안내
       const groupShort = pageStep && unit > 1 && store.getDeleteGroup(pageId).length !== unit
       showToast(
         groupShort
@@ -151,7 +151,7 @@ export const SpreadPagePanel = memo(function SpreadPagePanel({
       )
       return
     }
-    // S8: 증감 단위만큼 인접 페이지를 함께 삭제(pageStep=null → 대상 1장, 기존 동작).
+    // 증감 단위만큼 인접 페이지를 함께 삭제(pageStep=null → 대상 1장, 기존 동작).
     const groupIds = pageStep ? useEditorStore.getState().getDeleteGroup(pageId) : [pageId]
     // 삭제 전 pageId → canvasId 를 확정한다(순차 삭제 중 인덱스가 밀리므로 id 로 지운다).
     const canvasIds: string[] = []
@@ -278,7 +278,7 @@ export const SpreadPagePanel = memo(function SpreadPagePanel({
         className
       )}
     >
-      {/* S8: 내지 페이지 수가 증감 단위(pageStep) 배수가 아니면 경고 배지 (편집완료 차단 사유 안내) */}
+      {/* 내지 페이지 수가 증감 단위(pageStep) 배수가 아니면 경고 배지 (편집완료 차단 사유 안내) */}
       <PageStepWarning />
 
       {/* 스크롤 가능 영역 */}

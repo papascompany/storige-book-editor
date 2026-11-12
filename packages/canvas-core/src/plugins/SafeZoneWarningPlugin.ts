@@ -3,7 +3,7 @@ import Editor from '../Editor'
 import { PluginBase, PluginOption } from '../plugin'
 
 /**
- * SafeZoneWarningPlugin (E1 §5-5) — 재단/안전영역 침범 실시간 경고
+ * SafeZoneWarningPlugin — 재단/안전영역 침범 실시간 경고
  *
  * object:moving/scaling 중 대상 객체 경계가 안전영역(safeSizeBorder) 밖으로 나가거나
  * (안전영역이 없으면 재단선 cutBorder 기준) 재단선을 넘보면:
@@ -209,7 +209,7 @@ class SafeZoneWarningPlugin extends PluginBase {
       extensionType: 'guideline',
       originX: 'left' as const,
       originY: 'top' as const,
-      // 히스토리/저장 원천 제외 계약: id 미부여 (§8.2 — _loadHistory 삭제 판정 회피)
+      // 히스토리/저장 원천 제외 계약: id 미부여 (_loadHistory 삭제 판정 회피)
     }
     this._overlay = new fabric.Rect(options as unknown as fabric.IRectOptions)
     this._canvas.add(this._overlay)

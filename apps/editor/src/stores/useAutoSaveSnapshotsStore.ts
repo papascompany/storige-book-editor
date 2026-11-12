@@ -2,13 +2,13 @@ import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 
 /**
- * 자동저장 스냅샷 메타 store (트랙 BB — 버전 히스토리 패널 Phase 2 minimal)
+ * 자동저장 스냅샷 메타 store (버전 히스토리 패널의 최소 구성)
  *
  * 자동저장 성공 시점의 메타 정보(시각, 페이지수, sessionId)를 LRU 5개로 보관.
  * 데이터 자체(canvas json)는 보관하지 않음 — 진정한 시점 복원은 백엔드 versions
- * API 연동 후 별도 트랙(Phase 3).
+ * API 연동이 있어야 가능하다.
  *
- * 1차 가치: 사용자가 자동저장 빈도/시점을 한눈에 확인. 복원은 향후 활성화.
+ * 용도: 사용자가 자동저장 빈도/시점을 한눈에 확인. 복원은 제공하지 않는다.
  */
 
 const MAX_SNAPSHOTS = 5

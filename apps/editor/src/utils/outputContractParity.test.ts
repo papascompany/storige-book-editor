@@ -1,5 +1,5 @@
 /**
- * Track 1 (2026-07-06) — 출력 계약 경로 파리티 회귀 가드.
+ * 출력 계약 경로 파리티 회귀 가드.
  *
  * embed.tsx(handleFinish/instance.complete)와 useWorkSave.completeSpreadWork 는 출력 크기
  * 산출 로직을 각자 보유해 한쪽만 고치면 경로별 출력 크기가 어긋나는 회귀 이력이 있다.
@@ -23,16 +23,16 @@ import { buildSpreadSnapshots } from './buildSpreadSnapshots'
 const read = (rel: string): string =>
   readFileSync(resolve(__dirname, '..', rel), 'utf-8')
 
-describe('출력 계약 단일 진실원 파리티 (D-1/D-4/D-3)', () => {
+describe('출력 계약 단일 진실원 파리티', () => {
   const embedSrc = read('embed.tsx')
   const workSaveSrc = read('hooks/useWorkSave.ts')
 
-  it('D-1·H1: 두 완료 경로 모두 content 페이지 크기를 resolveSpreadInnerPdfSizeMm(innerSpec → 싸바리 모드일 때만 판형 → 폴백)로 산출한다', () => {
+  it('두 완료 경로 모두 content 페이지 크기를 resolveSpreadInnerPdfSizeMm(innerSpec → 싸바리 모드일 때만 판형 → 폴백)로 산출한다', () => {
     const innerPattern =
       /resolveSpreadInnerPdfSizeMm\(\{\s*spreadConfig: spreadCfg,\s*pageTrimMm: settingsAtFinish\.pageTrimMm,\s*hardcoverWrapActive: hardcoverWrap != null,/
     expect(embedSrc).toMatch(innerPattern)
     expect(workSaveSrc).toMatch(innerPattern)
-    // 싸바리 모드가 아니면 content.pdf 크기 = 폴백. 경로별 폴백 순서(HEAD b987a81 과 동일)를 소스 수준에서 고정한다.
+    // 싸바리 모드가 아니면 content.pdf 크기 = 폴백. 경로별 폴백 순서를 소스 수준에서 고정한다.
     // embed: 표지 spec 한 면 → 주문 옵션 → 210×297
     expect(embedSrc).toMatch(
       /hardcoverWrapActive: hardcoverWrap != null,\s*fallback: \{\s*widthMm: spreadCfg\?\.spec\?\.coverWidthMm \?\? options\?\.size\?\.width \?\? 210,\s*heightMm: spreadCfg\?\.spec\?\.coverHeightMm \?\? options\?\.size\?\.height \?\? 297,\s*\},\s*\}\)/,
@@ -47,12 +47,12 @@ describe('출력 계약 단일 진실원 파리티 (D-1/D-4/D-3)', () => {
     expect(workSaveSrc).toMatch(wrapPattern)
   })
 
-  it('D-4: 두 완료 경로 모두 cover 출력 크기를 computeCoverOutputSizeMm 로 산출한다', () => {
+  it('두 완료 경로 모두 cover 출력 크기를 computeCoverOutputSizeMm 로 산출한다', () => {
     expect(embedSrc).toMatch(/computeCoverOutputSizeMm\(spreadCfg\)/)
     expect(workSaveSrc).toMatch(/computeCoverOutputSizeMm\(spreadCfg\)/)
   })
 
-  it('D-4: 출력 크기는 printSize(페이지=wrap, 콘텐츠 중앙 배치) 메커니즘으로 주입된다', () => {
+  it('출력 크기는 printSize(페이지=wrap, 콘텐츠 중앙 배치) 메커니즘으로 주입된다', () => {
     // 두 경로 모두 buildCoverPdfSizeOpt 에 caseBind 출력 크기와 싸바리 모드를 넘긴다.
     const builderPattern = /buildCoverPdfSizeOpt\(\{[\s\S]*?hardcoverWrap,\s*caseBindOutput: coverOutputSize,\s*markOpt,\s*\}\)/
     expect(embedSrc).toMatch(builderPattern)
@@ -70,7 +70,7 @@ describe('출력 계약 단일 진실원 파리티 (D-1/D-4/D-3)', () => {
     expect(workSaveSrc).toMatch(snapshotPattern)
   })
 
-  it('D-3: embed 의 complete 2경로와 pricingChange 가 computeLivePageCount 를 공유한다', () => {
+  it('embed 의 complete 2경로와 pricingChange 가 computeLivePageCount 를 공유한다', () => {
     const matches = embedSrc.match(/computeLivePageCount\(/g) ?? []
     // instance.complete + handleFinish + pricingChange emit = 최소 3회
     expect(matches.length).toBeGreaterThanOrEqual(3)
@@ -78,16 +78,16 @@ describe('출력 계약 단일 진실원 파리티 (D-1/D-4/D-3)', () => {
     expect(embedSrc).not.toMatch(/liveCanvasCount\s*\*\s*2/)
   })
 
-  it('D-3: editor.pricingChange 는 additive 이벤트로 선언되어 있다', () => {
+  it('editor.pricingChange 는 additive 이벤트로 선언되어 있다', () => {
     expect(embedSrc).toContain("'editor.pricingChange'")
   })
 
-  it('S9: 책등 재계산 확정값 재발신은 shouldReemitPricing 판단을 거친다', () => {
+  it('책등 재계산 확정값 재발신은 shouldReemitPricing 판단을 거친다', () => {
     expect(embedSrc).toMatch(/useSettingsStore\.subscribe\(/)
     expect(embedSrc).toMatch(/shouldReemitPricing\(lastEmitted,\s*current\)/)
   })
 
-  it('R-195: metadata.coverOutput 은 표지 PDF 에 넘긴 동일 size 객체로 산출한다', () => {
+  it('metadata.coverOutput 은 표지 PDF 에 넘긴 동일 size 객체로 산출한다', () => {
     // 표지 PDF 호출이 coverPdfSizeOpt 를 그대로 넘기고, coverOutput 도 같은 객체를 입력으로 쓴다.
     expect(embedSrc).toMatch(/`cover-\$\{currentSessionId\}`,\s*coverPdfSizeOpt,/)
     expect(embedSrc).toMatch(/buildCoverOutputMeta\(coverPdfSizeOpt, hardcoverWrap\)/)

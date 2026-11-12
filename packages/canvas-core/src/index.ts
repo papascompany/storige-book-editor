@@ -30,7 +30,7 @@ export { default as LockPlugin, type LockLevel, type UserRole, type LockInfo } f
 export { default as SpreadPlugin } from './plugins/SpreadPlugin'
 export { default as PointerShiftGuardPlugin } from './plugins/PointerShiftGuardPlugin'
 export { default as FrameInteractionPlugin } from './plugins/FrameInteractionPlugin'
-// E1 §5-1 — 객체 간 정렬 가이드/스냅 + 회전 각도 스냅
+// 객체 간 정렬 가이드/스냅 + 회전 각도 스냅
 export { default as SmartGuidesPlugin, type SmartGuidesOptions } from './plugins/SmartGuidesPlugin'
 export {
   default as CalendarPlugin,
@@ -45,9 +45,9 @@ export {
 export * from './calendar/types';
 export * from './calendar/core';
 export * from './calendar/data';
-// 캘린더 스킨 적용 병합(순수 함수, v1.29 설계 C10)
+// 캘린더 스킨 적용 병합(순수 함수, v1.29)
 export * from './calendar/skin';
-// P2-d 사진인화 — 사진틀 fitMode/유테·촬영일·흑백 적용 플러그인 + 순수 헬퍼
+// 사진인화 — 사진틀 fitMode/유테·촬영일·흑백 적용 플러그인 + 순수 헬퍼
 export {
   default as PhotoPrintPlugin,
   DATE_OVERLAY_EXTENSION_TYPE,
@@ -68,17 +68,17 @@ export {
   type FillImageExtension,
   type DateOverlayExtension,
 } from './plugins/PhotoPrintPlugin';
-// E1 §5-2 — 변형 중 실시간 치수/각도/좌표 피드백 (DOM 오버레이)
+// 변형 중 실시간 치수/각도/좌표 피드백 (DOM 오버레이)
 export {
   default as TransformFeedbackPlugin,
   type TransformFeedbackOptions,
 } from './plugins/TransformFeedbackPlugin'
-// E1 §5-5 — 재단/안전영역 침범 실시간 경고 (경계 강조 + safeZoneViolation 이벤트)
+// 재단/안전영역 침범 실시간 경고 (경계 강조 + safeZoneViolation 이벤트)
 export {
   default as SafeZoneWarningPlugin,
   type SafeZoneWarningOptions,
 } from './plugins/SafeZoneWarningPlugin'
-// R8 — 배치 이미지 유효 DPI 실시간 경고 (저해상 진입 전이 imageLowDpi 이벤트)
+// 배치 이미지 유효 DPI 실시간 경고 (저해상 진입 전이 imageLowDpi 이벤트)
 export {
   default as ImageDpiWarningPlugin,
   type ImageDpiWarningOptions,
@@ -108,15 +108,15 @@ export * as SvgUtils from './utils/svg'
 
 export * from './utils/eyeDrop'
 export * from './utils/logger'
-// P1-3 — 변환 중 포인터→scene 매핑 점프 보정 (PointerShiftGuardPlugin 의 순수 로직)
+// 변환 중 포인터→scene 매핑 점프 보정 (PointerShiftGuardPlugin 의 순수 로직)
 export * from './utils/pointerShift'
-// S-E3 — 곡선(패스) 텍스트 수식·적용 유틸 (TextEffect 후편집 + AppText 프리셋 공유 정본)
+// 곡선(패스) 텍스트 수식·적용 유틸 (TextEffect 후편집 + AppText 프리셋 공유 정본)
 export * from './utils/curveText'
 export * from './utils/inferenceCap'
 // 모양컷 '효과' 경로 진단 — 프리즈가 풀린 뒤 window.__storigeTrace 로 단계별 소요를 읽는다.
 export { traceStep, traceEnter, resetTrace, TRACE_STORAGE_KEY, type TraceEntry } from './utils/perfTrace'
-// P2-11/A — OpenCV/배경제거 lazy-loader + warmup helpers
-// ⚠️ getBackgroundRemoval / warmupBackgroundRemoval 은 제거됐다(D-12d, 2026-08-06) —
+// OpenCV/배경제거 lazy-loader + warmup helpers
+// ⚠️ getBackgroundRemoval / warmupBackgroundRemoval 은 제거됐다 —
 //    배경제거 추론은 서버(rembg 사이드카)가 하고, 진입점은 editor 의 api/cutout.ts 다.
 // ⚠️ 2026-08-07: ESM import 가 UMD 를 깨뜨려 무한 대기하던 문제로 `<script>` 태그 로드로 전환 —
 //    소비 앱은 부트스트랩에서 configureOpenCv({ scriptUrl }) 로 자산 URL 을 주입해야 한다.

@@ -1,9 +1,9 @@
 /**
- * 내지 PDF 표시전용 가이드 배치 (2026-06-08) + 첨부 직후 즉시 '앉히기'(W1, 2026-08-13).
+ * 내지 PDF 표시전용 가이드 배치 + 첨부 직후 즉시 '앉히기'.
  *
  * underlay 모드 세션 로드 시, 워커가 래스터한 내지 PDF 페이지 이미지를 각 내지 캔버스에
  * `excludeFromExport:true` 잠금 가이드 배경으로 깐다.
- * ⚠️ 가이드는 export/저장에서 제외(C1) — 최종 인쇄는 첨부 원본 PDF 그대로(표시전용 계약).
+ * ⚠️ 가이드는 export/저장에서 제외 — 최종 인쇄는 첨부 원본 PDF 그대로(표시전용 계약).
  *
  * templateSet.contentPdfEditable===false 면 내지 기존 객체를 잠그고(LockPlugin)
  * 첫 내지 페이지에 "편집 불가" 레이블을 표시한다.
@@ -11,9 +11,9 @@
  * 좌표: 원본 mm 균일 스케일 + trim 칸 중심(펼침면은 좌=PDF 2k, 우=2k+1).
  * 축 독립 늘리기 금지. 작업사이즈 페이지는 접힘선에서 안쪽 블리드가 겹친다.
  *
- * W1(2026-08-13): 종전엔 세션 **재로드** 시에만 배치돼 첨부 직후 화면은 그대로였다(G1).
- * `seatContentPdf()` 가 재로드 없이 ①내지 페이지 수를 PDF 페이지 수로 확장(G5)하고
- * ②가이드를 배치한다 — /embed 와 EditorView(/) 양쪽이 같은 함수를 쓴다(G2·G3 대칭).
+ * 종전엔 세션 **재로드** 시에만 배치돼 첨부 직후 화면은 그대로였다.
+ * `seatContentPdf()` 가 재로드 없이 ①내지 페이지 수를 PDF 페이지 수로 확장하고
+ * ②가이드를 배치한다 — /embed 와 EditorView(/) 양쪽이 같은 함수를 쓴다(대칭).
  * 로드 경로가 이미 확장/배치한 뒤 다시 호출돼도 안전하도록 **멱등**이다(기존 가이드 제거 후 재배치).
  */
 import { imageFromURL, getFabricSync } from '@storige/canvas-core'
@@ -48,7 +48,7 @@ const LABEL_SYSTEM = 'innerPdfGuideLabel'
 export const UNDERLAY_MAX_PAGES = 200
 
 /**
- * G4: 내지 슬롯 → 원본 PDF 페이지 인덱스.
+ * 내지 슬롯 → 원본 PDF 페이지 인덱스.
  * 세션 metadata.contentPdfPageOrder (shallow-merge 안전, contentPdfGuide 를 덮지 않음).
  * 메모리 캐시는 같은 세션 안에서 재배치(재로드 전)에 쓰인다.
  */
@@ -108,13 +108,13 @@ function isUnderlaySession(editSession: any): boolean {
  * 세션의 `contentFileId` 가 고객 첨부가 아니라 **편집기 완료 산출물(content.pdf)** 인지 판별한다.
  * 첨부 배지(EditorWorkflowControls)와 underlay 승격(resolveUnderlaySource)이 공유하는 단일 판별식.
  *
- * R5(2026-08-18): status 가드만으로는 부족 — 자동저장이 status 를 'editing' 으로 되돌리면
+ * status 가드만으로는 부족 — 자동저장이 status 를 'editing' 으로 되돌리면
  * 편집완료 산출물 content.pdf 가 재진입마다 첨부로 오인/underlay 재승격되는 루프가 생긴다.
- * R5 정밀화(2026-08-22): 완료 시 `metadata.editorOutputContentFileId` 에 산출물 fileId 를 기록하고,
+ * 정밀화: 완료 시 `metadata.editorOutputContentFileId` 에 산출물 fileId 를 기록하고,
  * 마커가 있으면 **그 값과 contentFileId 가 일치할 때만** 산출물로 본다 — 완료 이력 세션에 향후
  * 정당한 contentFileId 재첨부가 생기면 값이 달라지므로 자연히 첨부로 복귀한다.
  * 마커가 없는 레거시 세션은 종전 규칙(spreadContentPageCount 마커 또는 status==='complete')을 유지한다.
- * ⚠️ 진짜 고객 첨부(contentPdfFileId / contentPdfMode==='underlay') 판단은 호출측 W1 계약 그대로.
+ * ⚠️ 진짜 고객 첨부(contentPdfFileId / contentPdfMode==='underlay') 판단은 호출측 계약 그대로.
  */
 export function isEditorOutputContentFile(editSession: any): boolean {
   if (!editSession?.contentFileId) return false
@@ -129,7 +129,7 @@ export function isEditorOutputContentFile(editSession: any): boolean {
  * 주문 화면에서 이미 올린 내지 PDF 는 세션 `contentFileId` 에만 들어 있는 경우가 많다
  * (create DTO 에 contentPdfFileId 가 없음). underlay 로 승격할 수 있으면 그 fileId 를 돌려준다.
  * 편집기 완료 산출물(contentFileId, `isEditorOutputContentFile`)은 승격하지 않는다.
- * ⚠️ 진짜 고객 첨부(contentPdfFileId) 분기는 W1 계약 그대로 — 항상 우선한다.
+ * ⚠️ 진짜 고객 첨부(contentPdfFileId) 분기는 기존 계약 그대로 — 항상 우선한다.
  */
 export function resolveUnderlaySource(editSession: any): {
   fileId: string
@@ -233,8 +233,7 @@ export async function applyContentPdfGuides(
 
     // contentPdfEditable 조회 (없으면 편집 허용 기본).
     // ⚠️ 공개 엔드포인트(`/with-templates`, @Public) — `GET /template-sets/:id` 는 JWT 필수라
-    //    게스트 세션에서 401 → catch 폴백으로 항상 '편집 허용'이 되어 잠금 설정이 무력화됐다
-    //    (2026-08-13 실기 적발).
+    //    게스트 세션에서 401 → catch 폴백으로 항상 '편집 허용'이 되어 잠금 설정이 무력화된다.
     let editable = true
     if (templateSetId) {
       try {
@@ -350,7 +349,7 @@ export async function applyContentPdfGuides(
 }
 
 /**
- * W1-G5(2026-08-13): 첨부 PDF 페이지 수만큼 내지 캔버스를 **즉시** 확장한다.
+ * 첨부 PDF 페이지 수만큼 내지 캔버스를 **즉시** 확장한다.
  *
  * 종전엔 확장이 로드 경로(loadTemplateSetEditor 의 underlayPageCount)에만 있어서, 첨부
  * 직후에는 페이지 수가 그대로였고 재로드해야 늘어났다. 이 함수는 살아있는 편집기에
@@ -407,9 +406,9 @@ export interface SeatContentPdfResult {
 }
 
 /**
- * W1(2026-08-13): 내지 PDF를 편집기에 '앉힌다' = 페이지 확장(G5) + 가이드 배치(G1).
+ * 내지 PDF를 편집기에 '앉힌다' = 페이지 확장 + 가이드 배치.
  *
- * 호출 지점 3곳이 같은 함수를 쓴다(대칭 — F4 사고 전례):
+ * 호출 지점 3곳이 같은 함수를 쓴다(대칭):
  *  1) /embed 세션 로드 직후(가이드 배치. 확장은 loadTemplateSetEditor 가 이미 수행 → no-op)
  *  2) /embed 첨부 완료 직후(재로드 없이 즉시 앉히기)
  *  3) EditorView(/) 게스트 세션 로드/첨부 직후

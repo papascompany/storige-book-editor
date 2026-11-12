@@ -28,7 +28,7 @@ export interface EditSessionResponse {
   completedAt?: Date | null;
   createdAt: Date;
   updatedAt: Date;
-  // Phase C-2 — 사이트 컨텍스트 (자동 주입)
+  // 사이트 컨텍스트 (자동 주입)
   siteId?: string | null;
   // 삭제 리스트 (2026-06-11) — GET /edit-sessions/deleted 응답 전용
   deletedAt?: string | null;
@@ -45,7 +45,7 @@ export interface EditSessionQueryParams {
   orderSeqno?: number;
   memberSeqno?: number;
   status?: SessionStatus;
-  /** Phase C-3 — 사이트별 필터 */
+  /** 사이트별 필터 */
   siteId?: string;
   page?: number;
   limit?: number;
@@ -56,7 +56,7 @@ export const editSessionsApi = {
     const searchParams = new URLSearchParams();
     if (params?.orderSeqno) searchParams.append('orderSeqno', String(params.orderSeqno));
     if (params?.memberSeqno) searchParams.append('memberSeqno', String(params.memberSeqno));
-    if (params?.siteId) searchParams.append('siteId', params.siteId); // Phase C-3
+    if (params?.siteId) searchParams.append('siteId', params.siteId);
     const response = await axiosInstance.get<EditSessionListResponse>(
       `/edit-sessions?${searchParams.toString()}`
     );

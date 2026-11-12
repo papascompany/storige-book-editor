@@ -1,5 +1,5 @@
 /**
- * W8-2b (FREEZE v1.16) — 재편집 템플릿셋 결정: 세션 세트(S) 우선, 세션 세트 조회가 HTTP 404 이고
+ * FREEZE v1.16: 재편집 템플릿셋 결정: 세션 세트(S) 우선, 세션 세트 조회가 HTTP 404 이고
  * 다른 호스트 세트(U)가 있을 때만 U 로 1회 다시 시도한다(샘플 폴백이 없는 설정 = 프로덕션 기본).
  *
  * 잠그는 것:
@@ -16,9 +16,9 @@
  *   G10 U≠S, S 404 가 아닌 4xx → 폴백 없이 TEMPLATE_SET_NOT_FOUND {templateSetId: S}, U 조회 0
  *   G11 U≠S, S 응답에 id 없음(HTTP 가 아닌 실패) → 폴백 없이 fatal(S), U 조회 0
  *   G12 S 조회 중 초기화 취소 → 다시 던져 조용히 끝남, U 조회 0, editor.error 0
- *   G13 D4 AI 패널 세트 전환 차단 판정(FeatureSidebar aiTemplateSetSwitchBlocked) — 같은 주소로 다시 열면
+ *   G13 AI 패널 세트 전환 차단 판정(FeatureSidebar aiTemplateSetSwitchBlocked) — 같은 주소로 다시 열면
  *       기존 세션으로 열리는 진입(sessionId·주문 세션 재사용·회원 세션 생성)은 true, 비회원 주문 초안
- *       재개·게스트 폴백 생성·세션 없는 진입은 false, 복원 재초기화는 앞선 값 유지(G9)
+ *       재개·게스트 폴백 생성·세션 없는 진입은 false, 복원 재초기화는 앞선 값 유지
  *   G9b 첫 로드는 불일치 없음(U=S), 복원본 세트가 달라짐(ts-Z) → 재초기화 가드만으로 Sentry warning 0, ready 재발신 0
  *   G14 S 404 응답 전에 언마운트 → U 재조회 0, editor.error·ready 0
  *   G15 불일치 기록(Sentry.captureMessage)이 던져도 → ready 1회(templateSetMismatch 동봉), editor.error 0
@@ -26,7 +26,7 @@
  *       onReady 인자(레거시 storige:ready 소스)에는 없음
  *
  * 세션별 1회 기록 Set(mismatchReportedSessionRef)은 방어용이다. 메인 초기화 effect 는 reinitNonce 로만
- * 다시 돌고 그때는 재초기화 가드가 먼저 막으므로, Set 만으로 기록이 막히는 경로는 현재 없다(G9·G9b).
+ * 다시 돌고 그때는 재초기화 가드가 먼저 막으므로, Set 만으로 기록이 막히는 경로는 현재 없다.
  *
  * 하네스는 embed.templateSetLoadFailure.test.tsx·embed.sessionVersionRestore.test.tsx 를 따른다.
  */
@@ -194,7 +194,7 @@ function mismatchWarnings(): Array<{ level?: string; extra?: Record<string, unkn
     .map((c) => c[1] as { level?: string; extra?: Record<string, unknown> })
 }
 
-/** FeatureSidebar 가 마지막으로 받은 AI 패널 세트 전환 차단 값(W8-2b D4) */
+/** FeatureSidebar 가 마지막으로 받은 AI 패널 세트 전환 차단 값 */
 function lastSidebarBlocked(): boolean | undefined {
   return sidebar.blocked[sidebar.blocked.length - 1]
 }
@@ -280,7 +280,7 @@ async function expectFatal(payload: Record<string, unknown>) {
   expect(posted('editor.ready')).toHaveLength(0)
 }
 
-describe('EmbeddedEditor — W8-2b 재편집 템플릿셋 결정(세션 세트 우선 + 404 한정 폴백)', () => {
+describe('EmbeddedEditor — 재편집 템플릿셋 결정(세션 세트 우선 + 404 한정 폴백)', () => {
   const realParent = Object.getOwnPropertyDescriptor(window, 'parent')
 
   beforeEach(() => {
@@ -546,7 +546,7 @@ describe('EmbeddedEditor — W8-2b 재편집 템플릿셋 결정(세션 세트 �
     expect(posted('editor.ready')).toHaveLength(1)
     expect(mismatchWarnings()).toHaveLength(1)
     expect(posted('editor.error')).toHaveLength(0)
-    // 재초기화는 진입 주소가 그대로이므로 AI 패널 세트 전환 차단도 그대로(G13)
+    // 재초기화는 진입 주소가 그대로이므로 AI 패널 세트 전환 차단도 그대로
     expect(lastSidebarBlocked()).toBe(true)
   })
 
@@ -643,7 +643,7 @@ describe('EmbeddedEditor — W8-2b 재편집 템플릿셋 결정(세션 세트 �
     expect(posted('editor.error')).toHaveLength(0)
   })
 
-  describe('G13 D4 AI 패널 세트 전환 차단 판정 — 같은 주소로 다시 열면 기존 세션으로 열리는가', () => {
+  describe('G13 AI 패널 세트 전환 차단 판정 — 같은 주소로 다시 열면 기존 세션으로 열리는가', () => {
     it('sessionId 재오픈 → 차단', async () => {
       renderEmbed({ templateSetId: S, sessionId: SESSION_ID })
       await waitFor(() => expect(posted('editor.ready')).toHaveLength(1))

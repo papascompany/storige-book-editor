@@ -1,6 +1,6 @@
-// 히스토리 _loadHistory — 가이드 요소 보존 판정 회귀 테스트 (E1, 2026-07-15)
+// 히스토리 _loadHistory — 가이드 요소 보존 판정 회귀 테스트
 //
-// 배경(Wave A0 정찰 신규 발견): `_historyNext` 스냅샷은 excludeFromExport/guideline
+// 배경: `_historyNext` 스냅샷은 excludeFromExport/guideline
 // 객체를 애초에 포함하지 않는데, `_loadHistory` 1단계(삭제 판정)의 가이드 보존 예외가
 // id 3종(cut-border/safe-zone-border/cutline-template) 하드코딩뿐이라 **id 가 부여된
 // 가이드**(RulerPlugin 의 center-guideline-h/v)가 첫 undo 에서 삭제되는 버그가 있었다.

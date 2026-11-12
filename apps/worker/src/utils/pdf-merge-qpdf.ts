@@ -1,5 +1,5 @@
 /**
- * qpdf 기반 파일-기반 PDF 병합/페이지추출 (트랙 B-(f) — 합성/변환 2GB 상수메모리).
+ * qpdf 기반 파일-기반 PDF 병합/페이지추출 (합성/변환 2GB 상수메모리).
  *
  * 기존 합성은 pdf-lib `PDFDocument.create()+copyPages()+save()` 로 여러 입력 PDF를 한
  * 메모리 그래프에 적재 → >1GB content 에서 OOM. qpdf `--empty --pages` 는 페이지 내용을
@@ -66,7 +66,7 @@ export interface RotateSpec {
 }
 
 /**
- * P2-c(2026-10-18) sheet-map 뒷면 회전 — input 의 range 페이지에 /Rotate 를 적용해 output 으로 저장.
+ * sheet-map 뒷면 회전 — input 의 range 페이지에 /Rotate 를 적용해 output 으로 저장.
  * (qpdf --rotate=<angle>[:<range>] in out) 페이지 내용은 재해석하지 않고 /Rotate 속성만 바뀐다.
  * 상대 표기('+180')는 기존 /Rotate 에 더해지므로 OFF 경로(getRotation()+180)와 같은 결과를 낸다.
  */

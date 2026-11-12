@@ -74,7 +74,7 @@ describe('buildSpreadSnapshots', () => {
     expect(buildSpreadSnapshots(null, null, 24)).toEqual({})
   })
 
-  // ── D-4 (2026-07-06): caseBind → metadata.spread 출력 사이즈 additive 기록 ──
+  // ── caseBind → metadata.spread 출력 사이즈 additive 기록 ──
 
   it('caseBind 有: outputWidthMm/outputHeightMm 기록(wrap 포함), 기존 필드 불변', () => {
     const { spread } = buildSpreadSnapshots(
@@ -134,9 +134,9 @@ describe('buildSpreadSnapshots', () => {
     expect(spine).toBeUndefined()
   })
 
-  // ── S7: 책등 0mm(책등 없는 책)는 유효 — 단 spec 초기값 0 과 확정 0 을 구분 ──
+  // ── 책등 0mm(책등 없는 책)는 유효 — 단 spec 초기값 0 과 확정 0 을 구분 ──
 
-  it('S7 flat-spread + spec 0 + calc 미계산 → spine 0mm 기록(책등 고정 템플릿 확정값)', () => {
+  it('flat-spread + spec 0 + calc 미계산 → spine 0mm 기록(책등 고정 템플릿 확정값)', () => {
     const { spread, spine } = buildSpreadSnapshots(
       { spec: { ...baseSpec, spineWidthMm: 0 }, conversionMode: 'flat-spread' },
       { paperType: 'mojo_80g', bindingType: 'spiral', calculatedSpineWidth: null },
@@ -152,7 +152,7 @@ describe('buildSpreadSnapshots', () => {
     }) // calc 없음 → spineWidthSource 생략
   })
 
-  it('S7 calc 가 유한수 0(호스트 0mm/공식 적용 결과) → spine 0mm 기록, source=formula', () => {
+  it('calc 가 유한수 0(호스트 0mm/공식 적용 결과) → spine 0mm 기록, source=formula', () => {
     const { spine } = buildSpreadSnapshots(
       { spec: { ...baseSpec, spineWidthMm: 0 } },
       { paperType: 'mojo_80g', bindingType: 'spiral', calculatedSpineWidth: 0 },
@@ -162,7 +162,7 @@ describe('buildSpreadSnapshots', () => {
     expect(spine!.spineWidthSource).toBe('formula')
   })
 
-  it('S7 full 모드 spec 0 + calc 미계산(공식 미실행/실패) → 미확정이므로 spine 생략(종전 동일)', () => {
+  it('full 모드 spec 0 + calc 미계산(공식 미실행/실패) → 미확정이므로 spine 생략(종전 동일)', () => {
     const { spread, spine } = buildSpreadSnapshots(
       { spec: { ...baseSpec, spineWidthMm: 0 }, conversionMode: 'full' },
       { paperType: 'mojo_80g', bindingType: 'perfect', calculatedSpineWidth: null },
@@ -172,7 +172,7 @@ describe('buildSpreadSnapshots', () => {
     expect(spine).toBeUndefined()
   })
 
-  it('S7 spiral + flat-spread 0mm + paperType 누락 → spine 기록, paperType 키 생략', () => {
+  it('spiral + flat-spread 0mm + paperType 누락 → spine 기록, paperType 키 생략', () => {
     const { spine } = buildSpreadSnapshots(
       { spec: { ...baseSpec, spineWidthMm: 0 }, conversionMode: 'flat-spread' },
       { paperType: null, bindingType: 'spiral', calculatedSpineWidth: null },
@@ -188,7 +188,7 @@ describe('buildSpreadSnapshots', () => {
     })
   })
 
-  it('S7 perfect + flat-spread 0mm + paperType 누락 → spine 생략(공식제본은 paperType 필수)', () => {
+  it('perfect + flat-spread 0mm + paperType 누락 → spine 생략(공식제본은 paperType 필수)', () => {
     const { spine } = buildSpreadSnapshots(
       { spec: { ...baseSpec, spineWidthMm: 0 }, conversionMode: 'flat-spread' },
       { paperType: null, bindingType: 'perfect', calculatedSpineWidth: null },
@@ -197,7 +197,7 @@ describe('buildSpreadSnapshots', () => {
     expect(spine).toBeUndefined()
   })
 
-  it('S7 HARDCOVER(대문자) 0mm + paperType 누락 → spine 생략(대소문자 무시)', () => {
+  it('HARDCOVER(대문자) 0mm + paperType 누락 → spine 생략(대소문자 무시)', () => {
     const { spine } = buildSpreadSnapshots(
       { spec: { ...baseSpec, spineWidthMm: 0 } },
       { paperType: null, bindingType: 'HARDCOVER', calculatedSpineWidth: 0 },
@@ -206,7 +206,7 @@ describe('buildSpreadSnapshots', () => {
     expect(spine).toBeUndefined()
   })
 
-  it('S7 spiral + 책등 >0mm + paperType 누락 → spine 생략(0mm 에만 예외)', () => {
+  it('spiral + 책등 >0mm + paperType 누락 → spine 생략(0mm 에만 예외)', () => {
     const { spine } = buildSpreadSnapshots(
       { spec: { ...baseSpec, spineWidthMm: 5 } },
       { paperType: null, bindingType: 'spiral', calculatedSpineWidth: 5 },
@@ -215,7 +215,7 @@ describe('buildSpreadSnapshots', () => {
     expect(spine).toBeUndefined()
   })
 
-  it('S7 bindingType 누락 + 0mm → spine 생략', () => {
+  it('bindingType 누락 + 0mm → spine 생략', () => {
     const { spine } = buildSpreadSnapshots(
       { spec: { ...baseSpec, spineWidthMm: 0 }, conversionMode: 'flat-spread' },
       { paperType: 'mojo_80g', bindingType: null, calculatedSpineWidth: null },
@@ -224,7 +224,7 @@ describe('buildSpreadSnapshots', () => {
     expect(spine).toBeUndefined()
   })
 
-  it('S7 flat-spread 0mm 라도 내지 0장 → spine 생략', () => {
+  it('flat-spread 0mm 라도 내지 0장 → spine 생략', () => {
     const { spine } = buildSpreadSnapshots(
       { spec: { ...baseSpec, spineWidthMm: 0 }, conversionMode: 'flat-spread' },
       { paperType: 'mojo_80g', bindingType: 'spiral', calculatedSpineWidth: null },
@@ -233,7 +233,7 @@ describe('buildSpreadSnapshots', () => {
     expect(spine).toBeUndefined()
   })
 
-  it('S7 calc 음수(비정상) + spec 0 → spine 생략', () => {
+  it('calc 음수(비정상) + spec 0 → spine 생략', () => {
     const { spine } = buildSpreadSnapshots(
       { spec: { ...baseSpec, spineWidthMm: 0 } },
       { paperType: 'mojo_80g', bindingType: 'perfect', calculatedSpineWidth: -1 },

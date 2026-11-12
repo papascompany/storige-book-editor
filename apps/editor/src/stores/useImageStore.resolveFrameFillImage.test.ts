@@ -2,12 +2,12 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import type { ProductProfile } from '@storige/types'
 
 /**
- * P2-d D12 (2026-10-21): 사진인화 틀 채움 원본은 storage 업로드 URL — base64 data URL 을 canvasData 에 넣지 않는다.
+ * 사진인화 틀 채움 원본은 storage 업로드 URL — base64 data URL 을 canvasData 에 넣지 않는다.
  *  - 사진인화 세트: registerUploadedPhoto(uploadFilePublic + 원본 File EXIF) → core.imageFromURL(절대 URL, crossOrigin anonymous),
  *    takenAt 은 등록 메타에서, uploadedPhotoIdByUrl 에 파일 id(sourcePhotoId 원천) 기록.
  *  - 업로드 실패·URL 로드 실패: 종전 core.fileToImage(data URL) 폴백 + EXIF 는 원본 File 에서 — 편집을 막지 않는다.
  *  - 프로파일 NULL 세트: core.fileToImage 만(업로드·EXIF 호출 없음, 바이트 동일).
- * B11 (2026-10-25): 게이트는 사진인화 전용이 아니라 상품 프로파일이 있는 세트 전체 — 캘린더 세트도 업로드 URL 경로.
+ * 게이트는 사진인화 전용이 아니라 상품 프로파일이 있는 세트 전체 — 캘린더 세트도 업로드 URL 경로.
  */
 const uploadFilePublic = vi.fn()
 const uploadFile = vi.fn()
@@ -87,7 +87,7 @@ beforeEach(() => {
   useSettingsStore.getState().setProductProfile(null)
 })
 
-describe('resolveFrameFillImage (D12)', () => {
+describe('resolveFrameFillImage', () => {
   it('프로파일 NULL 세트: 종전 core.fileToImage 만 — 업로드·EXIF 미호출', async () => {
     const img = { id: 'legacy' }
     fileToImage.mockResolvedValue(img)
@@ -144,7 +144,7 @@ describe('resolveFrameFillImage (D12)', () => {
     expect(fileToImage).toHaveBeenCalledTimes(1)
   })
 
-  it('B11 캘린더 프로파일 세트: storage 업로드 → 절대 URL 로 imageFromURL(crossOrigin anonymous), fileToImage 미호출', async () => {
+  it('캘린더 프로파일 세트: storage 업로드 → 절대 URL 로 imageFromURL(crossOrigin anonymous), fileToImage 미호출', async () => {
     useSettingsStore.getState().setProductProfile(calendarProfile)
     uploadFilePublic.mockResolvedValue({ success: true, url: '/storage/uploads/c01.jpg', id: 'file-c1' })
     const img = { id: 'cal-from-url', width: 200, height: 100 }
@@ -161,7 +161,7 @@ describe('resolveFrameFillImage (D12)', () => {
     expect(useImageStore.getState().uploadedPhotoIdByUrl).toEqual({ [url]: 'file-c1' })
   })
 
-  it('B11 캘린더 프로파일 세트 업로드 실패: data URL 폴백 — 편집을 막지 않는다', async () => {
+  it('캘린더 프로파일 세트 업로드 실패: data URL 폴백 — 편집을 막지 않는다', async () => {
     useSettingsStore.getState().setProductProfile(calendarProfile)
     uploadFilePublic.mockResolvedValue({ success: false })
     const img = { id: 'cal-fallback' }

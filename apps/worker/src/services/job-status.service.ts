@@ -3,7 +3,7 @@ import axios from 'axios';
 import { captureJobException } from '../sentry/sentry.init';
 
 /**
- * WK-4 (2026-06-13) — 잡 상태 업데이트 공유 서비스.
+ * 잡 상태 업데이트 공유 서비스.
  *
  * 배경: synthesis 프로세서만 updateJobStatusWithRetry(3회/최대 3s)를 갖고 있었고,
  * validation/conversion/render 는 무재시도 axios.patch(실패 시 로그만)였다.
@@ -34,7 +34,7 @@ export interface JobStatusContext {
   queueName?: string;
 }
 
-/** JD-4: 잡 상태 조회 결과(GET /worker-jobs/external/:id). 조회는 throw 하지 않는다. */
+/** 잡 상태 조회 결과(GET /worker-jobs/external/:id). 조회는 throw 하지 않는다. */
 export type JobStatusLookup =
   | { ok: true; status: string }
   | { ok: false; reason: 'notFound' | 'unavailable' };
@@ -125,7 +125,7 @@ export class JobStatusService {
   }
 
   /**
-   * JD-4: 단일 시도 상태 조회 — GET /worker-jobs/external/:id (X-API-Key, 10s).
+   * 단일 시도 상태 조회 — GET /worker-jobs/external/:id (X-API-Key, 10s).
    * 응답 본문의 status 가 문자열이 아니거나 요청이 실패하면 throw (재시도는 래퍼 책임).
    */
   async fetchJobStatus(jobId: string): Promise<string> {
@@ -144,7 +144,7 @@ export class JobStatusService {
   }
 
   /**
-   * JD-4: 상태 조회 재시도 래퍼 — PATCH 와 같은 백오프(RETRY_DELAYS_MS).
+   * 상태 조회 재시도 래퍼 — PATCH 와 같은 백오프(RETRY_DELAYS_MS).
    * 404 → 재시도 없이 notFound. 네트워크·5xx·status 비문자열 → 재시도 후 unavailable.
    * throw 하지 않고 Sentry 에도 기록하지 않는다(호출부가 결과로 판단).
    */

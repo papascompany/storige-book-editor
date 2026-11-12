@@ -1,6 +1,6 @@
-// DraggingPlugin — alt+드래그 팬 가드 (C5 / E2 W2)
+// DraggingPlugin — alt+드래그 팬 가드
 //
-// C5 로 "객체 위 alt+드래그 = 복제(CopyPlugin)"가 생기므로, 그 시작을 팬으로 삼키지
+// "객체 위 alt+드래그 = 복제(CopyPlugin)"가 생기므로, 그 시작을 팬으로 삼키지
 // 않도록 DraggingPlugin 이 양보해야 한다. 증명 대상:
 //  ① 플래그 on + alt + 객체 위(target 존재) → 팬 시작 안 함(isDragging=false) — 복제 양보
 //  ② 플래그 on + alt + 빈 곳(target 없음) → 팬 시작(isDragging=true) — 기존 거동 불변
@@ -92,7 +92,7 @@ afterEach(() => {
   vi.unstubAllGlobals()
 })
 
-describe('DraggingPlugin — alt+드래그 팬 가드 (C5)', () => {
+describe('DraggingPlugin — alt+드래그 팬 가드', () => {
   it('① 플래그 on + alt + 객체 위 → 팬 시작 안 함(복제 양보)', () => {
     const { canvas } = setup({ altDragClone: true })
     mouseDown(canvas, true, { id: 'obj' })

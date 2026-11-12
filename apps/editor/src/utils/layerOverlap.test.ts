@@ -14,7 +14,7 @@ const rect = (left: number, top: number, width: number, height: number): AABB =>
   height,
 })
 
-describe('rectsIntersect — AABB 교차 판정 (L5-①)', () => {
+describe('rectsIntersect — AABB 교차 판정', () => {
   it('부분 겹침은 true', () => {
     expect(rectsIntersect(rect(0, 0, 100, 100), rect(50, 50, 100, 100))).toBe(true)
   })

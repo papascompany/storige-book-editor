@@ -1,10 +1,10 @@
-// curveText 유틸 테스트 — S-E3 곡선(패스) 텍스트
+// curveText 유틸 테스트 — 곡선(패스) 텍스트
 //
 // 고정하는 계약:
 //  (1) 아크 수식은 TextEffect 06-02 원본과 동일 (이동 리팩터링 — 동작 불변 증명)
 //  (2) 웨이브는 위상 반전(direction)과 진폭/폭 하한이 성립
 //  (3) applyCurveToText 가 저장 왕복에 필요한 직렬화 속성 전부를 세팅
-//  (4) 신규 직렬화 속성 curvePathType 이 extendFabricOption 에 등재 (L7 침묵 소실 함정)
+//  (4) 신규 직렬화 속성 curvePathType 이 extendFabricOption 에 등재 (침묵 소실 함정)
 import { describe, it, expect, vi } from 'vitest'
 import { readFileSync } from 'fs'
 import { fileURLToPath } from 'url'
@@ -183,7 +183,7 @@ describe('radiusForTextOnArc', () => {
   })
 })
 
-describe('직렬화 화이트리스트 등재 (L7 침묵 소실 함정 가드)', () => {
+describe('직렬화 화이트리스트 등재 (침묵 소실 함정 가드)', () => {
   it('curvePathType 이 extendFabricOption 소스에 등재돼 있다', () => {
     // canvas.ts 는 fabric 을 top-level import 라 직접 import 불가(테스트 env) → 소스 검사
     const src = readFileSync(fileURLToPath(new URL('./canvas.ts', import.meta.url)), 'utf-8')

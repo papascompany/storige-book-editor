@@ -1,4 +1,4 @@
-// SmartGuidesPlugin — 정렬 가이드/스냅 + 회전 각도 스냅 테스트 (E1 §5-1)
+// SmartGuidesPlugin — 정렬 가이드/스냅 + 회전 각도 스냅 테스트
 //
 // fabric 은 node 에서 native canvas 바인딩이 필요해 최소 mock
 // (AccessoryPlugin.leak.test.ts / history.meta.test.ts 와 동일 패턴).
@@ -440,7 +440,7 @@ describe('SmartGuidesPlugin — ⑤ 성능 마이크로벤치', () => {
   })
 })
 
-describe('SmartGuidesPlugin — ⑦ clear()/loadFromJSON 유령 참조 복원 (적대 리뷰 P1)', () => {
+describe('SmartGuidesPlugin — ⑦ clear()/loadFromJSON 유령 참조 복원', () => {
   it('가이드 생성 → clear 시뮬레이션 → 다음 표시 요청에서 가이드가 재추가되고 visible 동작한다', () => {
     const workspace = makeObj({ id: 'workspace', left: 0, top: 0, width: 1000, height: 1000 })
     const candidate = makeObj({ id: 'c1', left: 100, top: 100, width: 80, height: 80 })
@@ -503,7 +503,7 @@ describe('SmartGuidesPlugin — ⑦ clear()/loadFromJSON 유령 참조 복원 (�
   })
 })
 
-describe('SmartGuidesPlugin — §6-3 스냅 토글 게이트', () => {
+describe('SmartGuidesPlugin — 스냅 토글 게이트', () => {
   it('setObjectSnapEnabled(false) 면 객체 스냅·가이드 모두 스킵', () => {
     const workspace = makeObj({ id: 'workspace', left: 0, top: 0, width: 1000, height: 1000 })
     const candidate = makeObj({ id: 'c1', left: 100, top: 100, width: 80, height: 80 })

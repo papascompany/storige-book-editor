@@ -1,6 +1,6 @@
-// ObjectPlugin 삭제 확인 정합 테스트 (C6-b / E2 §5-5, 오너결정 D-E2-4)
+// ObjectPlugin 삭제 확인 정합 테스트
 //
-// 컨텍스트 메뉴/롱프레스 '삭제'가 S2 확인 모달을 우회하고 del() 직행하던 결함의 additive 처방
+// 컨텍스트 메뉴/롱프레스 '삭제'가 삭제 확인 모달을 우회하고 del() 직행하던 결함의 additive 처방
 // 검증. 삭제 hotkey 콜백이 onDeleteRequest(앱 주입)를 먼저 호출하고:
 //  ① true 반환(앱이 확인 모달 인수) → 코어 del() 미호출
 //  ② false 반환(앱이 인수 거절) → 현행대로 del() 호출
@@ -46,7 +46,7 @@ function setup(options: Record<string, unknown>, activeObjects: DeleteObj[] = []
   return { canvas, editor, plugin, delHotkey }
 }
 
-describe('ObjectPlugin 삭제 hotkey — onDeleteRequest 인수 (C6-b §5-5)', () => {
+describe('ObjectPlugin 삭제 hotkey — onDeleteRequest 인수', () => {
   it('① onDeleteRequest 가 true 반환 시 코어 del() 을 호출하지 않는다', () => {
     const onDeleteRequest = vi.fn(() => true)
     const { plugin, delHotkey } = setup({ onDeleteRequest })

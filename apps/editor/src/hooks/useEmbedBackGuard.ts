@@ -3,7 +3,7 @@ import { useEffect, useRef } from 'react'
 /**
  * 임베드 편집기 — 브라우저 "뒤로 가기" 데이터 무결성 가드.
  *
- * 문제: bookmoa 등 호스트 SPA 안(iframe/IIFE)에서 편집 중 브라우저 ← 뒤로가기를 누르면
+ * 문제: 호스트 SPA 안(iframe/IIFE)에서 편집 중 브라우저 ← 뒤로가기를 누르면
  *       `beforeunload` 가 발화하지 않아(호스트의 클라이언트측 라우팅) **아무 경고 없이**
  *       편집 전 화면으로 빠져나가 작업이 유실될 수 있다.
  *

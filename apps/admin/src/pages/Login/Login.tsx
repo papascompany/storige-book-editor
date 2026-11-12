@@ -25,7 +25,7 @@ export const Login = () => {
       const response = await authApi.login(values);
       // 토큰을 먼저 저장(setAuth)해야 axios interceptor 가 Authorization 헤더를 실어
       // 후속 GET /auth/me 가 인증된다. login 응답의 user 는 undefined 일 수 있어
-      // (P3a 멀티테넌시: role+siteRoles 인지 필요) 실제 계정 정보로 재하이드레이션한다.
+      // (멀티테넌시: role+siteRoles 인지 필요) 실제 계정 정보로 재하이드레이션한다.
       setAuth(response.user, response.accessToken, response.refreshToken);
       try {
         const me = await authApi.getCurrentUser();

@@ -2,7 +2,7 @@ import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 
 /**
- * CommandPalette 즐겨찾기 액션 store (DD-4).
+ * CommandPalette 즐겨찾기 액션 store.
  *
  * 사용자가 자주 쓰는 액션을 ❤로 핀하면, CommandPalette 검색 결과 상단에
  * 별도 "★ 즐겨찾기" 그룹으로 표시되어 빠른 접근이 가능.

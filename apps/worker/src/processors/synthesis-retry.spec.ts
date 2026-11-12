@@ -1,5 +1,5 @@
 /**
- * JD-2 (2026-10) — 합성 실패 시도 판정(synthesis-retry) 고정.
+ * 합성 실패 시도 판정(synthesis-retry) 고정.
  *
  * 잠그는 계약:
  *  1. 시도 정보: bull 4.x 규칙(attemptsMade = 앞서 실패한 시도 수, attempts 미지정 = 1). 읽을 수 없으면 최종.

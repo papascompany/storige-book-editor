@@ -1,5 +1,5 @@
 /**
- * S8 (2026-09-28): pageStep 배수 가드 — 스토어 결선부.
+ * pageStep 배수 가드 — 스토어 결선부.
  * 순수 산식은 utils/pageStep. 여기서는 라이브 스토어(캔버스 수·스프레드 설정·pageStep)를 읽어
  * 완료 payload pageCount 와 같은 기준으로 위반 여부를 판정한다.
  * 사용처: EditorHeader 편집완료(UI) 차단, embed complete()(프로그래매틱) 차단, PageStepWarning 배지.

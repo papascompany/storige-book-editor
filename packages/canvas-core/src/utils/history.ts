@@ -186,7 +186,7 @@ fabric.Canvas.prototype._historyNext = function (): string {
         // spread 책등 가변 재배치 메타(regionRef/anchor/primaryRegionHint) 보존.
         // 누락 시 undo/redo 의 enliven 재추가 경로(_loadHistory 3단계)에서 meta 가 통째로
         // 소실 → 편집기 useSpreadAutoAnchor 가 "meta 없는 신규 객체"로 보고 재앵커를 시도해
-        // regionRef 오염의 한 축이 됐다 (라이브 P1, 2026-06-11/12).
+        // regionRef 오염의 한 축이 됐다.
         meta: obj.meta
       }
 
@@ -603,7 +603,7 @@ fabric.Canvas.prototype._loadHistory = function (
     Object.keys(currentObjectsMap).forEach((id) => {
       const currentObj = currentObjectsMap[id]
       // 가이드 요소는 삭제하지 않음 - 더 포괄적으로 체크.
-      // E1 (2026-07-15): 스냅샷(_historyNext)은 excludeFromExport/guideline 객체를
+      // 스냅샷(_historyNext)은 excludeFromExport/guideline 객체를
       // 애초에 담지 않으므로, id 가 있어도 이 부류는 "히스토리에 없음 = 삭제 대상"이
       // 아니다. 기존에는 id 3종 하드코딩뿐이라 center-guideline-h/v(RulerPlugin)가
       // 첫 undo 에서 삭제되는 버그가 있었다 — extensionType/excludeFromExport 로 보강.

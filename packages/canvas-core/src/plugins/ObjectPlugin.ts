@@ -16,8 +16,8 @@ const lockAttrs: string[] = [
  * ObjectPlugin 옵션(문서화용). PluginOption(Record<string, any>)의 구조적 하위타입이라
  * 코어 시그니처 변경 없이 삭제 인수 콜백 계약만 명시한다.
  *
- * C6-b (E2 §5-5, 오너결정 D-E2-4): 컨텍스트 메뉴/롱프레스 '삭제'가 S2 확인 모달을 우회하고
- * del() 로 직행하던 결함의 additive 처방. 앱(createCanvas)이 onDeleteRequest 를 주입하면 삭제
+ * 컨텍스트 메뉴/롱프레스 '삭제'가 삭제 확인 모달을 건너뛰고 del() 로 직행하지 않게 하는
+ * additive 계약. 앱(createCanvas)이 onDeleteRequest 를 주입하면 삭제
  * hotkey 콜백이 이를 먼저 호출하고, true(=앱이 삭제 UX 인수)면 코어 del() 을 건너뛴다. 콜백
  * 부재(외부 임베더)면 현행 즉시 삭제가 그대로 유지된다 — canvas-core 기본 동작 불변.
  */
@@ -74,7 +74,7 @@ class ObjectPlugin extends PluginBase {
       {
         name: '삭제',
         input: ['backspace', 'del'],
-        // C6-b (E2 §5-5): 삭제 요청을 앱에 먼저 위임한다. onDeleteRequest 가 true 를 반환하면
+        // 삭제 요청을 앱에 먼저 위임한다. onDeleteRequest 가 true 를 반환하면
         // (앱이 확인 모달로 삭제 UX 를 인수) 코어 del() 을 호출하지 않는다. 콜백 부재(외부
         // 임베더)면 현행 즉시 삭제 그대로. ★가드는 반드시 이 콜백층에만 둔다 — del() 코어에
         // 두면 confirmDeleteSelection→del() 경로가 onDeleteRequest 를 재발화해 무한 모달
@@ -88,12 +88,12 @@ class ObjectPlugin extends PluginBase {
         category: 'object',
         displayKeys: ['⌫'] // Backspace/Delete 공통(도움말 표기 단일화)
       },
-      // W4 §6-1: 화살표 이동 단일 소스(1px, Shift=10px). ControlsPlugin 의 중복 window keydown
+      // 화살표 이동 단일 소스(1px, Shift=10px). ControlsPlugin 의 중복 window keydown
       // 핸들러를 제거하고 이 hotkeys 로 일원화했다 — 기존 이중 등록은 1키에 합산 2px 이동 +
       // Shift+화살표가 ControlsPlugin(잠금 미가드)으로 이동잠금 객체를 10px 미는 보호 우회
       // 결함이 있었다. 여기 nudge 는 잠금 축을 존중하고 setCoords+object:modified(undo 1엔트리)
-      // +렌더까지 수행한다. hotkeys 가 유일 소스라 C9 모달 자동생성(§6-2)이 정확해진다.
-      // 도움말 모달(§6-2): 대표 엔트리('left'/'shift+left')만 화살표 묶음 displayKeys 로 노출하고
+      // +렌더까지 수행한다. hotkeys 가 유일 소스라 도움말 모달 자동생성이 정확해진다.
+      // 도움말 모달: 대표 엔트리('left'/'shift+left')만 화살표 묶음 displayKeys 로 노출하고
       // 나머지 방향은 hideInHelp 로 축약(등록·동작은 8종 전부 유지). hideContext(컨텍스트 은폐)와
       // hideInHelp(도움말 은폐)는 독립 — 화살표는 컨텍스트엔 숨기고 도움말엔 노출.
       { name: '객체 이동', input: 'left', onlyForActiveObject: true, hideContext: true, category: 'move', displayKeys: ['←→↑↓'], callback: () => this.nudge('left', -1) },
@@ -118,7 +118,7 @@ class ObjectPlugin extends PluginBase {
   }
 
   /**
-   * W4 §6-1: 화살표 키 이동의 단일 구현. 잠금 축(lockMovementX/Y) 존중(키보드 이동은 fabric
+   * 화살표 키 이동의 단일 구현. 잠금 축(lockMovementX/Y) 존중(키보드 이동은 fabric
    * 이 자동 차단하지 않아 .set 우회를 직접 가드) + setCoords + object:modified(undo 1엔트리)
    * + 렌더. ControlsPlugin 의 중복 window keydown 핸들러 제거로 이 경로가 유일 소스가 됐다.
    */
@@ -298,7 +298,7 @@ class ObjectPlugin extends PluginBase {
         return
       }
 
-      // P1-5 (2026-06-02): 삭제 잠금 강제.
+      // 삭제 잠금 강제.
       // editMode(관리자)가 아닐 때, lockInfo.isLocked 또는 deleteable===false 객체는 삭제 차단.
       // (휴지통 버튼·Delete/Backspace 단축키 모두 이 경로를 거치므로 일괄 보호.)
       if (!this._options.editMode) {

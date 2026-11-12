@@ -216,7 +216,7 @@ export function withEditRetentionDays<T extends { editRetentionDays?: number | n
 }
 
 // ---------------------------------------------------------------------------
-// 파트너 주문 연결 세션 안전장치 (2026-09-30, 3-B 운영 원칙)
+// 파트너 주문 연결 세션 안전장치
 // 파트너는 고객 편집완료 때 받은 파일 id 를 자기 주문에 저장해 재합성·다운로드에 쓴다.
 // 관리자 편집·완료·삭제·합성은 그 저장값을 바꾸지 않으므로 사전 통지 + 사후 통지(세션 id·새 파일 id·UTC)가 필요하다.
 // ---------------------------------------------------------------------------
@@ -288,7 +288,7 @@ export function orderLinkedConfirmCopy(
 ): OrderLinkedConfirmCopy {
   const target = noticeTarget(item);
   const order = item.orderSeqno ?? '-';
-  // orderSeqno 는 파트너에 따라 실제 주문번호가 아니다(bookmoa: 장바구니 초안 id) — 파트너는 세션 id 로 주문을 찾는다.
+  // orderSeqno 는 파트너에 따라 실제 주문번호가 아니다(장바구니 초안 id 인 파트너가 있다) — 파트너는 세션 id 로 주문을 찾는다.
   const notice = target
     ? `${target} 주문번호 ${order}가 붙은 세션입니다(파트너에 따라 장바구니 단계 번호일 수 있습니다). 작업 전에 세션 id를 넣어 ${target}에 알리면 파트너가 실제 주문 여부를 회신합니다. 작업을 마치면 [통지 정보 복사]로 세션 id·새 파일 id·시각(UTC)을 전달하세요.`
     : `주문번호 ${order}가 붙은 사이트 없는 이전 세션입니다. 통지할 파트너를 먼저 확인해 작업 전에 세션 id를 넣어 알리고, 작업을 마치면 [통지 정보 복사]로 세션 id·새 파일 id·시각(UTC)을 전달하세요.`;

@@ -1,5 +1,5 @@
 /**
- * 스트리밍 PDF 검출 스캐너 (트랙 B-(d) — 2GB 상수메모리 검증 ON 경로 전용)
+ * 스트리밍 PDF 검출 스캐너 (2GB 상수메모리 검증 ON 경로 전용)
  *
  * 배경:
  *   기존 검출기 5종(detectSpotColors / detectTransparencyAndOverprint /

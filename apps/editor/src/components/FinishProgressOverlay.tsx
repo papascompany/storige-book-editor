@@ -2,7 +2,7 @@ import { useEffect, useRef } from 'react'
 import { Check } from 'lucide-react'
 
 /**
- * B10 (2026-10-25): 편집완료 진행 표시 + 진행 중 이탈 경고.
+ * 편집완료 진행 표시 + 진행 중 이탈 경고.
  *
  * 편집완료(저장 → PDF 생성 → 업로드 → 완료)는 캔버스 수에 따라 수십 초가 걸린다. 이 오버레이는
  * 현재 단계와 PDF 생성 캔버스 진행 수를 보여 주고, 진행 중에는 `beforeunload` 경고를 건다

@@ -1,7 +1,7 @@
 import { DomainError, ErrorCodes } from '../common/errors';
 
 /**
- * JD-2 (2026-10, Wave 3) — 합성 큐 실패 시도의 재시도 판정(순수 함수).
+ * 합성 큐 실패 시도의 재시도 판정(순수 함수).
  *
  * api 가 합성 잡을 attempts 3·exponential 30000(대기 30s → 90s)으로 넣는다.
  * 프로세서 catch 는 이 판정으로 다음 중 하나를 고른다.

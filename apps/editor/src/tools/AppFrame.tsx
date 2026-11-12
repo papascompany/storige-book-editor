@@ -23,14 +23,14 @@ export default function AppFrame() {
 
   const upload = useImageStore((state) => state.upload)
   const isCustomer = useIsCustomer()
-  // A1-4: 관리자(editMode) 템플릿 제작 화면에도 추천 콘텐츠(라이브러리) 섹션 노출
+  // 관리자(editMode) 템플릿 제작 화면에도 추천 콘텐츠(라이브러리) 섹션 노출
   const editMode = useSettingsStore((state) => state.currentSettings.editMode)
 
   const { setupFrameContent } = useEditorContents()
 
   const [isLoading, setIsLoading] = useState(false)
 
-  // 추천 콘텐츠 데이터 파이프라인 공통화 (P3-b) — 프레임은 tags 컬럼 보유로 태그칩 지원.
+  // 추천 콘텐츠 데이터 파이프라인 공통화 — 프레임은 tags 컬럼 보유로 태그칩 지원.
   const {
     contents,
     loadingContents,
@@ -85,7 +85,7 @@ export default function AppFrame() {
         </Button>
       </div>
       <div className="sections flex flex-col overflow-y-auto">
-        {/* A1-4: isCustomer 게이트 완화 — 관리자(editMode)도 추천 섹션 사용(템플릿 제작 시 에셋 배치) */}
+        {/* isCustomer 게이트 완화 — 관리자(editMode)도 추천 섹션 사용(템플릿 제작 시 에셋 배치) */}
         {(isCustomer || editMode) && (
           <AppSection
             id="app-frame-recommended"

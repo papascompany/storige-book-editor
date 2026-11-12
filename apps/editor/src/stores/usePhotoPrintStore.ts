@@ -8,14 +8,14 @@ import {
 } from '@storige/types'
 
 /**
- * usePhotoPrintStore — 사진인화 세션 메타(`edit_sessions.metadata.items`) 순수 상태 (P2-d, 2026-10-19)
+ * usePhotoPrintStore — 사진인화 세션 메타(`edit_sessions.metadata.items`) 순수 상태
  *
  * - 템플릿셋 `productProfile.kind==='photo-print'` 일 때만 `profile` 이 채워진다(legacy·캘린더 세트는 null).
  * - UI·fabric 호출 없음. 캔버스 적용은 `utils/photoPrintRehydrate` 가 이 스토어를 읽어 수행한다.
  * - 항목 수는 캔버스 수에 종속된다(chemical N / digital ceil(N/2)) — `syncWithCanvasCount` 가 부족분을
  *   프로파일 기본값(허용 어휘 첫째·copies.min·플래그 false)으로 채우고 초과분을 **끝에서** 자른다.
  *   중간 사진 삭제는 `removeItem(photoIndex)` 로 그 항목만 빼고 index/canvasIndex 를 재부여한다(끝 잘림 금지 —
- *   api-sheetmap-1/tests-1: 삭제된 사진의 매수·옵션이 다음 사진으로 밀리지 않는다).
+ *   삭제된 사진의 매수·옵션이 다음 사진으로 밀리지 않는다).
  * - `lowRes`(채움 시 dpi 판정)·`sourcePhotoId`(채움 원본 식별자)는 편집기가 `setItemMeta` 로 기록한다(런처 입력 echo 금지).
  * - 모든 쓰기는 `readPhotoItems(items, profile)` 로 재정제해 index/canvasIndex 재부여·copies 클램프·어휘 검증을 거친다.
  */

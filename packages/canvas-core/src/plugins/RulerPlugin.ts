@@ -17,7 +17,7 @@ class RulerPlugin extends PluginBase {
   private boundHandleObjectMoving: any
   private boundHandleMouseUp: any
   private boundUpdateCenterGuidelines: (() => void) | null = null
-  // §6-3: 중앙 스냅 런타임 토글 — 기본 on(현행 거동). off 면 중앙 가이드 표시·스냅 모두 스킵.
+  // 중앙 스냅 런타임 토글 — 기본 on(현행 거동). off 면 중앙 가이드 표시·스냅 모두 스킵.
   private _centerSnapEnabled: boolean = true
 
   constructor(canvas: fabric.Canvas, editor: Editor, options: RulerOptions) {
@@ -25,7 +25,7 @@ class RulerPlugin extends PluginBase {
     this.init(options)
   }
 
-  /** §6-3: 중앙 스냅 런타임 토글. early-return 게이트만(리스너·룰러 표시 불변). */
+  /** 중앙 스냅 런타임 토글. early-return 게이트만(리스너·룰러 표시 불변). */
   setCenterSnapEnabled(enabled: boolean): void {
     this._centerSnapEnabled = enabled
   }
@@ -69,7 +69,6 @@ class RulerPlugin extends PluginBase {
   /**
    * 룰러 색상 팔레트를 light/dark 테마로 전환.
    * editor의 useCanvasThemeSync hook이 테마 변경 시 호출.
-   * (cover.md / editor_layout_custom.md §8.3 다크 모드 Phase 3)
    */
   setTheme(theme: RulerTheme): void {
     if (!this.ruler) return
@@ -238,7 +237,7 @@ class RulerPlugin extends PluginBase {
     const workspace = this._getWorkspace()
     if (!workspace) return
 
-    // §6-3: 중앙 스냅 OFF → 중앙 가이드 표시·스냅 모두 스킵(가이드↔동작 정합, 오펀 가이드 방지).
+    // 중앙 스냅 OFF → 중앙 가이드 표시·스냅 모두 스킵(가이드↔동작 정합, 오펀 가이드 방지).
     // SmartGuidesPlugin.setCenterYieldEnabled 와 함께 토글되어 중앙 근처 무-스냅 데드존을 막는다.
     if (!this._centerSnapEnabled) {
       if (this.centerGuidelineH) this.centerGuidelineH.set('visible', false)

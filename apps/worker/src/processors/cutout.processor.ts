@@ -24,7 +24,7 @@ import { DomainError, ErrorCodes } from '../common/errors';
 import { isCutoutEnabled } from '../config/feature-flags';
 
 /**
- * 배경제거(컷아웃) 서버 오프로드 프로세서 (2026-08-05, D-6a=B·D-6b②·D-12a=C).
+ * 배경제거(컷아웃) 서버 오프로드 프로세서.
  *
  * 큐 `image-cutout` / 잡 `remove-background` / 동시성 1.
  * 추론 자체는 rembg 사이드카(RembgService)가 HTTP 로 수행하고, 이 프로세서는
@@ -52,7 +52,7 @@ const DEFAULT_MAX_INPUT_PIXELS = 40_000_000;
 /** 사이드카에 넘길 수 있는 실제 이미지 포맷 — DB MIME 라벨이 아니라 **바이트**로 판정한다 */
 const ALLOWED_INPUT_FORMATS = new Set(['png', 'jpeg', 'jpg', 'webp']);
 
-/** 잡 산출 경로에 그대로 들어가므로 형식을 강제한다(경로 조작 차단) */
+/** 잡 산출 경로에 그대로 들어가므로 UUID 형식만 허용한다 */
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 function toError(e: unknown): Error {
@@ -67,7 +67,7 @@ function errorCodeOf(e: Error): string | undefined {
 @Processor(CUTOUT_QUEUE_NAME)
 export class CutoutProcessor {
   private readonly logger = new Logger(CutoutProcessor.name);
-  // WK-4 — 상태 업데이트 재시도 공유 서비스 (DI 대신 직접 생성 — 기존 프로세서 규약 동일)
+  // 상태 업데이트 재시도 공유 서비스 (DI 대신 직접 생성 — 기존 프로세서 규약 동일)
   private readonly jobStatusService = new JobStatusService();
   private readonly storagePath = process.env.STORAGE_PATH || '/app/storage';
   private readonly cutoutsDir = 'cutouts';
@@ -95,7 +95,7 @@ export class CutoutProcessor {
         );
       }
 
-      // jobId 는 출력 경로에 그대로 들어간다 — 형식을 강제해 경로 조작 여지를 없앤다.
+      // jobId 는 출력 경로에 그대로 들어간다 — UUID 형식이 아니면 거부한다.
       if (!UUID_PATTERN.test(jobId)) {
         throw new DomainError(
           ErrorCodes.INVALID_OUTPUT_OPTIONS,
@@ -105,7 +105,7 @@ export class CutoutProcessor {
 
       const outDir = path.join(this.storagePath, this.cutoutsDir, jobId);
 
-      // ── 멱등 가드 (P0-5 lockDuration 10분 초과 시 stalled 재실행이 살아 있다) ──
+      // ── 멱등 가드 (lockDuration 10분 초과 시 stalled 재실행이 살아 있다) ──
       // 이미 결과 PNG 가 있으면 절대 재추론하지 않는다. 추론은 이 잡에서 가장 비싼 단계다.
       const reused = await this.reuseExisting(outDir, job.data);
       if (reused) {
@@ -124,7 +124,7 @@ export class CutoutProcessor {
 
       const { width: sourceWidth, height: sourceHeight } = await this.readDimensions(bytes);
 
-      // D-6b② 픽셀 캡 — 장변 상한 초과분만 비율 유지 축소. 캡 값은 @storige/types 단일 진실.
+      // 픽셀 캡 — 장변 상한 초과분만 비율 유지 축소. 캡 값은 @storige/types 단일 진실.
       const maxLongEdge =
         job.data.maxLongEdge && job.data.maxLongEdge > 0
           ? job.data.maxLongEdge
@@ -232,7 +232,7 @@ export class CutoutProcessor {
       sourceHeight: srcMeta.height,
       capEngaged: cap.engaged,
       // ⚠️ 마커가 없으면 **어떤 모델로 만든 산출물인지 알 수 없다.** 현재 env 기본값을
-      // 적어 넣으면 라이선스 감사 추적(D-12b)이 거짓이 된다 — 모르는 것은 모른다고 남긴다.
+      // 적어 넣으면 라이선스 감사 추적이 거짓이 된다 — 모르는 것은 모른다고 남긴다.
       model: 'unknown',
       processedAt: producedAt,
     };
@@ -281,8 +281,8 @@ export class CutoutProcessor {
   /**
    * 이미지 헤더에서 치수·포맷 추출 후 예산·포맷 검증.
    *
-   * ⚠️ 여기가 **실효 포맷 방어선**이다. API 의 MIME 화이트리스트는 업로드 시 클라이언트가
-   * 선언한 DB 라벨(multer mimetype / presign contentType)만 보므로 위조가 가능하다.
+   * ⚠️ 포맷은 여기서 **바이트로** 판정한다. API 의 MIME 화이트리스트는 업로드 시 클라이언트가
+   * 선언한 DB 라벨(multer mimetype / presign contentType)만 본다.
    * 바이트에서 판정한 포맷이 아니면 사이드카로 넘기지 않는다.
    */
   private async readDimensions(bytes: Buffer): Promise<{ width: number; height: number }> {
@@ -346,7 +346,7 @@ export class CutoutProcessor {
     if (url.startsWith('/') || url.startsWith('./')) {
       return this.readFileWithCap(url);
     }
-    // SSRF 가드(P0-1 M1): 내부망 페치 + 리다이렉트 우회 차단.
+    // SSRF 가드: 내부망 주소를 거부하고 리다이렉트를 따르지 않는다.
     await assertSafeDownloadUrl(url);
     const res = await axios.get<ArrayBuffer | Buffer>(url, {
       responseType: 'arraybuffer',
@@ -370,7 +370,7 @@ export class CutoutProcessor {
   }
 
   /**
-   * JD-4: cutout 큐의 failed 리스너. stalled 한도 초과 실패만 FAILED(JOB_STALLED)로 기록한다.
+   * cutout 큐의 failed 리스너. stalled 한도 초과 실패만 FAILED(JOB_STALLED)로 기록한다.
    */
   @OnQueueFailed()
   async onQueueFailed(job: Job<unknown> | null, err: Error): Promise<void> {
@@ -383,7 +383,7 @@ export class CutoutProcessor {
   }
 
   /**
-   * WK-4 공유 JobStatusService(재시도 5회·최대 30s 백오프) 사용.
+   * 공유 JobStatusService(재시도 5회·최대 30s 백오프) 사용.
    * ⚠️ 페이로드 필드는 API UpdateJobStatusDto 에 있는 것만 — 없는 필드는 전역
    *    ValidationPipe 가 400 으로 거부해 상태 업데이트 자체가 실패한다.
    */

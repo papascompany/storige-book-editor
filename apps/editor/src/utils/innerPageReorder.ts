@@ -1,5 +1,5 @@
 /**
- * 내지 페이지 재정렬(G4) — 순열 계산 + DOM 컨테이너 동기화.
+ * 내지 페이지 재정렬 — 순열 계산 + DOM 컨테이너 동기화.
  *
  * BookNavigation(비스프레드) 이 쓰던 `computeInnerReorder` 를 정본으로 두고,
  * SpreadPagePanel(책/포토북 정본 경로) 도 같은 함수를 쓴다.

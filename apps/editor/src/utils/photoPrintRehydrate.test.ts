@@ -14,7 +14,7 @@ import {
 } from './photoPrintRehydrate'
 
 /**
- * P2-d 사진인화 (2026-10-19): 항목 → PhotoPrintPlugin 옵션 매핑(§13-3)과 캔버스↔항목 매핑(digital 2i/2i+1).
+ * 사진인화: 항목 → PhotoPrintPlugin 옵션 매핑과 캔버스↔항목 매핑(digital 2i/2i+1).
  */
 const digitalProfile: ProductProfile = {
   version: 1,
@@ -62,7 +62,7 @@ describe('resolvePhotoPrintCanvasOptions / resolvePhotoItemIndexForCanvas', () =
     const b = resolvePhotoPrintCanvasOptions(photo, { ...base, border: 'white', fit: 'image-full', dateOverlay: true, grayscale: true })
     expect(b).toMatchObject({ fitMode: 'contain', frameInsetMm: 3, dateOverlay: true, grayscale: true })
     expect(b.mmToPx(10)).toBe(mmToPxDisplay(10))
-    // D3: bleedPx 는 생략 시 0, 전달하면 그대로
+    // bleedPx 는 생략 시 0, 전달하면 그대로
     expect(a.bleedPx).toBe(0)
     expect(resolvePhotoPrintCanvasOptions(photo, { ...base, border: 'none', fit: 'paper-full', dateOverlay: false, grayscale: false }, 17.7).bleedPx).toBe(17.7)
     // borderInsetMm 생략 → 기본 2
@@ -139,7 +139,7 @@ describe('rehydratePhotoPrint / applyPhotoPrintItem / applyPhotoPrintForCanvas',
   })
 })
 
-describe('D3 — bleedPx: 템플릿셋 재단선 설정(printMarkConfig) → 플러그인 옵션', () => {
+describe('bleedPx: 템플릿셋 재단선 설정(printMarkConfig) → 플러그인 옵션', () => {
   it('resolvePhotoPrintBleedPx: cropMarkEnabled && bleedMm>0 → mmToPxDisplay(bleedMm); off·0·음수·비유한·null → 0', () => {
     expect(resolvePhotoPrintBleedPx({ bleedMm: 3, cropMarkEnabled: true })).toBe(mmToPxDisplay(3))
     expect(resolvePhotoPrintBleedPx({ bleedMm: 3, cropMarkEnabled: false })).toBe(0)

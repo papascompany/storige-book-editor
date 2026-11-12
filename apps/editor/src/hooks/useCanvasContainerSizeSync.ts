@@ -5,12 +5,12 @@ import { useAppStore } from '@/stores/useAppStore'
 /**
  * 캔버스 컨테이너 크기 변화 감지 → 모든 캔버스 dim 동기화 + 워크스페이스 재정렬.
  *
- * T6 (2026-07-13): EditorView 의 ResizeObserver 블록을 로직 무변경으로 추출 —
+ * EditorView 의 ResizeObserver 블록을 로직 무변경으로 추출 —
  * '/'(EditorView) 에만 있던 재센터링이 /template(TemplateEditorView)·/embed(EmbeddedEditor)
  * 에 없어서, 객체 선택 시 FeatureSidebar↔ControlBar 스왑으로 캔버스 컨테이너 폭이 바뀌면
  * 페이지가 한쪽으로 밀린 채 방치되는 문제의 공통 해법. 세 뷰가 같은 훅을 배선한다.
  *
- * ⚠️ iOS Safari 크래시 방어 3중 가드(원본 주석 유지) — RAF 병합·1px 지터 무시·동일치수 스킵.
+ * ⚠️ iOS Safari 크래시 방어 3중 가드 — RAF 병합·1px 지터 무시·동일치수 스킵.
  * setDimensions 가 캔버스 DOM 크기를 바꾸면 ResizeObserver 가 다시 발화 → 동일 호출이
  * 무한 반복되어 iOS Safari 가 페이지를 크래시시킨다. 절대 완화 금지.
  */
@@ -45,7 +45,7 @@ export function useCanvasContainerSizeSync(
       if (!dprChanged && Math.abs(w - lastW) < 1 && Math.abs(h - lastH) < 1) return
       // 첫 동기화는 WorkspacePlugin.reset() 의 setZoomAuto 가 이미 처리 — 단, 캔버스가
       // ready 전 레이아웃 변동 중에 생성돼 stale 컨테이너 크기로 동결된 경우(기존 fabric
-      // 치수 ≠ 새 w/h)는 첫 apply 에서도 재정렬한다(C-2: 시드분·추가분 뷰포트 기준 통일).
+      // 치수 ≠ 새 w/h)는 첫 apply 에서도 재정렬한다(시드분·추가분 뷰포트 기준 통일).
       // 스킵은 '기존 치수 == 새 w/h'인 캔버스에만 적용(캔버스별 판정 — 아래 sizeUnchanged).
       const isFirstApply = lastW === 0 && lastH === 0
       lastW = w

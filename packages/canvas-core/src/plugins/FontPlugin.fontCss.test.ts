@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 //
-// FontPlugin.createFontCSS — A-1 「동일 CSS 재기입 스킵」 회귀 테스트.
+// FontPlugin.createFontCSS — 「동일 CSS 재기입 스킵」 회귀 테스트.
 //
 // 배경: createFontCSS 는 <style id="dynamic-font-faces"> 를 쓴 뒤 항상 rAF + 300ms 를
 // 기다리고 resolve 했다. 이 메서드는 **생성자에서만** 호출되므로, 같은 폰트 목록으로
@@ -49,7 +49,7 @@ const FONTS: FontSource[] = [
   { name: 'Pretendard', src: 'https://cdn.example/pretendard.woff2' }
 ]
 
-describe('FontPlugin.createFontCSS — 동일 CSS 재기입 스킵 (A-1)', () => {
+describe('FontPlugin.createFontCSS — 동일 CSS 재기입 스킵', () => {
   beforeEach(() => {
     styleEl()?.remove()
   })

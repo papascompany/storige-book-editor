@@ -7,25 +7,25 @@ import { runGhostscript, GS_PDFWRITE_TIMEOUT_MS } from './ghostscript';
 const logger = new Logger('PrintNormalize');
 
 /**
- * R5 (2026-08-11) — 최종 인쇄 산출 정규화 (X-1a 스타일).
+ * 최종 인쇄 산출 정규화 (X-1a 스타일).
  *
- * 국내 인쇄소 입고 표준(감사 §3: 검증은 X-4 수용, **산출은 X-1a 스타일**이 안전)에
+ * 국내 인쇄소 입고 표준(검증은 X-4 수용, **산출은 X-1a 스타일**이 안전)에
  * 맞춰 합성 최종 PDF 를 정규화한다: RGB→CMYK 변환(+타깃 ICC), OutputIntent 부착
  * (GS PDFX 정의), 선택적 투명도 평탄화(CompatibilityLevel 1.3).
  *
- * ## 운영 안전 계약 (유저·관리자 무영향 원칙 — 오너 지시 2026-08-11)
+ * ## 운영 안전 계약 (유저·관리자 무영향 원칙)
  *  1. **기본 OFF**: PRINT_NORMALIZE=true 가 아니면 완전 no-op — 배포 자체는 무변경.
  *     (⚠️ compose env 매핑 필수 — 매핑 누락=silent no-op 함정은 이 경우 안전 방향)
  *  2. **fail-open**: 정규화 실패(GS 오류·ICC 부재·타임아웃) 시 원본 파일 그대로 유지
  *     — 주문 산출이 정규화 때문에 막히는 일은 없다. 실패는 warn 로그로만 남긴다.
  *  3. **대형 파일 스킵**: PRINT_NORMALIZE_MAX_BYTES(기본 50MB) 초과는 스킵 —
- *     2GB 무손실(qpdf) 트랙과 상호 배타(GS 재증류는 상수 메모리가 아니다).
+ *     2GB 무손실(qpdf) 경로와 상호 배타(GS 재증류는 상수 메모리가 아니다).
  *  4. 스팟/오버프린트 보존: PreserveSeparation/DeviceN/OverprintSettings 유지 —
- *     별색 무손실 정책(트랙 B)과 정합. 주석 제거(R4a)도 동일 적용.
+ *     별색 무손실 정책과 정합. 주석 제거도 동일 적용.
  *
- * ## ICC (오너 결정 2026-08-10)
+ * ## ICC
  *  표준 = Japan Color 2001 Coated. Adobe 배포본은 재배포 제한 → 레포 커밋 금지,
- *  VPS `storage/icc/`(컨테이너 /app/storage/icc) 배치 + PRINT_ICC_PROFILE_PATH 주입.
+ *  운영 서버 `storage/icc/`(컨테이너 /app/storage/icc) 배치 + PRINT_ICC_PROFILE_PATH 주입.
  *  자유배포 폴백 = ECI ISOcoated_v2_300. ICC 미설정/부재 시 정규화 스킵(fail-open).
  */
 
@@ -110,11 +110,11 @@ export function buildNormalizeArgs(
     '-sDEVICE=pdfwrite',
     // 평탄화 = 1.3 재증류(투명도 미지원 레벨로 강제 → GS 가 평탄화 수행)
     `-dCompatibilityLevel=${opts.flatten ? '1.3' : '1.4'}`,
-    // 보존(트랙 B 정합): 별색/DeviceN/오버프린트
+    // 보존: 별색/DeviceN/오버프린트
     '-dPreserveOverprintSettings=true',
     '-dPreserveSeparation=true',
     '-dPreserveDeviceN=true',
-    // R4a 정합: 주석/폼 제거
+    // 주석/폼 제거
     '-dPreserveAnnots=false',
     // X-1a 스타일 색 정규화: RGB/Gray→CMYK, 타깃 ICC
     '-sColorConversionStrategy=CMYK',

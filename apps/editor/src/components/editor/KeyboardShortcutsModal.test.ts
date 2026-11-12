@@ -1,4 +1,4 @@
-// KeyboardShortcutsModal 자동 생성 로직 (C9/E2 W4 §6-2)
+// KeyboardShortcutsModal 자동 생성 로직
 //
 // 순수 함수 buildShortcutGroups/formatHotkeyKeys 검증(렌더 없이):
 //  ① 포매터: displayKeys 우선 / ctrl+·cmd+ 배열 → 플랫폼별 1개 축약 / 특수키 심볼

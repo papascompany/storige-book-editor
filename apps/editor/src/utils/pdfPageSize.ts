@@ -1,6 +1,6 @@
 /**
  * PDF 페이지 크기(mm) 산출 — canvas-core ServicePlugin.saveMultiPagePDFAsBlob 의 페이지 크기
- * 결정 로직을 그대로 미러링한 순수 함수 (R-195, 2026-09-28).
+ * 결정 로직을 그대로 미러링한 순수 함수.
  *
  * 용도: 스프레드 완료 시 metadata.coverOutput 에 "생성된 표지 PDF 의 실제 페이지 크기와
  * 사방 블리드"를 기록한다. 반드시 saveMultiPagePDFAsBlob 에 넘긴 **같은 size 객체**를 입력한다.

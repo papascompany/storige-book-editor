@@ -6,7 +6,7 @@ import { useSettingsStore } from '@/stores/useSettingsStore'
 import { getPageStepViolation, livePhysicalPageCount, pageStepViolationMessage } from '@/utils/pageStep'
 
 /**
- * S8 (2026-09-28): 내지 페이지 수가 증감 단위(pageStep)의 배수가 아닐 때 페이지 패널 상단 경고 배지.
+ * 내지 페이지 수가 증감 단위(pageStep)의 배수가 아닐 때 페이지 패널 상단 경고 배지.
  * 호스트가 홀수 pageCount 로 시드한 경우 등 — 이 상태에서는 편집완료가 차단된다(EditorHeader/embed).
  * pageStep=null 이거나 배수를 만족하면 렌더하지 않는다(기존 화면 무변화).
  */

@@ -38,7 +38,7 @@ export interface ConversionOptions {
   /** 출력 크기 (mm) */
   targetSize?: { width: number; height: number };
   /**
-   * P4 — 고객 업로드 내지 PDF 임포지션 모드.
+   * 고객 업로드 내지 PDF 임포지션 모드.
    *   - undefined : 현행 동작 100% 유지(블리드/리사이즈/페이지추가 기존 흐름). ⚠️ 변경 금지.
    *   - passthrough: 원본 무가공 패스스루(작업사이즈와 동일±허용오차).
    *   - innerfit  : editSize 에 맞춰 비율유지 다운스케일 + 중앙(블리드 없음 & 큼).
@@ -46,9 +46,9 @@ export interface ConversionOptions {
    * 편집기 생성 PDF 경로는 mode 를 주입하지 않으므로 영향 없음.
    */
   mode?: 'passthrough' | 'innerfit' | 'center';
-  /** P4 — innerfit/center 의 목표 페이지(=작업/편집) 크기(mm). mode 지정 시 필수. */
+  /** innerfit/center 의 목표 페이지(=작업/편집) 크기(mm). mode 지정 시 필수. */
   editSize?: { width: number; height: number };
-  /** P4 — 실측 vs editSize 비교 허용오차(mm). 미지정 시 기본 0.2mm. */
+  /** 실측 vs editSize 비교 허용오차(mm). 미지정 시 기본 0.2mm. */
   sizeToleranceMm?: number;
   /**
    * 페이지수 배수 보정(2026-06-25, fix-pagecount) — 제공 시 현재 페이지수를 다음 배수
@@ -57,7 +57,7 @@ export interface ConversionOptions {
    */
   padToMultiple?: number;
   /**
-   * X1F-1c: attach-page-pad 잡에서만 API 가 싣는 주문 재단·도련(공유 계약 키). editSize 가 없을 때,
+   * attach-page-pad 잡에서만 API 가 싣는 주문 재단·도련(공유 계약 키). editSize 가 없을 때,
    * 정규화 게이트 안에서만 trimCropContextFromJob 으로 읽는다.
    */
   contentTrim?: unknown;
@@ -106,11 +106,11 @@ export class PdfConverterService {
   ): Promise<ConversionResult> {
     this.logger.log(`Converting PDF: ${fileUrl}`);
 
-    // PDF-006(2026-06-22): 예외 시 임시파일 누수 방지. 경로를 try 밖에 선언해 finally 에서
+    // 예외 시 임시파일 누수 방지. 경로를 try 밖에 선언해 finally 에서
     // 정리한다. 정상 경로는 기존대로 단계별 safeDelete 로 정리되므로 succeeded 후 추가 삭제 없음.
     let tempInputPath: string | undefined;
     let currentPath: string | undefined;
-    // X1: 이번 잡에서 재단선 크롭 정규화가 적용됐는가(fix-pagecount 백지 박스 복제 게이트).
+    // 이번 잡에서 재단선 크롭 정규화가 적용됐는가(fix-pagecount 백지 박스 복제 게이트).
     let trimNormalized = false;
     let succeeded = false;
 
@@ -122,7 +122,7 @@ export class PdfConverterService {
       }
 
       // ──────────────────────────────────────────────────────────────
-      // 트랙 B-(f) — 2GB 상수메모리 ON 경로(LIGHTWEIGHT_SYNTHESIS).
+      // 2GB 상수메모리 ON 경로(LIGHTWEIGHT_SYNTHESIS).
       //   ON  : 입력을 스트림으로 임시파일에 흘려(메모리 비경유) 확보.
       //   OFF : 기존 전체버퍼 다운로드(downloadFile) → writeFile (불변).
       // 임포지션 코어(addBleed/resize/center=GS 파일기반)는 양쪽 동일하게 'tempInputPath'
@@ -147,13 +147,13 @@ export class PdfConverterService {
       }
 
       // ──────────────────────────────────────────────────────────────
-      // X1 (2026-09-30) — 재단선 영역 크롭 정규화(업로드 내지 경로 한정, resolveMode 이전).
+      // 재단선 영역 크롭 정규화(업로드 내지 경로 한정, resolveMode 이전).
       // 게이트: editSize(fix-bleed/inner-imposition) 또는 padToMultiple(fix-pagecount).
       // 편집기 레거시 경로(mode·editSize·padToMultiple 없음)는 게이트 밖 — 무영향.
       // editSize 가 있으면 목표 = TrimBox + (editSize−Trim)/2(대칭) → resolveMode 가 innerfit
       // (비율 축소) 대신 passthrough 를 고른다. tempInputPath 는 이미 임시 사본이라 원본 불변.
       // editSize 가 없고 잡에 contentTrim(attach-page-pad)이 있으면 주문 재단·도련 '아는 경로'로
-      // 채움본 내지를 주문 작업사이즈에 맞춘다(X1F-1c). 키가 없으면 {}(종전 모르는 경로).
+      // 채움본 내지를 주문 작업사이즈에 맞춘다. 키가 없으면 {}(종전 모르는 경로).
       // 킬스위치 OFF·크롭 대상 없음이면 입력 그대로(추가 파일 없음).
       // ──────────────────────────────────────────────────────────────
       const hasEditSize =
@@ -167,7 +167,7 @@ export class PdfConverterService {
               editSizeMm: rawOptions.editSize,
               // no-op 허용오차 = 검증 판형 허용오차(sizeToleranceMm ?? LEGACY 1mm) 이상.
               // 오늘 검증을 통과하는(작업사이즈 ±tol) 파일은 크롭하지 않고 종전 resolveMode
-              // 경로(passthrough/innerfit/center)를 그대로 탄다(CTO 원칙 1).
+              // 경로(passthrough/innerfit/center)를 그대로 탄다(산출물 불변).
               noopTolMm: Math.max(LEGACY_SIZE_TOLERANCE_MM, rawOptions.sizeToleranceMm ?? 0),
             }
           : trimCropContextFromJob(rawOptions.contentTrim, trimLogTag);
@@ -181,7 +181,7 @@ export class PdfConverterService {
       }
 
       // ──────────────────────────────────────────────────────────────
-      // P4 — mode 자체결정 (2026-06-10).
+      // mode 자체결정.
       // mode 가 명시되지 않았지만 editSize 가 주어진 업로드 경로에서는,
       // 실측(getPdfInfo) vs editSize±허용오차 비교로 mode 를 결정한다.
       //   - 동일(±tol)           → passthrough (무가공, 현행 효과와 동일)
@@ -235,16 +235,16 @@ export class PdfConverterService {
           const tempBleedPath = path.join(this.storagePath, `bleed_${uuidv4()}.pdf`);
 
           if (this.gsAvailable) {
-            // WK-2 sanity 게이트용 원본 실측 (블리드 적용 전)
+            // sanity 게이트용 원본 실측 (블리드 적용 전)
             const beforeInfo = await getPdfInfo(currentPath);
 
             // Ghostscript로 블리드 적용 (더 정확함)
             await addBleedToPdf(currentPath, tempBleedPath, options.bleed);
 
-            // WK-2 (2026-06-13) — sanity 게이트: 변환 결과 첫 페이지 크기 ≥ 원본.
-            //   종전 addBleedToPdf 는 페이지 크기를 bleedPt*2 로 잘못 지정해
-            //   콘텐츠가 블리드 2배 크기로 잘려나간 손상 PDF 를 조용히 산출했다.
-            //   동일 계열 회귀가 재발하면 손상 산출물이 인쇄로 흘러가지 않도록
+            // sanity 게이트: 변환 결과 첫 페이지 크기 ≥ 원본.
+            //   블리드 적용이 페이지 크기를 잘못 지정하면 콘텐츠가 잘린 손상 PDF 가
+            //   조용히 산출된다.
+            //   그런 산출물이 인쇄로 흘러가지 않도록
             //   여기서 잡을 FAILED 로 떨어뜨린다(throw → 프로세서가 FAILED 처리).
             //   (0.5mm 허용오차: getPdfInfo 반올림/측정 오차 흡수)
             const afterInfo = await getPdfInfo(tempBleedPath);
@@ -289,7 +289,7 @@ export class PdfConverterService {
         }
       } else {
         // ──────────────────────────────────────────────────────────────
-        // P4 — 고객 업로드 내지 PDF 임포지션(안전 게이팅).
+        // 고객 업로드 내지 PDF 임포지션(안전 게이팅).
         // mode 가 명시된 업로드 경로에서만 실행. 블리드/리사이즈/페이지추가 스킵.
         // 가짜 블리드 자동생성 안 함.
         // ──────────────────────────────────────────────────────────────
@@ -362,7 +362,7 @@ export class PdfConverterService {
       this.logger.error(`Conversion failed: ${error.message}`, error.stack);
       throw error;
     } finally {
-      // PDF-006: 예외 경로에서만 임시파일 정리. 정상 경로는 단계별 safeDelete + 270행
+      // 예외 경로에서만 임시파일 정리. 정상 경로는 단계별 safeDelete + convert() 마지막 단계의
       // safeDelete(tempInputPath)로 이미 정리됨(succeeded=true → 스킵). safeDelete 는
       // ENOENT 를 삼키므로 이미 삭제된 경로 재삭제도 무해(멱등).
       if (!succeeded) {
@@ -373,13 +373,13 @@ export class PdfConverterService {
   }
 
   /**
-   * P4 — mode 자체결정 (2026-06-10).
+   * mode 자체결정.
    *
    * convert() 진입부에서 호출. mode 미지정 + editSize 주어진 업로드 경로에서만
    * 실측(getPdfInfo) vs editSize±허용오차 비교로 mode 를 결정해 주입한다.
    * applyImpositionMode 로직은 그대로 두고 진입부에서 mode 만 채운다.
    *
-   * 결정 규칙(오너 스펙):
+   * 결정 규칙:
    *   - 가로/세로 모두 동일(±tol)        → passthrough (무가공)
    *   - 가로 또는 세로가 editSize+tol 초과 → innerfit   (큼: 비율유지 다운스케일+중앙)
    *   - 그 외(작거나 같음)               → center     (작음: 무스케일 중앙)
@@ -427,7 +427,7 @@ export class PdfConverterService {
       return rawOptions;
     }
 
-    // C-2b: 매직넘버 0.2 → DEFAULT_SIZE_TOLERANCE_MM(=0.2) 치환(값-동일, 행동 무변화).
+    // 매직넘버 0.2 → DEFAULT_SIZE_TOLERANCE_MM(=0.2) 치환(값-동일, 행동 무변화).
     const tol = rawOptions.sizeToleranceMm ?? DEFAULT_SIZE_TOLERANCE_MM;
     const sameSize =
       Math.abs(measuredW - editSize.width) <= tol &&
@@ -452,9 +452,9 @@ export class PdfConverterService {
   }
 
   /**
-   * P4 — 고객 업로드 내지 PDF 임포지션 모드 적용.
+   * 고객 업로드 내지 PDF 임포지션 모드 적용.
    *
-   * 오너 확정 스펙:
+   * 모드별 동작:
    *   - passthrough : 작업사이즈와 동일(±허용오차) → 원본 무가공 패스스루.
    *   - innerfit    : 블리드 없음 & 큼 → editSize 에 맞춰 비율유지 다운스케일(GS -dPDFFitPage) + 중앙.
    *                   가드: 실측 ≤ editSize 면 확대 금지(스킵 = 원본 유지).
@@ -471,7 +471,7 @@ export class PdfConverterService {
     lightweight = false,
   ): Promise<string> {
     const mode = options.mode;
-    // C-2b: 매직넘버 0.2 → DEFAULT_SIZE_TOLERANCE_MM(=0.2) 치환(값-동일, 행동 무변화).
+    // 매직넘버 0.2 → DEFAULT_SIZE_TOLERANCE_MM(=0.2) 치환(값-동일, 행동 무변화).
     const tol = options.sizeToleranceMm ?? DEFAULT_SIZE_TOLERANCE_MM;
     const editSize = options.editSize;
 
@@ -556,11 +556,11 @@ export class PdfConverterService {
     const firstPage = pdfDoc.getPage(0);
     const { width, height } = firstPage.getSize();
 
-    // X1: 이번 잡에서 재단선 정규화가 **적용된** 파일(trimNormalized)만, 백지도 첫 페이지와
+    // 이번 잡에서 재단선 정규화가 **적용된** 파일(trimNormalized)만, 백지도 첫 페이지와
     // 같은 좌표계(MediaBox 원점 포함)로 만들고 Trim/Bleed/CropBox 를 같은 좌표로 복제한다 —
     // 재검증 시 페이지별 박스 유무가 섞이지 않게(엄격 판정) + 원점≠0 박스가 MediaBox 밖으로
-    // 나가지 않게. 정규화되지 않은 파일(TrimBox 보유 편집기 P3 PDF 포함)·킬스위치 OFF 는 아래
-    // 종전 경로 그대로(산출물 불변 — CTO 원칙 1). 박스 읽기가 실패(비정형)해도 종전 경로로 진행.
+    // 나가지 않게. 정규화되지 않은 파일(TrimBox 보유 편집기 산출 PDF 포함)·킬스위치 OFF 는 아래
+    // 종전 경로 그대로(산출물 불변). 박스 읽기가 실패(비정형)해도 종전 경로로 진행.
     const normalizedBoxes =
       VALIDATION_CONFIG.TRIMBOX_SIZE_CHECK && trimNormalized
         ? this.readBlankPageBoxes(firstPage)
@@ -603,7 +603,7 @@ export class PdfConverterService {
   }
 
   /**
-   * X1: fix-pagecount 백지 박스 복제용 — 첫 페이지 MediaBox·명시 TrimBox(필수)·CropBox·BleedBox.
+   * fix-pagecount 백지 박스 복제용 — 첫 페이지 MediaBox·명시 TrimBox(필수)·CropBox·BleedBox.
    * 명시 TrimBox 가 없거나 어느 박스든 비정형이면 null(종전 백지 경로로 fallthrough).
    */
   private readBlankPageBoxes(firstPage: PDFPage): {
@@ -713,7 +713,7 @@ export class PdfConverterService {
       return new Uint8Array(buffer);
     }
 
-    // Download from URL — SSRF 가드(P0-1 M1): 내부망 페치 + 리다이렉트 우회 차단.
+    // Download from URL — SSRF 가드: 내부망 주소를 거부하고 리다이렉트를 따르지 않는다.
     await assertSafeDownloadUrl(url);
     const response = await axios.get(url, {
       responseType: 'arraybuffer',

@@ -21,7 +21,7 @@ afterEach(() => {
   vi.restoreAllMocks()
 })
 
-describe('spineWidthMm 파라미터 파싱 (R-195 계약 1)', () => {
+describe('spineWidthMm 파라미터 파싱 (계약 1)', () => {
   it('유한수 ≥ 0 수용 — 문자열 "0" 은 0', () => {
     expect(parseFromQuery('spineWidthMm=0')).toBe(0)
     expect(parseFromQuery('spineWidthMm=12.5')).toBe(12.5)
@@ -64,7 +64,7 @@ describe('spineWidthMm 파라미터 파싱 (R-195 계약 1)', () => {
   })
 })
 
-describe("S5: paperType/bindingType '-' 정규화 (R-195 계약 2)", () => {
+describe("paperType/bindingType '-' 정규화 (계약 2)", () => {
   it("trim 후 '' 또는 '-' → undefined, 그 외는 trim 값", () => {
     expect(normalizeSpineCode('-')).toBeUndefined()
     expect(normalizeSpineCode(' - ')).toBeUndefined()
@@ -78,7 +78,7 @@ describe("S5: paperType/bindingType '-' 정규화 (R-195 계약 2)", () => {
   })
 })
 
-describe('재편집 사다리 resolveEffectiveSpineOptions (R-195 계약 2·3)', () => {
+describe('재편집 사다리 resolveEffectiveSpineOptions (계약 2·3)', () => {
   it('options(URL/props) 가 최우선', () => {
     expect(
       resolveEffectiveSpineOptions(
@@ -136,7 +136,7 @@ describe('재편집 사다리 resolveEffectiveSpineOptions (R-195 계약 2·3)',
   })
 })
 
-describe('hostFixed 판정 (R-195 계약 4)', () => {
+describe('hostFixed 판정 (계약 4)', () => {
   it('용지·제본 모두 있고 host > 0 → 비고정(수식 재계산 허용)', () => {
     expect(isHostSpineFixed({ paperType: 'mojo_80g', bindingType: 'perfect', hostSpineWidthMm: 5 })).toBe(false)
   })
@@ -174,7 +174,7 @@ describe('decideHostSpineAction (편집 중 가드)', () => {
   })
 })
 
-describe('appliedSpine 출처/값 (R-195 계약 6)', () => {
+describe('appliedSpine 출처/값 (계약 6)', () => {
   it('flat-spread 는 항상 template', () => {
     expect(resolveAppliedSpineSource({ conversionMode: 'flat-spread', lastAppliedSource: 'host' })).toBe('template')
   })

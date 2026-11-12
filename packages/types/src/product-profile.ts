@@ -1,13 +1,13 @@
 /**
- * product-profile.ts — 상품별 편집 모드 프로파일 (P1, 2026-10-17)
+ * product-profile.ts — 상품별 편집 모드 프로파일
  *
  * 템플릿셋 `product_profile`(JSON, NULL 허용) 한 속성으로 상품의 편집 방식을 선언한다.
  * 편집기·API·admin 은 `resolveProductProfile()` 결과가 null 이면 기존(legacy) 경로를 그대로 쓰고,
  * 값이 있을 때만 `if (profile)` 가드 안에서 동작을 바꾼다. `EditorMode`·`TemplateSetType`·
  * `PdfOutputMode` 등 기존 enum 은 건드리지 않는다(설계: docs/PRODUCT_MODE_ARCHITECTURE_DESIGN_2026-10-16.md §2).
  *
- * P1 범위: kind 'sheet' | 'calendar', output 'single-pdf'. photo-print·sheet-map 은 P2 에서 additive 로 확장.
- * P2-d(2026-10-19): kind 'photo-print' + `photoPrint` 블록(설계 §2.2) + 세션 `metadata.items`(PhotoItem, §3) 추가.
+ * 기본 범위: kind 'sheet' | 'calendar', output 'single-pdf'. photo-print·sheet-map 은 additive 확장.
+ * 사진인화: kind 'photo-print' + `photoPrint` 블록(설계 §2.2) + 세션 `metadata.items`(PhotoItem, §3).
  *
  * 캘린더 상품(오너 확정 2026-10-17): 탁상 4종·벽걸이 1단·2단 모두
  *   캔버스 = 표지(coverCanvases) + 12개월 × canvasesPerMonth + 에필로그(epilogueCanvases)
@@ -31,7 +31,7 @@ export type ProductSheetPairing = 'same-sheet' | 'offset-next';
 export type ProductBackRotation = 0 | 180;
 export type ProductDuplexFlip = 'short-edge' | 'long-edge';
 /**
- * 출력 모드 — 'single-pdf'(P1, 편집기 산출 그대로) | 'sheet-map'(P2, API 가 `buildSheetMap` 으로
+ * 출력 모드 — 'single-pdf'(편집기 산출 그대로) | 'sheet-map'(API 가 `buildSheetMap` 으로
  * 시트 앞/뒤 매핑을 만들어 worker `sheet-map` 잡으로 분리·회전, 설계 §6.2~6.4).
  */
 export type ProductOutputMode = 'single-pdf' | 'sheet-map';
@@ -41,7 +41,7 @@ export type ProductPostProcessColorRule = 'any' | 'spot-only';
 export type CalendarLayout = 'desk' | 'wall-1' | 'wall-2';
 export type CalendarWeekStart = 0 | 1;
 /**
- * 연달력(그리드 variant 'year', 설계 C8, v1.26) 기간 기준 — 'calendar-year' 기준 연도 1~12월 / 'start-span' 시작연월부터.
+ * 연달력(그리드 variant 'year', v1.26) 기간 기준 — 'calendar-year' 기준 연도 1~12월 / 'start-span' 시작연월부터.
  * 정책에 값이 없으면 기본 규칙(`resolveCalendarYearSpan`): 시작연월이 1월이면 'calendar-year', 아니면 'start-span'.
  */
 export type CalendarYearSpan = 'calendar-year' | 'start-span';
@@ -57,7 +57,7 @@ export const PRODUCT_OUTPUT_SHEET_FILES: readonly ProductOutputSheetFiles[] = ['
 export const CALENDAR_LAYOUTS: readonly CalendarLayout[] = ['desk', 'wall-1', 'wall-2'];
 export const CALENDAR_YEAR_SPANS: readonly CalendarYearSpan[] = ['calendar-year', 'start-span'];
 /**
- * 기본 규칙의 기준값(오너 답 Q1, 2026-10-24): 기본은 기준 연도 1~12월. 고객이 시작연월을 1월이 아닌 달로 바꾸면
+ * 기본 규칙의 기준값: 기본은 기준 연도 1~12월. 고객이 시작연월을 1월이 아닌 달로 바꾸면
  * 그 달부터의 기간('start-span')으로 바뀐다. 정책 `yearPolicy.span` 을 명시하면 그 값이 그대로 쓰인다.
  */
 export const DEFAULT_CALENDAR_YEAR_SPAN: CalendarYearSpan = 'calendar-year';
@@ -66,7 +66,7 @@ export const CALENDAR_YEAR_MONTH_COUNT = 12;
 /** 연도 이동 허용 절대값 상한(검증용) */
 export const CALENDAR_YEAR_DELTA_LIMIT = 2;
 
-// ─── 사진인화 어휘(P2-d, 설계 §2.2) ─────────────────────────────────────────
+// ─── 사진인화 어휘(설계 §2.2) ─────────────────────────────────────────
 
 /** 인화(chemical, 미니랩 단면) | 인쇄(digital, 양면 디지털 인쇄) */
 export type PhotoPrintProcess = 'chemical' | 'digital';
@@ -85,7 +85,7 @@ export const PHOTO_FITS: readonly PhotoFit[] = ['paper-full', 'image-full'];
 export const PHOTO_FINISHES: readonly PhotoFinish[] = ['matte', 'glossy'];
 /** 유테 시 사진틀 창 축소 기본값(mm). 프로파일 `options.borderInsetMm` 로 덮어쓴다. */
 export const DEFAULT_PHOTO_BORDER_INSET_MM = 2;
-/** P2 는 1세션 1사이즈(§13-6) — sizes 배열 길이 고정 */
+/** 1세션 1사이즈(§13-6) — sizes 배열 길이 고정 */
 export const PHOTO_PRINT_SIZES_PER_PROFILE = 1;
 
 // ─── 프로파일 구조 ─────────────────────────────────────────────────────────
@@ -111,7 +111,7 @@ export interface ProductSheetPolicy {
   /** faces=1 → 'canvas-per-sheet', faces=2 → 'canvas-pair'(캔버스 [앞, 뒤] 교대) */
   canvasLayout: ProductCanvasLayout;
   binding: ProductSheetBinding;
-  /** canvas-pair 전용. 시트 k 의 앞/뒤에 어떤 캔버스가 가는지(설계 §6.3). P1 산출(단일 PDF)에는 영향 없음. */
+  /** canvas-pair 전용. 시트 k 의 앞/뒤에 어떤 캔버스가 가는지(설계 §6.3). 단일 PDF 산출에는 영향 없음. */
   pairing?: ProductSheetPairing;
   /** 0 = 뒷면 회전은 RIP 책임(현행 유지) */
   backRotation: ProductBackRotation;
@@ -137,12 +137,12 @@ export interface CalendarDisplayOptions {
    */
   temporaryHolidays?: boolean;
   /**
-   * 연달력(그리드 variant 'year') 연도 제목 표시(v1.26, 오너 답 Q3). 생략 = true(표시).
+   * 연달력(그리드 variant 'year') 연도 제목 표시(v1.26). 생략 = true(표시).
    * 템플릿 그리드 `style.showTitle=false` 면 이 값과 무관하게 제목이 없다(제목 자리가 없는 디자인).
    */
   yearTitle?: boolean;
   /**
-   * 잡절(삼복 — 초복·중복·말복) 날짜 칸 문구 표시(v1.27, T4 — 오너 결정 D4 2026-10-24). 생략 = false(표시 안 함).
+   * 잡절(삼복 — 초복·중복·말복) 날짜 칸 문구 표시(v1.27). 생략 = false(표시 안 함).
    * 날짜 데이터 `minorTerms` 를 쓰며, 월 그리드(variant 'month') 칸 문구에만 나온다('mini'·'year' 는 칸 문구 없음).
    */
   minorTerms?: boolean;
@@ -162,7 +162,7 @@ export interface CalendarYearSelectRange {
 }
 
 /**
- * 연달력(그리드 variant 'year', 설계 C8, D2 2026-10-24) 정책(v1.26 additive).
+ * 연달력(그리드 variant 'year') 정책(v1.26 additive).
  * 블록 생략 = 기본 규칙(`resolveCalendarYearSpan`)·고객 연도 선택 없음(그리드 extension.yearDelta 그대로).
  */
 export interface CalendarYearPolicy {
@@ -193,7 +193,7 @@ export interface CalendarProfile {
   /** 연달력 정책(v1.26 additive). 생략 = 기본 규칙·고객 연도 선택 없음 */
   yearPolicy?: CalendarYearPolicy;
   /**
-   * 캘린더 스킨(디자인 묶음, v1.29 additive — 설계 C10). 생략 = 스킨 기능 없음(현행 동작).
+   * 캘린더 스킨(디자인 묶음, v1.29 additive — 설계 docs/CALENDAR_SKINSET_DESIGN_2026-10-24.md). 생략 = 스킨 기능 없음(현행 동작).
    * 각 원소는 이 세트와 구조가 같은 별도 캘린더 템플릿셋을 가리키며, 편집기는 그 세트의 캔버스별 템플릿 디자인만 쓴다.
    */
   skins?: CalendarSkin[];
@@ -272,7 +272,7 @@ export interface PhotoPrintUploadPolicy {
 export interface PhotoPrintProfile {
   process: PhotoPrintProcess;
   composition: PhotoPrintComposition;
-  /** P2 는 정확히 1개(§13-6). items[].sizeCode 는 sizes[0].code 로 고정. */
+  /** 정확히 1개(§13-6). items[].sizeCode 는 sizes[0].code 로 고정. */
   sizes: PhotoPrintSize[];
   options: PhotoPrintOptionsPolicy;
   copies: PhotoPrintCopiesPolicy;
@@ -296,7 +296,7 @@ export interface ProductProfile {
   sheet: ProductSheetPolicy;
   postProcess?: ProductPostProcessPolicy;
   calendar?: CalendarProfile;
-  /** kind='photo-print' 전용(P2-d) */
+  /** kind='photo-print' 전용 */
   photoPrint?: PhotoPrintProfile;
   output: ProductOutputPolicy;
 }
@@ -343,7 +343,7 @@ export interface CalendarAnniversary {
   style?: CalendarAnniversaryStyle;
 }
 
-/** 고객이 고른 표지·에필로그 연달력 연도 이동(시작연도 기준 상대값 — 시작연월을 바꿔도 상대값 유지, 오너 답 Q4) */
+/** 고객이 고른 표지·에필로그 연달력 연도 이동(시작연도 기준 상대값 — 시작연월을 바꿔도 상대값 유지) */
 export interface CalendarYearDeltas {
   cover?: number;
   epilogue?: number;
@@ -380,7 +380,7 @@ export interface PhotoItem {
   canvasIndex: number;
   /** 업로드 레코드·외부 사진 id(있으면) */
   sourcePhotoId?: string;
-  /** sizes[0].code 고정(P2) */
+  /** sizes[0].code 고정 */
   sizeCode: string;
   copies: number;
   border: PhotoBorder;
@@ -597,7 +597,7 @@ export function validateProductProfile(input: unknown): string[] {
   // output
   const out = p.output;
   if (!isRecord(out) || !oneOf(out.mode, PRODUCT_OUTPUT_MODES)) {
-    // 문구는 P1 계약(테스트 고정) 유지. 허용값은 PRODUCT_OUTPUT_MODES('single-pdf' | 'sheet-map').
+    // 문구는 기존 계약(테스트 고정) 유지. 허용값은 PRODUCT_OUTPUT_MODES('single-pdf' | 'sheet-map').
     errors.push("output.mode 는 'single-pdf' 또는 'sheet-map' 여야 합니다");
   } else {
     if (out.sheetFiles !== undefined) {
@@ -608,7 +608,7 @@ export function validateProductProfile(input: unknown): string[] {
       }
     }
     // sheet-map 결합 규칙(설계 §6.3): canvas-per-sheet 또는 faces=2 + canvas-pair 만 시트 매핑이 정의된다.
-    // center-punch ↔ same-sheet 제한은 위 sheet 절에서 출력 모드와 무관하게 검사한다. calendar kind 는 허용(벽걸이 (나)).
+    // center-punch ↔ same-sheet 제한은 위 sheet 절에서 출력 모드와 무관하게 검사한다. calendar kind 는 허용(벽걸이).
     if (out.mode === 'sheet-map' && isRecord(sheet)) {
       const perSheet = sheet.canvasLayout === 'canvas-per-sheet';
       const pair = sheet.faces === 2 && sheet.canvasLayout === 'canvas-pair';
@@ -618,7 +618,7 @@ export function validateProductProfile(input: unknown): string[] {
     }
   }
 
-  // photoPrint (P2-d) — 기존 kind 의 메시지 순서를 바꾸지 않도록 마지막에 검사한다.
+  // photoPrint — 기존 kind 의 메시지 순서를 바꾸지 않도록 마지막에 검사한다.
   const photo = p.photoPrint;
   if (p.kind === 'photo-print') {
     if (!isRecord(photo)) {
@@ -779,13 +779,13 @@ export function countCalendarSkinFrames(canvasData: unknown): number | null {
 }
 
 /**
- * 기준 세트 ↔ 스킨 세트 구조 호환 판정(설계 C10 §2.2). 오류 문구 배열(빈 배열 = 호환).
+ * 기준 세트 ↔ 스킨 세트 구조 호환 판정(docs/CALENDAR_SKINSET_DESIGN_2026-10-24.md §2.2). 오류 문구 배열(빈 배열 = 호환).
  * admin(스킨 지정 전)·편집기(적용 전)가 같은 함수를 쓰며, 오류가 1건이라도 있으면 그 스킨은 쓸 수 없다.
  *
  * 검사: 자기 참조 · 테넌트(스킨 siteId 가 기준과 같거나 null) · 두 프로파일 kind='calendar' ·
  * layout·coverCanvases·canvasesPerMonth·epilogueCanvases·pages.count · 판형 width/height ·
  * 작업 크기(`resolvePrintGeometry` — 도련·재단선 게이트 포함) · 템플릿 수(templateDetails.length === pages.count) ·
- * 면별 사진틀 수(오너 결정 Q2 (a)).
+ * 면별 사진틀 수.
  */
 export function checkCalendarSkinCompatibility(base: CalendarSkinSetInput, skin: CalendarSkinSetInput): string[] {
   const errors: string[] = [];
@@ -866,10 +866,10 @@ function isVocabList<T>(v: unknown, vocab: readonly T[]): v is T[] {
 }
 
 /**
- * photoPrint 블록 + 결합 규칙(계약 결정 3):
+ * photoPrint 블록 + 결합 규칙:
  *   chemical ⇒ sheet.faces 1(+canvas-per-sheet) + composition 'per-photo-free-back' + output 'single-pdf'
  *   digital  ⇒ sheet.faces 2(+canvas-pair) + pairing 'same-sheet' + pages.step 2 + pages.min/max 짝수
- *   'per-photo-fixed-back' ⇒ backTemplateId 필수 · pages.kind 는 'range' 만. backRotation 은 강제하지 않는다(오너 결정 0).
+ *   'per-photo-fixed-back' ⇒ backTemplateId 필수 · pages.kind 는 'range' 만. backRotation 은 강제하지 않는다.
  */
 function validatePhotoPrintBlock(
   photo: Record<string, unknown>,
@@ -1063,7 +1063,7 @@ export function formatMonthKey(ym: YearMonth): string {
 }
 
 /**
- * 연달력 기간 기준 결정(오너 답 Q1, 2026-10-24). 정책 값이 있으면 그 값, 없으면 기본 규칙:
+ * 연달력 기간 기준 결정. 정책 값이 있으면 그 값, 없으면 기본 규칙:
  * 시작연월이 1월이면 DEFAULT_CALENDAR_YEAR_SPAN('calendar-year' = 기준 연도 1~12월), 1월이 아니면 'start-span'(선택한 월부터).
  */
 export function resolveCalendarYearSpan(span: CalendarYearSpan | undefined, start: YearMonth): CalendarYearSpan {
@@ -1081,7 +1081,7 @@ export function resolveCalendarYearStart(span: CalendarYearSpan | undefined, sta
   return addMonths(start, CALENDAR_YEAR_MONTH_COUNT * d);
 }
 
-/** 고객 선택값이 정책 허용 폭 안인지(정책·select 없으면 false, 비정수 false). T3b 판독·패널 클램프용 */
+/** 고객 선택값이 정책 허용 폭 안인지(정책·select 없으면 false, 비정수 false). 판독·패널 클램프용 */
 export function isCalendarYearDeltaAllowed(policy: CalendarYearPolicy | undefined, delta: unknown): delta is number {
   const select = policy?.select;
   if (!select || !isInt(delta)) return false;
@@ -1128,7 +1128,7 @@ export function isStartMonthAllowed(cal: Pick<CalendarProfile, 'allowedRange'>, 
   return compareMonth(key, cal.allowedRange.from) >= 0 && compareMonth(key, cal.allowedRange.to) <= 0;
 }
 
-// ─── 사진인화 항목 매핑(순수 함수, P2-d) ─────────────────────────────────────
+// ─── 사진인화 항목 매핑(순수 함수) ─────────────────────────────────────
 
 /** 항목 1건이 차지하는 캔버스 수 — chemical 1(앞면만) / digital 2([앞, 뒤]) */
 function photoCanvasStride(profile: Pick<ProductProfile, 'sheet' | 'photoPrint'>): 1 | 2 {
@@ -1137,7 +1137,7 @@ function photoCanvasStride(profile: Pick<ProductProfile, 'sheet' | 'photoPrint'>
 }
 
 /**
- * 항목 순번 → 앞면 캔버스 인덱스(계약 결정 4): chemical i→i, digital(①②③ 공통) i→2i(뒷면은 2i+1).
+ * 항목 순번 → 앞면 캔버스 인덱스: chemical i→i, digital(①②③ 공통) i→2i(뒷면은 2i+1).
  * itemIndex 가 0 이상 정수가 아니면 -1.
  */
 export function resolvePhotoItemCanvasIndex(profile: Pick<ProductProfile, 'sheet' | 'photoPrint'>, itemIndex: number): number {

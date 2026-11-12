@@ -36,11 +36,11 @@ process.on('uncaughtException', (err) => {
 async function bootstrap() {
   const app = await NestFactory.create(AppModule, { bufferLogs: true });
 
-  // P2-10 Pino logger를 NestJS 전역 logger로 사용
+  // Pino logger를 NestJS 전역 logger로 사용
   const pinoLogger = app.get(PinoLogger);
   app.useLogger(pinoLogger);
 
-  // CFG-001(2026-06-22): 핵심 시크릿 누락 조기 경보(warn-only, 부팅 미차단).
+  // 핵심 시크릿 누락 조기 경보(warn-only, 부팅 미차단).
   if ((process.env.NODE_ENV || 'development') === 'production') {
     for (const key of ['DATABASE_PASSWORD', 'WORKER_API_KEY']) {
       if (!process.env[key]) {
@@ -51,7 +51,7 @@ async function bootstrap() {
     }
   }
 
-  // OPS-S4-N2: 기능 플래그 유효값 스냅샷(boolean 만, env 원문 미출력). 부팅 미차단.
+  // 기능 플래그 유효값 스냅샷(boolean 만, env 원문 미출력). 부팅 미차단.
   let flags: WorkerFeatureFlagSnapshot | undefined;
   try {
     flags = buildWorkerFeatureFlagSnapshot();

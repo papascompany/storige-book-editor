@@ -1,20 +1,20 @@
 /**
- * G-E (2026-07-14) — 단일(비-spread) 완료 PDF 방향 정합 헬퍼 단위 테스트.
+ * 단일(비-spread) 완료 PDF 방향 정합 헬퍼 단위 테스트.
  *
  * resolveSingleModePdfSizeMm 은 호스트 전달값(options.size)이 templateSet 판형(오리엔트된
  * 판형 권위)과 **정확히 W↔H 스왑 관계**(각 축 |Δ|<0.01mm)일 때만 templateSet 방향으로
  * 정규화하고, 그 외(일치/무관 불일치/정사각/size 미전달)는 현행 그대로(원본 보존) 반환한다.
  *
- * A안 계약: 워커 validatePageSize 는 무스왑 유지(스왑 마스킹 + fix-bleed innerfit 축소 사고
+ * 계약: 워커 validatePageSize 는 무스왑 유지(스왑 마스킹 + fix-bleed innerfit 축소 사고
  * 방지) — 방향 정합은 이 기준값 유도측에서 확정. 워커측 잠금은
  * apps/worker/src/services/pdf-validator.service.spec.ts 의
- * "내지 판형 규격표 (2026-07-14 오너 스펙)" describe 가 담당한다.
+ * "내지 판형 규격표" describe 가 담당한다.
  */
 import { describe, it, expect } from 'vitest'
 import { resolveSingleModePdfSizeMm } from './embed'
 import { detectOrientationMismatch } from './utils/orientationGuard'
 
-describe('resolveSingleModePdfSizeMm (G-E 단일모드 PDF 방향 정합)', () => {
+describe('resolveSingleModePdfSizeMm (단일모드 PDF 방향 정합)', () => {
   it('스왑 관계 → 정규화: 전달값이 templateSet 판형의 정확한 W↔H 스왑이면 templateSet 방향으로 스왑', () => {
     // 세로 templateSet(A4 210×297) + 가로로 뒤집힌 전달값(297×210) → 세로로 정규화
     const portrait = resolveSingleModePdfSizeMm(
@@ -30,7 +30,7 @@ describe('resolveSingleModePdfSizeMm (G-E 단일모드 PDF 방향 정합)', () =
     )
     expect(landscape).toEqual({ width: 297, height: 210, swapped: true })
 
-    // 오너 규격표 나머지도 동일 (B5/46배판/16절/B6)
+    // 규격표 나머지도 동일 (B5/46배판/16절/B6)
     for (const [w, h] of [
       [182, 257],
       [188, 257],
@@ -104,7 +104,7 @@ describe('resolveSingleModePdfSizeMm (G-E 단일모드 PDF 방향 정합)', () =
   })
 
   it('의미 정합: 정규화(swapped=true)가 일어나는 케이스는 항상 detectOrientationMismatch 도 불일치를 보고한다', () => {
-    // 헬퍼의 스왑 판정은 기존 방향 가드(2026-07-09)가 경고하는 케이스의 부분집합이어야 한다
+    // 헬퍼의 스왑 판정은 기존 방향 가드가 경고하는 케이스의 부분집합이어야 한다
     const cases: Array<[{ width: number; height: number }, { width: number; height: number }]> = [
       [{ width: 297, height: 210 }, { width: 210, height: 297 }],
       [{ width: 257, height: 182 }, { width: 182, height: 257 }],

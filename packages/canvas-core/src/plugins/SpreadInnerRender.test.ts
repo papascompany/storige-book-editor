@@ -1,4 +1,4 @@
-// SpreadPlugin 내지(inner) 2-up 펼침면 렌더 단위 테스트 (O-2, 2026-06-24).
+// SpreadPlugin 내지(inner) 2-up 펼침면 렌더 단위 테스트.
 //
 // 검증 대상: regionScope:'inner' + innerSpec 으로 생성된 SpreadPlugin 의 init() →
 //   initInner() 경로가
@@ -9,7 +9,7 @@
 //   를 캔버스에 추가하고, getContentOrigin/getInnerLayout 이 펼침면 trim 중앙원점/2-region 을
 //   반환하며, resizeSpine 이 내지에서 no-op(throw 없음)임을 고정한다.
 //
-// R1 가드(byte-identical): cover 경로(regionScope 미지정)는 거터를 그리지 않음을 회귀로 고정.
+// 회귀 가드(byte-identical): cover 경로(regionScope 미지정)는 거터를 그리지 않음을 회귀로 고정.
 //
 // fabric 은 node 환경에서 native canvas 바인딩을 요구해 로드 불가 → 최소 mock.
 // (reposition 테스트는 Point 만 mock 했으나, 본 테스트는 add/remove 캡처 + Line/Rect/Text 를 추가한다.)
@@ -240,7 +240,7 @@ describe('SpreadPlugin inner(2-up) 렌더 — initInner', () => {
     expect(p.getInnerLayout()).not.toBeNull()
   })
 
-  it('(R1 회귀) cover 모드(regionScope 미지정): 거터를 그리지 않음 — 표지 경로 불변', () => {
+  it('(회귀) cover 모드(regionScope 미지정): 거터를 그리지 않음 — 표지 경로 불변', () => {
     const { added, canvas, editor } = makeCanvasAndEditor()
     const p: any = new (SpreadPlugin as any)(canvas, editor, { spec: coverSpec })
     p.init()

@@ -95,9 +95,9 @@ describe('PdfSynthesizerService', () => {
       });
     });
 
-    // P0-6(2026-06-22): try-finally 자기-정리 — 예외 시 source 임시파일 누수 방어,
+    // try-finally 자기-정리 — 예외 시 source 임시파일 누수 방어,
     // 정상 경로는 산출물 보존(반환계약 불변).
-    describe('임시파일 누수 방어 (P0-6 try-finally)', () => {
+    describe('임시파일 누수 방어 (try-finally)', () => {
       it('합성 중 예외가 나면 다운로드된 source 임시파일을 정리해야 한다', async () => {
         const created: string[] = [];
         jest
@@ -153,7 +153,7 @@ describe('PdfSynthesizerService', () => {
     });
   });
 
-  describe('validateSpreadSnapshot — 책등 0mm 유효 (S7)', () => {
+  describe('validateSpreadSnapshot — 책등 0mm 유효', () => {
     const spread = {
       spec: { coverWidthMm: 210, coverHeightMm: 297, spineWidthMm: 0 },
       totalWidthMm: 420,

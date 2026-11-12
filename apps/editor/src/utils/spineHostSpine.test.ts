@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { recalculateSpineWidth, initSpineConfig } from './spineCalculator'
 
 /**
- * R-195 — 호스트(주문) 지정 책등 폭의 spineCalculator 스프레드 경로 통합 동작.
+ * 호스트(주문) 지정 책등 폭의 spineCalculator 스프레드 경로 통합 동작.
  *
  * 모든 책등 트리거(초기 로드 12단계 / 내지 추가·삭제 debounce·즉시)는
  * recalculateSpineWidth → recalculateSpineWidthSpreadMode 로 수렴한다. 초기 로드만
@@ -244,7 +244,7 @@ describe('호스트 책등 — flat-spread / 내지 펼침면은 기존 가드 �
   })
 })
 
-describe("S5: 스프레드 경로 URL 폴백 정규화 ('-' / snake_case)", () => {
+describe("스프레드 경로 URL 폴백 정규화 ('-' / snake_case)", () => {
   it("URL paperType='-' 는 미지정 → 기본값, snake binding_type 수용", async () => {
     window.history.replaceState(null, '', '/embed?paperType=-&binding_type=%20saddle%20')
     setupSpread(21)

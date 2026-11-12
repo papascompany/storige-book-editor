@@ -64,11 +64,11 @@ import { selectSingleModePdfCanvases } from './utils/singleModePdfCanvases'
 import { templatesApi, editSessionsApi, filesApi, apiClient, type EditSessionResponse, type TemplateSet } from './api'
 import { core, ServicePlugin } from '@storige/canvas-core'
 import { summarizeProductProfile, type PhotobookPricing, type PhotoItem, type ProductCompleteSummary, type TemplateSetCoverMeta } from '@storige/types'
-// P1 캘린더 (2026-10-17): 세션 메타 저장/복원·그리드 재합성 (프로파일 null 이면 전부 no-op)
+// 캘린더: 세션 메타 저장/복원·그리드 재합성 (프로파일 null 이면 전부 no-op)
 import { rehydrateCalendarGrids } from './utils/calendarRehydrate'
 import { calendarSessionMetadataFields, rehydrateAllCalendarGrids, restoreCalendarSessionMeta } from './utils/calendarRehydrateAll'
 import { saveNowRegistry } from './utils/saveNowRegistry'
-// P2-d 사진인화 (2026-10-19): 세션 metadata.items 저장/복원·사진틀 옵션 재적용 (프로파일 null 이면 전부 no-op)
+// 사진인화: 세션 metadata.items 저장/복원·사진틀 옵션 재적용 (프로파일 null 이면 전부 no-op)
 import { rehydratePhotoPrint } from './utils/photoPrintRehydrate'
 import {
   applyAllPhotoPrint,
@@ -194,7 +194,7 @@ function withWatchdog<T>(p: Promise<T>, ms: number, label: string): Promise<T> {
 }
 
 // ============================================================
-// G-E (2026-07-14): 단일모드 완료 PDF 방향 정합 헬퍼
+// 단일모드 완료 PDF 방향 정합 헬퍼
 // ============================================================
 
 /** '정확히 W↔H 스왑'으로 인정하는 축별 오차(mm) — 이보다 큰 차이는 스왑이 아닌 별개 치수로 본다. */
@@ -208,7 +208,7 @@ export interface SingleModePdfSizeMm {
 }
 
 /**
- * 단일(비-spread) 완료 PDF 의 페이지 치수 결정 (G-E, 2026-07-14).
+ * 단일(비-spread) 완료 PDF 의 페이지 치수 결정.
  *
  * 기본은 현행 그대로 — 호스트 전달값(options.size)을 각 축 독립 `|| 210 / || 297`(A4) 폴백으로
  * 사용한다. 단, templateSet(오리엔트된 판형 권위)이 존재하고 **비정사각**이며, 전달값이
@@ -233,7 +233,7 @@ export function resolveSingleModePdfSizeMm(
   requestedSize: OrientationSize | null | undefined,
   templateSize: OrientationSize | null | undefined,
 ): SingleModePdfSizeMm {
-  // 현행(:1636) 폴백 시맨틱 보존: 각 축 독립 `|| 210 / || 297` (0/NaN 도 폴백)
+  // 폴백 시맨틱: 각 축 독립 `|| 210 / || 297` (0/NaN 도 폴백)
   const width = requestedSize?.width || 210
   const height = requestedSize?.height || 297
 
@@ -267,9 +267,9 @@ export function resolveSingleModePdfSizeMm(
 // ============================================================
 
 export interface EditorConfig {
-  /** 편집 모드 (bookmoa 연동용) */
+  /** 편집 모드 (외부 쇼핑몰 연동용) */
   mode?: 'cover' | 'content' | 'both' | 'template'
-  /** 주문 번호 (bookmoa 연동용) */
+  /** 주문 번호 (외부 쇼핑몰 연동용) */
   orderSeqno?: number
   /** 템플릿셋 ID (필수) */
   templateSetId: string
@@ -286,16 +286,16 @@ export interface EditorConfig {
    * 게스트 조회 경로를 먼저 쓰고, 열리지 않으면 현재 탭에 기억된 토큰, 그다음 기존 조회 경로 순으로 연다.
    */
   guestToken?: string
-  /** 표지 파일 ID (bookmoa 연동용) */
+  /** 표지 파일 ID (외부 쇼핑몰 연동용) */
   coverFileId?: string
-  /** 내지 파일 ID (bookmoa 연동용) */
+  /** 내지 파일 ID (외부 쇼핑몰 연동용) */
   contentFileId?: string
   /** API 기본 URL */
   apiBaseUrl?: string
-  /** Worker 완료 시 콜백 URL (bookmoa 웹훅 수신용) */
+  /** Worker 완료 시 콜백 URL (연동 사이트 웹훅 수신용) */
   callbackUrl?: string
   /**
-   * 부모 페이지 origin (Phase A-1, 2026-05-16).
+   * 부모 페이지 origin.
    *
    * iframe 으로 임베드되는 경우 postMessage 의 targetOrigin 으로 사용된다.
    * 보안 요구: 부모-자식 통신이 필요한 모든 inline embed 배포에서는 반드시 명시.
@@ -312,7 +312,7 @@ export interface EditorConfig {
     paperType?: string
     /** 제본 방식 코드 (책등 계산용) */
     bindingType?: string
-    /** 부수(수량) — metadata.orderOptions 스냅샷용 (2026-06-11) */
+    /** 부수(수량) — metadata.orderOptions 스냅샷용 */
     quantity?: number
     /** 인쇄제목(작업 제목) — metadata.orderOptions 스냅샷용 */
     title?: string
@@ -327,7 +327,7 @@ export interface EditorConfig {
     /** 종이 두께 */
     paperThickness?: number
     /**
-     * @deprecated 2026-08-03 — 선언만 있고 소비처가 0건인 죽은 필드였다(레거시 IIFE 하네스 호환용 유지).
+     * @deprecated 소비처가 없는 필드다(레거시 IIFE 하네스 호환용으로만 유지).
      * 날개는 아래 wingEnabled/wingWidthMm 로 전달한다(SpreadSpec 은 좌우 동일 폭 단일 모델).
      */
     coverWing?: { front: number; back: number }
@@ -336,14 +336,14 @@ export interface EditorConfig {
     /** 표지 날개 한 쪽 폭(mm) — 주문(상품) 옵션. 미전달 시 템플릿 spec 값 사용 */
     wingWidthMm?: number
     /**
-     * R-195: 주문 책등 폭(mm, 유한수 ≥ 0). 스프레드 표지(full/flat-spine)에서 초기 책등으로 적용되고
+     * 주문 책등 폭(mm, 유한수 ≥ 0). 스프레드 표지(full/flat-spine)에서 초기 책등으로 적용되고
      * 초기 책등 API 계산을 생략한다. paperType·bindingType 이 모두 있고 > 0 이면 편집 중 페이지 증감 시
      * 수식 재계산, 그 외(코드 누락 또는 0)는 값 고정. 미전달이면 기존 수식 경로 그대로.
      * flat-spread·내지 전용 펼침면·낱장(비스프레드) 세트에서는 무시된다.
      */
     spineWidthMm?: number
     /**
-     * R-196 host page limits (2026-09-29): 상품별 내지 쪽수 한도 — 물리 내지 페이지 기준
+     * host page limits: 상품별 내지 쪽수 한도 — 물리 내지 페이지 기준
      * (펼침면 2-up 내지 세트는 캔버스 1장 = 2쪽).
      *
      * - 유효값은 템플릿셋 `pageCountRange` / `pageStep` 보다 우선한다(시드 보정, 추가/삭제 상·하한,
@@ -359,14 +359,14 @@ export interface EditorConfig {
      *   `/embed?sessionId=` 단독 재편집에서 복원한다.
      */
     pageCountMin?: number
-    /** R-196: 상품별 내지 최대 쪽수(물리 페이지, 정수 1~500). 규약은 pageCountMin 참조. */
+    /** 상품별 내지 최대 쪽수(물리 페이지, 정수 1~500). 규약은 pageCountMin 참조. */
     pageCountMax?: number
-    /** R-196: 상품별 내지 쪽수 배수(0부터 센 N의 배수, 정수 1~500 — 1 = 배수 제약 없음). 규약은 pageCountMin 참조. */
+    /** 상품별 내지 쪽수 배수(0부터 센 N의 배수, 정수 1~500 — 1 = 배수 제약 없음). 규약은 pageCountMin 참조. */
     pageStep?: number
     /** 종이 정보 */
     paper?: { type: string; weight: number }
     /**
-     * 내지 PDF 첨부 진입점 노출 (W1-G2, 2026-08-13).
+     * 내지 PDF 첨부 진입점 노출.
      *
      * book 모드 templateSet 이면 **기본 노출(true)** — 고객이 직접 만든 내지 PDF 를 첨부하면
      * 편집기에 즉시 앉혀 보여준다(표시전용: 인쇄는 첨부 원본 PDF 그대로).
@@ -383,14 +383,14 @@ export interface EditorConfig {
   /** 저장 완료 콜백 */
   onSave?: (result: SaveResult) => void
   /**
-   * 준비 완료 콜백. W8-2b(FREEZE v1.16, additive): 실제로 연 템플릿셋 정보를 선택 인자로 넘긴다.
+   * 준비 완료 콜백(FREEZE v1.16, additive): 실제로 연 템플릿셋 정보를 선택 인자로 넘긴다.
    * IIFE 번들(window.StorigeEditor)은 번들 재빌드(build:embed:prod) 시점부터 인자가 실린다.
    */
   onReady?: (info?: EditorReadyInfo) => void
 }
 
 /**
- * W8-2b 재편집 템플릿셋 불일치(FREEZE v1.16, additive).
+ * 재편집 템플릿셋 불일치(FREEZE v1.16, additive).
  * 재편집(세션 있음)에서 호스트가 넘긴 templateSetId(requested)와 세션 템플릿셋(session)이 다를 때만 싣는다.
  *   - resolution 'session'  : 세션 세트로 열었다(기본 — 서버 판정 기준과 같다)
  *   - resolution 'requested': 세션 세트 조회가 HTTP 404 라 호스트 세트로 열었다(reason 'SESSION_SET_UNAVAILABLE')
@@ -439,8 +439,8 @@ export interface EditorResult {
   orderSeqno?: number
   editCode?: string
   /**
-   * 게스트 세션 완료 시 true — 로그인 유도 신호 (STALE-CLOSURE-001).
-   * 이 값이 true이면 guestToken도 함께 포함됨. bookmoa는 editor.complete.needsAuth로 분기.
+   * 게스트 세션 완료 시 true — 로그인 유도 신호.
+   * 이 값이 true이면 guestToken도 함께 포함됨. 호스트는 editor.complete.needsAuth로 분기한다.
    */
   needsAuth?: boolean
   /** 게스트 세션 토큰 — needsAuth=true일 때만 포함 */
@@ -450,42 +450,42 @@ export interface EditorResult {
     final: number
   }
   /**
-   * 편집 완료 시점의 현재 총 페이지 수 (2026-06-24, 포토북 페이지 가변 가격용).
+   * 편집 완료 시점의 현재 총 페이지 수 (포토북 페이지 가변 가격용).
    * 라이브 캔버스 페이지 수(allCanvas.length). pages.final 과 동일 값을 가지나,
    * 파트너 장바구니가 가/감 가격 계산에 사용하는 명시 필드로 별도 노출(additive).
    */
   pageCount?: number
   /**
-   * 포토북 페이지 가변 가격 메타 (2026-06-24). 템플릿셋에 pricing 이 설정된 경우에만 포함.
+   * 포토북 페이지 가변 가격 메타. 템플릿셋에 pricing 이 설정된 경우에만 포함.
    * storige 는 가격을 계산하지 않는다 — 이 메타 + pageCount 로 **파트너 장바구니가 가격을 계산**.
    * 미설정(BOOK/LEAFLET 등)이면 생략(기존 동작 비파괴).
    */
   pricing?: PhotobookPricing
   /**
-   * S2 (2026-07-04): 편집 완료 시점의 캔버스 규격(mm, additive).
+   * 편집 완료 시점의 캔버스 규격(mm, additive).
    * 파트너가 주문 옵션 규격과의 정합 검증에 사용할 수 있는 참고값 — 규격의 권위는
-   * 여전히 상품 옵션이며(embed 는 S1 로 편집기 내 규격 변경 차단), 이 값은 감사/검증용.
+   * 여전히 상품 옵션이며(embed 는 편집기 내 규격 변경을 차단한다), 이 값은 감사/검증용.
    */
   size?: { width: number; height: number; unit: 'mm' }
   /**
-   * R-195 (additive): 완료 시점에 적용된 책등 폭(mm, 0.1 반올림). 스프레드 책(표지 포함)만 포함.
+   * additive: 완료 시점에 적용된 책등 폭(mm, 0.1 반올림). 스프레드 책(표지 포함)만 포함.
    * 게스트 완료 경로에는 싣지 않는다.
    */
   spineWidthMm?: number
   /**
-   * W8-2b (additive): 이번 편집을 앉힌 템플릿셋. 재편집이면 세션 세트와 같고, 세션 세트 조회가
+   * additive: 이번 편집을 앉힌 템플릿셋. 재편집이면 세션 세트와 같고, 세션 세트 조회가
    * 404 라 호스트 세트로 연 경우에만 그 세트다. 샘플 폴백으로 연 편집은 생략한다.
    */
   templateSetId?: string
-  /** W8-2b (additive): 재편집 템플릿셋 불일치 — editor.ready 와 같은 값. 불일치가 없으면 생략 */
+  /** additive: 재편집 템플릿셋 불일치 — editor.ready 와 같은 값. 불일치가 없으면 생략 */
   templateSetMismatch?: TemplateSetMismatch
   /**
-   * ADDITIVE 2026-10-17 P1 캘린더: 템플릿셋 productProfile 이 있는 세트의 상품 요약
+   * ADDITIVE 캘린더: 템플릿셋 productProfile 이 있는 세트의 상품 요약
    * (`summarizeProductProfile`). NULL 프로파일(legacy) 세트·게스트 완료 경로에는 생략한다.
    */
   product?: ProductCompleteSummary
   /**
-   * ADDITIVE 2026-10-19 P2-d 사진인화: kind 'photo-print' 세트에서만 사진별 항목(매수·테두리·맞춤·마감·촬영일·흑백,
+   * ADDITIVE 사진인화: kind 'photo-print' 세트에서만 사진별 항목(매수·테두리·맞춤·마감·촬영일·흑백,
    * 캔버스 수와 동기화한 완전형 `PhotoItem[]`). 그 밖의 세트·게스트 완료 경로에는 생략한다.
    */
   items?: PhotoItem[]
@@ -507,8 +507,8 @@ export interface SaveResult {
 }
 
 /**
- * D-3 (2026-07-06): `editor.pricingChange` payload — 가격 영향 변경(페이지 증감 등)의 실시간 통지.
- * 가격 계산 주체는 **호스트 서비스**(D-3 오너 결정) — 편집기는 변경된 값만 전달한다.
+ * `editor.pricingChange` payload — 가격 영향 변경(페이지 증감 등)의 실시간 통지.
+ * 가격 계산 주체는 **호스트 서비스** — 편집기는 변경된 값만 전달한다.
  * 발신 조건(보수 기본): 초기화 완료 후 + 회원 세션 + 템플릿셋 pricing 설정 시에만.
  */
 export interface PricingChangePayload {
@@ -520,8 +520,8 @@ export interface PricingChangePayload {
   /** 커버 종류 코드 (templateSet.coverType 설정 시에만, string 코드 — 고정 enum 아님) */
   coverType?: string
   /**
-   * R-195 (additive): 발신 시점에 적용돼 있는 책등 폭(mm, 소수 1자리, 스프레드 책만).
-   * S9 (2026-09-28): 페이지 증감 직후의 책등 재계산(debounce + API)이 발신보다 늦게 끝나 적용
+   * additive: 발신 시점에 적용돼 있는 책등 폭(mm, 소수 1자리, 스프레드 책만).
+   * 페이지 증감 직후의 책등 재계산(debounce + API)이 발신보다 늦게 끝나 적용
    * 책등 폭이 바뀌면 같은 형태의 payload 를 1회 더 발신한다 — 가장 마지막 이벤트의 값이 최종값.
    */
   spineWidthMm?: number
@@ -560,14 +560,14 @@ interface EmbeddedEditorProps extends EditorConfig {
 }
 
 // ============================================================
-// postMessage Standard (Phase A-1, 2026-05-16)
+// postMessage Standard
 // ============================================================
 // 외부 사이트가 Storige Editor 를 iframe 으로 임베드하는 경우의 부모↔자식 통신 규약.
 // 자세한 사양: docs/PHASE_0_CONTRACT_DECISIONS_2026-05-16.md §4
 
 export const EMBED_MESSAGE_SOURCE = 'storige-editor'
 export const EMBED_MESSAGE_VERSION = '1'
-/** 호스트(bookmoa 등)가 편집기로 보내는 명령 메시지의 source 식별자 */
+/** 호스트(파트너 사이트 등)가 편집기로 보내는 명령 메시지의 source 식별자 */
 export const EMBED_HOST_MESSAGE_SOURCE = 'storige-host'
 
 export type EmbedMessageEvent =
@@ -580,10 +580,10 @@ export type EmbedMessageEvent =
   // 호스트 명령(getState/saveNow)에 대한 응답
   | 'editor.state'
   | 'editor.saved'
-  // D-3 (2026-07-06, additive — needAuth 선례): 페이지 증감 등 가격 영향 변경 실시간 통지.
+  // additive — needAuth 선례: 페이지 증감 등 가격 영향 변경 실시간 통지.
   // 수신부는 event 스위치로 미지 이벤트를 무시하므로 비파괴. 게스트 세션·pricing 미설정 셋 미발신.
   | 'editor.pricingChange'
-  // W1-G2 (2026-08-13, additive): 고객이 내지 PDF 를 첨부해 편집기에 앉힌 시점 통지.
+  // additive: 고객이 내지 PDF 를 첨부해 편집기에 앉힌 시점 통지.
   // payload = { sessionId, contentPdfFileId, contentPdfPageCount, mode:'underlay' }.
   // 호스트가 주문 페이지수/가격을 갱신하거나 첨부 사실을 표시하는 데 쓸 수 있다(미수신=무해).
   | 'editor.contentPdfAttached'
@@ -614,16 +614,15 @@ export interface EmbedMessageEnvelope<T = unknown> {
  *
  * 통과 조건 3종:
  *   1. `e.origin === parentOrigin`            (기존)
- *   2. `e.source === window.parent`           (**D14, 2026-07-28 additive 봉합**)
+ *   2. `e.source === window.parent`           (**additive**)
  *   3. 봉투 `data.source === 'storige-host'`  (기존)
  *
- * D14 배경: 기존 게이트는 1·3 뿐이라 parentOrigin 과 **같은 출처의 다른 프레임/윈도우**
- * (호스트 XSS·오픈리다이렉트·호스트가 허용한 서드파티 iframe)가 명령을 주입할 수 있었다 —
- * `saveNow` 강제 트리거, `setBackGuard{enabled:false}` 로 이탈 가드 해제.
- * 호스트측 SDK(`parseEditorMessage`)는 expectedSource 필수화로 이미 대칭 방어를 마쳤고
- * 편집기측만 비대칭이었다.
+ * 2번 조건은 parentOrigin 과 **같은 출처의 다른 프레임/윈도우**가 보낸 메시지를 거부한다 —
+ * 발신 윈도우가 부모(window.parent)가 아니면 어떤 명령도 처리하지 않는다
+ * (`saveNow`, `setBackGuard` 등 전부).
+ * 호스트측 SDK(`parseEditorMessage`)의 expectedSource 검사와 대칭이다.
  *
- * 既노출 발신자 호환(수신 3종은 GUIDE 에 이미 산문으로 노출됨 → 사후 추인):
+ * 기존 발신자 호환(수신 3종은 GUIDE 에 서술된 방식 그대로 동작한다):
  * - iframe 임베드: 부모가 `iframe.contentWindow.postMessage(...)` 로 보내면 발신 윈도우가
  *   곧 `window.parent` 이므로 **통과**. GUIDE 서술대로 명령을 보내온 파트너는 영향 0.
  * - IIFE 인라인 마운트(top-level, iframe 아님): `window.parent === window` 이므로 호스트가
@@ -641,7 +640,7 @@ export function isTrustedHostCommandEvent(
   if (!parentOrigin) return false
   if (typeof window === 'undefined') return false
   if (e.origin !== parentOrigin) return false
-  // D14: 발신 윈도우가 자신의 부모인지 대조 (top-level 이면 window.parent === window).
+  // 발신 윈도우가 자신의 부모인지 대조 (top-level 이면 window.parent === window).
   if (e.source !== window.parent) return false
   const data = e.data as EmbedHostCommandEnvelope | undefined
   if (!data || data.source !== EMBED_HOST_MESSAGE_SOURCE) return false
@@ -682,11 +681,11 @@ function postToParent<T>(
 }
 
 /**
- * 샘플 템플릿셋 폴백 허용 여부 (2026-06-11).
+ * 샘플 템플릿셋 폴백 허용 여부.
  *
- * 과거: 템플릿셋 로드 실패 시 사용자 모르게 'sample-8x8-book-24p' 로 무음 바꿔치기 →
- * 고객이 잘못된 지오메트리(판형/책등) 위에서 편집·주문하는 사고 위험.
- * 현재: DEV 빌드 또는 URL 파라미터 `allowSampleFallback=1` 일 때만 폴백 허용.
+ * 템플릿셋 로드 실패 시 사용자 모르게 'sample-8x8-book-24p' 로 바꿔 열면
+ * 고객이 잘못된 지오메트리(판형/책등) 위에서 편집·주문할 수 있다.
+ * 그래서 DEV 빌드 또는 URL 파라미터 `allowSampleFallback=1` 일 때만 폴백 허용.
  * 프로덕션 기본은 폴백 없이 오류 화면 + editor.error(TEMPLATE_SET_NOT_FOUND) 발신.
  */
 function isSampleFallbackAllowed(): boolean {
@@ -720,7 +719,7 @@ export interface EditorInstanceMethods {
 }
 
 /**
- * W8-2b: 세션 세트 조회 실패 뒤 호스트 세트로 1회 다시 시도할지 — HTTP 404 만.
+ * 세션 세트 조회 실패 뒤 호스트 세트로 1회 다시 시도할지 — HTTP 404 만.
  * 그 밖의 4xx·HTTP 가 아닌 실패(빈 응답 등)·연결·5xx·408·429·401 은 지오메트리 기준을 바꾸지 않는다.
  */
 function isTemplateSetNotFoundResponse(err: unknown): boolean {
@@ -728,7 +727,7 @@ function isTemplateSetNotFoundResponse(err: unknown): boolean {
   return f.kind === 'client' && f.status === 404
 }
 
-/** W8-2b: editor.complete 에 싣는 템플릿셋 키(값이 있을 때만) */
+/** editor.complete 에 싣는 템플릿셋 키(값이 있을 때만) */
 function templateSetResultFields(
   loadedTemplateSetId: string | null,
   mismatch: TemplateSetMismatch | null,
@@ -740,14 +739,14 @@ function templateSetResultFields(
 }
 
 /**
- * ADDITIVE 2026-10-17 P1 캘린더: editor.complete 에 싣는 `product` 키 — settings.productProfile 이
+ * ADDITIVE 캘린더: editor.complete 에 싣는 `product` 키 — settings.productProfile 이
  * 있을 때만(`summarizeProductProfile`). NULL 프로파일이면 `{}` 라 기존 result 키 집합이 바뀌지 않는다.
  * `pageCount`·`files`·`pages` 산식과는 독립이다.
  */
 function productResultFields(canvasCount: number): Pick<EditorResult, 'product' | 'items'> {
   const profile = useSettingsStore.getState().productProfile
   if (!profile) return {}
-  // P2-d 사진인화: kind 'photo-print' 면 `items` 동봉(그 밖의 프로파일은 photoPrintResultFields 가 {} — 키 집합 불변)
+  // 사진인화: kind 'photo-print' 면 `items` 동봉(그 밖의 프로파일은 photoPrintResultFields 가 {} — 키 집합 불변)
   return { product: summarizeProductProfile(profile, canvasCount), ...photoPrintResultFields(canvasCount) }
 }
 
@@ -776,7 +775,7 @@ function EmbeddedEditor({
   const canvasContainerRef = useRef<HTMLDivElement>(null)
   const isInitializedRef = useRef(false)
   /**
-   * P1-4 (2026-08-22) 서버 버전 복원 → in-place 재초기화.
+   * 서버 버전 복원 → in-place 재초기화.
    *  - reinitNonce: 메인 초기화 effect 의 유일한 dep. 증가시키면 cleanup(캔버스 dispose+store reset)
    *    후 동일 초기화 경로가 재실행된다(재진입과 동일 = 시드·복원 루프·앉히기·가이드 전부 재사용).
    *  - reinitSessionRef: 재초기화가 사용할 세션(복원 응답). 세션 재조회/재생성 경로를 건너뛴다
@@ -791,22 +790,22 @@ function EmbeddedEditor({
   const reinitPricingBaselineRef = useRef<number | null>(null)
   /** 복원 핸들러가 재초기화 완료/실패를 기다리는 settle 핸들(성공 토스트를 실제 완료 시점에 맞춘다) */
   const reinitSettleRef = useRef<{ resolve: () => void; reject: (e: Error) => void } | null>(null)
-  // 포토북 페이지 가변 가격 메타 (2026-06-24) — 로드된 템플릿셋의 pricing 을 보관해
+  // 포토북 페이지 가변 가격 메타 — 로드된 템플릿셋의 pricing 을 보관해
   // editor.complete emit 시 현재 총 pageCount 와 함께 파트너로 전달한다(파트너가 가격 계산).
   // null = 가변 가격 미사용(BOOK/LEAFLET 등). 기존 동작 비파괴.
   const templateSetPricingRef = useRef<PhotobookPricing | null>(null)
-  // D-4 (2026-07-06): 템플릿셋 커버 메타(coverType varchar + coverConfig.caseBind JSON) —
-  // Track 3 이 만드는 optional 필드를 옵셔널 체이닝으로 읽어 보관. null = 미설정(전 경로 기존 동작).
+  // 템플릿셋 커버 메타(coverType varchar + coverConfig.caseBind JSON) —
+  // optional 필드라 옵셔널 체이닝으로 읽어 보관. null = 미설정(전 경로 기존 동작).
   const templateSetCoverMetaRef = useRef<TemplateSetCoverMeta | null>(null)
-  // G-E (2026-07-14): 로드된 templateSet 판형(단일 페이지, mm) — 단일모드 완료 PDF 치수의
+  // 로드된 templateSet 판형(단일 페이지, mm) — 단일모드 완료 PDF 치수의
   // 방향 정합(resolveSingleModePdfSizeMm)에 사용. null = 판형 미보유(현행 폴백 그대로).
   const templateSetSizeRef = useRef<{ width: number; height: number } | null>(null)
   const [screenMode, setScreenMode] = useState<'mobile' | 'tablet' | 'desktop'>('desktop')
   const [isLoading, setIsLoading] = useState(true)
   const [loadingMessage, setLoadingMessage] = useState('에디터를 초기화하는 중...')
-  // B10 (2026-10-25): 편집완료 진행 단계·캔버스 진행 수. null = 편집완료 진행 중 아님(finally 에서 null).
+  // 편집완료 진행 단계·캔버스 진행 수. null = 편집완료 진행 중 아님(finally 에서 null).
   const [finishProgress, setFinishProgress] = useState<FinishProgress | null>(null)
-  // B10: 편집완료 진행 중 beforeunload 경고 — 시작 시 등록, editor.complete / editor.error 발신 직전 해제
+  // 편집완료 진행 중 beforeunload 경고 — 시작 시 등록, editor.complete / editor.error 발신 직전 해제
   // (완료 이벤트를 받은 호스트의 즉시 이동에 경고가 뜨지 않게 동기 해제), finally·언마운트에서도 해제.
   const finishLeaveGuard = useFinishLeaveGuard()
   const [error, setError] = useState<string | null>(null)
@@ -825,24 +824,24 @@ function EmbeddedEditor({
   const authExpiredNotifiedRef = useRef(false)
   const [currentSession, setCurrentSession] = useState<EditSessionResponse | null>(null)
   /**
-   * W8-2b D4: AI 패널의 템플릿셋 전환 차단 — 같은 진입 주소로 다시 열면 기존 세션(세션 세트)으로 열리는 경우.
+   * AI 패널의 템플릿셋 전환 차단 — 같은 진입 주소로 다시 열면 기존 세션(세션 세트)으로 열리는 경우.
    * URL 에 sessionId 가 없는 주문번호 진입(회원 세션 재사용·생성)도 포함한다. 초기화의 세션 확정 단계에서 정한다.
    */
   const [aiTemplateSetSwitchBlocked, setAiTemplateSetSwitchBlocked] = useState<boolean>(false)
   /**
-   * W1-G2(2026-08-13): 내지 PDF 첨부 진입점에 넘길 실효 templateSetId.
+   * 내지 PDF 첨부 진입점에 넘길 실효 templateSetId.
    * 초기화 루프가 확정한 `effectiveTemplateSetId` 중 **폴백이 아닌 경우에만** 채운다
    * (샘플 폴백 위에서 첨부하면 판형이 다른 templateSet 기준으로 검증/변환된다).
    */
   const [attachTemplateSetId, setAttachTemplateSetId] = useState<string | null>(null)
   /**
-   * W8-2b: editor.complete 에 싣는 템플릿셋 — 초기화가 확정한 실효 세트(샘플 폴백이면 null).
+   * editor.complete 에 싣는 템플릿셋 — 초기화가 확정한 실효 세트(샘플 폴백이면 null).
    * 위 attachTemplateSetId 와 같은 규칙(effective === requested)이다.
    */
   const loadedTemplateSetIdRef = useRef<string | null>(null)
-  /** W8-2b: 재편집 템플릿셋 불일치 — editor.complete 에 함께 싣는다(없으면 null) */
+  /** 재편집 템플릿셋 불일치 — editor.complete 에 함께 싣는다(없으면 null) */
   const templateSetMismatchRef = useRef<TemplateSetMismatch | null>(null)
-  /** W8-2b: 템플릿셋 불일치 경고(console·Sentry)를 이미 남긴 세션 id — 세션당 1회 */
+  /** 템플릿셋 불일치 경고(console·Sentry)를 이미 남긴 세션 id — 세션당 1회 */
   const mismatchReportedSessionRef = useRef<Set<string>>(new Set())
   const [showWorkspaceModal, setShowWorkspaceModal] = useState(false)
   // 내부 뒤로가기 가드 on/off. 호스트가 storige.setBackGuard{enabled:false} 로 직접 제어를 가져가면 끈다.
@@ -865,19 +864,19 @@ function EmbeddedEditor({
   // 페이지 네비게이션 위치 (다중 페이지 템플릿셋에서 표지/내지 전환용) — admin EditorView 와 동일 배선
   const navPosition = useResolvedPageNavPosition()
 
-  // T6 (2026-07-13): 컨테이너 크기 변화 → 캔버스 dim 동기화 + 워크스페이스 재센터링.
-  // 기존에는 init 시 1회 setDimensions 뿐이라 객체 선택(ControlBar mount)·iframe 리사이즈에
-  // 캔버스가 밀린 채 방치됐다 — EditorView 와 동일 훅 배선(iOS Safari 3중 방어 가드 포함).
+  // 컨테이너 크기 변화 → 캔버스 dim 동기화 + 워크스페이스 재센터링.
+  // init 시 1회 setDimensions 만으로는 객체 선택(ControlBar mount)·iframe 리사이즈에
+  // 캔버스가 밀린 채 방치된다 — EditorView 와 동일 훅 배선(iOS Safari 3중 방어 가드 포함).
   useCanvasContainerSizeSync(ready, canvasContainerRef)
-  // §6-3: 스냅 설정 배선 — /embed 도 EditorView 와 동형(부재 시 팝오버 무반응 방지)
+  // 스냅 설정 배선 — /embed 도 EditorView 와 동형(부재 시 팝오버 무반응 방지)
   useSnapSettingsSync(ready)
-  // F4 잔여(2026-08-09): 재단/안전영역 경고 toast — EditorView 와 대칭 배선.
+  // 재단/안전영역 경고 toast — EditorView 와 대칭 배선.
   // 종전에는 SafeZoneWarningPlugin 의 주황 오버레이만 뜨고(canvas-core 레벨) 문구 안내가
   // 없어, 파트너 정본 경로(/embed)의 고객이 침범 사실을 알기 어려웠다. 순수 화면 경고 —
   // 저장/출력 무영향, 훅 가드는 ready/editor 뿐이라 embed 에서 그대로 성립.
   useObjectOutOfTrimToast(ready)
   useSafeZoneWarningToast(ready)
-  // P2-d 사진인화 (D5/serialization-6): undo/redo 완료·채운 사진 삭제 뒤 PhotoPrintPlugin.apply 재호출(date-overlay·흑백·clip 창
+  // 사진인화: undo/redo 완료·채운 사진 삭제 뒤 PhotoPrintPlugin.apply 재호출(date-overlay·흑백·clip 창
   // 자가 복구) — kind 'photo-print' 세트에서만 캔버스 이벤트를 바인딩한다(그 밖의 세트는 리스너 자체를 붙이지 않는다).
   const photoPrintCanvases = useAppStore((s) => s.allCanvas)
   const isPhotoPrintSet = useSettingsStore((s) => s.productProfile?.kind === 'photo-print')
@@ -885,7 +884,7 @@ function EmbeddedEditor({
     if (!isPhotoPrintSet || photoPrintCanvases.length === 0) return undefined
     return bindPhotoPrintCanvasEvents(photoPrintCanvases)
   }, [isPhotoPrintSet, photoPrintCanvases])
-  // R8: 배치 이미지 유효 DPI(<150) 경고 toast — EditorView 와 대칭 배선 (embed 누락=F4 사고 전례)
+  // 배치 이미지 유효 DPI(<150) 경고 toast — EditorView 와 대칭 배선 (embed 에서 빠지면 경고가 뜨지 않는다)
   useImageLowDpiToast(ready)
   // 미등록 폰트 → 기본 폰트 대체 안내 toast — EditorView 와 대칭 배선 (FontPlugin fontSubstituted 이벤트 브리지)
   useFontSubstitutionToast(ready)
@@ -909,13 +908,13 @@ function EmbeddedEditor({
         console.error('[EmbeddedEditor] Auto-save error:', describeError(error))
         // Don't call onError for auto-save failures to avoid disrupting user flow
       },
-      // 복원 완료 전 dirty 마킹 차단 — 무편집 자동저장의 지오메트리 오염 방지 (2026-06-12)
+      // 복원 완료 전 dirty 마킹 차단 — 무편집 자동저장의 지오메트리 오염 방지
       initializedRef: isInitializedRef,
     })
 
   // 브라우저 "뒤로 가기" 데이터 무결성 가드 — 경고 없이 빠져나가 작업 유실되는 것 방지.
   // 변경사항이 있으면 confirm 으로 경고 + 강제 자동저장(flush) 후 이탈, 없으면 그대로 이탈.
-  // P1-4: 재초기화(ready false→true)마다 sentinel 을 재push 하지 않도록 '최초 ready 이후 고정' 값으로 전달.
+  // 재초기화(ready false→true)마다 sentinel 을 재push 하지 않도록 '최초 ready 이후 고정' 값으로 전달.
   const [backGuardArmed, setBackGuardArmed] = useState(false)
   useEffect(() => {
     if (ready) setBackGuardArmed(true)
@@ -953,7 +952,7 @@ function EmbeddedEditor({
     }
   }, [options?.pages])
 
-  // 호스트(bookmoa 등) → 편집기 인바운드 명령 핸들러.
+  // 호스트(파트너 사이트 등) → 편집기 인바운드 명령 핸들러.
   // 호스트가 자체 뒤로가기/이탈 처리를 하려면 이 핸드셰이크로 미저장 여부 확인 + 강제 저장이 가능하다.
   //   · getState     → editor.state { requestId, ready, dirty, sessionId, pageCount?, currentPage? } 응답
   //                    pageCount·currentPage 는 초기화 완료 뒤에만(초기화·변경 이력 복원 중에는 키 없음),
@@ -961,7 +960,7 @@ function EmbeddedEditor({
   //   · saveNow      → 강제 저장 후 editor.saved { ok, error? } 응답
   //   · setBackGuard → { enabled } 로 편집기 내부 뒤로가기 가드 on/off (호스트가 제어 가져갈 때 off)
   // 보안: parentOrigin 일치 + 발신 윈도우가 부모(window.parent) + 봉투 source==='storige-host' 만 처리.
-  //       (D14 — e.source 대조로 같은 출처 다른 프레임의 명령 주입 차단. isTrustedHostCommandEvent 주석 참조)
+  //       (e.source 대조로 같은 출처 다른 프레임이 보낸 명령은 거부. isTrustedHostCommandEvent 주석 참조)
   useEffect(() => {
     if (!parentOrigin || typeof window === 'undefined') return
     const onMessage = (e: MessageEvent) => {
@@ -986,7 +985,7 @@ function EmbeddedEditor({
         case 'saveNow':
           Promise.resolve()
             .then(() => saveNow())
-            // P1-4: saveNow 가 false 면(재초기화 중 거부 등) ok:false 로 정직하게 응답
+            // saveNow 가 false 면(재초기화 중 거부 등) ok:false 로 정직하게 응답
             .then((saved) =>
               postToParent(parentOrigin, 'editor.saved', {
                 requestId,
@@ -1060,7 +1059,7 @@ function EmbeddedEditor({
     let isMounted = true
 
     const initializeEditor = async () => {
-      // P1-5 (2026-08-22): 로드 단계 프로파일 — ready 시점에 1회 요약(콘솔+Sentry info)
+      // 로드 단계 프로파일 — ready 시점에 1회 요약(콘솔+Sentry info)
       const loadProfile = createLoadProfiler()
       // 로드 구간 동안만 전역 슬롯에 등록 — useAppStore.addPage 등 다른 모듈이 sub-lap 을
       // 남길 수 있게 한다(구간 밖에서는 lap() 이 no-op 이라 평상시 비용 0).
@@ -1085,7 +1084,7 @@ function EmbeddedEditor({
 
         // 토큰 우선순위 처리: 파라미터 > localStorage > 에러
         let effectiveToken: string | null = null
-        // P1-4: 재초기화에서는 마운트 시점 prop 토큰으로 localStorage 를 되덮지 않는다
+        // 재초기화에서는 마운트 시점 prop 토큰으로 localStorage 를 되덮지 않는다
         // (사일런트 리프레시로 갱신된 토큰을 만료본으로 교체 → 불필요한 401/리프레시 왕복).
         const isReinit = !!reinitSessionRef.current
         if (token && !(isReinit && getAuthToken())) {
@@ -1110,9 +1109,9 @@ function EmbeddedEditor({
         }
 
         // useAuthStore 에 토큰 주입 → checkAuth(getMe) 로 me 채움(role 비동기 세팅).
-        // ⚠️ 임베드는 종전 localStorage/apiClient 에만 토큰을 넣고 useAuthStore.setToken 을
-        //   호출하지 않아 me=null → useIsCustomer()=false → 라이브러리 에셋 패널(요소/배경/
-        //   프레임)이 isCustomer 게이트로 통째 비어 있었다(2026-06-15 라이브 확인).
+        // ⚠️ localStorage/apiClient 에만 토큰을 넣고 useAuthStore.setToken 을
+        //   호출하지 않으면 me=null → useIsCustomer()=false → 라이브러리 에셋 패널(요소/배경/
+        //   프레임)이 isCustomer 게이트로 통째 빈다.
         //   getMe 는 apiClient 인터셉터(localStorage 토큰)를 타므로 위 effectiveToken 으로
         //   인증되어 me.role='customer'(소문자) 세팅 → normalizeRole 로 isCustomer=true.
         //   refreshToken 은 임베드 자체 키('auth_refresh_token')로 관리하므로 미전달
@@ -1134,17 +1133,17 @@ function EmbeddedEditor({
         // Start initialization session
         const initId = startInitialization()
 
-        // 2. Fetch or create edit session (if bookmoa integration)
-        // 재편집 게이트 완화 (2026-06-11): 과거 `if (orderSeqno && mode)` 게이트 때문에
+        // 2. Fetch or create edit session (if host integration)
+        // 재편집 게이트: `if (orderSeqno && mode)` 로 막으면
         // /embed?sessionId&token 만으로는 세션이 로드되지 않아 빈 템플릿으로 시작하고,
-        // 이후 자동저장이 기존 저장본을 덮어쓸 위험이 있었다.
+        // 이후 자동저장이 기존 저장본을 덮어쓸 위험이 있다.
         // → sessionId 가 있으면 orderSeqno/mode 없이도 세션을 조회·복원하고,
         //   mode/orderSeqno/templateSetId 는 세션에서 도출한다.
         //   (orderSeqno+mode 제공 시 기존 경로 — 주문 검색/생성 폴백 — 동작 불변)
         let editSession: EditSessionResponse | null = null
         // 같은 탭에서 기억한 비회원 초안을 이어 연 경우 그 세션 id 와 사용한 게스트 토큰(기억 갱신용)
         let resumedDraft: { sessionId: string; guestToken: string } | null = null
-        // W8-2b D4: 같은 진입 주소로 다시 열면 이 세션을 다시 찾아 세션 세트로 열리는가(AI 패널 세트 전환 차단 판정).
+        // 같은 진입 주소로 다시 열면 이 세션을 다시 찾아 세션 세트로 열리는가(AI 패널 세트 전환 차단 판정).
         //   sessionId 조회·주문 세션 목록에서 고른 세션·회원 세션 생성 → true(다음 주문 조회가 이 세션을 돌려준다).
         //   비회원 주문 초안 재개·비회원 세션 생성 → false(초안 매핑 키에 templateSetId 가 있어 새 세트면 새 세션).
         //   복원 재초기화 → null(진입 주소가 그대로이므로 앞선 판정을 유지).
@@ -1209,7 +1208,7 @@ function EmbeddedEditor({
           throw rethrown
         }
 
-        // P1-4: 서버 버전 복원 직후 재초기화 — 복원 응답 세션을 그대로 사용(재조회/재생성 금지).
+        // 서버 버전 복원 직후 재초기화 — 복원 응답 세션을 그대로 사용(재조회/재생성 금지).
         const reinitSession = reinitSessionRef.current
         if (reinitSession) {
           reinitSessionRef.current = null
@@ -1228,8 +1227,8 @@ function EmbeddedEditor({
             console.log('[EmbeddedEditor] Existing session loaded:', editSession.id)
             sessionPinsTemplateSet = true
           } catch (err) {
-            // 2026-09-29: 명시 sessionId 조회 실패 시 orderSeqno 검색/신규 생성으로 폴백하지 않는다.
-            // (폴백은 원본이 아닌 빈 세션을 조용히 열어 그대로 주문·합성될 수 있었다.)
+            // 명시 sessionId 조회 실패 시 orderSeqno 검색/신규 생성으로 폴백하지 않는다.
+            // (폴백은 원본이 아닌 빈 세션을 조용히 열어 그대로 주문·합성될 수 있다.)
             // editSessionsApi.get 은 raw axios 호출이라 AxiosError 로 reject → 여기서 ApiError 로 정규화.
             const apiErr: ApiError = axios.isAxiosError(err) ? parseApiError(err) : (err as ApiError)
             const status = apiErr?.status
@@ -1315,12 +1314,12 @@ function EmbeddedEditor({
           } else {
             editSession = orderItem
           }
-          // 주문 세션 목록에서 고른 세션은 같은 주소로 다시 열어도 같은 목록에서 다시 고른다(W8-2b D4)
+          // 주문 세션 목록에서 고른 세션은 같은 주소로 다시 열어도 같은 목록에서 다시 고른다
           if (orderItem) sessionPinsTemplateSet = true
 
           // 기존 세션이 없으면 새로 생성
           if (!editSession) {
-            // 주문 옵션 스냅샷 (2026-06-11): 주문 시점 옵션을 metadata.orderOptions 로 기록.
+            // 주문 옵션 스냅샷: 주문 시점 옵션을 metadata.orderOptions 로 기록.
             // 정의된 값만 포함(undefined 키 제외). 기존 metadata 필드
             // (size/pages/binding/bleed/paperThickness/productId)는 호환을 위해 불변 유지.
             const orderOptionsEntries = Object.entries({
@@ -1331,12 +1330,12 @@ function EmbeddedEditor({
               quantity: options?.quantity,
               title: options?.title,
               productName: options?.productName,
-              // 날개(2026-08-03): 재편집 진입에서 총폭을 복원하려면 주문 시점 값이 필요하다.
+              // 날개: 재편집 진입에서 총폭을 복원하려면 주문 시점 값이 필요하다.
               wingEnabled: options?.wingEnabled,
               wingWidthMm: options?.wingWidthMm,
-              // R-195: 주문 책등 폭 — 재편집(/embed?sessionId 단독) 사다리의 2순위 소스. 0 허용.
+              // 주문 책등 폭 — 재편집(/embed?sessionId 단독) 사다리의 2순위 소스. 0 허용.
               spineWidthMm: asNonNegativeNumber(options?.spineWidthMm),
-              // R-196 host page limits (2026-09-29): 검증을 통과한 호스트 쪽수 한도만 기록 —
+              // host page limits: 검증을 통과한 호스트 쪽수 한도만 기록 —
               // 재편집(/embed?sessionId 단독) 사다리의 2순위 소스. 미전달이면 {} → 메타데이터 불변.
               ...resolveHostPageLimits(options, undefined),
               productId,
@@ -1361,16 +1360,16 @@ function EmbeddedEditor({
                 ...(orderOptionsEntries.length > 0
                   ? { orderOptions: Object.fromEntries(orderOptionsEntries) }
                   : {}),
-                // P1 캘린더: 프로파일 스냅샷 + 캘린더 메타(이 시점엔 보통 템플릿셋 미로드라 {} — 이후 PATCH 가 채운다)
+                // 캘린더: 프로파일 스냅샷 + 캘린더 메타(이 시점엔 보통 템플릿셋 미로드라 {} — 이후 PATCH 가 채운다)
                 ...(calendarSessionMetadataFields().metadata ?? {}),
-                // P2-d 사진인화: 프로파일 스냅샷 + items(같은 규칙 — 사진인화 세트가 아니면 {})
+                // 사진인화: 프로파일 스냅샷 + items(같은 규칙 — 사진인화 세트가 아니면 {})
                 ...(photoPrintSessionMetadataFields().metadata ?? {}),
               },
             }
             try {
               editSession = await editSessionsApi.create(createPayload)
               console.log('[EmbeddedEditor] New session created:', editSession.id)
-              // 회원 세션은 주문에 묶여 다음 주문 조회가 이 세션을 돌려준다(W8-2b D4)
+              // 회원 세션은 주문에 묶여 다음 주문 조회가 이 세션을 돌려준다
               sessionPinsTemplateSet = true
             } catch (createErr) {
               // 회원 세션을 만들 수 없는 토큰(400 MEMBER_REQUIRED·code 없는 400·403 PERMISSION_DENIED)만
@@ -1403,7 +1402,7 @@ function EmbeddedEditor({
             })
           }
           // 재진입 표기 시드 — useSaveStore.lastSavedAt 은 메모리 전용이라 재진입 직후 늘 null 이고,
-          // 히스토리 패널이 '마지막 저장: 기록 없음' 을 표시했다. 서버가 진실을 갖고 있으므로 채운다.
+          // 히스토리 패널이 '마지막 저장: 기록 없음' 을 표시하게 된다. 서버가 진실을 갖고 있으므로 채운다.
           //
           // ⚠️ canvasData 게이트가 필수다 — 방금 생성된 세션은 createPayload 에 canvasData 가 없어
           //    updatedAt == 생성시각이다. 게이트 없이 시드하면 저장한 적 없는 새 세션이
@@ -1421,7 +1420,7 @@ function EmbeddedEditor({
         if (!isMounted) return
 
         // 3. Fetch template set info
-        // W8-2b (FREEZE v1.16): 재편집은 세션 세트(S) 우선, 없으면 호스트 세트(U, URL/props).
+        // FREEZE v1.16: 재편집은 세션 세트(S) 우선, 없으면 호스트 세트(U, URL/props).
         // 서버는 세션 세트 기준으로 검증·임포지션하므로 편집기 지오메트리도 같은 세트로 연다.
         // 세션의 출처(sessionId 조회·주문 검색·게스트 초안·복원 재초기화)는 구분하지 않는다.
         const hostTemplateSetId = templateSetId || ''
@@ -1434,7 +1433,7 @@ function EmbeddedEditor({
             : null
         let showMappingAlert = false
         let fallbackReason = ''
-        // 방향 불일치 가드레일 (2026-07-09): 호스트 주문 규격(width/height)과 로드된 templateSet
+        // 방향 불일치 가드레일: 호스트 주문 규격(width/height)과 로드된 templateSet
         // 방향이 어긋나면(가로 선택했으나 가로 templateSet 미배선 → 세로 폴백 등) 채워진다. ready emit 에 additive 동봉.
         let orientationMismatch: OrientationMismatch | null = null
 
@@ -1443,7 +1442,7 @@ function EmbeddedEditor({
         }
         /**
          * 샘플 폴백 전 마지막으로 시도한 템플릿셋 ID — 폴백 발생 판정/세션 복원 스킵/실패 payload 에 사용.
-         * W8-2b: 세션 세트 404 뒤 호스트 세트로 다시 시도하면 그 세트로 바뀐다(let).
+         * 세션 세트 404 뒤 호스트 세트로 다시 시도하면 그 세트로 바뀐다(let).
          */
         let requestedTemplateSetId = effectiveTemplateSetId
         const allowSampleFallback = isSampleFallbackAllowed()
@@ -1506,7 +1505,7 @@ function EmbeddedEditor({
           if (err instanceof CanvasInitCancelledError) throw err
           let loadErr: unknown = err
           let recovered = false
-          // W8-2b: 세션 세트가 HTTP 404(삭제·없음)이고 다른 호스트 세트가 있으면 그 세트로 1회 다시 시도한다
+          // 세션 세트가 HTTP 404(삭제·없음)이고 다른 호스트 세트가 있으면 그 세트로 1회 다시 시도한다
           // (현행 보존). 그 밖의 실패는 다시 시도하지 않고 아래 현행 처리(fatal)로 간다.
           if (templateSetMismatch && isTemplateSetNotFoundResponse(err)) {
             if (!isMounted) return
@@ -1530,7 +1529,7 @@ function EmbeddedEditor({
             }
           }
           if (!recovered) {
-            // 프로덕션 기본: 무음 샘플 폴백 금지 — 명확히 실패 표시 후 중단 (2026-06-11)
+            // 프로덕션 기본: 무음 샘플 폴백 금지 — 명확히 실패 표시 후 중단
             if (!allowSampleFallback) {
               failTemplateSetLoad(loadErr, 'fetch')
               return
@@ -1547,7 +1546,7 @@ function EmbeddedEditor({
           }
         }
 
-        // W8-2b: 템플릿셋 불일치 관측 — 세션당 1회, 복원 재초기화 제외(orientation-mismatch 와 같은 패턴).
+        // 템플릿셋 불일치 관측 — 세션당 1회, 복원 재초기화 제외(orientation-mismatch 와 같은 패턴).
         // 기록 실패는 초기화를 막지 않는다.
         if (
           templateSetMismatch &&
@@ -1573,16 +1572,16 @@ function EmbeddedEditor({
         }
         console.log('[EmbeddedEditor] TemplateSet loaded:', templateSet.name)
 
-        // 포토북 페이지 가변 가격 메타 보관 (2026-06-24) — editor.complete emit 시 사용.
+        // 포토북 페이지 가변 가격 메타 보관 — editor.complete emit 시 사용.
         // pricing 없으면 null(가변 가격 미사용) → emit 에서 생략(기존 동작 비파괴).
         templateSetPricingRef.current = (templateSet as { pricing?: PhotobookPricing | null }).pricing ?? null
 
-        // D-4 (2026-07-06): 커버 메타(coverType/coverConfig.caseBind) 보관 — pricingChange 의
+        // 커버 메타(coverType/coverConfig.caseBind) 보관 — pricingChange 의
         // coverType 동봉 + 하드커버 출력 사이즈 계산에 사용. 미설정이면 null(기존 동작).
         templateSetCoverMetaRef.current = resolveTemplateSetCoverMeta(templateSet)
 
-        // G-E (2026-07-14): templateSet 판형(단일 페이지, mm) 보관 — 단일모드 완료 PDF 치수의
-        // 방향 정합에 사용(:1042 orientationMismatch 가드와 동일 소스). 비수치면 null(현행 폴백).
+        // templateSet 판형(단일 페이지, mm) 보관 — 단일모드 완료 PDF 치수의
+        // 방향 정합에 사용(orientationMismatch 가드와 동일 소스). 비수치면 null(현행 폴백).
         const tplSizeW = (templateSet as { width?: number }).width
         const tplSizeH = (templateSet as { height?: number }).height
         templateSetSizeRef.current =
@@ -1648,13 +1647,13 @@ function EmbeddedEditor({
             ? (editSession as any).contentPdfPageCount
             : undefined
 
-        // 재편집 spine 옵션 복원 (2026-06-12): /embed?sessionId 단독 진입(bookmoa 재편집 표준
+        // 재편집 spine 옵션 복원: /embed?sessionId 단독 진입(호스트 재편집 표준
         // 경로)에서는 URL/props 에 주문 옵션이 없다 → 세션 metadata 에서 도출한다.
         // 우선순위: props/URL > metadata.orderOptions(세션 생성 시 기록 — 자동저장만 된
-        // 진행중 세션에도 항상 존재) > metadata.spine(편집완료 시에만 기록되는 B38 스냅샷, 폴백).
+        // 진행중 세션에도 항상 존재) > metadata.spine(편집완료 시에만 기록되는 스냅샷, 폴백).
         // 세션 canvasData 는 "저장 당시 spine 폭" 기준 지오메트리이므로, 이 값들 없이 기본
         // pageCount(템플릿 내지수)로 책등을 재계산하면 resizeSpine 이 복원된 객체를 흔든다
-        // (실측 사고: spine 10mm → 0.55mm, 객체 ±649.7px → ±621.9px 재배치, 2026-06-11).
+        // (예: spine 10mm → 0.55mm, 객체 ±649.7px → ±621.9px 재배치).
         // spineWidthMm(스냅샷 결과값)이 아닌 계산 입력값(pageCount/paperType/bindingType)을
         // 복원하는 이유: 이후 내지 추가/삭제 debounce 재계산(spineCalculator)도 같은 입력으로
         // 일관 동작해야 하고, 동일 입력 재계산은 SpreadPlugin.resizeSpine 동일폭 no-op 가드로
@@ -1673,7 +1672,7 @@ function EmbeddedEditor({
         const restoredInnerPageCount = Array.isArray(editSession?.canvasData)
           ? asPositiveNumber(editSession.canvasData.length - 1)
           : undefined
-        // P2-d 사진인화 (D2, 2026-10-19): 신규(canvasData 없음)·런처 선생성 세션의 metadata.items 건수 — 로더가 kind 'photo-print'
+        // 사진인화: 신규(canvasData 없음)·런처 선생성 세션의 metadata.items 건수 — 로더가 kind 'photo-print'
         // 세트에서만 건수 × stride 로 캔버스를 시드한다(그 밖의 세트는 무시). 재오픈(canvasData 있음)은 저장본 수가 우선.
         const photoItemCount =
           editSession && !editSession.canvasData && Array.isArray(sessionMeta.items) && sessionMeta.items.length > 0
@@ -1685,14 +1684,14 @@ function EmbeddedEditor({
           asPositiveNumber(sessionOrderOptions.pageCount) ??
           asPositiveNumber(sessionSpineSnapshot.pageCount)
         // 용지/제본/호스트 책등 사다리는 순수 함수로 추출(utils/hostSpine.resolveEffectiveSpineOptions):
-        //  - paperType/bindingType: props/URL > orderOptions > metadata.spine — S5 정규화('-'·빈값 = 미지정)
-        //  - spineWidthMm(R-195): props/URL > orderOptions.spineWidthMm(≥0) >
+        //  - paperType/bindingType: props/URL > orderOptions > metadata.spine — 정규화('-'·빈값 = 미지정)
+        //  - spineWidthMm: props/URL > orderOptions.spineWidthMm(≥0) >
         //    metadata.appliedSpine.spineWidthMm (source==='host' 일 때만)
         const effectiveSpineOptions = resolveEffectiveSpineOptions(options, sessionMeta)
         const effectivePaperType = effectiveSpineOptions.paperType
         const effectiveBindingType = effectiveSpineOptions.bindingType
         const effectiveSpineWidthMm = effectiveSpineOptions.spineWidthMm
-        // 날개(2026-08-03): 책등과 동일한 우선순위 사다리 — props/URL > 세션 orderOptions.
+        // 날개: 책등과 동일한 우선순위 사다리 — props/URL > 세션 orderOptions.
         // 재편집(/embed?sessionId 단독) 진입에서 주문 시점 날개 설정이 유실되면 총폭이 달라져
         // 저장된 아트워크가 어긋나므로 복원이 필수다.
         const effectiveWingEnabled =
@@ -1703,7 +1702,7 @@ function EmbeddedEditor({
               : undefined
         const effectiveWingWidthMm =
           asPositiveNumber(options?.wingWidthMm) ?? asPositiveNumber(sessionOrderOptions.wingWidthMm)
-        // R-196 host page limits (2026-09-29): 키별 props/URL > metadata.orderOptions > 템플릿셋.
+        // host page limits: 키별 props/URL > metadata.orderOptions > 템플릿셋.
         // 한도가 있으면 로더가 재진입 시드를 저장 쪽수 그대로 두고(범위 클램프 없음) 추가/삭제 한도를 적용한다.
         const effectivePageLimits = resolveHostPageLimits(options, sessionMeta)
 
@@ -1737,10 +1736,10 @@ function EmbeddedEditor({
             wingWidthMm: effectiveWingWidthMm,
             spineWidthMm: effectiveSpineWidthMm,
             ...effectivePageLimits,
-            // R2 (2026-08-18): 펼침면 세트 재진입 — canvasData 실측 캔버스 수를 시드에 그대로
-            // 전달한다. 종전엔 이 값이 pageCount(물리 페이지 수 시맨틱)로만 흘러 펼침면 세트에서
+            // 펼침면 세트 재진입 — canvasData 실측 캔버스 수를 시드에 그대로
+            // 전달한다. 이 값이 pageCount(물리 페이지 수 시맨틱)로만 흐르면 펼침면 세트에서
             // spreadCountFromPageCount 반감 + pageCountRange 클램프를 거쳐 시드가 저장본보다
-            // 적어졌고, 아래 복원 루프가 뒷페이지를 무음 절단했다(DB 실측 17→9).
+            // 적어지고, 아래 복원 루프가 뒷페이지를 무음 절단한다.
             // 낱장 세트는 이 필드를 소비하지 않는다(기존 pageCount 경로 그대로).
             ...(restoredInnerPageCount != null
               ? { restoredInnerCanvasCount: restoredInnerPageCount }
@@ -1748,7 +1747,7 @@ function EmbeddedEditor({
             ...(photoItemCount != null ? { photoItemCount } : {}),
           })
         } catch (loadErr) {
-          // 프로덕션 기본: 무음 샘플 폴백 금지 — 명확히 실패 표시 후 중단 (2026-06-11)
+          // 프로덕션 기본: 무음 샘플 폴백 금지 — 명확히 실패 표시 후 중단
           if (!allowSampleFallback) {
             failTemplateSetLoad(loadErr, 'load')
             return
@@ -1772,7 +1771,7 @@ function EmbeddedEditor({
           })
         }
 
-        // D-4 (2026-07-06): templateSet.coverConfig.caseBind 를 스토어 spreadConfig.spec 에 병합.
+        // templateSet.coverConfig.caseBind 를 스토어 spreadConfig.spec 에 병합.
         // 화면 레이아웃은 computeSpreadDimensions(trim) 기반이라 **불변** — caseBind 는 출력(PDF)
         // 사이즈 계산(computeSpreadOutputDimensions)과 metadata.spread 스냅샷에만 쓰인다.
         // 폴백 템플릿셋(effective≠requested)에는 병합하지 않는다(지오메트리 오염 방지와 동일 원칙).
@@ -1811,7 +1810,7 @@ function EmbeddedEditor({
 
         // 기존 세션의 canvasData가 있으면 복원 (재편집)
         // canvasData가 배열이면 멀티페이지 복원, 객체면 단일 캔버스 복원
-        // 단, 샘플 폴백으로 다른 템플릿셋이 로드된 경우 복원 스킵 (2026-06-11) —
+        // 단, 샘플 폴백으로 다른 템플릿셋이 로드된 경우 복원 스킵 —
         // 다른 spec(판형/책등) 위에 복원하면 지오메트리 오염이 일어난다.
         if (editSession?.canvasData && effectiveTemplateSetId !== requestedTemplateSetId) {
           console.warn(
@@ -1822,25 +1821,25 @@ function EmbeddedEditor({
           setLoadingMessage('저장된 작업을 복원하는 중...')
           loadProfile.mark('workspace:seeded', { canvases: useAppStore.getState().allCanvas.length })
           const saved = editSession.canvasData
-          // P1 캘린더 (2026-10-17): 세션 metadata.calendar(시작연월·표기·기념일)를 캔버스 복원 **전**에
+          // 캘린더: 세션 metadata.calendar(시작연월·표기·기념일)를 캔버스 복원 **전**에
           // 스토어로 되돌린다 — 아래 rehydrateCalendarGrids 가 저장값으로 그리드를 다시 그린다.
-          // 메타가 없거나 무효면 P1-b 의 setFromProfile 기본값 유지. 프로파일 null 이면 no-op.
+          // 메타가 없거나 무효면 setFromProfile 기본값 유지. 프로파일 null 이면 no-op.
           if (restoreCalendarSessionMeta(editSession.metadata)) {
             console.log('[EmbeddedEditor] 캘린더 세션 메타 복원:', editSession.id)
           }
-          // P2-d 사진인화 (2026-10-19): 세션 metadata.items(런처 PhotoItemInput 부분형 가능)를 캔버스 복원 **전**에
+          // 사진인화: 세션 metadata.items(런처 PhotoItemInput 부분형 가능)를 캔버스 복원 **전**에
           // 정제·시드한다 — 아래 rehydratePhotoPrint 가 저장값으로 사진틀 옵션을 되살린다. 프로파일 null 이면 no-op.
           if (restorePhotoPrintSessionItems(editSession.metadata)) {
             console.log('[EmbeddedEditor] 사진인화 세션 항목 복원:', editSession.id)
           }
 
-          // R2-절단 금지 (2026-08-18): 시드 결과 캔버스 수가 저장본보다 적으면 부족분을 증설한다.
-          // 종전에는 아래 복원 루프가 min(saved.length, canvases.length)로 무음 절단하고, 이후
-          // 자동저장이 절단본을 서버 canvas_data 에 영구 덮어썼다(DB 실측 cd_len 17→9).
-          // R2-수신(restoredInnerCanvasCount)으로 시드가 이미 맞으면 증설 0 — 심층방어 경로.
+          // 절단 금지: 시드 결과 캔버스 수가 저장본보다 적으면 부족분을 증설한다.
+          // 증설하지 않으면 아래 복원 루프가 min(saved.length, canvases.length)로 무음 절단하고, 이후
+          // 자동저장이 절단본을 서버 canvas_data 에 영구 덮어쓴다.
+          // restoredInnerCanvasCount 로 시드가 이미 맞으면 증설 0 — 심층방어 경로.
           if (Array.isArray(saved) && saved.length > 0) {
             const preState = useAppStore.getState()
-            // 손상/적대적 canvasData 폭주 방지 — 총 캔버스 수를 underlay 와 동일 상한으로 제한.
+            // 비정상 canvasData 폭주 방지 — 총 캔버스 수를 underlay 와 동일 상한으로 제한.
             const rawDeficit = saved.length - preState.allCanvas.length
             const deficit = Math.min(
               rawDeficit,
@@ -1865,7 +1864,7 @@ function EmbeddedEditor({
               // addInnerPage 는 새 페이지로 전환하므로 첫 페이지(표지/첫 펼침면)로 복귀.
               useAppStore.getState().setPage(0)
             } else if (deficit > 0 && isPhotoPrintProfile(useSettingsStore.getState().productProfile)) {
-              // P2-d 사진인화 (D1 심층방어): 단일 모드 range 세트도 저장본보다 적게 시드됐으면 addPage 로 증설한다 —
+              // 사진인화(심층방어): 단일 모드 range 세트도 저장본보다 적게 시드됐으면 addPage 로 증설한다 —
               // 아래 복원 루프가 saved[k] 를 그대로 앉히므로 템플릿 시드는 생략. 로더 시드가 맞으면 deficit 0 으로 미작동.
               console.warn(`[EmbeddedEditor] 사진인화 복원 캔버스 부족 ${deficit}장 — 페이지 증설 후 전량 복원`)
               await useAppStore.getState().runBulkPageOps(async () => {
@@ -1911,9 +1910,9 @@ function EmbeddedEditor({
               normalizeRestoredFonts(allEditors[i], canvases[i])
               // 복원 직후 사진틀 인터랙션 재바인딩 (핸들러는 직렬화 안 됨 → 미재바인딩 시 채우기 불능).
               rebindFrameInteractivity(allEditors[i], canvases[i])
-              // P1 캘린더: 캘린더 세트면 calendar-grid 재합성(프로파일 null 이면 즉시 0, no-op).
+              // 캘린더: 캘린더 세트면 calendar-grid 재합성(프로파일 null 이면 즉시 0, no-op).
               void rehydrateCalendarGrids(allEditors[i], canvases[i], i)
-              // P2-d 사진인화: 사진인화 세트면 fitMode/유테/흑백 런타임 복구(프로파일 null 이면 즉시 0, no-op).
+              // 사진인화: 사진인화 세트면 fitMode/유테/흑백 런타임 복구(프로파일 null 이면 즉시 0, no-op).
               void rehydratePhotoPrint(allEditors[i], canvases[i], i)
               // Part B: 고객 임베드 세션 복원 시 객체별 이동/변형 잠금 적용(movable=false).
               applyObjectPermissions(canvases[i], useSettingsStore.getState().currentSettings.editMode)
@@ -1922,9 +1921,9 @@ function EmbeddedEditor({
                 useSettingsStore.getState().coverMaterialLocked && i === 0,
                 useSettingsStore.getState().currentSettings.editMode,
               )
-              // L7: 필수 편집 touched 추적 부착(멱등) — 로드 완료 지점.
+              // 필수 편집 touched 추적 부착(멱등) — 로드 완료 지점.
               trackRequiredEdits(canvases[i])
-              // R3 (2026-08-18): 재단선/안전선 가이드 재생성 — excludeFromExport 라 canvasData 에
+              // 재단선/안전선 가이드 재생성 — excludeFromExport 라 canvasData 에
               // 직렬화되지 않아 loadFromJSON 이 캔버스를 대체하면 사라진다. HistoryPlugin 이
               // undo/redo 후 쓰는 것과 동일 메커니즘(WorkspacePlugin 이 이 이벤트를 구독).
               allEditors[i]?.emit('restoreGuideElements')
@@ -1939,9 +1938,9 @@ function EmbeddedEditor({
             // 미등록 폰트 → 기본 폰트 정규화 (멀티페이지 분기와 동일 사유)
             normalizeRestoredFonts(allEditors[singleIdx], fabricCanvas)
             rebindFrameInteractivity(allEditors[singleIdx], fabricCanvas)
-            // P1 캘린더: 캘린더 세트면 calendar-grid 재합성(프로파일 null 이면 즉시 0, no-op).
+            // 캘린더: 캘린더 세트면 calendar-grid 재합성(프로파일 null 이면 즉시 0, no-op).
             void rehydrateCalendarGrids(allEditors[singleIdx], fabricCanvas, singleIdx)
-            // P2-d 사진인화: 사진인화 세트면 fitMode/유테/흑백 런타임 복구(프로파일 null 이면 즉시 0, no-op).
+            // 사진인화: 사진인화 세트면 fitMode/유테/흑백 런타임 복구(프로파일 null 이면 즉시 0, no-op).
             void rehydratePhotoPrint(allEditors[singleIdx], fabricCanvas, singleIdx)
             applyObjectPermissions(fabricCanvas, useSettingsStore.getState().currentSettings.editMode)
             applyCoverMaterialLock(
@@ -1950,19 +1949,19 @@ function EmbeddedEditor({
               useSettingsStore.getState().currentSettings.editMode,
             )
             trackRequiredEdits(fabricCanvas)
-            // R3 (2026-08-18): 단일 캔버스 복원도 가이드 재생성 — 멀티페이지 분기와 동일 사유.
+            // 단일 캔버스 복원도 가이드 재생성 — 멀티페이지 분기와 동일 사유.
             allEditors[singleIdx]?.emit('restoreGuideElements')
             loadProfile.mark('restore:done', { pages: 1 })
             console.log('[EmbeddedEditor] Single canvasData restored:', editSession.id)
           }
         } else if (restoreCalendarSessionMeta(editSession?.metadata)) {
-          // P2-b 런처 (2026-10-18): 파트너 서버가 선생성한 세션은 canvasData 없이 metadata.calendar(시작연월 등)만
+          // 런처: 파트너 서버가 선생성한 세션은 canvasData 없이 metadata.calendar(시작연월 등)만
           // 갖고 열린다 — 재오픈 분기와 같은 복원을 한 뒤 템플릿 로드로 이미 그려진 그리드를 저장 메타로 다시 그린다.
           // metadata.calendar 가 없거나 무효면 restore 가 false 라 종전 경로 그대로(프로파일 기본 시작연월).
           console.log('[EmbeddedEditor] 캘린더 세션 메타 복원(신규 세션, canvasData 없음):', editSession?.id)
           await rehydrateAllCalendarGrids()
         }
-        // P2-d 사진인화 (2026-10-19): 신규/런처 선생성 세션(canvasData 없음)은 metadata.items(PhotoItemInput 부분형)를 정제·시드한 뒤
+        // 사진인화: 신규/런처 선생성 세션(canvasData 없음)은 metadata.items(PhotoItemInput 부분형)를 정제·시드한 뒤
         // 템플릿 로드로 이미 앉힌 캔버스에 항목 옵션을 적용한다. items 가 없으면 프로파일 기본값(허용 어휘 첫째)만 적용하고
         // dirty 로 만들지 않는다(무편집 세션 유지). 사진인화 세트가 아니면 통째로 건너뛴다(종전 경로 바이트 동일).
         if (editSession && !editSession.canvasData && isPhotoPrintProfile(useSettingsStore.getState().productProfile)) {
@@ -1975,25 +1974,25 @@ function EmbeddedEditor({
 
         // 3-A. 내지 PDF 표시전용 앉히기 (underlay 모드) — 캔버스 복원 후.
         // 가이드는 excludeFromExport 라 export/저장에서 제외, 최종 인쇄는 첨부 원본 PDF 그대로.
-        // W1: seat. 주문 화면에서 올린 contentFileId 도 underlay 로 승격해 앉힌다.
+        // seat. 주문 화면에서 올린 contentFileId 도 underlay 로 승격해 앉힌다.
         if (editSession) {
           await ensureSeatExistingContentPdf(editSession, effectiveTemplateSetId)
           loadProfile.mark('seat:done')
         }
 
-        // W1-G2: 첨부 진입점이 쓸 실효 templateSetId 확정 (폴백 구동 시에는 첨부 비노출).
+        // 첨부 진입점이 쓸 실효 templateSetId 확정 (폴백 구동 시에는 첨부 비노출).
         setAttachTemplateSetId(
           effectiveTemplateSetId === requestedTemplateSetId ? effectiveTemplateSetId : null,
         )
-        // W8-2b: editor.complete 의 templateSetId·templateSetMismatch 도 같은 규칙으로 확정(샘플 폴백이면 둘 다 생략 —
+        // editor.complete 의 templateSetId·templateSetMismatch 도 같은 규칙으로 확정(샘플 폴백이면 둘 다 생략 —
         // 샘플로 앉힌 편집에 세션·호스트 세트 판정을 싣지 않는다. editor.ready 는 fallback 표시와 함께 요청 세트 기준을 유지).
         loadedTemplateSetIdRef.current =
           effectiveTemplateSetId === requestedTemplateSetId ? effectiveTemplateSetId : null
         templateSetMismatchRef.current = loadedTemplateSetIdRef.current ? templateSetMismatch : null
 
-        // 3-A'. D1 외부 사진 주입 (EDITOR.md §20.1) — 호스트가 세션 metadata 로
+        // 3-A'. 외부 사진 주입 (EDITOR.md §20.1) — 호스트가 세션 metadata 로
         // 주입한 공유방 사진 목록을 스토어에 적재. 목록이 있으면 이미지 패널에
-        // "공유방 사진" 탭이 조건부 렌더된다(없으면 기존 동작 그대로 = bookmoa 영향 0).
+        // "공유방 사진" 탭이 조건부 렌더된다(없으면 기존 동작 그대로).
         {
           const externalPhotos = (editSession?.metadata as Record<string, unknown> | undefined)
             ?.externalPhotos
@@ -2029,7 +2028,7 @@ function EmbeddedEditor({
           // 프로덕션은 console 이 pure-제거되므로(vite esbuild.pure) 실측 조회용으로 window 에도 노출.
           try { (window as any).__storigeLoadProfile = profile } catch { /* noop */ }
           // 30s+ 재진입 실측용 — 단계/반복 집계를 Sentry 에 1회 남긴다(flush 대기 없음).
-          // P1-4: 버전 복원 재초기화는 로드 통계에서 제외(오염 방지).
+          // 버전 복원 재초기화는 로드 통계에서 제외(오염 방지).
           if (!reinitSuppressReadyEmitRef.current) try {
             Sentry.captureMessage('[load-profile] embed ready', {
               level: profile.totalMs > 15_000 ? 'warning' : 'info',
@@ -2042,7 +2041,7 @@ function EmbeddedEditor({
         isInitializedRef.current = true
         setIsLoading(false)
 
-        // 방향 불일치 가드레일 (2026-07-09) — 호스트 주문 규격(width/height)의 방향과 로드된
+        // 방향 불일치 가드레일 — 호스트 주문 규격(width/height)의 방향과 로드된
         // templateSet 방향이 어긋나면(고객이 가로 선택 → 가로 dims 전달했으나 가로 templateSet
         // 미배선으로 세로 셋 로드 등) 조용히 세로로 열리는 사고를 콘솔+Sentry+ready payload 로 표면화.
         // 비차단: 편집은 그대로 진행. 샘플 폴백(showMappingAlert)·size 미전달·정사각은 스킵(오탐 방지).
@@ -2077,7 +2076,7 @@ function EmbeddedEditor({
 
         console.log('[EmbeddedEditor] Initialization complete')
         if (reinitSuppressReadyEmitRef.current) {
-          // P1-4 재초기화: 호스트 ready 핸드셰이크는 최초 1회만. 내부 상태만 갱신하고 종료.
+          // 재초기화: 호스트 ready 핸드셰이크는 최초 1회만. 내부 상태만 갱신하고 종료.
           reinitSuppressReadyEmitRef.current = false
           console.log('[EmbeddedEditor] Re-init complete — editor.ready re-emit suppressed')
           // 복원으로 캔버스 수가 바뀌었으면 가격 이벤트 1회 발신(초기화 게이트로 구독이 침묵했던 구간 보정).
@@ -2090,7 +2089,7 @@ function EmbeddedEditor({
           reinitSettleRef.current = null
           return
         }
-        // W8-2b (FREEZE v1.16): templateSetId 는 실제로 연 세트(샘플 폴백 전 요청 세트). 불일치가 없으면
+        // FREEZE v1.16: templateSetId 는 실제로 연 세트(샘플 폴백 전 요청 세트). 불일치가 없으면
         // 종전 props 값과 같다. 불일치가 있으면 templateSetMismatch 를 additive 동봉.
         const readyInfo: EditorReadyInfo = {
           templateSetId: requestedTemplateSetId,
@@ -2101,9 +2100,9 @@ function EmbeddedEditor({
           sessionId: editSession?.id,
           templateSetId: readyInfo.templateSetId,
           version: '1.0.0',
-          // 샘플 폴백 구동 시(DEV/allowSampleFallback) 호스트가 인지할 수 있도록 명시 (2026-06-11)
+          // 샘플 폴백 구동 시(DEV/allowSampleFallback) 호스트가 인지할 수 있도록 명시
           ...(showMappingAlert ? { fallback: true, effectiveTemplateSetId } : {}),
-          // 방향 불일치 시 호스트(bookmoa 등)가 인지할 수 있도록 additive 동봉 (2026-07-09)
+          // 방향 불일치 시 호스트가 인지할 수 있도록 additive 동봉
           ...(orientationMismatch ? { orientationMismatch } : {}),
           ...(templateSetMismatch ? { templateSetMismatch } : {}),
         })
@@ -2116,7 +2115,7 @@ function EmbeddedEditor({
         }
         fatalInitErrorRef.current = true
         console.error('[EmbeddedEditor] Initialization error:', describeError(err))
-        // P1-4: 복원 재초기화 실패 — 대기 중인 복원 Promise 를 실패로 귀결(패널이 토스트로 표시)
+        // 복원 재초기화 실패 — 대기 중인 복원 Promise 를 실패로 귀결(패널이 토스트로 표시)
         if (reinitSettleRef.current) {
           reinitSettleRef.current.reject(err instanceof Error ? err : new Error(String(err)))
           reinitSettleRef.current = null
@@ -2175,7 +2174,7 @@ function EmbeddedEditor({
       reset()
       isInitializedRef.current = false
     }
-    // P1-4: reinitNonce 만 dep — 복원 후 in-place 재초기화 트리거. 나머지 props 는 마운트 시점 고정(종전과 동일).
+    // reinitNonce 만 dep — 복원 후 in-place 재초기화 트리거. 나머지 props 는 마운트 시점 고정(종전과 동일).
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [reinitNonce])
 
@@ -2212,7 +2211,7 @@ function EmbeddedEditor({
   }, [ready, currentSession, sessionId, evaluateRestore])
 
   /**
-   * P1-4 (2026-08-22) — 서버 버전 스냅샷 "여기로 복원".
+   * 서버 버전 스냅샷 "여기로 복원".
    * 순서(데이터 유실 방지가 전부):
    *  1. dirty 면 먼저 서버 플러시(saveNow) — 서버가 복원 직전 상태를 reason='restore' 로 보존하므로
    *     최신 편집까지 되돌릴 수 있게 한다. 플러시 실패 시 복원 중단(미저장 편집 유실 금지).
@@ -2220,7 +2219,7 @@ function EmbeddedEditor({
    *     (인터벌 저장은 isDirty 게이트). ⚠️ runWithAutosaveSuspended 는 쓰지 않는다 — 지연 등록된 저장이
    *     재초기화 도중 반쯤 시드된 캔버스를 PATCH 할 수 있다.
    *  3. 서버 복원(회원/게스트 분기) → 응답 세션(canvasData 포함)으로 in-place 재초기화.
-   *  4. 로컬 백업 폐기(옛 상태 복원 배너 방지) + R2 기준선을 복원본 길이로 갱신(shrink 오경고 방지).
+   *  4. 로컬 백업 폐기(옛 상태 복원 배너 방지) + 덮어쓰기 가드 기준선을 복원본 길이로 갱신(shrink 오경고 방지).
    * 실패 시 자동저장 게이트를 원복하고 throw — 패널이 토스트로 표시.
    */
   // 최신 세션/자동저장 함수 참조 — 자동저장마다 currentSession·saveNow 등의 identity 가 바뀌므로
@@ -2307,7 +2306,7 @@ function EmbeddedEditor({
     [sessionId],
   )
 
-  /** P1-4 — 헤더 변경 이력 패널에 주입할 세션 버전 소스(세션 확보 + ready 후에만). id/토큰에만 의존. */
+  /** 헤더 변경 이력 패널에 주입할 세션 버전 소스(세션 확보 + ready 후에만). id/토큰에만 의존. */
   const sessionIdForVersions = currentSession?.id ?? sessionId ?? null
   const guestTokenForVersions = currentSession?.guestToken ?? null
   // 내지 PDF 첨부(replace 모드 — mode 미설정 null 도 서버는 replace 로 본다)는 편집 캔버스가 산출물이
@@ -2332,7 +2331,7 @@ function EmbeddedEditor({
     const ok = await restoreFromLocal()
     if (ok) {
       setRestoreOffer(null)
-      // R4 (2026-08-18): 복원본을 즉시 서버에 반영 — restoreFromLocal 은 dirty 마킹만 하므로
+      // 복원본을 즉시 서버에 반영 — restoreFromLocal 은 dirty 마킹만 하므로
       // 사용자가 곧바로 이탈하면 복원이 서버 세션에 남지 않는다. 실패해도 비차단
       // (dirty 가드 + 주기 자동저장이 이어서 보호).
       try {
@@ -2354,7 +2353,7 @@ function EmbeddedEditor({
     setRestoreOffer(null)
   }, [deleteLocalBackup])
 
-  // D-3 (2026-07-06): editor.pricingChange — 페이지 추가/삭제 실시간 가격 이벤트 (additive).
+  // editor.pricingChange — 페이지 추가/삭제 실시간 가격 이벤트 (additive).
   //
   // zustand allCanvas.length 구독: 페이지 증감의 모든 경로(BookNavigation 추가/삭제,
   // SpreadPagePanel 의 deletePage 직접 호출 포함)가 스토어 변경으로 수렴하므로 단일 지점에서 잡힌다.
@@ -2364,9 +2363,9 @@ function EmbeddedEditor({
   //  - 게스트 세션(guestToken 보유) 미발신 — 실제 가격 반영 주체(회원 주문 흐름)에만 통지.
   //  - debounce ~300ms — 연속 증감(다중 삭제 등)을 1건으로 합침.
   // pageCount 는 editor.complete 와 동일 산식(computeLivePageCount 단일 진실원, 내지 펼침면 ×2).
-  // P1-4 (2026-08-22): 발신 본체를 ref 로 노출 — 서버 버전 복원(재초기화)로 캔버스 수가 바뀐 경우
+  // 발신 본체를 ref 로 노출 — 서버 버전 복원(재초기화)로 캔버스 수가 바뀐 경우
   // 초기화 게이트(isInitializedRef=false) 때문에 구독이 침묵하므로, 재초기화 완료 지점에서 1회 직접 발신한다.
-  // S9 (2026-09-28): 책등 확정값 재발신 — 페이지 증감이 유발한 책등 재계산(spineCalculator)이 발신보다
+  // 책등 확정값 재발신 — 페이지 증감이 유발한 책등 재계산(spineCalculator)이 발신보다
   // 늦게 끝나 spreadConfig.spec.spineWidthMm 이 바뀌면, 같은 가드 아래 같은 payload 를 1회 더 발신한다.
   // 중복 방지: 직전 발신 값과 같으면 생략, 페이지 발신 1건당 재발신 최대 1회(armed), 연속 갱신은 300ms 로 합침.
   const emitPricingChangeRef = useRef<() => void>(() => {})
@@ -2384,7 +2383,7 @@ function EmbeddedEditor({
       const canvasCount = appState.allCanvas.length
       const spreadCfg = useSettingsStore.getState().spreadConfig
       const isInnerSpread = spreadCfg?.regionScope === 'inner'
-      // T5 (2026-07-13): 표지+내지 단일 세션 spread(비-inner)는 표지 캔버스 1장을 물리
+      // 표지+내지 단일 세션 spread(비-inner)는 표지 캔버스 1장을 물리
       // 페이지에서 제외(21→20). 캔버스 1(표지 단독 세션) 게이트 필수 — physical=0 방지.
       const coverCanvasCount =
         appState.isSpreadMode && spreadCfg?.regionScope !== 'inner' && canvasCount > 1 ? 1 : 0
@@ -2395,7 +2394,7 @@ function EmbeddedEditor({
           isInnerSpread,
           options?.pages || 1,
           coverCanvasCount,
-          // 표지+내지펼침면: 내지 캔버스 1장 = 2쪽(2026-09-28)
+          // 표지+내지펼침면: 내지 캔버스 1장 = 2쪽
           appState.isSpreadMode ? useEditorStore.getState().pagesPerCanvas : 1,
         ),
         pricing: pricingMeta,
@@ -2403,7 +2402,7 @@ function EmbeddedEditor({
           ? { coverType: templateSetCoverMetaRef.current.coverType }
           : {}),
       }
-      // R-195: 발신 시점에 적용돼 있는 책등 폭(스프레드 책만). S9: 책등 재계산(debounce 300ms + API
+      // 발신 시점에 적용돼 있는 책등 폭(스프레드 책만). 책등 재계산(debounce 300ms + API
       // 왕복)이 이 발신보다 늦게 끝나 값이 바뀌면 아래 useSettingsStore 구독이 확정값으로 1회 재발신한다.
       const pricingSpineWidthMm = getAppliedSpineWidthMm(appState.isSpreadMode, spreadCfg)
       if (pricingSpineWidthMm !== undefined) payload.spineWidthMm = pricingSpineWidthMm
@@ -2428,7 +2427,7 @@ function EmbeddedEditor({
         emitNow('pages')
       }, 300)
     })
-    // S9: 적용 책등 폭(spreadConfig.spec.spineWidthMm) 변경 구독 — spineCalculator 는 건드리지 않는다.
+    // 적용 책등 폭(spreadConfig.spec.spineWidthMm) 변경 구독 — spineCalculator 는 건드리지 않는다.
     const unsubscribeSpine = useSettingsStore.subscribe((state, prevState) => {
       if (state.spreadConfig?.spec?.spineWidthMm === prevState.spreadConfig?.spec?.spineWidthMm) return
       if (!lastEmitted?.armed) return
@@ -2483,13 +2482,13 @@ function EmbeddedEditor({
         }
 
         try {
-          // Get canvas data — P0 (2026-10-16): 멀티페이지면 전 캔버스 배열(단일 캔버스로 덮어쓰기 방지).
+          // Get canvas data — 멀티페이지면 전 캔버스 배열(단일 캔버스로 덮어쓰기 방지).
           // allCanvas 0·1장이면 종전과 같은 단일 객체/null.
           const canvasData = collectCanvasData(useAppStore.getState().allCanvas, canvas)
 
           // Update edit session with canvas data (게스트 세션이면 guestToken 동봉)
-          // P1 캘린더: 캘린더 세트면 metadata.calendar 동봉(얕은 병합), 아니면 {} (payload 키 집합 불변)
-          // P2-d 사진인화: 사진인화 세트면 metadata.items 동봉(같은 규칙 — 아니면 {})
+          // 캘린더: 캘린더 세트면 metadata.calendar 동봉(얕은 병합), 아니면 {} (payload 키 집합 불변)
+          // 사진인화: 사진인화 세트면 metadata.items 동봉(같은 규칙 — 아니면 {})
           const guestToken = currentSession?.guestToken
           const calendarFields = calendarSessionMetadataFields()
           const photoPrintFields = photoPrintSessionMetadataFields()
@@ -2531,7 +2530,7 @@ function EmbeddedEditor({
           throw new Error('편집 세션이 없습니다.')
         }
 
-        // S8: 내지 페이지 수가 증감 단위(pageStep) 배수가 아니면 완료 차단 — 저장·complete·
+        // 내지 페이지 수가 증감 단위(pageStep) 배수가 아니면 완료 차단 — 저장·complete·
         // editor.complete 모두 미수행, editor.error(INVALID_DATA) + reject. pageStep 미설정 셋 무영향.
         {
           const pageStepBlock = getPageStepBlockMessage()
@@ -2543,7 +2542,7 @@ function EmbeddedEditor({
           }
         }
 
-        // L7: 프로그래매틱(파트너 IIFE API) 완료 경로는 모달 없이 경고 로그만 — 파트너의
+        // 프로그래매틱(파트너 IIFE API) 완료 경로는 모달 없이 경고 로그만 — 파트너의
         // await complete() 가 사용자 응답에 매달리거나 신규 reject 로 계약이 바뀌는 것을 방지.
         // UI '편집완료' 버튼 경로(EditorHeader.handleFinish)는 비차단 확인 모달로 게이트된다.
         {
@@ -2554,21 +2553,21 @@ function EmbeddedEditor({
         }
 
         try {
-          // First save current state — P0 (2026-10-16): handleFinish 와 같은 직렬화(멀티페이지면 배열).
+          // First save current state — handleFinish 와 같은 직렬화(멀티페이지면 배열).
           const canvasData = collectCanvasData(useAppStore.getState().allCanvas, canvas)
 
           // 게스트 세션: 회원 전용 complete 불가 → 저장만 하고 로그인 유도
           const guestToken = currentSession?.guestToken
           if (guestToken) {
             await editSessionsApi.updateGuest(currentSessionId, guestToken, { canvasData, ...calendarSessionMetadataFields(), ...photoPrintSessionMetadataFields() })
-            // STALE-CLOSURE-001: editor.complete에 needsAuth/guestToken 인라인 포함
-            // bookmoa finishComplete가 editor.complete.needsAuth 로 분기하므로 이 이벤트를 먼저 emit
+            // editor.complete에 needsAuth/guestToken 인라인 포함
+            // 호스트의 완료 처리가 editor.complete.needsAuth 로 분기하므로 이 이벤트를 먼저 emit
             const guestResult: EditorResult = {
               sessionId: currentSessionId,
               needsAuth: true,
               guestToken,
               pages: { initial: options?.pages || 1, final: options?.pages || 1 },
-              // W8-2b (additive): 이번 편집을 앉힌 템플릿셋·재편집 불일치(샘플 폴백이면 생략)
+              // additive: 이번 편집을 앉힌 템플릿셋·재편집 불일치(샘플 폴백이면 생략)
               ...templateSetResultFields(loadedTemplateSetIdRef.current, templateSetMismatchRef.current),
               files: {},
               savedAt: new Date().toISOString(),
@@ -2587,9 +2586,9 @@ function EmbeddedEditor({
 
           await editSessionsApi.update(currentSessionId, {
             canvasData,
-            // P1 캘린더: 캘린더 세트면 metadata.calendar 동봉(얕은 병합), 아니면 {} (payload 키 집합 불변)
+            // 캘린더: 캘린더 세트면 metadata.calendar 동봉(얕은 병합), 아니면 {} (payload 키 집합 불변)
             ...calendarSessionMetadataFields(),
-            // P2-d 사진인화: 사진인화 세트면 metadata.items 동봉(같은 규칙)
+            // 사진인화: 사진인화 세트면 metadata.items 동봉(같은 규칙)
             ...photoPrintSessionMetadataFields(),
           })
 
@@ -2600,12 +2599,12 @@ function EmbeddedEditor({
           markCompleted()
           setCurrentSession(completedSession)
 
-          // 현재 총 페이지 수(라이브 캔버스 수) — 포토북 페이지 가변 가격 emit 용 (2026-06-24).
+          // 현재 총 페이지 수(라이브 캔버스 수) — 포토북 페이지 가변 가격 emit 용.
           // 편집 중 내지 추가/삭제가 반영된 실측값. 없으면 주문 시점 pages 로 폴백(비파괴).
-          // 포토북 내지(inner) 펼침면(O-2): 한 캔버스=1펼침면=2 물리페이지 → 가격용 pageCount 는 ×2.
+          // 포토북 내지(inner) 펼침면: 한 캔버스=1펼침면=2 물리페이지 → 가격용 pageCount 는 ×2.
           // (비-내지/표지/BOOK 는 캔버스 수 그대로 = 기존 동작 byte-identical.)
-          // Track 1 (2026-07-06): 산식을 computeLivePageCount 헬퍼로 단일 진실원화(complete 2경로+pricingChange).
-          // T5 (2026-07-13): 표지+내지 단일 세션 spread(비-inner)는 표지 캔버스 1장 제외(21→20).
+          // 산식은 computeLivePageCount 헬퍼가 단일 진실원이다(complete 2경로+pricingChange).
+          // 표지+내지 단일 세션 spread(비-inner)는 표지 캔버스 1장 제외(21→20).
           // 캔버스 1(표지 단독 세션) 게이트 필수 — physical=0 방지. 포토북 inner ×2 산식 불변.
           const appStateAtComplete = useAppStore.getState()
           const spreadCfgAtComplete = useSettingsStore.getState().spreadConfig
@@ -2618,17 +2617,17 @@ function EmbeddedEditor({
               appStateAtComplete.allCanvas.length > 1
               ? 1
               : 0,
-            // 표지+내지펼침면: 내지 캔버스 1장 = 2쪽(2026-09-28)
+            // 표지+내지펼침면: 내지 캔버스 1장 = 2쪽
             appStateAtComplete.isSpreadMode ? useEditorStore.getState().pagesPerCanvas : 1,
           )
           const pricingMeta = templateSetPricingRef.current
-          // R-195: 적용 책등 폭(스프레드 책만, additive)
+          // 적용 책등 폭(스프레드 책만, additive)
           const appliedSpineWidthMm = getAppliedSpineWidthMm(
             appStateAtComplete.isSpreadMode,
             spreadCfgAtComplete,
           )
 
-          // S2 (2026-07-04): 완료 시점 캔버스 규격(mm) — 파트너 정합 검증용(additive).
+          // 완료 시점 캔버스 규격(mm) — 파트너 정합 검증용(additive).
           const liveSize = useSettingsStore.getState().currentSettings.size
           const result: EditorResult = {
             sessionId: completedSession.id,
@@ -2636,11 +2635,11 @@ function EmbeddedEditor({
             editCode: `EDIT-${completedSession.id.substring(0, 8).toUpperCase()}`,
             pages: {
               initial: options?.pages || 1,
-              // S2: final 은 실측값(라이브 캔버스 기준) — 기존 하드코딩(주문 옵션 pages) 정정.
-              // 소비자 없음 확정(bookmoa-mobile 은 pages 미소비) + pageCount 와 동일 값이라 안전.
+              // final 은 실측값(라이브 캔버스 기준) — 주문 옵션 pages 가 아니다.
+              // pageCount 와 동일 값이다.
               final: livePageCount,
             },
-            // 페이지 가변 가격 메타 (2026-06-24): 현재 총 pageCount 는 항상, pricing 은 설정된 셋만.
+            // 페이지 가변 가격 메타: 현재 총 pageCount 는 항상, pricing 은 설정된 셋만.
             // 파트너 장바구니가 base + max(0, pageCount − includedPages) × perPageUnit 로 가/감 계산.
             pageCount: livePageCount,
             ...(pricingMeta ? { pricing: pricingMeta } : {}),
@@ -2648,9 +2647,9 @@ function EmbeddedEditor({
               ? { size: { width: liveSize.width, height: liveSize.height, unit: 'mm' as const } }
               : {}),
             ...(appliedSpineWidthMm !== undefined ? { spineWidthMm: appliedSpineWidthMm } : {}),
-            // W8-2b (additive): 이번 편집을 앉힌 템플릿셋·재편집 불일치(샘플 폴백이면 생략)
+            // additive: 이번 편집을 앉힌 템플릿셋·재편집 불일치(샘플 폴백이면 생략)
             ...templateSetResultFields(loadedTemplateSetIdRef.current, templateSetMismatchRef.current),
-            // ADDITIVE 2026-10-17 P1 캘린더: 상품 요약(프로파일 있는 세트만)
+            // ADDITIVE 캘린더: 상품 요약(프로파일 있는 세트만)
             ...productResultFields(appStateAtComplete.allCanvas.length),
             files: {
               coverFileId: completedSession.coverFileId || undefined,
@@ -2719,7 +2718,7 @@ function EmbeddedEditor({
       return 'skipped'
     }
 
-    // 재편집 게이트 완화 (2026-06-11): /embed?sessionId 단독 진입 시 mode/orderSeqno 가
+    // 재편집 게이트 완화: /embed?sessionId 단독 진입 시 mode/orderSeqno 가
     // props 로 전달되지 않으므로 세션에서 도출한다 (props 제공 시 props 우선 — 기존 경로 동작 불변).
     const effectiveMode = mode ?? currentSession?.mode
     const effectiveOrderSeqno =
@@ -2735,7 +2734,7 @@ function EmbeddedEditor({
       const { isSpreadMode, allCanvas, allEditors } = useAppStore.getState()
       const spreadCfg = useSettingsStore.getState().spreadConfig
       // 표지+내지 스프레드 책은 최소 2장(표지1+내지1)이어야 하지만, 내지 전용 펼침면 세트는
-      // 캔버스 1장(펼침면 1개)만으로도 유효한 완주 대상이다(2026-08-03).
+      // 캔버스 1장(펼침면 1개)만으로도 유효한 완주 대상이다.
       const isSpreadBook =
         isSpreadMode &&
         !!spreadCfg &&
@@ -2746,19 +2745,19 @@ function EmbeddedEditor({
       const guestToken = currentSession?.guestToken
       if (guestToken) {
         await editSessionsApi.updateGuest(currentSessionId, guestToken, { canvasData, ...calendarSessionMetadataFields(), ...photoPrintSessionMetadataFields() })
-        // R4 (2026-08-18): 서버 저장 성공 — 자동저장 훅과 동일 북키핑(clean 마킹 + 로컬 백업
+        // 서버 저장 성공 — 자동저장 훅과 동일 북키핑(clean 마킹 + 로컬 백업
         // 삭제). 종전엔 이 경로가 dirty/백업을 그대로 둬 unmount 백업이 늘 재작성되고
         // backup.savedAt > session.updatedAt 이 상시 성립 → 재진입마다 복원 배너가 떴다.
         markClean()
         deleteLocalBackup()
         if (Array.isArray(canvasData)) markServerSynced(canvasData.length)
-        // STALE-CLOSURE-001: editor.complete에 needsAuth/guestToken 인라인 포함
+        // editor.complete에 needsAuth/guestToken 인라인 포함
         const guestResult: EditorResult = {
           sessionId: currentSessionId,
           needsAuth: true,
           guestToken,
           pages: { initial: options?.pages || 1, final: options?.pages || 1 },
-          // W8-2b (additive): 이번 편집을 앉힌 템플릿셋·재편집 불일치(샘플 폴백이면 생략)
+          // additive: 이번 편집을 앉힌 템플릿셋·재편집 불일치(샘플 폴백이면 생략)
           ...templateSetResultFields(loadedTemplateSetIdRef.current, templateSetMismatchRef.current),
           files: {},
           savedAt: new Date().toISOString(),
@@ -2778,16 +2777,16 @@ function EmbeddedEditor({
 
       // Update edit session with canvas data (멀티페이지면 배열 전체)
       await finishMark('canvasData:save:start', { pages: Array.isArray(canvasData) ? canvasData.length : 1 })
-      // P1 캘린더: 캘린더 세트면 metadata.calendar 동봉(얕은 병합), 아니면 {} (payload 키 집합 불변)
-      // P2-d 사진인화: 사진인화 세트면 metadata.items 동봉(같은 규칙)
+      // 캘린더: 캘린더 세트면 metadata.calendar 동봉(얕은 병합), 아니면 {} (payload 키 집합 불변)
+      // 사진인화: 사진인화 세트면 metadata.items 동봉(같은 규칙)
       await editSessionsApi.update(currentSessionId, { canvasData, ...calendarSessionMetadataFields(), ...photoPrintSessionMetadataFields() })
       await finishMark('canvasData:save:done')
-      // R4 (2026-08-18): canvasData 서버 저장 성공 **직후에만** clean 마킹 + 로컬 백업 삭제
+      // canvasData 서버 저장 성공 **직후에만** clean 마킹 + 로컬 백업 삭제
       // (이후 PDF/complete 단계 실패와 무관 — 서버 canvasData 는 이미 최신). 종전엔 편집완료가
       // dirty/백업을 그대로 둬 unmount 백업 재작성 → 재진입마다 복원 배너 상시 노출.
       markClean()
       deleteLocalBackup()
-      // R2 가드 기준선도 갱신 — 직접 저장 경로가 훅의 saveToServer 를 우회하므로 수동 동기.
+      // 덮어쓰기 가드 기준선도 갱신 — 직접 저장 경로가 훅의 saveToServer 를 우회하므로 수동 동기.
       if (Array.isArray(canvasData)) markServerSynced(canvasData.length)
 
       // Generate PDF
@@ -2796,7 +2795,7 @@ function EmbeddedEditor({
         setFinishProgress({ stage: 'generate' })
         const bleed = options?.bleed ?? 3
 
-        // P3 (2026-06-10): 작업사이즈(재단+블리드)+코너마커+TrimBox 출력 게이팅.
+        // 작업사이즈(재단+블리드)+코너마커+TrimBox 출력 게이팅.
         // templateSet 에서 운반한 printMarkConfig 를 saveMultiPagePDFAsBlob 의 size 에 전달.
         // ServicePlugin 게이트(cropMarkEnabled && bleedMm>0)에서만 작업사이즈 경로 활성.
         // 미설정(null) → undefined → 게이트 OFF(현행 trim 출력 그대로).
@@ -2810,7 +2809,7 @@ function EmbeddedEditor({
           // ── 스프레드 책: 표지(allCanvas[0]) cover PDF + 내지(allCanvas[1..]) 멀티페이지 content PDF ──
           // 표지와 내지는 판형 크기가 달라 한 PDF 로 합칠 수 없으므로 분리 생성/업로드.
           const coverPlugin = allEditors[0]?.getPlugin('ServicePlugin') as ServicePlugin | undefined
-          // D-1 후속(2026-08-03): **내지 전용 펼침면 세트(regionScope='inner')에는 표지가 없다.**
+          // **내지 전용 펼침면 세트(regionScope='inner')에는 표지가 없다.**
           // 캔버스 0 도 '펼침면 1' 이므로 cover 로 분리하면 첫 펼침면이 content 에서 누락되고
           // (content=N−1) 같은 완료 payload 의 pageCount(=N×2)와 어긋난다.
           // ⚠️ 계약: 이 분기는 regionScope==='inner' 에서만 동작한다 — 표지+내지 스프레드 책의
@@ -2818,7 +2817,7 @@ function EmbeddedEditor({
           const isInnerOnlySpread = spreadCfg?.regionScope === 'inner'
           const { innerCanvases } = splitSpreadOutputCanvases(allCanvas, spreadCfg)
           const { innerCanvases: innerEditors } = splitSpreadOutputCanvases(allEditors, spreadCfg)
-          // B10: 진행 수 = 표지(표지 있는 세트만 1장) + 내지 캔버스 — ServicePlugin onProgress 로 갱신
+          // 진행 수 = 표지(표지 있는 세트만 1장) + 내지 캔버스 — ServicePlugin onProgress 로 갱신
           const spreadCoverCount = isInnerOnlySpread ? 0 : 1
           const spreadGenTotal = spreadCoverCount + innerCanvases.length
           // ⚠️ 스프레드 내지 페이지 에디터는 addInnerPage 에서 WorkspacePlugin 만 등록되어
@@ -2840,7 +2839,7 @@ function EmbeddedEditor({
                 heightMm: spreadCfg?.spec?.coverHeightMm ?? options?.size?.height ?? 297,
               },
             })
-            // D-4 (2026-07-06): 하드커버(caseBind) 표지는 출력 페이지 크기 = wrap 포함 사이즈.
+            // 하드커버(caseBind) 표지는 출력 페이지 크기 = wrap 포함 사이즈.
             // ServicePlugin 의 기존 printSize 메커니즘(페이지=printSize, 콘텐츠 trim 렌더 중앙 배치)
             // 재사용 — canvas-core 무변경. caseBind 미설정이면 null → 기존 호출 byte-parity.
             const coverOutputSize = computeCoverOutputSizeMm(spreadCfg)
@@ -2848,8 +2847,8 @@ function EmbeddedEditor({
 
             // 표지 cover PDF (스프레드 전체 크기) — 독립 try (실패해도 내지는 시도)
             let coverFileId: string | undefined
-            // R-195: 표지 PDF 에 넘긴 size 객체 — metadata.coverOutput 이 같은 입력으로 페이지 크기를 산출한다.
-            // 싸바리 모드 → wrapMm(printSize·markOpt 없음). D-4: caseBind 有 → 페이지=출력(wrap) 사이즈 +
+            // 표지 PDF 에 넘긴 size 객체 — metadata.coverOutput 이 같은 입력으로 페이지 크기를 산출한다.
+            // 싸바리 모드 → wrapMm(printSize·markOpt 없음). caseBind 有 → 페이지=출력(wrap) 사이즈 +
             // 콘텐츠 중앙 오프셋(printSize 경로, markOpt 없음). 그 밖 → markOpt.
             const coverPdfSizeOpt = buildCoverPdfSizeOpt({
               contentWidthMm: spreadCfg!.totalWidthMm,
@@ -2866,7 +2865,7 @@ function EmbeddedEditor({
                   w: spreadCfg!.totalWidthMm, h: spreadCfg!.totalHeightMm,
                   ...(coverOutputSize ? { outW: coverOutputSize.widthMm, outH: coverOutputSize.heightMm } : {}),
                 })
-                // L4-②: PDF 생성 창(excludeFromExport 임시 플래깅) 동안 autosave suspend —
+                // PDF 생성 창(excludeFromExport 임시 플래깅) 동안 autosave suspend —
                 // 발화분은 스킵이 아니라 생성 완료 후 1회 지연 실행(autosaveSuspend.ts).
                 const coverBlob = await withWatchdog(
                   runWithAutosaveSuspended(() => coverPlugin.saveMultiPagePDFAsBlob(
@@ -2896,8 +2895,8 @@ function EmbeddedEditor({
             let contentFileId: string | undefined
             try {
               await finishMark('spread:content:gen:start', { pages: innerCanvases.length, w: innerW, h: innerH })
-              // 다페이지 내지: 워치독을 페이지수 비례로(고정 180s 는 24p 에서 타임아웃 실측,
-              // 2026-06-10) + 페이지 진행 메시지(사용자 인지 + 행 지점 진단).
+              // 다페이지 내지: 워치독을 페이지수 비례로(고정 180s 는 24p 에서 타임아웃이 난다)
+              // + 페이지 진행 메시지(사용자 인지 + 행 지점 진단).
               const contentWatchdogMs = Math.max(180000, innerCanvases.length * 15000)
               const contentBlob = await withWatchdog(
                 runWithAutosaveSuspended(() => coverPlugin.saveMultiPagePDFAsBlob(
@@ -2926,7 +2925,7 @@ function EmbeddedEditor({
             }
 
             if (coverFileId || contentFileId) {
-              // B38 출력재현 단일소스: metadata.spread/spine 스냅샷 저장(additive). 실패해도 완료 무중단.
+              // 출력재현 단일소스: metadata.spread/spine 스냅샷 저장(additive). 실패해도 완료 무중단.
               const spineCfgAtFinish = useSettingsStore.getState().spineConfig
               const snapshots = buildSpreadSnapshots(
                 spreadCfg,
@@ -2934,7 +2933,7 @@ function EmbeddedEditor({
                 innerCanvases.length,
                 { hardcoverWrapMm: hardcoverWrap?.wrapPerSideMm },
               )
-              // R-195 (additive top-level 키 — 서버 metadata 는 shallow merge 라 orderOptions 등 기존
+              // additive top-level 키 (서버 metadata 는 shallow merge 라 orderOptions 등 기존
               // 객체는 절대 부분 전송하지 않는다):
               //  - appliedSpine: 표지에 쓰인 spec 책등 폭 + 출처(host/formula/template). 표지 스프레드만.
               //  - coverOutput : 생성된 표지 PDF 의 실제 페이지 크기(mm)·사방 블리드 — 표지 PDF 생성 시에만.
@@ -2951,7 +2950,7 @@ function EmbeddedEditor({
                 ...(contentFileId ? { contentFileId } : {}),
                 metadata: {
                   spreadContentPageCount: innerCanvases.length,
-                  // R5 정밀화: 산출물 fileId 기록 → 재진입 시 첨부 오인/underlay 재승격 차단을 값 일치로 좁힘
+                  // 정밀화: 산출물 fileId 기록 → 재진입 시 첨부 오인/underlay 재승격 차단을 값 일치로 좁힘
                   ...(contentFileId ? { editorOutputContentFileId: contentFileId } : {}),
                   ...(snapshots.spread ? { spread: snapshots.spread } : {}),
                   ...(snapshots.spine ? { spine: snapshots.spine } : {}),
@@ -2968,10 +2967,10 @@ function EmbeddedEditor({
           // ── 단일 페이지(표지/내지/템플릿 등) ──
           const servicePlugin = editor.getPlugin('ServicePlugin') as ServicePlugin | undefined
           if (servicePlugin) {
-            // G-E (2026-07-14): 페이지 치수 — 전달값이 templateSet 판형과 정확히 W↔H 스왑이면
+            // 페이지 치수 — 전달값이 templateSet 판형과 정확히 W↔H 스왑이면
             // templateSet 방향으로 정규화(PDF 생성 로컬 치수만 — 세션 metadata·editor.complete
             // payload 의 size 는 전달값 원본 보존). 일치/무관 불일치/정사각/size 미전달은 현행 그대로.
-            // P1 캘린더 (2026-10-17): 프로파일 세트는 템플릿셋 판형이 상품 정답이다 — 호스트가 size 를
+            // 캘린더: 프로파일 세트는 템플릿셋 판형이 상품 정답이다 — 호스트가 size 를
             // 보내지 않으면 A4 폴백 대신 템플릿셋 판형으로 생성한다(프로파일 NULL 세트는 종전 그대로 A4 폴백).
             const singlePdfSize = resolveSingleModePdfSizeMm(
               resolveProfilePdfRequestSize(options?.size, useSettingsStore.getState().productProfile, templateSetSizeRef.current),
@@ -2987,7 +2986,7 @@ function EmbeddedEditor({
                 },
               )
             }
-            // P0 (2026-10-16): 낱장 N장 세트(같은 판형 캔버스 N개)는 전 캔버스를 한 PDF 로 생성.
+            // 낱장 N장 세트(같은 판형 캔버스 N개)는 전 캔버스를 한 PDF 로 생성.
             // 1캔버스·spine/wing 혼재(크기 상이)·길이 불일치는 종전과 같은 [canvas],[editor] 로 폴백.
             const pdfSel = selectSingleModePdfCanvases({
               canvas, editor, allCanvas, allEditors,
@@ -3002,7 +3001,7 @@ function EmbeddedEditor({
               canvasSelection: pdfSel.reason,
               canvasCount: pdfSel.canvases.length,
             })
-            // P1 캘린더 (2026-10-17): 프로파일 세트만 export 옵션(미사용 폰트 생략·워크스페이스 제외·transparent 치환)을
+            // 캘린더: 프로파일 세트만 export 옵션(미사용 폰트 생략·워크스페이스 제외·transparent 치환)을
             // 전달한다. 프로파일 NULL 세트는 undefined 로 종전 인자 그대로(옵션 미전달 = 바이트 동일).
             const profilePdfExportOptions = resolveProfilePdfExportOptions(useSettingsStore.getState().productProfile)
             const pdfBlob = await withWatchdog(
@@ -3010,7 +3009,7 @@ function EmbeddedEditor({
                 pdfSel.canvases, pdfSel.editors, `session-${currentSessionId}`,
                 { width: singlePdfSize.width, height: singlePdfSize.height, cutSize: bleed, ...markOpt },
                 undefined, 300,
-                // B10: 캔버스 진행 수(ServicePlugin onProgress — 출력 무영향, 진행 보고 전용)
+                // 캔버스 진행 수(ServicePlugin onProgress — 출력 무영향, 진행 보고 전용)
                 (page, total) => setFinishProgress({ stage: 'generate', current: page, total }),
                 profilePdfExportOptions,
               )),
@@ -3036,7 +3035,7 @@ function EmbeddedEditor({
               } = {}
               if (effectiveMode === 'content') {
                 updatePayload.contentFileId = uploadResponse.id
-                // R5 정밀화: 단일모드 내지 산출물도 마커 기록(첨부 오인 방지, API metadata 는 shallow merge)
+                // 정밀화: 단일모드 내지 산출물도 마커 기록(첨부 오인 방지, API metadata 는 shallow merge)
                 updatePayload.metadata = { editorOutputContentFileId: uploadResponse.id }
               } else updatePayload.coverFileId = uploadResponse.id
               await editSessionsApi.update(currentSessionId, updatePayload)
@@ -3063,12 +3062,12 @@ function EmbeddedEditor({
       markCompleted()
       setCurrentSession(completedSession)
 
-      // S2 (2026-07-04): 이 경로(헤더 '편집완료' = 라이브 임베드 실완료 경로)에도 실측
+      // 이 경로(헤더 '편집완료' = 라이브 임베드 실완료 경로)에도 실측
       // pageCount/size + pricing 동봉 — 인스턴스 complete 경로와 payload 파리티.
-      // (pricing 은 pre-existing 갭: 인스턴스 경로만 싣고 있어 라이브 임베드에서 포토북
-      //  가변가격 메타가 파트너에 전달되지 않던 것 — 적대 리뷰 major 지적으로 정렬.)
-      // Track 1 (2026-07-06): 산식을 computeLivePageCount 헬퍼로 단일 진실원화(complete 2경로+pricingChange).
-      // T5 (2026-07-13): 표지+내지 단일 세션 spread(비-inner)는 표지 캔버스 1장 제외(21→20).
+      // (pricing 도 싣는다 — 인스턴스 경로에만 실으면 라이브 임베드에서 포토북
+      //  가변가격 메타가 파트너에 전달되지 않는다.)
+      // 산식은 computeLivePageCount 헬퍼가 단일 진실원이다(complete 2경로+pricingChange).
+      // 표지+내지 단일 세션 spread(비-inner)는 표지 캔버스 1장 제외(21→20).
       // 캔버스 1(표지 단독 세션) 게이트 필수 — physical=0 방지. 포토북 inner ×2 산식 불변.
       const appStateAtFinish = useAppStore.getState()
       const spreadCfgAtFinish = useSettingsStore.getState().spreadConfig
@@ -3081,12 +3080,12 @@ function EmbeddedEditor({
           appStateAtFinish.allCanvas.length > 1
           ? 1
           : 0,
-        // 표지+내지펼침면: 내지 캔버스 1장 = 2쪽(2026-09-28)
+        // 표지+내지펼침면: 내지 캔버스 1장 = 2쪽
         appStateAtFinish.isSpreadMode ? useEditorStore.getState().pagesPerCanvas : 1,
       )
       const liveSize2 = useSettingsStore.getState().currentSettings.size
       const pricingMeta2 = templateSetPricingRef.current
-      // R-195: 적용 책등 폭(스프레드 책만, additive)
+      // 적용 책등 폭(스프레드 책만, additive)
       const appliedSpineWidthMm2 = getAppliedSpineWidthMm(
         appStateAtFinish.isSpreadMode,
         spreadCfgAtFinish,
@@ -3105,9 +3104,9 @@ function EmbeddedEditor({
           ? { size: { width: liveSize2.width, height: liveSize2.height, unit: 'mm' as const } }
           : {}),
         ...(appliedSpineWidthMm2 !== undefined ? { spineWidthMm: appliedSpineWidthMm2 } : {}),
-        // W8-2b (additive): 이번 편집을 앉힌 템플릿셋·재편집 불일치(샘플 폴백이면 생략)
+        // additive: 이번 편집을 앉힌 템플릿셋·재편집 불일치(샘플 폴백이면 생략)
         ...templateSetResultFields(loadedTemplateSetIdRef.current, templateSetMismatchRef.current),
-        // ADDITIVE 2026-10-17 P1 캘린더: 상품 요약(프로파일 있는 세트만)
+        // ADDITIVE 캘린더: 상품 요약(프로파일 있는 세트만)
         ...productResultFields(appStateAtFinish.allCanvas.length),
         files: {
           coverFileId: completedSession.coverFileId || undefined,
@@ -3186,7 +3185,7 @@ function EmbeddedEditor({
 
   // 세션 불러오기 핸들러 - 선택한 세션으로 편집기 재진입
   //
-  // ⚠️ 과거: core.loadFromJSON(canvas, session.canvasData) 단일 캔버스 로드만 수행 →
+  // ⚠️ core.loadFromJSON(canvas, session.canvasData) 단일 캔버스 로드만 하면 →
   //   멀티페이지/스프레드 세션의 canvasData 는 "페이지별 배열" 이라 fabric loadFromJSON 이
   //   배열에서 objects 를 못 찾아 캔버스가 비고(워크스페이스까지 유실) → 편집완료 PDF 가
   //   "첫 번째 캔버스에서 워크스페이스를 찾을 수 없습니다" 로 실패.
@@ -3272,9 +3271,9 @@ function EmbeddedEditor({
         onFinish={handleFinish}
         onSaveWork={handleSaveWork}
         onOpenWorkspace={handleOpenWorkspace}
-        /* S1 (2026-07-04): embed = 주문 컨텍스트 — 작업 사이즈를 읽기전용으로 강등 */
+        /* embed = 주문 컨텍스트 — 작업 사이즈를 읽기전용으로 강등 */
         orderContext
-        /* P1-4 (2026-08-22): 서버 버전 이력 패널 + 여기로 복원. 임베드는 레거시(/editor/sessions,
+        /* 서버 버전 이력 패널 + 여기로 복원. 임베드는 레거시(/editor/sessions,
            persist 된 useEditorStore.sessionId) 분기를 항상 끈다 — 다른 세션 이력 노출/리로드 복원 방지. */
         sessionVersions={sessionVersionsSource}
         legacySessionVersions={false}
@@ -3292,7 +3291,7 @@ function EmbeddedEditor({
             {ready && <ControlBar />}
 
             <main className="flex-1 relative overflow-hidden bg-editor-workspace">
-              {/* 선택 객체 플로팅 액션 바 (E1 §5-3) — 임베드 소형 뷰포트 clamp 는 컴포넌트가 처리 */}
+              {/* 선택 객체 플로팅 액션 바 — 임베드 소형 뷰포트 clamp 는 컴포넌트가 처리 */}
               {ready && <ObjectActionBar />}
               <div id="canvas-wrapper" className="h-full w-full overflow-hidden relative">
                 <div id="workspace" className="workspace absolute inset-0 flex items-center justify-center">
@@ -3328,7 +3327,7 @@ function EmbeddedEditor({
         </div>
       </div>
 
-      {/* B10: 편집완료 진행 중에는 단계·캔버스 진행 수 오버레이로 대체(같은 위치·z-index) */}
+      {/* 편집완료 진행 중에는 단계·캔버스 진행 수 오버레이로 대체(같은 위치·z-index) */}
       <FinishProgressOverlay progress={finishProgress} detail={loadingMessage} />
       {isLoading && !finishProgress && (
         <div className="absolute inset-0 z-[200] flex items-center justify-center bg-black/50">
@@ -3339,7 +3338,7 @@ function EmbeddedEditor({
         </div>
       )}
 
-      {/* W1-G2 (2026-08-13): 내지 PDF 첨부 진입점 — 파트너 정본 경로(/embed)에 마운트.
+      {/* 내지 PDF 첨부 진입점 — 파트너 정본 경로(/embed)에 마운트.
           종전엔 레거시 `/`(EditorView)에만 있어 임베드 고객은 PDF 를 첨부할 수 없었다.
           book 모드 templateSet 이면 기본 노출, 호스트가 contentPdfAttach=false 로 끈다.
           세션은 embed 가 소유 — sessionId(+게스트면 guestToken)를 명시 주입해
@@ -3389,10 +3388,10 @@ function EmbeddedEditor({
         onDismiss={handleDismissRestore}
       />
 
-      {/* S2 (공유): DEL/Backspace·휴지통·ObjectActionBar 삭제 확인 모달 — App.tsx 준용.
+      {/* 공유: DEL/Backspace·휴지통·ObjectActionBar 삭제 확인 모달 — App.tsx 준용.
           embed 는 독립 엔트리(createRoot)라 App 루트의 마운트가 닿지 않아
-          requestDeleteSelection() 이 상태만 세팅하고 소비자가 없었다(임베드 삭제 버튼
-          무동작 — 적대 리뷰 P1). 의존은 useAppStore 뿐이라 embed 에서도 동일 동작. */}
+          requestDeleteSelection() 이 상태만 세팅하고 소비자가 없다(임베드 삭제 버튼
+          무동작). 의존은 useAppStore 뿐이라 embed 에서도 동일 동작. */}
       <ObjectDeleteConfirm />
     </div>
   )

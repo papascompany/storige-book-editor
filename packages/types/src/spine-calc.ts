@@ -1,12 +1,12 @@
 /**
- * spine-calc.ts — 책등(세네카) 계산 순수 엔진 (R-44, 2026-07-21)
+ * spine-calc.ts — 책등(세네카) 계산 순수 엔진
  *
- * bookmoa SSOT(`bookmoa-mobile/src/lib/spine-calc.js`)의 0오차 자구 이식.
- * 원 출처(라이브 소스 실측, bookmoa 2026-07-21):
- *  · 양장: mybookmake.com/app/cal_01.php — bookCalculate()
- *  · 무선: youshindang.com/assets/calc/calc.asp — calseneka()
+ * 파트너 쇼핑몰 책등 계산식(SSOT)의 0오차 자구 이식.
+ * 원 출처(외부 책등 계산기 2종):
+ *  · 양장: 외부 양장 계산기 — bookCalculate()
+ *  · 무선: 외부 무선 계산기 — calseneka()
  *
- * API(spine.service v2)·워커(validateSpine 기대폭)·Track C 표지 파생이 전부
+ * API(spine.service v2)·워커(validateSpine 기대폭)·표지 파생이 전부
  * 이 모듈만 import 한다 — 검증 기준값 산출과 제작 산출이 동일 산식 공유
  * (HARDCOVER_COVER_VALIDATION_NOTES §1-4).
  *
@@ -16,7 +16,7 @@
  *  (미색모조80: 무선 0.048/페이지 × 2 ≒ 양장 0.095/장 — 상호 정합)
  */
 
-// ─── 양장 상수 (mybookmake 원본 그대로) ─────────────────────────────
+// ─── 양장 상수 (외부 양장 계산기 원본 그대로) ─────────────────────────────
 /** 마닐라 합지 두께(mm) — 책등에 가산 */
 export const HARDCOVER_MANILA_MM = 4;
 /** 책등 최소 두께(mm) */
@@ -31,13 +31,13 @@ export interface SpinePaperSpec {
   label: string;
   /** 두께 — 표에 따라 mm/페이지(무선) 또는 mm/장(양장) */
   t: number;
-  /** 외부(bookmoa innerPaper 등) 라벨 흡수용 별칭 */
+  /** 외부(파트너 사이트 내지 용지 등) 라벨 흡수용 별칭 */
   aliases?: string[];
 }
 
 /**
- * 양장 내지 지종 두께표 — mm/장(sheet). mybookmake cal_01.php select 원본 35종.
- * aliases: bookmoa productMeta.innerPaper 라벨(아르떼(UW/NW)·모조 계열) 흡수.
+ * 양장 내지 지종 두께표 — mm/장(sheet). 외부 양장 계산기 select 원본 35종.
+ * aliases: 파트너 사이트 내지 용지 라벨(아르떼(UW/NW)·모조 계열) 흡수.
  */
 export const HARDCOVER_SPINE_PAPERS: SpinePaperSpec[] = [
   { label: '아르떼130', t: 0.191, aliases: ['아르떼(UW)130', '아르떼(NW)130'] },
@@ -75,7 +75,7 @@ export const HARDCOVER_SPINE_PAPERS: SpinePaperSpec[] = [
   { label: '스노우200(무림)', t: 0.200, aliases: ['스노우지200'] },
   { label: '스노우250(무림)', t: 0.260, aliases: ['스노우지250'] },
   { label: '스노우300(무림)', t: 0.320, aliases: ['스노우지300'] },
-  // ── 오너 caliper 실측 회신분(2026-07-22, bookmoa reply3 §5) — per-sheet = caliper ──
+  // ── caliper 실측값 — per-sheet = caliper ──
   // 무선표와 동일 라벨 = DB 단일 행에 양(兩) 공식 두께 공존(perPage+perSheet 백필).
   { label: '아르떼90', t: 0.110, aliases: ['아르떼(UW)90', '아르떼(NW)90'] },
   { label: '아르떼105', t: 0.155, aliases: ['아르떼(UW)105', '아르떼(NW)105'] },
@@ -87,7 +87,7 @@ export const HARDCOVER_SPINE_PAPERS: SpinePaperSpec[] = [
   { label: '이라이트80', t: 0.130 },
   { label: '드로잉220', t: 0.320 },
   { label: '도화지170', t: 0.268 },
-  // ── 마지막 배치(2026-07-23 R-55) — 양장 신규 3항목 ──
+  // ── 양장 추가 3항목 ──
   // 백색모조120 = caliper 140㎛(백색모조 가족 라벨). 뉴플러스100은 무선표와 동일
   // 라벨 = DB 단일 행에 perSheet 백필(아르떼 전례).
   { label: '백색모조120', t: 0.140, aliases: ['모조120'] },
@@ -96,16 +96,16 @@ export const HARDCOVER_SPINE_PAPERS: SpinePaperSpec[] = [
 ];
 
 /**
- * 무선 내지 지종 두께표 — mm/페이지(page). youshindang calc.asp select 원본 29종.
- * ⚠️ 원본 '백모조 180g'=0.010은 명백한 오타(70~150g 추세 0.043→0.084) — 0.100 정정 이식(bookmoa 동일).
- * aliases: bookmoa 라벨("모조80"=백모조 계열, "뉴플러스(백색)100" 등) 흡수.
+ * 무선 내지 지종 두께표 — mm/페이지(page). 외부 무선 계산기 select 원본 29종.
+ * ⚠️ 원본 '백모조 180g'=0.010은 명백한 오타(70~150g 추세 0.043→0.084) — 0.100 정정 이식(파트너 쇼핑몰과 동일).
+ * aliases: 파트너 사이트 라벨("모조80"=백모조 계열, "뉴플러스(백색)100" 등) 흡수.
  * 공백·말미 g 차이는 normalizeSpinePaperLabel 이 흡수하므로 실질 개명만 alias 로 둔다.
  */
 export const PERFECT_SPINE_PAPERS: SpinePaperSpec[] = [
   { label: '백모조 70g', t: 0.043, aliases: ['모조70'] },
   { label: '백모조 80g', t: 0.048, aliases: ['모조80'] },
   { label: '백모조 100g', t: 0.058, aliases: ['모조100'] },
-  // 0.069→0.070 (2026-07-23 R-55): 오너 caliper 140㎛ 기준 통일 — 양장 백색모조120(0.140)과 ÷2 정합
+  // caliper 140㎛ 기준 0.070 — 양장 백색모조120(0.140)과 ÷2 정합
   { label: '백모조 120g', t: 0.07, aliases: ['모조120'] },
   { label: '백모조 150g', t: 0.084, aliases: ['모조150'] },
   { label: '백모조 180g', t: 0.100, aliases: ['모조180'] },
@@ -122,7 +122,7 @@ export const PERFECT_SPINE_PAPERS: SpinePaperSpec[] = [
   { label: '아트지 150g', t: 0.060 },
   { label: '아트지 180g', t: 0.078 },
   { label: '아트지 200g', t: 0.094 },
-  // 0.051→0.0505 (2026-07-23 R-55): 오너 caliper 101㎛ 기준 통일 — 양장 0.101과 ÷2 정합
+  // caliper 101㎛ 기준 0.0505 — 양장 0.101과 ÷2 정합
   { label: '뉴플러스백색 100g', t: 0.0505, aliases: ['뉴플러스(백색)100'] },
   { label: '뉴플러스미색 100g', t: 0.0505, aliases: ['뉴플러스(미색)100'] },
   { label: '랑데뷰화이트 105g', t: 0.074 },
@@ -134,7 +134,7 @@ export const PERFECT_SPINE_PAPERS: SpinePaperSpec[] = [
   { label: '랑데뷰네추럴 160g', t: 0.110 },
   { label: '랑데뷰네추럴 190g', t: 0.130 },
   // ── 아르떼 무선 확장(2026-07-21 오너 실측 웹 출처 승인) ──
-  // youshindang 원본에는 아르떼가 없으나 bookmoa 무선+아르떼 조합이 실재(제본-지종 비종속).
+  // 외부 무선 계산기 원본에는 아르떼가 없으나 파트너 쇼핑몰에 무선+아르떼 조합이 실재(제본-지종 비종속).
   // 실물 두께 실측(192/230/270/297/320㎛ — 오너 확인)이 양장표(mm/장)와 1~2㎛ 내 일치
   // → per-page = per-sheet ÷ 2 정확 환산(1장=2페이지)으로 편입. 90·105·310 평량은
   // 실측 출처 부재로 계속 미매핑. 라벨은 양장표와 동일(=DB 단일 행에 perPage 백필).
@@ -143,7 +143,7 @@ export const PERFECT_SPINE_PAPERS: SpinePaperSpec[] = [
   { label: '아르떼190', t: 0.135, aliases: ['아르떼(UW)190', '아르떼(NW)190'] },
   { label: '아르떼210', t: 0.148, aliases: ['아르떼(UW)210', '아르떼(NW)210'] },
   { label: '아르떼230', t: 0.161, aliases: ['아르떼(UW)230', '아르떼(NW)230'] },
-  // ── 오너 caliper 실측 회신분(2026-07-22, bookmoa reply3 §5 — 모달과 동일값) ──
+  // ── caliper 실측값(파트너 쇼핑몰 계산 모달과 동일값) ──
   // per-page = caliper ÷ 2 정확 환산. ±공차는 중앙값 채택. 아르떼105·뉴플러스80은
   // 소수 4자리 — DB thicknessPerPageMm DECIMAL(7,4) 확장 마이그레이션(20260722) 전제.
   { label: '아르떼90', t: 0.055, aliases: ['아르떼(UW)90', '아르떼(NW)90'] },
@@ -156,9 +156,9 @@ export const PERFECT_SPINE_PAPERS: SpinePaperSpec[] = [
   { label: '이라이트80', t: 0.065 },
   { label: '드로잉220', t: 0.16 },
   { label: '도화지170', t: 0.134 },
-  // ── 마지막 배치(2026-07-23 R-55, bookmoa reply9 §3 — 미매핑 잔여 0 완성) ──
+  // ── 무선 아트지·스노우지 추가분 ──
   // 무선 아트지·스노우지 3평량대: caliper÷2. 아트지250/300은 오너 범위 중앙값
-  // (231~235→233, 284~290→287 — 산지 무림/한국 단일 라벨 정책, bookmoa 모달 동일값).
+  // (231~235→233, 284~290→287 — 산지 무림/한국 단일 라벨 정책, 파트너 쇼핑몰 계산 모달과 동일값).
   // 라벨 정규화가 "아트지250" 표기를 자동 흡수하므로 별칭 불필요.
   { label: '아트지 80g', t: 0.032 },
   { label: '아트지 250g', t: 0.1165 },
@@ -190,9 +190,9 @@ export type SpineCalcResult =
   | { ok: false; reason: string };
 
 /**
- * 무선(perfect) 책등 계산 — youshindang calseneka 자구 이식.
+ * 무선(perfect) 책등 계산 — 외부 무선 계산기 calseneka 자구 이식.
  * 공식: 홀수 페이지 +1 보정 → round(effPages × 페이지당두께 × 100) / 100 (소수 2자리 반올림).
- * margin 가산 없음(v1 공식과의 차이 — bookmoa 골든 정합).
+ * margin 가산 없음(v1 공식과의 차이 — 파트너 쇼핑몰 골든 값 정합).
  */
 export function calcPerfectSpine(params: { pages: number; pageThicknessMm: number }): SpineCalcResult {
   const p = Number(params.pages);
@@ -221,7 +221,7 @@ export function hardcoverSpineRaw(
 }
 
 /**
- * 양장(hardcover) 책등 계산 — mybookmake bookCalculate 자구 이식.
+ * 양장(hardcover) 책등 계산 — 외부 양장 계산기 bookCalculate 자구 이식.
  * 유효성(p≥12 && p%4==0)은 원본 alert 조건 — 호출측 정책에 따라 reason 을 경고로 강등 가능.
  * 산술은 hardcoverSpineRaw 단일 구현 공유.
  */
@@ -252,9 +252,9 @@ export type HardcoverCoverSpreadResult =
   | { ok: false; reason: string };
 
 /**
- * 양장 표지(싸바리) 전개 제작 사이즈 — mybookmake 자구 이식.
+ * 양장 표지(싸바리) 전개 제작 사이즈 — 외부 양장 계산기 자구 이식.
  * 재단 W×H 기준. 골든: 210×297·40p·아르떼130(0.191) → spine 8 · 표지 218×305 · 전개 484×345.
- * 워커 표지 PDF 기대치·표지 파생(Track C)·admin 산출이 모두 이 함수를 쓴다.
+ * 워커 표지 PDF 기대치·표지 파생·admin 산출이 모두 이 함수를 쓴다.
  */
 export function calcHardcoverCoverSpread(params: {
   widthMm: number;

@@ -1,5 +1,5 @@
 /**
- * 트랙 B-(d) 파리티 회귀 가드.
+ * 경량 검증 파리티 회귀 가드.
  *
  * 검증 ON 경로(validateLightweight: 스트림+qpdf+청크 스캔)가 기존 OFF 경로
  * (validate: 전체버퍼+pdf-lib)와 **동일한 결과(errors/warnings/metadata)** 를 내는지
@@ -75,7 +75,7 @@ function optsVariants(): { label: string; opts: ValidationOptions }[] {
       } as unknown as ValidationOptions,
     },
     {
-      // S6: 앞/뒤 낱장 표지 — 단일 판형 검증·책등 생략 분기(spineWidthMm 동봉에도 무시)
+      // 앞/뒤 낱장 표지 — 단일 판형 검증·책등 생략 분기(spineWidthMm 동봉에도 무시)
       label: 'cover/perfect/separate',
       opts: {
         fileType: 'cover',
@@ -119,7 +119,7 @@ runOrSkip('lightweight validation parity (OFF == ON)', () => {
 });
 
 /**
- * S6: 경량(ON) 경로의 separate 표지 분기 직접 확인 — 파리티(ON==OFF)만으로는 두 경로가
+ * 경량(ON) 경로의 separate 표지 분기 직접 확인 — 파리티(ON==OFF)만으로는 두 경로가
  * 함께 틀려도 통과하므로, 손수 만든 PDF 로 ON 경로 자체의 기대 결과를 못박는다.
  */
 runOrSkip('S6 coverLayout=separate — 경량(ON) 경로', () => {
@@ -168,7 +168,7 @@ runOrSkip('S6 coverLayout=separate — 경량(ON) 경로', () => {
     expect(codes).not.toContain('SPINE_SIZE_MISMATCH');
   });
 
-  // S6 후속: 경량 경로도 2쪽(뒤표지) 치수를 qpdf 페이지별 치수로 받아 동일 규칙 판정
+  // 경량 경로도 2쪽(뒤표지) 치수를 qpdf 페이지별 치수로 받아 동일 규칙 판정
   it('뒤표지만 규격 불일치(216×303 + 200×280) → SIZE_MISMATCH(details.page=2)', async () => {
     const r = await (service as any).validateLightweight(
       await writePdfPages([[216, 303], [200, 280]]),
@@ -197,7 +197,7 @@ runOrSkip('S6 coverLayout=separate — 경량(ON) 경로', () => {
     { name: 'separate 앞·뒤 모두 불일치', sizes: [[430, 303], [430, 303]], opts: sepOpts },
     { name: 'separate 1쪽 불일치', sizes: [[430, 303]], opts: sepOpts },
     { name: '비 separate(사철 표지) 뒤쪽 불일치 — 2쪽 미검사', sizes: [[216, 303], [200, 280]], opts: saddleOpts },
-    // 2026-10-17 P1-e: 프로파일 세트 cover 슬롯(coverSpine='none') — 무선이어도 단일 판형 경로(두 경로 동일)
+    // 프로파일 세트 cover 슬롯(coverSpine='none') — 무선이어도 단일 판형 경로(두 경로 동일)
     { name: "무선 표지 coverSpine='none' 정규격 1쪽", sizes: [[216, 303]], opts: noSpineOpts },
   ];
   for (const c of parityCases) {

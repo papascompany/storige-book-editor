@@ -1,7 +1,7 @@
 import { axiosInstance } from '../lib/axios';
 
 /**
- * S2-4 파트너 포털 v0 — SITE_ADMIN 셀프서브 API 클라이언트.
+ * 파트너 포털 v0 — SITE_ADMIN 셀프서브 API 클라이언트.
  *
  * /api/portal/sites/:siteId (JWT, SITE_ADMIN 전용 — 전역 admin 은 기존 sites.ts).
  * 응답 봉투 `{ success, data }` 를 벗겨 반환한다(operators.ts 패턴 준용).

@@ -4,7 +4,7 @@
  *   - 비회원 세션: 'needsAuth' + editor.complete(needsAuth) → editor.needAuth 순서 유지
  *   - 세션 없음: 'skipped', 저장·완료 호출·이벤트 없음
  *   - 실패: SAVE_FAILED(고정 문구, fatal:false) + 원래 오류로 거부
- *   - W8-2b: complete 4경로(회원·게스트 × onFinish·instance.complete)에 templateSetId(편집기 실효 세트),
+ *   - complete 4경로(회원·게스트 × onFinish·instance.complete)에 templateSetId(편집기 실효 세트),
  *     샘플 폴백이면 생략(불일치가 있어도 templateSetMismatch 까지 생략), 재편집 불일치면 templateSetMismatch 동봉
  *
  * 하네스는 embed.guestReopen.test.tsx 를 준용한다(비회원 세션은 전체 초기화, 나머지는 store.ready=true 로 초기화 생략).
@@ -243,7 +243,7 @@ describe('EmbeddedEditor — 편집완료 결과(FinishOutcome)', () => {
     expect(api.complete).not.toHaveBeenCalled()
     expect(postedEvents()).toEqual(['editor.complete', 'editor.needAuth'])
     expect(posted('editor.complete')[0]).toMatchObject({ needsAuth: true, guestToken: 'gt-1', files: {} })
-    // W8-2b: 게스트 onFinish 경로에도 편집기 실효 세트
+    // 게스트 onFinish 경로에도 편집기 실효 세트
     expect(posted('editor.complete')[0].templateSetId).toBe('ts-test')
     expect('templateSetMismatch' in posted('editor.complete')[0]).toBe(false)
   })
@@ -318,7 +318,7 @@ describe('EmbeddedEditor — 편집완료 결과(FinishOutcome)', () => {
     }
   })
 
-  describe('W8-2b complete.templateSetId', () => {
+  describe('complete.templateSetId', () => {
     const MEMBER_SESSION = {
       id: 'sess-1',
       status: 'editing',

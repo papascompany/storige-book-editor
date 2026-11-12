@@ -5,7 +5,7 @@ import type { CalendarRenderContext } from '@storige/canvas-core'
 import type { fabric } from 'fabric'
 
 const getCalendarDataMock = vi.fn<(version: string) => unknown>(() => null)
-// getCalendarData 만 목 — 나머지(resolveAnniversarySolarDate 등)는 실물. T2(2026-10-22) 이후 useCalendarStore.addAnniversary 가
+// getCalendarData 만 목 — 나머지(resolveAnniversarySolarDate 등)는 실물. useCalendarStore.addAnniversary 가
 // 같은 날짜 거부 판정에 음력 환산을 쓰므로 전체 치환 목이면 아래 '정상' 케이스의 음력 기념일 추가가 터진다.
 vi.mock('@storige/canvas-core', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@storige/canvas-core')>()),
@@ -17,7 +17,7 @@ import { useCalendarStore } from '@/stores/useCalendarStore'
 import { rehydrateCalendarGrids, rehydrateCalendarGridsStrict } from './calendarRehydrate'
 
 /**
- * P1 캘린더 (2026-10-17): 복원 직후 그리드 재합성 헬퍼.
+ * 캘린더: 복원 직후 그리드 재합성 헬퍼.
  * - legacy(프로파일 null) → 플러그인·데이터 조회 없이 0
  * - 플러그인 없음 → 0, 데이터 없음 → warn 1줄 + 0
  * - 정상 → ctx(시작연월·캔버스 월·show·기념일) 구성 후 plugin.rehydrate
@@ -104,7 +104,7 @@ describe('rehydrateCalendarGrids', () => {
       canvasMonthOffset: 1,
       weekStart: 1,
       show: { holidays: true, lunar: true, solarTerms: false },
-      // 문구 스타일(D1(b), T3b): fill·fontWeight 만 렌더 입력으로 넘긴다
+      // 문구 스타일: fill·fontWeight 만 렌더 입력으로 넘긴다
       anniversaries: [{ date: '2027-05-05', lunar: true, isLeapMonth: undefined, text: '생일', style: { fill: '#f00' } }],
       data: fakeData,
     })
@@ -144,7 +144,7 @@ describe('rehydrateCalendarGrids', () => {
   })
 })
 
-describe('rehydrateCalendarGrids — 연달력 ctx.yearSpan·yearDelta (T3b)', () => {
+describe('rehydrateCalendarGrids — 연달력 ctx.yearSpan·yearDelta', () => {
   function yearProfile(yearPolicy: NonNullable<ProductProfile['calendar']>['yearPolicy']): ProductProfile {
     const p = calendarProfile()
     return { ...p, calendar: { ...p.calendar!, yearPolicy } }

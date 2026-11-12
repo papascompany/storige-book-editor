@@ -88,7 +88,7 @@ class CanvasRuler {
 
   constructor(_canvas: fabric.Canvas, _options: RulerOptions) {
     this._canvas = _canvas
-    // D3: RULER_DEFAULTS 단일 소스 참조 (constants.ts에서 색상 토큰 변경 시 자동 반영)
+    // RULER_DEFAULTS 단일 소스 참조 (constants.ts에서 색상 토큰 변경 시 자동 반영)
     this._options = Object.assign(
       {
         ruleSize: RULER_DEFAULTS.RULE_SIZE,

@@ -16,14 +16,14 @@ export interface Site {
    * 세션 생성일 기준 N일 동안 관리자 편집·삭제·합성·재합성 보장. retentionDays(업로드 파일 자동삭제)와 별개.
    */
   editRetentionDays: number | null;
-  // Phase B — 사이트별 워커 옵션 default
+  // 사이트별 워커 옵션 default
   pdfConversionEnabled: boolean;
   beforeAfterUrl: string | null;
   defaultUnit: 'mm' | 'inch';
   checkWorkorder: boolean;
   checkCutting: boolean;
   checkSafezone: boolean;
-  // Phase 1-1 (2026-05-16) — 외부 도메인 보안 정책
+  // 외부 도메인 보안 정책
   allowedOrigins: string[] | null;
   frameAncestors: string[] | null;
   editorLaunchMode: 'inline';
@@ -51,7 +51,7 @@ export interface CreateSiteDto {
   checkWorkorder?: boolean;
   checkCutting?: boolean;
   checkSafezone?: boolean;
-  // Phase 1-1 (2026-05-16)
+  // 외부 도메인 보안 정책
   allowedOrigins?: string[];
   frameAncestors?: string[];
   editorLaunchMode?: 'inline';

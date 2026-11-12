@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 //
-// P2-d 사진인화 (2026-10-19): PhotoPrintPanel — 항목 목록(매수 ±·테두리·맞춤·마감·촬영일·흑백·밝기보정)·전체 적용.
+// 사진인화: PhotoPrintPanel — 항목 목록(매수 ±·테두리·맞춤·마감·촬영일·흑백·밝기보정)·전체 적용.
 //  (1) 프로파일 options 가 허용하지 않는 값은 노출하지 않는다(어휘 1개 → select 생략, 플래그 false → 체크박스 생략)
 //  (2) 옵션 변경 → 스토어 반영 + applyPhotoPrintItem(index) + dirty 마킹
 //  (3) 전체 적용 → 현재 항목의 공유 옵션을 모든 항목에 + applyAllPhotoPrint
@@ -169,7 +169,7 @@ describe('PhotoPrintPanel', () => {
     expect(setPage).not.toHaveBeenCalled()
   })
 
-  it("contract-1: items[].lowRes 가 true 인 항목에만 '저해상도' 배지(minDpi 안내), 다른 항목·기본값은 배지 없음", () => {
+  it("items[].lowRes 가 true 인 항목에만 '저해상도' 배지(minDpi 안내), 다른 항목·기본값은 배지 없음", () => {
     wire(profile(FULL_OPTIONS), 4)
     expect(screen.queryByTestId('photo-lowres-0')).toBeNull()
     expect(screen.queryByTestId('photo-lowres-1')).toBeNull()

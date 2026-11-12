@@ -114,7 +114,7 @@ export namespace core {
     'charSpacing',
     'curveDirection',
     'curveArcDeg',
-    // S-E3 (2026-08-04): 곡선 모양(arc|wave) — TextEffect/프리셋 UI 상태 복원용.
+    // 곡선 모양(arc|wave) — TextEffect/프리셋 UI 상태 복원용.
     // path 자체는 fabric Text additionalProps 로 항상 직렬화되지만 이 구분자는 커스텀이라 등재 필수.
     'curvePathType',
     'pathAlign',
@@ -149,34 +149,34 @@ export namespace core {
     // 레이어 순서 잠금 관련 속성
     'lockLayerOrder',
     'parentLayerId',
-    // P1-5 (2026-06-02): 객체 잠금/삭제불가 영속화.
+    // 객체 잠금/삭제불가 영속화.
     // lockInfo(LockPlugin) + deleteable 플래그가 저장→복원 시 유지돼야
     // 관리자가 지정한 보호가 고객 진입 시에도 강제됨.
     'lockInfo',
     'deleteable',
-    // Part B (2026-06-16): 객체별 편집권한 — 이동/변형 잠금.
+    // 객체별 편집권한 — 이동/변형 잠금.
     // movable===false 면 고객(비 editMode) 로드 시 applyObjectPermissions 가 lockMovement/
     // Scaling/Rotation 을 강제(deleteable 와 동일하게 관리자가 지정→저장→고객 진입 시 적용).
     'movable',
-    // B1 (2026-07-04): 레이어별 속성 4축 — 신규 2종.
+    // 레이어별 속성 2종(contentEditable·printExclude).
     // contentEditable===false 면 고객(비 editMode) 로드 시 applyObjectPermissions 가
     // 텍스트 편집 진입/사진틀 교체를 차단. printExclude===true 면 ServicePlugin PDF
     // 생성에서만 제외(화면·썸네일에는 표시). 미등재 시 저장 1회 왕복에 침묵 소실.
     'contentEditable',
     'printExclude',
     'evented',
-    // L7 (2026-07-11): 필수 편집 요소(Zakeke 'mandatory to edit' 패턴).
+    // 필수 편집 요소(Zakeke 'mandatory to edit' 패턴).
     // requiredEdit===true 인 텍스트/사진틀을 고객이 안 바꾸고 완료하면 비차단 경고 모달.
     // requiredEditTouched 는 고객 편집 발생 시 마킹(세션 영속 판정 — 재편집 시 재경고 방지).
-    // 미등재 시 저장 1회 왕복에 침묵 소실(B1 과 동일 함정).
+    // 미등재 시 저장 1회 왕복에 침묵 소실(contentEditable·printExclude 와 같은 함정).
     'requiredEdit',
     'requiredEditTouched',
     // spread 책등 가변 재배치용 meta(regionRef/anchor) 보존 — useTemplateSetSave와 정합
     'meta',
-    // D1 외부 사진 주입 (2026-06-12): 공유방 사진 탭에서 추가된 이미지의 출처 URL.
+    // 외부 사진 주입: 공유방 사진 탭에서 추가된 이미지의 출처 URL.
     // 저장→재편집 라운드트립에서 '사용됨' 뱃지를 복원하기 위해 보존.
     'externalPhotoUrl',
-    // P2-d 사진인화 (2026-10-19): 사진틀(extensionType 'frame') 채움 규칙 — fitMode('cover'|'contain')·
+    // 사진인화: 사진틀(extensionType 'frame') 채움 규칙 — fitMode('cover'|'contain')·
     // frameInsetMm(유테: 마스크 창 사방 축소 mm). PhotoPrintPlugin.apply 가 기록하고 복원 뒤 rehydrate 가 읽는다.
     // 촬영일은 fillImage 의 기존 'extension' 키({ takenAt }) 재사용. 미등재 시 저장 1회 왕복에 침묵 소실.
     'fitMode',
@@ -1180,7 +1180,7 @@ export namespace core {
 }
 
 // ============================================================================
-// Cross-canvas object move (cover.md §7 / D5 Phase 3b-v)
+// Cross-canvas object move
 // ============================================================================
 
 export interface MoveObjectToCanvasOptions {
@@ -1206,12 +1206,12 @@ export interface MoveObjectToCanvasOptions {
  *
  * 각 캔버스에 대해 offHistory/onHistory로 atomic 1 step씩 등록 (기본).
  * 두 캔버스의 history가 분리되어 있어 user-visible Undo는 active canvas만
- * 영향 받음 — Phase 3b-v 1차는 이 정책을 받아들이고, 호출 측이 active canvas를
+ * 영향 받음 — 이 정책을 받아들이고, 호출 측이 active canvas를
  * target으로 두어 직관적 Undo를 보장한다.
  *
  * 시스템 객체(workspace/cut-border/safe-zone-border/guideline 등)는 이동하지 않음.
  *
- * cover.md §7 / D5 Phase 3b-v — Composite 모드 cross-canvas 객체 이동.
+ * Composite 모드 cross-canvas 객체 이동.
  *
  * @returns target canvas의 새 객체. 실패/미이동 시 null.
  */

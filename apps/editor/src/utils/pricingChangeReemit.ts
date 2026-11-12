@@ -1,5 +1,5 @@
 /**
- * S9 (2026-09-28) — editor.pricingChange 책등 확정값 재발신 판단(순수 함수).
+ * editor.pricingChange 책등 확정값 재발신 판단(순수 함수).
  *
  * 페이지 증감 → pricingChange 발신(300ms debounce)과 책등 재계산(spineCalculator, 300ms
  * debounce + API 왕복)은 서로 독립적으로 끝난다. 재계산이 발신보다 늦게 끝나면 이미 나간

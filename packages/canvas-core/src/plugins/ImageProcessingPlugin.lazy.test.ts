@@ -1,12 +1,12 @@
-// ImageProcessingPlugin lazy 초기화 회귀 테스트 (D-6b① 2026-07-15 · D-12d 2026-08-06)
+// ImageProcessingPlugin lazy 초기화 회귀 테스트
 //
 // 검증 대상:
 //  (1) 생성자가 어떤 네트워크/무거운 초기화도 트리거하지 않는다.
 //      — 기존엔 생성자가 startService() 를 즉시 실행해 ONNX 모델(≈88MB)+
 //        ort wasm(≈23MB)을 모든 에디터/embed 캔버스 생성 시마다 다운로드했다.
-//  (2) [R7 2026-08-11 갱신] cv 레거시 표면(ensureCvReady 등)이 존재하지 않고,
+//  (2) cv 레거시 표면(ensureCvReady 등)이 존재하지 않고,
 //      정밀 경로(createPrecisePathFromObject)는 cv 없이 순수 JS 로 완주한다.
-//  (3) **D-12d 라이선스 잠금**: 브라우저 배경제거(@imgly/background-removal, AGPL-3.0)가
+//  (3) **라이선스 잠금**: 브라우저 배경제거(@imgly/background-removal, AGPL-3.0)가
 //      다시 들어오지 않는다 — getForeground() 부재 + package.json 의존 부재로 잠근다.
 //      추론은 서버(rembg 사이드카)가 하고 진입점은 editor 의 api/cutout.ts 다.
 import { readFileSync } from 'node:fs'
@@ -15,7 +15,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 
 // fabric 은 node 테스트 환경에서 native canvas 바인딩을 요구해 로드 불가 → mock
 // (Editor.dispose.test.ts / AccessoryPlugin.leak.test.ts 와 동일 패턴)
-// R7: createPrecisePathFromObject(순수 경로)가 쓰는 최소 표면(util.transformPoint/Point/Path)만 채운다.
+// createPrecisePathFromObject(순수 경로)가 쓰는 최소 표면(util.transformPoint/Point/Path)만 채운다.
 vi.mock('fabric', () => ({
   fabric: {
     util: {
@@ -56,7 +56,7 @@ vi.mock('../contextMenu', () => ({
   }
 }))
 
-// openCv lazy-loader mock — R7 이후 플러그인은 openCv 를 임포트하지 않는다.
+// openCv lazy-loader mock — 플러그인은 openCv 를 임포트하지 않는다.
 // 이 mock 은 회귀 tripwire 다: 누군가 cv 임포트/호출을 되살리면 아래
 // `getCvMock).not.toHaveBeenCalled()` 잠금이 터진다.
 const { getCvMock } = vi.hoisted(() => ({
@@ -79,14 +79,14 @@ beforeEach(() => {
   vi.clearAllMocks()
 })
 
-describe('ImageProcessingPlugin — lazy 초기화 (D-6b① · D-12d)', () => {
+describe('ImageProcessingPlugin — lazy 초기화', () => {
   it('생성자는 OpenCV 로드 등 어떤 무거운 초기화도 트리거하지 않는다', () => {
     makePlugin()
 
     expect(getCvMock).not.toHaveBeenCalled()
   })
 
-  it('cv 레거시 표면이 존재하지 않는다 — R7 이식 잠금 (ensureCvReady/drawCaseOutlinePrecise/findLargestContour/getSimpleContourPoints)', () => {
+  it('cv 레거시 표면이 존재하지 않는다 — 순수 JS 이식 잠금 (ensureCvReady/drawCaseOutlinePrecise/findLargestContour/getSimpleContourPoints)', () => {
     const { plugin } = makePlugin()
 
     expect((plugin as { ensureCvReady?: unknown }).ensureCvReady).toBeUndefined()
@@ -118,7 +118,7 @@ describe('ImageProcessingPlugin — lazy 초기화 (D-6b① · D-12d)', () => {
   })
 
   // ─────────────────────────────────────────────────────────────────
-  // R7 (2026-08-11): 정밀 경로(createPrecisePathFromObject) 순수 JS 이식 잠금
+  // 정밀 경로(createPrecisePathFromObject) 순수 JS 이식 잠금
   // — 순수 계산부의 상세 검증은 utils/preciseOutline.test.ts, 여기는 배선만 잠근다.
   // ─────────────────────────────────────────────────────────────────
   const makeRaster = (w: number, h: number, block: { x: number; y: number; size: number }) => {
@@ -132,7 +132,7 @@ describe('ImageProcessingPlugin — lazy 초기화 (D-6b① · D-12d)', () => {
     return { data, width: w, height: h }
   }
 
-  it('createPrecisePathFromObject 는 cv 없이 순수 경로로 완주하고 계약(fabric.Path·scale)을 지킨다 — R7', async () => {
+  it('createPrecisePathFromObject 는 cv 없이 순수 경로로 완주하고 계약(fabric.Path·scale)을 지킨다', async () => {
     const { plugin } = makePlugin()
     ;(plugin as any).readImageData = vi.fn(() => makeRaster(32, 32, { x: 8, y: 8, size: 16 }))
     const object: any = {
@@ -290,7 +290,7 @@ describe('ImageProcessingPlugin — lazy 초기화 (D-6b① · D-12d)', () => {
     expect(getCvMock).not.toHaveBeenCalled() // ★ 기본 경로도 cv 0회 — 프리즈 원인 완전 제거
   })
 
-  it('브라우저 추론 진입점(getForeground)은 존재하지 않는다 — 서버 오프로드 전환 (D-12d)', () => {
+  it('브라우저 추론 진입점(getForeground)은 존재하지 않는다 — 서버 오프로드 전환', () => {
     const { plugin } = makePlugin()
 
     expect((plugin as { getForeground?: unknown }).getForeground).toBeUndefined()

@@ -1,4 +1,4 @@
-// SpreadPlugin — meta(regionRef/anchor) 오염 방어 회귀 테스트 (라이브 P1, 2026-06-11/12 실측).
+// SpreadPlugin — meta(regionRef/anchor) 오염 방어 회귀 테스트 (실측 사고 재현).
 //
 // 사고 재구성 (flat-spine 430mm/spine 10mm 표지, 실측 수치):
 //  - textbox 'idml-u715': scene 중심 x=+365.37 (content 1635.06) → 명백한 front-cover,
@@ -132,7 +132,7 @@ function makeU715Like(layout: SpreadLayout, meta: any): any {
 // ============================================================================
 
 describe('SpreadPlugin.repositionObjects — 오염 meta(regionRef/anchor) 자가치유', () => {
-  it('[P1 재현] front 객체에 back-cover/xNorm0.6466 오염 meta: 책등가변 시 뒤표지로 점프하지 않고 front-cover 로 자가치유 재배치', () => {
+  it('[재현] front 객체에 back-cover/xNorm0.6466 오염 meta: 책등가변 시 뒤표지로 점프하지 않고 front-cover 로 자가치유 재배치', () => {
     const oldLayout = computeLayout(baseSpec) // 10mm
     const newLayout = computeLayout({ ...baseSpec, spineWidthMm: 20 })
 
@@ -168,7 +168,7 @@ describe('SpreadPlugin.repositionObjects — 오염 meta(regionRef/anchor) 자�
     expect(healedXNorm).toBeCloseTo((origCenterContent - 1299.213) / 1240.157, 3)
   })
 
-  it('[P1 재현-왕복] 오염 meta 라도 10→20→10 왕복 후 원좌표 완전 복귀 (점프 0)', () => {
+  it('[재현-왕복] 오염 meta 라도 10→20→10 왕복 후 원좌표 완전 복귀 (점프 0)', () => {
     const layout10 = computeLayout(baseSpec)
     const layout20 = computeLayout({ ...baseSpec, spineWidthMm: 20 })
 

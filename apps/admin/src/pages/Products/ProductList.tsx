@@ -458,7 +458,7 @@ export const ProductList = () => {
           </Form.Item>
 
           {/* 옵션 C: 외부 쇼핑몰의 동적 사이즈 override 허용
-              북모아 등 외부 PHP 쇼핑몰이 width/height URL 파라미터로 워크스페이스
+              외부 PHP 쇼핑몰이 width/height URL 파라미터로 워크스페이스
               사이즈를 직접 지정할 수 있게 함. 사이즈가 templateSet 에 묶여있지
               않고 사용자가 폼에서 자유 입력할 수 있는 상품에 사용.
               docs/BOOKMOA_INTEGRATION_DIFF.md §3 참조. */}

@@ -1,5 +1,5 @@
 /**
- * WK-2 회귀 테스트 (2026-06-13) — PdfConverterService 블리드 sanity 게이트.
+ * 회귀 테스트 — PdfConverterService 블리드 sanity 게이트.
  *
  * addBleedToPdf 가 손상 산출물(원본보다 작은 페이지)을 만들면 호출부가
  * 이를 감지해 throw(→ 프로세서가 잡 FAILED 처리)해야 한다.
@@ -32,7 +32,7 @@ const mockedGsAvailable = isGhostscriptAvailable as jest.MockedFunction<
   typeof isGhostscriptAvailable
 >;
 
-describe('PdfConverterService — WK-2 블리드 sanity 게이트', () => {
+describe('PdfConverterService — 블리드 sanity 게이트', () => {
   let testDir: string;
   let inputPdfPath: string;
   let outputPdfPath: string;

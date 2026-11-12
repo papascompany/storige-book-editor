@@ -1,12 +1,12 @@
 /**
- * frame-ancestors CSP 동적 합성 — 순수 로직 (P-Stage2-3, D-7b a안).
+ * frame-ancestors CSP 동적 합성 — 순수 로직.
  *
  * 소비자: apps/editor/middleware.ts (Vercel Edge Middleware).
  * /embed 계열 응답의 `Content-Security-Policy: frame-ancestors ...` 헤더를
  * "정적 기본값(vercel.json과 동일) + API(DB site.frame_ancestors) 추가 origin"
  * 으로 합성한다.
  *
- * 불변식 (임베드 파트너 무중단 — P0):
+ * 불변식 (임베드 파트너 무중단):
  *  1. STATIC_FRAME_ANCESTORS 는 apps/editor/vercel.json 의 정적 CSP 값과
  *     항상 동일해야 한다 — frameAncestorsCsp.test.ts 의 parity 테스트가 고정.
  *  2. 동적 합성 결과는 정적 기본값의 상위집합(superset)만 가능 — DB 값은
@@ -49,7 +49,7 @@ export const STATIC_FRAME_ANCESTORS: readonly string[] = [
  * 패턴만 통과시킨다. 허용: http(s) 스킴 + (와일드카드 서브도메인) 호스트 + 포트.
  * 전면 와일드카드('*')·스킴 없는 값·경로 포함 값은 의도적으로 거부한다.
  *
- * [보안 P2-2] 추가 거부 2종:
+ * 추가 거부 2종:
  *  - 퍼블릭 서픽스 단독 와일드카드(`https://*.com` 등 — `*.` 뒤 라벨 1개):
  *    사실상 인터넷 전체 임베드 허용이므로 거부. 와일드카드는 최소
  *    `*.example.com`(라벨 2개 이상)부터 허용한다.

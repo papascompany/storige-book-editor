@@ -13,7 +13,7 @@ const execFileAsync = promisify(execFile);
 const logger = new Logger('PopplerPreflight');
 
 /**
- * R2 (프리플라이트 정밀화, 2026-08-10) — poppler-utils 기반 폰트·이미지 해상도 검출.
+ * 프리플라이트 정밀화 — poppler-utils 기반 폰트·이미지 해상도 검출.
  *
  * 배경: 기존 detectFonts/detectImageResolutionFromPdf(ghostscript.ts)는 latin1 정규식
  * 바이너리 스캔이라 ①압축 오브젝트 스트림(ObjStm) PDF 에서 미탐(폰트는 안전기본값
@@ -29,7 +29,7 @@ const logger = new Logger('PopplerPreflight');
  *    applyDetectionWarnings(임의 변경 금지)는 손대지 않는다.
  *  - 실패(미설치·타임아웃·암호화·파싱불능)는 **null** 반환 → 콜러가 기존 정규식
  *    검출로 폴백한다. poppler 도입으로 기존보다 나빠지는 경로는 없다.
- *  - poppler-utils 는 워커 컨테이너에 기설치(트랙 B-(d), docker/worker/Dockerfile).
+ *  - poppler-utils 는 워커 컨테이너에 기설치(docker/worker/Dockerfile).
  *
  * 실행 규약은 pdf-metadata-qpdf.ts 와 동형: execFile + env 경로 주입 + 타임아웃.
  * 목록 출력만 받으므로(이미지 데이터 추출 없음) 2GB 파일에서도 상수 메모리다.
@@ -168,7 +168,7 @@ export function parsePdffontsOutput(stdout: string): FontDetectionResult {
     fonts,
     hasUnembeddedFonts: unembeddedFonts.length > 0,
     unembeddedFonts,
-    // 기존 검출(ghostscript.ts:1188·streaming-pdf-scan.ts:554)과 동일 시맨틱:
+    // 기존 검출(ghostscript.ts detectFonts·streaming-pdf-scan.ts finalizeFonts)과 동일 시맨틱:
     // 폰트 0건이어도 미임베드가 없으면 true. 파리티 유지(형태+의미).
     allFontsEmbedded: unembeddedFonts.length === 0,
   };

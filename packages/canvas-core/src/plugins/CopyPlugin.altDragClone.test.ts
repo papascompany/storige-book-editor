@@ -1,15 +1,15 @@
-// CopyPlugin — Alt+드래그 복제 테스트 (C5 / E2 W2)
+// CopyPlugin — Alt+드래그 복제 테스트
 //
 // fabric 은 node 에서 native canvas 바인딩이 필요해 최소 mock
 // (SmartGuidesPlugin.test / AccessoryPlugin.leak.test 와 동일 패턴).
-// 증명 대상(설계 §4-4):
+// 증명 대상:
 //  ① alt+down → (임계 통과) moving → up = 캔버스 객체 +1, 사본 위치=원본 시작 위치,
 //     사본 z-order=원본 직하(insertAt 스냅샷 인덱스), 히스토리 정확히 1엔트리
 //     (offHistory 창 안에서 삽입 → object:added 억제, onHistory 1회만 커밋)
 //  ② 보호객체(movable=false 등) → 후보 미설정 → 객체 수 불변
 //  ③ alt 없는 드래그 → 불변
 //  ④ 이동 임계(4px) 미달 → 불변(단순 alt+클릭)
-//  ⑤ 다중 선택(ActiveSelection) 복제(C5) — 멤버별 사본을 각 멤버 시작 절대좌표·대응 원본
+//  ⑤ 다중 선택(ActiveSelection) 복제 — 멤버별 사본을 각 멤버 시작 절대좌표·대응 원본
 //     직하에 삽입, 히스토리 1엔트리(N 삽입이 offHistory 창에서 억제). 이중 clone→destroy 로
 //     그룹 행렬 baking(멤버 절대좌표 실체화)은 mock 으로 시뮬, 실 fabric 확증은 통합 spec.
 //     보호 멤버 포함=복제 생략 / 비동기(이미지) 멤버 / 대기 중 dispose / 멤버<2 방어 포함.
@@ -567,7 +567,7 @@ describe('CopyPlugin Alt+드래그 — ⑤ 다중 선택(ActiveSelection) 복제
     expect(canvas.__offHistoryCalls).toBe(0)
   })
 
-  // C5 세대 가드(재진입 경합 봉합): 비동기 clone 이 미완인 채 새 alt-드래그가 시작되면
+  // 세대 가드(재진입 경합 봉합): 비동기 clone 이 미완인 채 새 alt-드래그가 시작되면
   // 첫 제스처의 stale 콜백이 공유 altCloneStarted 만으로는 가드를 통과(새 제스처가 재상승)
   // — 제스처 세대 토큰 대조로 stale 콜백을 no-op 화해야 유령 사본·히스토리 오염이 없다.
   it('⑤-f 비동기 다중 clone 대기 중 새 alt-드래그(재진입) → 첫 제스처 stale 콜백이 세대 불일치로 삽입 취소', () => {
@@ -659,7 +659,7 @@ describe('CopyPlugin Alt+드래그 — ⑦⑧ 레이스/안전망', () => {
     expect(objects.length).toBe(1)
   })
 
-  // 단일 경로 세대 가드 sentinel — ⑤-f 는 다중(:602) 가드만 잠그므로, 단일(:561) 가드의
+  // 단일 경로 세대 가드 sentinel — ⑤-f 는 다중(altCloneActiveSelection) 가드만 잠그므로, 단일(altObjectMoving) 가드의
   // gen 조건을 별도로 잠근다(단일 async clone 미완 중 새 alt-드래그 재진입).
   it('⑦-c 비동기 단일 clone 대기 중 새 alt-드래그(재진입) → 첫 제스처 stale 콜백이 세대 불일치로 삽입 취소', () => {
     const bg = makeObj({ id: 'bg', left: 0, top: 0 })

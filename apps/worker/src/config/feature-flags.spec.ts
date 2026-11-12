@@ -1,5 +1,5 @@
 /**
- * OPS-S4-N2 — worker 기능 플래그 기동 스냅샷.
+ * worker 기능 플래그 기동 스냅샷.
  *
  * VALIDATION_CONFIG 는 모듈 로드 시점에 env 를 읽으므로, env 를 바꾼 뒤
  * jest.isolateModules 로 새 레지스트리에서 다시 require 한다.
@@ -25,7 +25,7 @@ const FLAG_ENV_KEYS = [
   'SPREAD_SNAPSHOT_HARD_FAIL',
 ] as const;
 
-/** 미설정 시 ON 인 플래그(X1 킬스위치) — 위 FLAG_ENV_KEYS(기본 OFF)와 분리해 단언한다 */
+/** 미설정 시 ON 인 플래그(TrimBox 기준 판정 킬스위치) — 위 FLAG_ENV_KEYS(기본 OFF)와 분리해 단언한다 */
 const DEFAULT_ON_KEYS = ['WORKER_TRIMBOX_SIZE_CHECK'] as const;
 
 const EXTRA_ENV_KEYS = ['WORKER_API_KEY', 'DATABASE_PASSWORD'] as const;

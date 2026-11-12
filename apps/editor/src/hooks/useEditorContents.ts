@@ -41,7 +41,7 @@ import { createCanvas } from '@/utils/createCanvas'
 import { recalculateSpineWidth, initSpineConfig } from '@/utils/spineCalculator'
 import { BindingType } from '@storige/types'
 
-/** A13: 제본 코드 문자열 → BindingType(가드 적용 대상). 미지의 값/미설정은 null(=제약 없음). */
+/** 제본 코드 문자열 → BindingType(가드 적용 대상). 미지의 값/미설정은 null(=제약 없음). */
 function toBindingType(v?: string | null): BindingType | null {
   return v && (Object.values(BindingType) as string[]).includes(v) ? (v as BindingType) : null
 }
@@ -102,26 +102,26 @@ export interface TemplateSetBasedSetupConfig {
   paperType?: string      // 용지 종류 코드 (책등 계산용)
   bindingType?: string    // 제본 방식 코드 (책등 계산용)
   /**
-   * 내지 PDF 표시전용(underlay) 페이지 수 (2026-06-08).
+   * 내지 PDF 표시전용(underlay) 페이지 수.
    * 설정 시 내지 페이지를 정확히 이 수만큼 생성(pageCountRange 클램프 미적용 —
    * 첨부 PDF가 책 페이지수를 정의). 메모리 안전상한만 적용.
    * 각 페이지엔 applyContentPdfGuides 가 해당 PDF 페이지 가이드를 배치.
    */
   underlayPageCount?: number
   /**
-   * 표지 날개 오버라이드 (2026-08-03) — 주문(상품) 옵션이 템플릿 spec 보다 우선.
+   * 표지 날개 오버라이드 — 주문(상품) 옵션이 템플릿 spec 보다 우선.
    * 미전달이면 템플릿 값 그대로 = 기존 동작 불변. 좌우 동일 폭 단일 모델(SpreadSpec 규약).
    */
   wingEnabled?: boolean
   wingWidthMm?: number
   /**
-   * R-195: 호스트(주문) 지정 책등 폭(mm, 유한수 ≥ 0). 스프레드 표지(full/flat-spine)에서만 소비 —
+   * 호스트(주문) 지정 책등 폭(mm, 유한수 ≥ 0). 스프레드 표지(full/flat-spine)에서만 소비 —
    * 초기 책등을 이 값으로 적용하고 초기 spineApi 계산을 생략한다(spineCalculator 참조).
    * 미전달이면 기존 수식 경로 그대로. 낱장(비스프레드) 경로에서는 미사용.
    */
   spineWidthMm?: number
   /**
-   * 재진입 복원용 — 세션 canvasData 실측 내지 캔버스 수(= canvasData.length − 1) (R2, 2026-08-18).
+   * 재진입 복원용 — 세션 canvasData 실측 내지 캔버스 수(= canvasData.length − 1).
    * 펼침면(innerUnit='spread') 세트 시드에서 이 값을 spreadCount 로 **그대로** 사용한다 —
    * 물리 페이지 수로 오인한 반감(spreadCountFromPageCount)·pageCountRange 클램프를 적용하지
    * 않아, 사용자가 편집 중 추가한 페이지를 시드가 되돌리지(→ 복원 루프 무음 절단) 않는다.
@@ -129,22 +129,22 @@ export interface TemplateSetBasedSetupConfig {
    */
   restoredInnerCanvasCount?: number
   /**
-   * P2-d 사진인화 (2026-10-19, D2): 신규(canvasData 없음)·런처 선생성 세션의 `metadata.items` 건수.
+   * 사진인화: 신규(canvasData 없음)·런처 선생성 세션의 `metadata.items` 건수.
    * kind 'photo-print' 세트에서만 소비 — 시드 캔버스 수 하한 = 건수 × stride(digital 2 / chemical 1), pages.max 클램프.
    * 그 밖의 세트는 무시(기존 동작 불변).
    */
   photoItemCount?: number
   /**
-   * R-196 host page limits (2026-09-29): 호스트(상품) 최소 내지 쪽수(물리 페이지, 1~500).
+   * host page limits: 호스트(상품) 최소 내지 쪽수(물리 페이지, 1~500).
    * embed 가 resolveHostPageLimits 로 검증·해석한 값만 전달한다. 템플릿셋 pageCountRange 최소보다 우선.
    * pageCountMin/Max 중 하나라도 있으면 재진입 시드는 max(pageCount, 복원 내지 수) — 범위 클램프 없음.
    * 미전달이면 기존 동작 불변. underlay 경로·펼침면 복원 분기에는 적용하지 않는다.
    */
   pageCountMin?: number
-  /** R-196: 호스트 최대 내지 쪽수(물리 페이지, 1~500 — 펼침면 내지 세트는 400 으로 제한). */
+  /** 호스트 최대 내지 쪽수(물리 페이지, 1~500 — 펼침면 내지 세트는 400 으로 제한). */
   pageCountMax?: number
   /**
-   * R-196: 호스트 내지 쪽수 배수(0부터 센 N의 배수, ≥ 2). 템플릿셋 pageStep 보다 우선하며, 다르면
+   * 호스트 내지 쪽수 배수(0부터 센 N의 배수, ≥ 2). 템플릿셋 pageStep 보다 우선하며, 다르면
    * padToPageStep 을 끈다. 단일 모드에서 템플릿에 내지가 아닌 캔버스가 있으면 무시(템플릿 단위 적용).
    */
   pageStep?: number
@@ -167,7 +167,7 @@ const safeGetMetadata = (content: any, key: string, defaultValue: any = null) =>
 
 // 안전한 URL 접근 유틸리티
 // 중첩 형태(content.image.image.url) + flat 형태(content.imageUrl) 모두 지원.
-// flat 은 API가 library 에셋/editor_contents 를 평면 필드로 반환하는 경우(P0-1, 2026-06-02).
+// flat 은 API가 library 에셋/editor_contents 를 평면 필드로 반환하는 경우.
 const safeGetImageUrl = (content: EditorContent | EditorTemplate): string | null => {
   return content?.image?.image?.url || (content as any)?.imageUrl || null
 }
@@ -324,7 +324,7 @@ export function useEditorContents(): UseEditorContentsReturn {
       throw new Error('이미지 URL을 찾을 수 없습니다.')
     }
 
-    // P0-B: library 에셋 URL 은 `/storage/...` 상대 경로일 수 있다. 그대로
+    // library 에셋 URL 은 `/storage/...` 상대 경로일 수 있다. 그대로
     // loadSVGFromURL/imageFromURL 에 넘기면 editor origin 기준으로 해석돼 404 →
     // 캔버스 배치 실패. API origin 기준 절대 URL 로 정규화한다.
     // (절대/data/blob URL 은 resolveAssetUrl 이 원본 그대로 통과시킨다.)
@@ -523,15 +523,15 @@ export function useEditorContents(): UseEditorContentsReturn {
                 // 저장 JSON 에는 hover/click 핸들러가 직렬화되지 않으므로 복원 후 다시 부여.
                 // embed·useEmbedAutoSave 복원 경로와 공유하는 헬퍼로 일원화(재발 방지).
                 rebindFrameInteractivity(ed, cvs)
-                // P1 캘린더 (2026-10-17): 캘린더 세트면 calendar-grid 재합성(프로파일 null 이면 즉시 0, no-op).
+                // 캘린더: 캘린더 세트면 calendar-grid 재합성(프로파일 null 이면 즉시 0, no-op).
                 void rehydrateCalendarGrids(ed, cvs, index)
-                // P2-d 사진인화 (D7): 사진인화 세트면 fitMode/유테/흑백 런타임 복구(프로파일 null 이면 즉시 0, no-op).
+                // 사진인화 세트면 fitMode/유테/흑백 런타임 복구(프로파일 null 이면 즉시 0, no-op).
                 void rehydratePhotoPrint(ed, cvs, index)
 
                 // Part B: 고객(비 editMode) 진입 시 객체별 이동/변형 잠금 적용
                 // (관리자가 movable=false 로 지정한 객체를 lockMovement/Scaling/Rotation 으로 강제).
                 applyCustomerLocks(cvs)
-                // L7: 필수 편집 touched 추적 부착(멱등) — 로드 완료 지점.
+                // 필수 편집 touched 추적 부착(멱등) — 로드 완료 지점.
                 trackRequiredEdits(cvs)
 
                 cvs.requestRenderAll()
@@ -847,7 +847,7 @@ export function useEditorContents(): UseEditorContentsReturn {
       {
         for (const c of allCanvas) {
           applyCustomerLocks(c)
-          trackRequiredEdits(c) // L7: 필수 편집 touched 추적(멱등)
+          trackRequiredEdits(c) // 필수 편집 touched 추적(멱등)
         }
       }
 
@@ -870,10 +870,10 @@ export function useEditorContents(): UseEditorContentsReturn {
    * 주의: 스토어에서 직접 최신 설정을 가져와야 함 (useCallback의 stale closure 문제 방지)
    */
   const initWorkspace = useCallback(async (): Promise<void> => {
-    // R1 (2026-08-18): 클로저 editor/canvas 가 아닌 스토어 최신 참조 사용 — loadCanvasData 와
+    // 클로저 editor/canvas 가 아닌 스토어 최신 참조 사용 — loadCanvasData 와
     // 동일 패턴. embed.tsx 초기화 useEffect(deps=[])가 마운트 시점 null 을 캡처한 채 이 훅의
-    // 로더를 호출하므로, 클로저 가드는 embed 경로에서 initWorkspace 를 통째 no-op 시켰다
-    // (빈 표지 flat-spread 가 createCanvas 기본 105×105mm 정사각으로 잔존 — DB 실측).
+    // 로더를 호출하므로, 클로저 가드는 embed 경로에서 initWorkspace 를 통째 no-op 시킨다
+    // (빈 표지 flat-spread 가 createCanvas 기본 105×105mm 정사각으로 남는다).
     const latestEditor = useAppStore.getState().editor
     const latestCanvas = useAppStore.getState().canvas
     if (!latestEditor || !latestCanvas) return
@@ -1009,7 +1009,7 @@ export function useEditorContents(): UseEditorContentsReturn {
       setCoverFinishing(false, [])
       setLinkedPrintTemplates([])
       setHasCoverSlot(true)
-      // P1 캘린더: 빈 편집기는 상품 프로파일 없음(legacy) — 이전 세트의 프로파일 잔류 방지
+      // 캘린더: 빈 편집기는 상품 프로파일 없음(legacy) — 이전 세트의 프로파일 잔류 방지
       applyTemplateSetProductProfile(null)
 
       await setupEmptyEditorStore(config)
@@ -1091,22 +1091,22 @@ export function useEditorContents(): UseEditorContentsReturn {
       // 배경 메뉴는 표지 페이지에서만 ToolBar 가 감산한다. 내지 배경은 유지.
       setEnabledMenus(menus)
 
-      // 1-B. P1 캘린더 (2026-10-17): 템플릿셋 productProfile → settings.productProfile + calendar store.
+      // 1-B. 캘린더: 템플릿셋 productProfile → settings.productProfile + calendar store.
       // null/검증 실패 = legacy(아래 fixed 분기 전부 단락 → 기존 경로 바이트 동일).
       const productProfile = applyTemplateSetProductProfile(templateSet)
       const fixedCanvasCount = resolveFixedCanvasCount(productProfile)
       const fixedProfile = fixedCanvasCount !== null
-      // P2-d 사진인화: kind 'photo-print' 세트에서만 range 범위·프로파일 단위를 적용한다(null-set-1/2, contract-7 —
+      // 사진인화: kind 'photo-print' 세트에서만 range 범위·프로파일 단위를 적용한다(
       // 캘린더·sheet·NULL 세트는 종전 값 그대로: 스토어 pageStep·settings.page 바이트 동일).
       const photoPrintProfile = isPhotoPrintProfile(productProfile) ? productProfile : null
       const rangeCanvasBounds = photoPrintProfile ? resolveRangeCanvasBounds(photoPrintProfile) : null
-      // 증감 단위: 사진인화 세트는 프로파일 pages.step 이 템플릿셋·호스트 pageStep 보다 우선(api-sheetmap-3 — 호스트 값은 warn 1회 뒤 무시).
+      // 증감 단위: 사진인화 세트는 프로파일 pages.step 이 템플릿셋·호스트 pageStep 보다 우선(호스트 값은 warn 1회 뒤 무시).
       // 그 밖의 세트는 템플릿셋 pageStep 그대로(종전 동작).
       const resolvedPageStep = resolvePhotoPrintPageStep(productProfile, (templateSet as { pageStep?: unknown }).pageStep, config.pageStep)
       const templateSetPageStep: unknown = resolvedPageStep.pageStep
       const singleModeLimits = resolvedPageStep.ignoreHostPageStep ? { ...config, pageStep: undefined } : config
 
-      // P3 (2026-06-10): 작업사이즈(재단+블리드)/재단마커 PDF 출력 설정 운반.
+      // 작업사이즈(재단+블리드)/재단마커 PDF 출력 설정 운반.
       // templateSet 의 bleedMm/cropMarkEnabled 컬럼(API JSON)을 settings store 로 옮겨둔다.
       // PDF 저장 시 게이트(cropMarkEnabled && bleedMm>0)에서만 작업사이즈 경로 활성.
       // 필드 없으면 null → 게이트 OFF(현행 trim 출력 그대로).
@@ -1121,8 +1121,8 @@ export function useEditorContents(): UseEditorContentsReturn {
           : null
       )
 
-      // #2 (2026-06-10, CTO 감사 §4-(라)-2): 화면↔PDF 블리드 지오메트리 정합.
-      // P3 출력 게이트(cropMarkEnabled===true && bleedMm>0)가 켜진 templateSet 에서만
+      // 화면↔PDF 블리드 지오메트리 정합.
+      // 출력 게이트(cropMarkEnabled===true && bleedMm>0)가 켜진 templateSet 에서만
       // 화면 워크스페이스 cutSize 를 배선한다. WorkspacePlugin 의 cutSize 는 '양변 합'
       // 규약(workspace = size + cutSize, 재단선 inset = cutSize/2 per edge)이고
       // templateSet.bleedMm 은 per-edge 이므로 정합값 = bleedMm × 2.
@@ -1167,14 +1167,14 @@ export function useEditorContents(): UseEditorContentsReturn {
       // 3. 페이지수 조정 (pageCount 파라미터가 있는 경우)
       let templateDetails = [...originalTemplateDetails]
       let requestedPageCount = config.pageCount
-      // R-196 host page limits (2026-09-29): 호스트 쪽수 한도(min/max) 적용 여부와 비내지 캔버스 수.
+      // host page limits: 호스트 쪽수 한도(min/max) 적용 여부와 비내지 캔버스 수.
       const templateRange = (templateSet as { pageCountRange?: number[] }).pageCountRange
       const hostLimitsActive = hasHostPageCountLimit(config)
       const nonInnerCanvasCount =
         originalTemplateDetails.length -
         originalTemplateDetails.filter((t) => (t as { type?: string }).type === 'page').length
 
-      // P2-d 사진인화 (D1/D2, 2026-10-19): range 세트의 시드 캔버스 수 — 재오픈은 저장 canvasData 수(호스트 한도와 무관,
+      // 사진인화: range 세트의 시드 캔버스 수 — 재오픈은 저장 canvasData 수(호스트 한도와 무관,
       // 종전 restoredInnerPageCount = length−1 [표지,...내지] 시맨틱으로 1장 적게 시드되던 결함), 신규 세션은 런처 items 건수 × stride.
       // pages.max 초과분은 잘라내고 warn. 아래 증설은 refs[k % refs.length]('cycle') 로 시드한다.
       if (photoPrintProfile) {
@@ -1204,7 +1204,7 @@ export function useEditorContents(): UseEditorContentsReturn {
       }
 
       if (requestedPageCount !== undefined && fixedProfile) {
-        // P1 캘린더: 고정 캔버스 수 상품은 호스트 pageCount 로 내지를 증설하지 않는다(세트 구성이 정답).
+        // 캘린더: 고정 캔버스 수 상품은 호스트 pageCount 로 내지를 증설하지 않는다(세트 구성이 정답).
         console.warn(`[EditorContents] productProfile pages.kind=fixed(${fixedCanvasCount}) — 호스트 pageCount ${requestedPageCount} 무시`)
       }
       if (requestedPageCount !== undefined && !fixedProfile) {
@@ -1216,7 +1216,7 @@ export function useEditorContents(): UseEditorContentsReturn {
 
         // 방어적 클램프: 호스트가 placeholder/범위 밖 pageCount(예: 1)를 보내도
         // throw 대신 유효 범위로 보정한다 (편집기 진입 보장). 주문 페이지수 불일치는 워커/주문 검증에서 처리.
-        // R-196 host page limits (2026-09-29): 호스트 min/max 가 있으면 병합 범위로 클램프하고,
+        // host page limits: 호스트 min/max 가 있으면 병합 범위로 클램프하고,
         // 재진입이면 저장 내지 수를 그대로 시드(클램프 없음). 없으면 종전 인라인 클램프와 동일.
         // embed.tsx 의 restoredInnerCanvasCount = canvasData.length − 1 (첫 캔버스만 뺀 값)이라
         // 단일 모드 복원 내지 수 = restoredInnerCanvasCount + 1 − 비내지 캔버스 수.
@@ -1246,8 +1246,8 @@ export function useEditorContents(): UseEditorContentsReturn {
           effectivePageCount = currentPageCount
         }
 
-        // 페이지수가 더 많으면 시드 반복 (G9 last|cycle). page id 는 아래 setPages 에서 idx 로 구분.
-        // P2-d 사진인화: 증설 캔버스 k 는 refs[k % refs.length](digital [앞, 뒤] 교대) — 'last' 는 뒷면만 복제한다.
+        // 페이지수가 더 많으면 시드 반복 (last|cycle). page id 는 아래 setPages 에서 idx 로 구분.
+        // 사진인화: 증설 캔버스 k 는 refs[k % refs.length](digital [앞, 뒤] 교대) — 'last' 는 뒷면만 복제한다.
         if (effectivePageCount > currentPageCount && pageTemplates.length > 0) {
           const innerRepeat: InnerRepeatMode = photoPrintProfile
             ? 'cycle'
@@ -1261,7 +1261,7 @@ export function useEditorContents(): UseEditorContentsReturn {
       }
 
       // 2. 설정 스토어에 크기 정보 설정
-      // #2: 게이트 ON 시 cutSize = bleedMm×2 (OFF 면 0 = 현행 그대로)
+      // 게이트 ON 시 cutSize = bleedMm×2 (OFF 면 0 = 현행 그대로)
       await setupEmptyEditorStore({
         name: templateSet.name,
         size: {
@@ -1273,10 +1273,10 @@ export function useEditorContents(): UseEditorContentsReturn {
         unit: 'mm',
       })
 
-      // R-196 host page limits (2026-09-29): SidePanel '페이지' 섹션 한도(전체 캔버스 수 단위)를
+      // host page limits: SidePanel '페이지' 섹션 한도(전체 캔버스 수 단위)를
       // 병합 범위로 설정. updateSettings 는 page 를 통째로 교체하므로 기존 page 를 펼쳐 병합한다.
       if (fixedProfile) {
-        // P1 캘린더: 고정 캔버스 수 → settings.page min=max=count (SidePanel 추가/삭제 게이트 + 프로파일 가드).
+        // 캘린더: 고정 캔버스 수 → settings.page min=max=count (SidePanel 추가/삭제 게이트 + 프로파일 가드).
         // 호스트 한도보다 프로파일이 우선한다(상품 구성이 단일 소스).
         if (templateDetails.length !== fixedCanvasCount) {
           console.warn(`[EditorContents] productProfile fixed ${fixedCanvasCount} ≠ 템플릿셋 캔버스 ${templateDetails.length} — 세트 구성 확인 필요(진입은 계속)`)
@@ -1294,8 +1294,8 @@ export function useEditorContents(): UseEditorContentsReturn {
           })
         }
       } else if (rangeCanvasBounds) {
-        // P2-d 사진인화 (2026-10-19): kind 'photo-print' + pages.kind=range → settings.page min/max = 프로파일 캔버스 수 범위
-        // (전체 캔버스 수 단위, fixed 분기와 같은 단위). 호스트 한도가 오면 위 hostLimitsActive 가 우선(R-196 규칙 유지).
+        // 사진인화: kind 'photo-print' + pages.kind=range → settings.page min/max = 프로파일 캔버스 수 범위
+        // (전체 캔버스 수 단위, fixed 분기와 같은 단위). 호스트 한도가 오면 위 hostLimitsActive 가 우선(규칙 유지).
         // 2장 단위(digital)는 pageStep(프로파일 pages.step) 경로가 담당한다. sheet range 세트는 rangeCanvasBounds 가 null(종전 그대로).
         const page = useSettingsStore.getState().currentSettings.page
         await useSettingsStore.getState().updateSettings({
@@ -1352,7 +1352,7 @@ export function useEditorContents(): UseEditorContentsReturn {
           } else {
             // 첫 번째 템플릿의 canvasData에서 workspace 크기를 템플릿별 크기로 수정
             // (spine, wing 타입은 템플릿 자체 크기, 나머지는 템플릿셋 크기)
-            // #2: workspace = trim + cutSize(양변 합) 규약 — 게이트 OFF 면 +0 = 현행 동일
+            // workspace = trim + cutSize(양변 합) 규약 — 게이트 OFF 면 +0 = 현행 동일
             const targetWidth = mmToPxDisplay(firstTemplateWidth + screenCutSizeMm)
             const targetHeight = mmToPxDisplay(firstTemplateHeight + screenCutSizeMm)
 
@@ -1390,7 +1390,7 @@ export function useEditorContents(): UseEditorContentsReturn {
           const firstEditor = useAppStore.getState().allEditors[0]
           if (firstCanvas && firstEditor) {
             // 첫 번째 템플릿 크기 사용 (spine, wing은 템플릿 자체 크기)
-            // #2: workspace = trim + cutSize(양변 합) — 게이트 OFF 면 +0 = 현행 동일
+            // workspace = trim + cutSize(양변 합) — 게이트 OFF 면 +0 = 현행 동일
             const totalWidth = mmToPxDisplay(firstTemplateWidth + screenCutSizeMm)
             const totalHeight = mmToPxDisplay(firstTemplateHeight + screenCutSizeMm)
 
@@ -1436,7 +1436,7 @@ export function useEditorContents(): UseEditorContentsReturn {
             const workspacePlugin = firstEditor.getPlugin<any>('WorkspacePlugin')
             if (workspacePlugin) {
               // 플러그인 내부 옵션을 직접 업데이트 (템플릿별 크기 사용)
-              // #2: cutSize = 게이트 ON 시 bleedMm×2 (재단선/화면 crop marks 가 이 값을 사용)
+              // cutSize = 게이트 ON 시 bleedMm×2 (재단선/화면 crop marks 가 이 값을 사용)
               if (workspacePlugin._options) {
                 workspacePlugin._options.size = {
                   width: firstTemplateWidth,
@@ -1508,7 +1508,7 @@ export function useEditorContents(): UseEditorContentsReturn {
           }
 
           // createCanvas를 사용하여 모든 플러그인이 포함된 새 캔버스 생성
-          // #2: cutSize = 게이트 ON 시 bleedMm×2 (OFF 면 0 = 현행 동일)
+          // cutSize = 게이트 ON 시 bleedMm×2 (OFF 면 0 = 현행 동일)
           if (canvasContainer) {
             await createCanvas({
               size: {
@@ -1561,22 +1561,22 @@ export function useEditorContents(): UseEditorContentsReturn {
 
                   // loadJSON 후 workspace 크기 조정
                   // 템플릿 타입별 크기 사용 (spine, wing은 템플릿 자체 크기)
-                  // #2: workspace = trim + cutSize(양변 합) — 게이트 OFF 면 +0 = 현행 동일
+                  // workspace = trim + cutSize(양변 합) — 게이트 OFF 면 +0 = 현행 동일
                   const cvs = latestAllCanvas[newPageIndex]
                   if (cvs) {
                     // 사진틀(프레임) 클릭 채움 재바인딩 — 세트 종류와 무관(첫 페이지 loadCanvasData 와 같은 순서).
                     // 이 호출이 없으면 처음 연 세트의 2쪽 이후 사진틀은 리스너 0개라 클릭해도 채워지지 않는다.
                     // 사진인화 세트의 initPhotoPrintSeededCanvas 안 재바인딩은 _frameInteractiveBound 가드로 no-op.
                     rebindFrameInteractivity(targetEditor, cvs)
-                    // P1 캘린더: 캘린더 세트면 calendar-grid 재합성(프로파일 null 이면 즉시 0, no-op).
+                    // 캘린더: 캘린더 세트면 calendar-grid 재합성(프로파일 null 이면 즉시 0, no-op).
                     void rehydrateCalendarGrids(targetEditor, cvs, newPageIndex)
-                    // P2-d 사진인화 (D7): 사진인화 세트면 fitMode/유테/흑백 런타임 복구(프로파일 null 이면 즉시 0, no-op).
+                    // 사진인화 세트면 fitMode/유테/흑백 런타임 복구(프로파일 null 이면 즉시 0, no-op).
                     void rehydratePhotoPrint(targetEditor, cvs, newPageIndex)
-                    // P2-d 사진인화 (2026-10-20 e2e D10 → 2026-10-21 D11): 런처 items 증설('cycle')로 템플릿에서 시드된
+                    // 사진인화: 런처 items 증설('cycle')로 템플릿에서 시드된
                     // 페이지도 SidePanel 시드(seedPhotoPrintCanvas)와 같은 초기화 — ② 고정 뒷면 잠금(홀수 캔버스) → 사진틀
                     // 클릭 채움 재바인딩 → applyObjectPermissions(editMode) → trackRequiredEdits. 이 경로는 첫 페이지
-                    // (loadCanvasData:532 applyCustomerLocks)와 달리 권한 적용이 없어 TemplatePlugin.afterLoad 가 되살린
-                    // 텍스트 hasControls/lockScaling 이 그대로 남았다(D11). 사진인화 세트에만 적용해 NULL·캘린더 세트의
+                    // (loadCanvasData 의 applyCustomerLocks)와 달리 권한 적용이 없어 TemplatePlugin.afterLoad 가 되살린
+                    // 텍스트 hasControls/lockScaling 이 그대로 남았다. 사진인화 세트에만 적용해 NULL·캘린더 세트의
                     // 잠금·권한 동작은 그대로 둔다(사진틀 재바인딩만 위에서 모든 세트에 수행).
                     if (photoPrintProfile) initPhotoPrintSeededCanvas(targetEditor, cvs, newPageIndex, photoPrintProfile)
                     const totalWidth = mmToPxDisplay(capturedWidth + screenCutSizeMm)
@@ -1662,9 +1662,9 @@ export function useEditorContents(): UseEditorContentsReturn {
 
       // useEditorStore.pages 동기화 — BookNavigation 등 페이지 정보 참조 컴포넌트용
       // 단일 모드에서도 책자 네비를 위해 pages 정보 채움
-      // S8: 단일 모드도 pageStep 적용 — SidePanel '페이지' 섹션이 비-spread 추가/삭제 진입점이고
+      // 단일 모드도 pageStep 적용 — SidePanel '페이지' 섹션이 비-spread 추가/삭제 진입점이고
       //     호스트 pageCount 시드로 홀수가 될 수 있다. 산정 기준 = 캔버스 수(완료 payload pageCount 와 동일).
-      // R-196 host page limits (2026-09-29): 호스트 pageStep 우선. 단, 단일 모드 단위 산정 기준은 전체
+      // host page limits: 호스트 pageStep 우선. 단, 단일 모드 단위 산정 기준은 전체
       //   캔버스 수라 비내지 캔버스(표지 등)가 있으면 호스트 단위를 무시하고 템플릿 단위를 쓴다.
       //   단일 모드는 pageCountRange 를 스토어에 넣지 않는다(종전 동작 유지 — 한도는 settings.page).
       // pageStep 1(배수 제약 없음)은 캔버스 산정 기준과 무관해 그대로 적용되므로 경고하지 않는다.
@@ -1673,7 +1673,7 @@ export function useEditorContents(): UseEditorContentsReturn {
           `[hostPageLimits] 단일 모드 템플릿에 내지가 아닌 캔버스 ${nonInnerCanvasCount}개 — 호스트 pageStep ${singleModeLimits.pageStep} 무시(템플릿셋 단위 적용)`,
         )
       }
-      // P2-d 사진인화: singleModeLimits 는 호스트 pageStep 을 뺀 한도(프로파일 pages.step 우선) — 그 밖의 세트는 config 그대로.
+      // 사진인화: singleModeLimits 는 호스트 pageStep 을 뺀 한도(프로파일 pages.step 우선) — 그 밖의 세트는 config 그대로.
       warnPageStepMismatch(templateSetPageStep, singleModeLimits, { ignoreHostStep: nonInnerCanvasCount > 0 })
       const singleStoreLimits = resolveStorePageLimits({
         templateRange,
@@ -1743,8 +1743,8 @@ export function useEditorContents(): UseEditorContentsReturn {
       const isPhotobookInner = isInnerOnly && !!photobookInnerSpec
       const isSpreadInners = assembled.innerUnit === 'spread'
 
-      // #2 (2026-06-10, CTO 감사 §4-(라)-2): 화면↔PDF 블리드 지오메트리 정합 (spread).
-      // P3 출력 게이트(cropMarkEnabled===true && bleedMm>0)가 켜진 templateSet 에서만
+      // 화면↔PDF 블리드 지오메트리 정합 (spread).
+      // 출력 게이트(cropMarkEnabled===true && bleedMm>0)가 켜진 templateSet 에서만
       // spread 화면 cutSizeMm(양변 합)를 bleedMm(per-edge)×2 로 정합. 게이트 OFF 면
       // 기존 고정값 2 그대로 = 현행 byte-identical. (templateSet 에서 직접 읽음 —
       // printMarkConfig 스토어 세팅 시점 의존 제거.)
@@ -1774,8 +1774,8 @@ export function useEditorContents(): UseEditorContentsReturn {
         throw new Error('SpreadSpec 구성에 실패했습니다.')
       }
 
-      // #2: buildSpreadSpec 은 템플릿에 저장된 spec.cutSizeMm 을 우선하므로(`spec.cutSizeMm || cutSizeMm`)
-      // 게이트 ON 일 때는 P3 bleedMm 정합값으로 명시 덮어쓰기.
+      // buildSpreadSpec 은 템플릿에 저장된 spec.cutSizeMm 을 우선하므로(`spec.cutSizeMm || cutSizeMm`)
+      // 게이트 ON 일 때는 bleedMm 정합값으로 명시 덮어쓰기.
       // (workspace 중앙 대칭 확장 + SpreadPlugin 콘텐츠 원점 = -totalPx/2 로 cutSize 상쇄 —
       //  영역/가이드/객체 좌표 불변. 이 spec 은 setSpreadConfig·SpreadPlugin·addInnerPage(내지
       //  workspace cutSize)·책등 가변 setOptions 까지 단일 소스로 전파된다.)
@@ -1783,7 +1783,7 @@ export function useEditorContents(): UseEditorContentsReturn {
         spreadSpec.cutSizeMm = spreadBleedMm * 2
       }
 
-      // 양장 싸바리 모드 판정(P3 덮어쓰기 이후). 켜지면 표지 화면 cutSizeMm 만 싸바리 여분
+      // 양장 싸바리 모드 판정(덮어쓰기 이후). 켜지면 표지 화면 cutSizeMm 만 싸바리 여분
       // (HARDCOVER_WRAP_MARGIN_MM, 사방 절반)으로 바꾸고, 낱장 내지 workspace 는 덮어쓰기 전 값
       // (mode.innerCutSizeMm)을 쓴다. 꺼지면 spec·출력 모두 기존 그대로.
       const templateSetCoverMeta = resolveTemplateSetCoverMeta(templateSet)
@@ -1841,7 +1841,7 @@ export function useEditorContents(): UseEditorContentsReturn {
       useSettingsStore.getState().setSpreadConfig(spreadConfig)
 
       // 5. 빈 에디터 스토어 설정 (spread 캔버스용 - totalWidth/Height 사용)
-      // #2: cutSize 는 위에서 정합된 spreadSpec.cutSizeMm 를 그대로 사용(게이트 ON 시 bleedMm×2)
+      // cutSize 는 위에서 정합된 spreadSpec.cutSizeMm 를 그대로 사용(게이트 ON 시 bleedMm×2)
       await setupEmptyEditorStore({
         name: templateSet.name,
         size: {
@@ -1909,7 +1909,7 @@ export function useEditorContents(): UseEditorContentsReturn {
         console.log('[EditorContents:Spread] No spread objects, initializing workspace only')
         await initWorkspace()
 
-        // R1 심층방어 (2026-08-18): initWorkspace 가 어떤 이유로든 무위였다면 workspace rect 가
+        // 심층방어: initWorkspace 가 어떤 이유로든 무위였다면 workspace rect 가
         // createCanvas 기본(105×105mm)에 잔존 — 빈 표지(flat-spread)가 정사각으로 열리고 이후
         // 저장/재편집까지 오염된다. workspace 폭이 스프레드 총폭과 어긋나면 setOptions+init 을
         // 직접 재적용한다(기존 isPhotobookInner 분기와 동형 — 그 경로는 아래에서 자체 재적용).
@@ -1987,7 +1987,7 @@ export function useEditorContents(): UseEditorContentsReturn {
           }
           latestCanvas.requestRenderAll()
         } else {
-          // C-2 심층방어: isPhotobookInner 분기와 동일하게 여분 workspace rect 정리 —
+          // 심층방어: isPhotobookInner 분기와 동일하게 여분 workspace rect 정리 —
           // loadCanvasData 가 canvasData 에 실려온 workspace 를 추가하면 _getWorkspace(first-match)
           // 기준이 이중화돼 setZoomAuto/재단선 뷰포트가 옛 rect 크기로 핏될 수 있다. 첫 번째만 남긴다.
           const coverWorkspaces = (latestCanvas.getObjects() as fabric.Object[]).filter(
@@ -2018,7 +2018,7 @@ export function useEditorContents(): UseEditorContentsReturn {
       useAppStore.getState().setSpreadMode(true)
 
       // 7-1. 책등 설정 초기화 (내지 추가 시 debouncedRecalcSpine이 호출되므로 미리 설정)
-      // R-195: 호스트 책등(config.spineWidthMm)도 여기서 주입 — 시드 루프의 debounce 트리거가
+      // 호스트 책등(config.spineWidthMm)도 여기서 주입 — 시드 루프의 debounce 트리거가
       // 호스트 고정/기준선 판정을 보도록 시드 이전에 설정해야 한다.
       initSpineConfig(config.paperType || null, config.bindingType || null, { spineWidthMm: config.spineWidthMm })
 
@@ -2029,12 +2029,12 @@ export function useEditorContents(): UseEditorContentsReturn {
       // 9. 페이지수 조정 (config.pageCount가 있는 경우)
       let adjustedPageTemplates = isInnerOnly ? pageTemplates.slice(1) : [...pageTemplates]
       const requestedPageCount = config.pageCount
-      // R-196 host page limits (2026-09-29): 호스트 쪽수 한도(min/max) 적용 여부.
+      // host page limits: 호스트 쪽수 한도(min/max) 적용 여부.
       const hostLimitsActive = hasHostPageCountLimit(config)
-      // W5: 호스트가 보낸 쪽(min/max)은 제본 최소/최대를 대신한다(키별) — 스토어 게이트·SidePanel 공용.
+      // 호스트가 보낸 쪽(min/max)은 제본 최소/최대를 대신한다(키별) — 스토어 게이트·SidePanel 공용.
       const hostSides = hostPageLimitSides(config)
       // UNDERLAY_MAX_PAGES(=200, 워커 CONTENT_PDF_GUIDE_MAX_PAGES 정렬)는 contentPdfGuide 와 공유
-      // — 즉시 앉히기(ensureUnderlayPages)와 로드 경로가 같은 상한을 쓰도록 단일 선언(2026-08-13).
+      // — 즉시 앉히기(ensureUnderlayPages)와 로드 경로가 같은 상한을 쓰도록 단일 선언.
 
       if (config.underlayPageCount && config.underlayPageCount > 0 && !isSpreadInners) {
         // 내지 PDF 표시전용: pageCountRange 클램프 없이 정확히 PDF 페이지수만큼 내지 생성.
@@ -2064,7 +2064,7 @@ export function useEditorContents(): UseEditorContentsReturn {
         // 방어적 클램프: 호스트가 placeholder/범위 밖 pageCount(예: 1)를 보내도
         // throw 대신 유효 범위로 보정한다 (편집기 진입 보장 — 게스트 폴백과 동일 철학).
         // 실제 주문 페이지수 불일치는 워커/주문 검증에서 별도로 잡힌다.
-        // R-196 host page limits (2026-09-29): 호스트 min/max 가 있으면 병합 범위로 클램프하고,
+        // host page limits: 호스트 min/max 가 있으면 병합 범위로 클램프하고,
         // 재진입이면 저장 내지 캔버스 수(canvasData.length − 1)를 그대로 시드(클램프 없음).
         // 없으면 종전 인라인 클램프와 동일.
         const restoredInner =
@@ -2108,11 +2108,11 @@ export function useEditorContents(): UseEditorContentsReturn {
             ? Math.floor(config.restoredInnerCanvasCount)
             : null
         if (restoredCanvasCount !== null) {
-          // R2 (2026-08-18): 재진입 — canvasData 실측 캔버스 수가 시드 수의 단일 진실원.
+          // 재진입 — canvasData 실측 캔버스 수가 시드 수의 단일 진실원.
           // 반감·pageCountRange 클램프 미적용: 사용자가 추가한 페이지를 시드가 되돌리면
           // embed 복원 루프(min)가 저장본 뒷페이지를 무음 절단하고, 이후 자동저장이 절단본을
-          // 서버에 영구 덮어쓴다(DB 실측 17→9). isInnerOnly 는 캔버스 0 도 펼침면이므로 +1.
-          // 손상/적대적 canvasData 의 폭주 방지 — underlay 경로와 동일 상한(200) 후 표면화.
+          // 서버에 영구 덮어쓴다. isInnerOnly 는 캔버스 0 도 펼침면이므로 +1.
+          // 비정상 canvasData 의 폭주 방지 — underlay 경로와 동일 상한(200) 후 표면화.
           const rawSpreadCount = Math.max(
             1,
             isInnerOnly ? restoredCanvasCount + 1 : restoredCanvasCount,
@@ -2135,7 +2135,7 @@ export function useEditorContents(): UseEditorContentsReturn {
           adjustedPageTemplates = isInnerOnly ? expanded.slice(1) : expanded
           console.log(`[EditorContents:Spread] 내지펼침면 ${spreadCount}장 (복원 캔버스 실측 ${restoredCanvasCount}, ${innerRepeat})`)
         } else {
-          // R-196 host page limits (2026-09-29): 호스트 min/max 병합(펼침면 내지 용량 상한 400p).
+          // host page limits: 호스트 min/max 병합(펼침면 내지 용량 상한 400p).
           // 호스트 값이 없으면 템플릿 범위 참조 그대로 — 종전과 동일.
           const pcRange: number[] =
             mergePageCountRange(
@@ -2214,7 +2214,7 @@ export function useEditorContents(): UseEditorContentsReturn {
                   rebindFrameInteractivity(targetEditor, latestAllCanvas[newPageIndex])
                   // Part B: 스프레드 내지 페이지도 고객 진입 시 객체별 이동/변형 잠금 적용.
                   applyCustomerLocks(latestAllCanvas[newPageIndex])
-                  trackRequiredEdits(latestAllCanvas[newPageIndex]) // L7(멱등)
+                  trackRequiredEdits(latestAllCanvas[newPageIndex]) // 필수 편집 추적(멱등)
                   clearTimeout(guardTimer)
                   settle()
                 })
@@ -2246,7 +2246,7 @@ export function useEditorContents(): UseEditorContentsReturn {
       })
 
       // 내지 페이지들
-      // C-2: canvasData.width/height 는 썸네일 비율 메타(PageItem.computeThumbBox 권위) —
+      // canvasData.width/height 는 썸네일 비율 메타(PageItem.computeThumbBox 권위) —
       // +추가 경로(useAppStore.addInnerPage)와 동일 값이어야 시드분·추가분 썸네일 비율이
       // 일치한다. 펼침면 내지=innerSpec 2-up(한 면×2 × 한 면), 낱장 내지=판형 trim(templateSet).
       // 종전엔 표지 스펙(coverWidthMm×coverHeightMm)을 기록해 시드 썸네일만 깨졌다.
@@ -2272,7 +2272,7 @@ export function useEditorContents(): UseEditorContentsReturn {
       const editorStore = useEditorStore.getState()
       editorStore.setPages(editorPages)
 
-      // R-196 host page limits (2026-09-29): 호스트 min/max/pageStep 이 템플릿셋 값보다 우선
+      // host page limits: 호스트 min/max/pageStep 이 템플릿셋 값보다 우선
       // (펼침면 내지는 용량 상한 400p). 호스트 값이 없으면 종전 식과 동일한 값을 돌려준다.
       warnPageStepMismatch((templateSet as { pageStep?: unknown }).pageStep, config)
       const spreadStoreLimits = resolveStorePageLimits({
@@ -2282,29 +2282,29 @@ export function useEditorContents(): UseEditorContentsReturn {
         limits: config,
         capacityMax: isSpreadInners ? SPREAD_INNER_HOST_MAX : undefined,
       })
-      // canAddPage, pageCountRange도 설정 + A13 제본 가드용 bindingType 주입(미설정/미지=null=제약없음)
+      // canAddPage, pageCountRange도 설정 + 제본 가드용 bindingType 주입(미설정/미지=null=제약없음)
       useEditorStore.setState({
         canAddPage: templateSet.canAddPage ?? true,
         pageCountRange: spreadStoreLimits.pageCountRange,
         templateSetId: templateSet.id,
         templateSetName: templateSet.name,
         bindingType: toBindingType(config.bindingType),
-        // W5: 호스트 범위를 보낸 쪽은 제본 한도 미적용(키별). 범위 없음 = {min:false,max:false} → 제본 최소·최대 그대로 적용.
+        // 호스트 범위를 보낸 쪽은 제본 한도 미적용(키별). 범위 없음 = {min:false,max:false} → 제본 최소·최대 그대로 적용.
         hostPageLimitSides: hostSides,
         // 펼침면(2-up) 내지는 캔버스 1장 = 물리 2페이지. 페이지 상/하한 비교의 단위를 맞춘다.
         pagesPerCanvas: isSpreadInners ? 2 : 1,
-        // S8: 내지 증감 단위(null=제약 없음). 추가/삭제 단위 + 편집완료 배수 가드에 사용.
+        // 내지 증감 단위(null=제약 없음). 추가/삭제 단위 + 편집완료 배수 가드에 사용.
         pageStep: spreadStoreLimits.pageStep,
         // 첨부 내지 PDF 빈 페이지 배수 채움(opt-in) — ContentPdfAttachModal 이 소비.
         padToPageStep: spreadStoreLimits.padToPageStep,
-        // S8: 단위 산정 기준 — 완료 가드(pageStepGuard)와 같은 소스(settings.spreadConfig.regionScope).
+        // 단위 산정 기준 — 완료 가드(pageStepGuard)와 같은 소스(settings.spreadConfig.regionScope).
         pageStepBasis: {
           isSpreadMode: true,
           regionScope: useSettingsStore.getState().spreadConfig?.regionScope ?? null,
         },
       })
 
-      // R-196 host page limits (2026-09-29): 호스트 한도 세션은 SidePanel '페이지' 섹션 한도도
+      // host page limits: 호스트 한도 세션은 SidePanel '페이지' 섹션 한도도
       // 스토어 게이트와 같은 식(범위 ∩ bindingPageBounds — 호스트가 보낸 쪽은 제본 값 제외)으로
       // 캔버스 단위 환산해 맞춘다 — 두 패널 불일치 방지.
       if (hostLimitsActive) {
@@ -2347,7 +2347,7 @@ export function useEditorContents(): UseEditorContentsReturn {
         const spineResult = await recalculateSpineWidth({
           paperType: config.paperType || undefined,
           bindingType: config.bindingType || undefined,
-          // R-195: 초기 로드 표시 — 호스트 책등이 있으면 API 대신 호스트 값 적용(없으면 무시).
+          // 초기 로드 표시 — 호스트 책등이 있으면 API 대신 호스트 값 적용(없으면 무시).
           initial: true,
         })
 
@@ -2358,12 +2358,12 @@ export function useEditorContents(): UseEditorContentsReturn {
         }
       }
 
-      // 13. C-2: 시드 루프(내지 생성)는 ready=false·패널 마운트로 레이아웃이 변동하는 중에
+      // 13. 시드 루프(내지 생성)는 ready=false·패널 마운트로 레이아웃이 변동하는 중에
       // 실행돼, 캔버스마다 생성 시점의 서로 다른(stale) 컨테이너 크기로 뷰포트가 동결될 수 있다.
       // 로딩 오버레이 해제(ready) 직전에 전 캔버스의 setZoomAuto 를 RAF 1회로 병합해 일괄
       // 재정렬 — 시드분·+추가분의 재단선/가이드 뷰포트 기준을 통일한다(사용자 체감 리셋 없음).
-      // ⚠️ P1-5 (2026-08-22): requestAnimationFrame 은 숨김 탭·오프스크린 cross-origin iframe 에서
-      //   정지/스로틀된다 → 여기서 영원히 대기해 로드가 "콘텐츠를 불러오는 중" 에 멈췄다(실측 2분+).
+      // ⚠️ requestAnimationFrame 은 숨김 탭·오프스크린 cross-origin iframe 에서
+      //   정지/스로틀된다 → 여기서 영원히 대기해 로드가 "콘텐츠를 불러오는 중" 에 멈춘다.
       //   setTimeout 과 race 해 RAF 가 안 오면 200ms 후 진행한다(FontPlugin 과 동일 패턴). 1회만 실행.
       await new Promise<void>((resolve) => {
         let done = false

@@ -1,5 +1,5 @@
 /**
- * 2026-09-28 — 첨부 PDF 빈 페이지 배수 채움(템플릿셋 padToPageStep) 잠금.
+ * 첨부 PDF 빈 페이지 배수 채움(템플릿셋 padToPageStep) 잠금.
  *
  *  - computePagePadTarget: 설정·pageStep·쪽수 게이트와 ceil(n/step)*step
  *  - 첨부 흐름: 채움이 필요하면 fix-pagecount/attach 결과(채움본)로 세션 PATCH·onAttached 를 하고

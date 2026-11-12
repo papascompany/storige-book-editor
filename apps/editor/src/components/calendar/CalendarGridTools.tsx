@@ -21,17 +21,17 @@ import { resolveCanvasYearDelta, toAnniversaryInputs } from '@/utils/calendarReh
 import { EMPTY_GRID_STYLE_DRAFT, gridStyleFromDraft, type GridStyleDraft } from './calendarPanelUtils'
 
 /**
- * CalendarGridTools — editMode(관리자 템플릿 제작) 전용: 날짜 그리드/미니 달력/연달력을 캔버스 중앙에 추가 (P1-d 캘린더, 2026-10-17)
+ * CalendarGridTools — editMode(관리자 템플릿 제작) 전용: 날짜 그리드/미니 달력/연달력을 캔버스 중앙에 추가 (캘린더)
  *
  * - 기본 박스: 캔버스(workspace) 폭의 80%, 비율 월·연달력 4:3 / 미니 1:1(높이는 workspace 높이 80% 로 클램프).
- *   연달력 4:3 근거(T3b, 2026-10-24): 플러그인은 박스 비율 r=w/h 로 월 배열을 정한다(r ≥ 2 → 6×2, r ≥ 0.9 → 4×3, r ≥ 0.45 → 3×4,
+ *   연달력 4:3 근거: 플러그인은 박스 비율 r=w/h 로 월 배열을 정한다(r ≥ 2 → 6×2, r ≥ 0.9 → 4×3, r ≥ 0.45 → 3×4,
  *   그 밖 2×6). 한 달 블록은 7열 × (소제목 + 요일 + 최대 6주 ≈ 8행)이라 4:3(r≈1.33 → 4×3)이면 칸이 정사각에 가깝다.
  *   정사각(1:1)도 4×3 이지만 칸이 세로로 길어져 날짜 숫자 사이가 벌어진다.
  * - ctx: 세션 메타가 있으면 그 값, 없으면 {내년 1월 시작, 캔버스 index 기준 월 오프셋(없으면 0), weekStart 0, show 전부 true}.
  *   연달력은 ctx.yearSpan(프로파일 정책)·ctx.yearDelta(고객 선택, 정책 허용 폭 안일 때만)를 함께 받는다.
  * - SmartCodes 선례: offHistory 로 생성 → onHistory → canvas.add → setActiveObject.
  * - 날짜 데이터가 없으면 버튼 비활성 + 안내.
- * - 그리드 스타일 최소 4종(D1: fontFamily·headerLang·showTitle·showLines) — 비운 항목은 키를 쓰지 않는다(variant 별 기본값).
+ * - 그리드 스타일 최소 4종(fontFamily·headerLang·showTitle·showLines) — 비운 항목은 키를 쓰지 않는다(variant 별 기본값).
  *   '현재 페이지에 적용' 은 이 캔버스의 그리드 전부의 `extension.style` 에 지정 항목만 덮어쓰고 다시 그린다(다른 스타일 키 유지).
  * - 연도 제목은 `style.showTitle` 로만 정한다. `extension.show.yearTitle` 은 쓰지 않는다 — 플러그인이 그 값을 고객 on/off
  *   (`metadata.calendar.show.yearTitle`)보다 먼저 읽기 때문에 템플릿에 쓰면 고객 선택이 무력화된다.
@@ -87,7 +87,7 @@ function buildToolsContext(canvasIndex: number, data: CalendarData): CalendarRen
   return ctx
 }
 
-/** 템플릿 연달력 연도 이동 후보(관리자, Q2 답: 표지·에필로그 연도 관계는 그리드마다 정함) */
+/** 템플릿 연달력 연도 이동 후보(관리자 — 표지·에필로그 연도 관계는 그리드마다 정한다) */
 const YEAR_DELTA_OPTIONS: number[] = Array.from({ length: CALENDAR_YEAR_DELTA_LIMIT * 2 + 1 }, (_, i) => i - CALENDAR_YEAR_DELTA_LIMIT)
 
 function yearDeltaOptionLabel(d: number): string {

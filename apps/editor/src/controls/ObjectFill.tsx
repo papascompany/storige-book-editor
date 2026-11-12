@@ -5,7 +5,7 @@ import AppSection from '@/components/AppSection'
 import { Button } from '@/components/ui/button'
 import { parseColorValue, rgbaToHex8, SelectionType } from '@storige/canvas-core'
 
-// 그라디언트 프리셋 (트랙 AA, DD-3에서 angle/radial 확장)
+// 그라디언트 프리셋 (angle/radial 포함)
 const GRADIENT_PRESETS: ReadonlyArray<{ name: string; from: string; to: string }> = [
   { name: 'Brand', from: '#7fbf34', to: '#6ba82d' },
   { name: 'Sunset', from: '#f093fb', to: '#f5576c' },
@@ -17,7 +17,7 @@ const GRADIENT_PRESETS: ReadonlyArray<{ name: string; from: string; to: string }
   { name: 'Cherry', from: '#ff7e5f', to: '#feb47b' },
 ] as const
 
-// 각도 프리셋 (CSS 표준: 0deg = bottom→top, 90deg = left→right). DD-3
+// 각도 프리셋 (CSS 표준: 0deg = bottom→top, 90deg = left→right).
 const ANGLE_PRESETS = [0, 45, 90, 135] as const
 type GradientAngle = typeof ANGLE_PRESETS[number]
 
@@ -31,7 +31,7 @@ function angleToLinearCoords(angle: GradientAngle, w: number, h: number) {
       // 좌하→우상
       return { x1: 0, y1: h, x2: w, y2: 0 }
     case 90:
-      // 좌→우 (트랙 AA의 기본)
+      // 좌→우 (기본)
       return { x1: 0, y1: h / 2, x2: w, y2: h / 2 }
     case 135:
       // 좌상→우하
@@ -178,7 +178,7 @@ export default function ObjectFill() {
     [activeSelection, effectiveOpacity, canvas]
   )
 
-  // 그라디언트 적용 — angle 4개 프리셋 + linear/radial 모드 (DD-3)
+  // 그라디언트 적용 — angle 4개 프리셋 + linear/radial 모드
   // 텍스트 객체는 fabric의 setSelectionStyles가 string fill만 받으므로 미지원
   const isTextSelection = selectionType === SelectionType.text
   const applyGradient = useCallback(
@@ -264,7 +264,7 @@ export default function ObjectFill() {
       obj.fillOpacity = value
 
       // 그라디언트 fill — fill 자체를 rgba 문자열로 치환하면 parseColorValue 의 object 분기가
-      // r/g/b undefined 를 통과시켜 "rgba(undefined,...)" 로 그라디언트가 파괴된다(적대 리뷰).
+      // r/g/b undefined 를 통과시켜 "rgba(undefined,...)" 로 그라디언트가 파괴된다.
       // 그라디언트는 각 colorStop 색의 알파만 조정하고 fill 객체(좌표/타입)는 보존한다.
       const fill = obj.fill
       if (fill && typeof fill === 'object' && Array.isArray(fill.colorStops)) {
@@ -385,7 +385,7 @@ export default function ObjectFill() {
             </div>
           )}
 
-          {/* 그라디언트 프리셋 row (트랙 AA + DD-3 angle/radial 옵션) — 비-텍스트 객체에서만 노출 */}
+          {/* 그라디언트 프리셋 row (angle/radial 옵션) — 비-텍스트 객체에서만 노출 */}
           {!hideFill && hasFill && !isTextSelection && (
             <div className="w-full flex flex-col gap-1.5">
               <span className="text-[11px] text-editor-text-muted leading-none">그라디언트</span>
@@ -407,7 +407,7 @@ export default function ObjectFill() {
                 ))}
               </div>
 
-              {/* DD-3: angle 프리셋 + radial 토글 */}
+              {/* angle 프리셋 + radial 토글 */}
               <div className="flex items-center justify-between gap-2 mt-0.5">
                 <div className="flex items-center gap-1">
                   <span className="text-[10px] text-editor-text-muted mr-0.5">방향</span>

@@ -278,7 +278,7 @@ function buildActions(props: Pick<CommandPaletteModalProps, 'onFinish' | 'onOpen
         close()
       },
     },
-    // 표지 편집 모드 (cover.md §3) — auto/separated/composite
+    // 표지 편집 모드 — auto/separated/composite
     {
       id: 'cover-mode-auto',
       group: 'UI',
@@ -375,7 +375,7 @@ export default function CommandPaletteModal(props: CommandPaletteModalProps) {
     [allActions, query]
   )
 
-  // 즐겨찾기 store (DD-4)
+  // 즐겨찾기 store
   const favoriteIds = useCommandFavoritesStore((s) => s.ids)
   const toggleFavorite = useCommandFavoritesStore((s) => s.toggle)
 

@@ -1,5 +1,5 @@
 /**
- * calendar/core.test.ts — 캘린더 순수 함수 단위 테스트 (P1-c, 2026-10-17)
+ * calendar/core.test.ts — 캘린더 순수 함수 단위 테스트
  * 데이터는 생성물 kr-2025-2035-v1 을 그대로 사용한다(외부 API 없음).
  */
 import { describe, it, expect } from 'vitest';
@@ -239,7 +239,7 @@ describe('calendar/core — buildMonthMatrix', () => {
     expect(cells.filter((c) => c.anniversaries.includes('환산불가'))).toHaveLength(0);
   });
 
-  it('기념일 문구 스타일(T3b): 유효 스타일이 있는 칸만 anniversaryStyles(문구와 같은 순서·길이, 없음은 null), 나머지 칸은 키 없음', () => {
+  it('기념일 문구 스타일: 유효 스타일이 있는 칸만 anniversaryStyles(문구와 같은 순서·길이, 없음은 null), 나머지 칸은 키 없음', () => {
     const m = buildMonthMatrix(2025, 10, {
       weekStart: 0,
       data,
@@ -292,7 +292,7 @@ describe('calendar/core — buildMonthMatrix', () => {
 
   const byDateOf = (m: ReturnType<typeof buildMonthMatrix>, d: string) => m.rows.flat().find((c) => c.date === d)!;
 
-  it('잡절(삼복) getMinorTermsForMonth — 월 필터, 키 없는 데이터·범위 밖 연도는 빈 배열, 월 행렬 셀 구조는 불변(T4)', () => {
+  it('잡절(삼복) getMinorTermsForMonth — 월 필터, 키 없는 데이터·범위 밖 연도는 빈 배열, 월 행렬 셀 구조는 불변', () => {
     expect(getMinorTermsForMonth(2026, 7, data)).toEqual([
       { date: '2026-07-15', name: '초복' },
       { date: '2026-07-25', name: '중복' },
@@ -308,7 +308,7 @@ describe('calendar/core — buildMonthMatrix', () => {
 
   it('임시공휴일·선거일(temporary)은 기본 미표시, includeTemporaryHolidays=true 면 휴일(2026-06-03 지방선거일, 2026-10-17 오너 결정)', () => {
     // 데이터 파일의 temporary 항목 4건이 전제(2025-01-27 임시공휴일, 2025-06-03 대통령선거일, 2026-06-03 지방선거일,
-    // 2028-04-12 국회의원선거일 — T4·D4 2026-10-24)
+    // 2028-04-12 국회의원선거일)
     const temporaryDates = Object.values(data.holidays).flat().filter((h) => h.temporary === true).map((h) => h.date);
     expect(temporaryDates).toEqual(['2025-01-27', '2025-06-03', '2026-06-03', '2028-04-12']);
     // 2028-04-12(수) 국회의원선거일도 기본 미표시, 옵션 true 면 휴일

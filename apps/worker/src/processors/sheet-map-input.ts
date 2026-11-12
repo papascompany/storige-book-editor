@@ -2,7 +2,7 @@ import { SheetFaceRef, SheetMapSynthesisJobData, SheetSpec } from '@storige/type
 import { DomainError, ErrorCodes } from '../common/errors';
 
 /**
- * P2-c(2026-10-18) — 합성 mode 'sheet-map' 잡 데이터 검증(다운로드 전, 순수 함수).
+ * 합성 mode 'sheet-map' 잡 데이터 검증(다운로드 전, 순수 함수).
  *
  * api `edit-sessions/sheet-map.ts` 의 assertSheetMapCoversPages 와 같은 규칙을 워커 로컬로 다시 구현한다
  * (패키지 경계 — api 모듈을 워커가 import 하지 않는다).

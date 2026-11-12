@@ -20,7 +20,7 @@ import {
 } from './hostPageLimits'
 
 /**
- * R-196 host page limits (2026-09-29): 호스트 상품별 쪽수 범위·배수 순수 헬퍼.
+ * host page limits: 호스트 상품별 쪽수 범위·배수 순수 헬퍼.
  * identity 케이스는 "호스트 값 미전달 = 종전과 byte-identical" 보장을 고정한다.
  */
 
@@ -324,7 +324,7 @@ describe('resolveSeedPageCount', () => {
   })
 })
 
-describe('pageStep=1 — 배수 제약 없음(2026-09-29 오너 채택)', () => {
+describe('pageStep=1 — 배수 제약 없음', () => {
   it('resolveHostPageLimits: 1 을 그대로 전달하고 정렬·실현가능성 규칙에 걸리지 않음, 세션 기록에서도 복원', () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
     expect(resolveHostPageLimits({ pageCountMin: 15, pageCountMax: 301, pageStep: 1 }, undefined)).toEqual({

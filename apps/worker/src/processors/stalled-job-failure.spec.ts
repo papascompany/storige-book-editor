@@ -1,5 +1,5 @@
 /**
- * JD-4 — stalled 한도 초과 실패 기록 헬퍼와 큐별 failed 리스너 배선.
+ * stalled 한도 초과 실패 기록 헬퍼와 큐별 failed 리스너 배선.
  *
  * - 헬퍼: bull stalled 한도 초과 사유일 때만 상태를 조회하고, PENDING/PROCESSING 이면
  *   FAILED(JOB_STALLED)로 1회 PATCH 한다. 합성 완료 마커가 있으면 캐시된 COMPLETED 를 재보고한다.

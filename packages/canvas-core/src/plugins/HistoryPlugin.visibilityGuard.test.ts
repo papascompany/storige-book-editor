@@ -1,4 +1,4 @@
-// HistoryPlugin undo/redo 가시성 가드 테스트 (ED-1)
+// HistoryPlugin undo/redo 가시성 가드 테스트
 //
 // 배경: hotkeys-js 는 전역 싱글톤이라 멀티페이지 환경에서 모든 페이지의
 // HistoryPlugin 이 ctrl+z 에 바인딩된다 → 단축키 한 번에 "모든" 페이지가

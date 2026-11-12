@@ -1,5 +1,5 @@
 /**
- * WK-4 회귀 테스트 (2026-06-13) — JobStatusService 공유 재시도 정책.
+ * 회귀 테스트 — JobStatusService 공유 재시도 정책.
  *
  * - 재시도 5회(총 6회 시도), 백오프 최대 30s.
  * - 최종 실패 시 throw 하지 않고 false 반환 + Sentry capture.
@@ -17,7 +17,7 @@ jest.mock('../sentry/sentry.init', () => ({
 const mockedAxios = axios as jest.Mocked<typeof axios>;
 const mockedCapture = captureJobException as jest.MockedFunction<typeof captureJobException>;
 
-describe('JobStatusService (WK-4)', () => {
+describe('JobStatusService', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     mockedAxios.patch.mockResolvedValue({ status: 200 });
@@ -129,7 +129,7 @@ describe('JobStatusService (WK-4)', () => {
     });
   });
 
-  describe('fetchJobStatusWithRetry (JD-4 상태 조회)', () => {
+  describe('fetchJobStatusWithRetry (상태 조회)', () => {
     const fastDelays = [1, 1, 1, 1, 1];
 
     beforeEach(() => {

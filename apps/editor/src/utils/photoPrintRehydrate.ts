@@ -14,10 +14,10 @@ import { usePhotoPrintStore } from '@/stores/usePhotoPrintStore'
 import { isPhotoPrintProfile, type PhotoPrintProductProfile } from '@/utils/productProfile'
 
 /**
- * photoPrintRehydrate.ts — 사진인화 항목 옵션을 캔버스에 적용 (P2-d, 2026-10-19)
+ * photoPrintRehydrate.ts — 사진인화 항목 옵션을 캔버스에 적용
  *
  * `PhotoPrintPlugin.apply/rehydrate(opts)` 호출 지점. 항목(`usePhotoPrintStore.items[i]`)의 border/fit/dateOverlay/grayscale 를
- * 플러그인 옵션(§13-3: paper-full→cover, image-full→contain, white→frameInsetMm)으로 바꿔 그 항목의 캔버스
+ * 플러그인 옵션(paper-full→cover, image-full→contain, white→frameInsetMm)으로 바꿔 그 항목의 캔버스
  * (chemical 1장, digital [앞, 뒤] 2장)에 적용한다. finish/brightnessFix/copies 는 통과만(편집기 미적용).
  *
  * 게이트: settings.productProfile 이 null 이거나 kind≠photo-print 면 즉시 0(legacy 세트 no-op).
@@ -37,7 +37,7 @@ export function resolvePhotoItemIndexForCanvas(photo: Pick<PhotoPrintProfile, 'p
 
 /**
  * 템플릿셋 재단선 설정(settings.printMarkConfig)에서 도련 px — cropMarkEnabled && bleedMm>0 이면 mmToPxDisplay(bleedMm), 아니면 0.
- * 유테 창은 (프레임 ∩ (workspace − bleed)) 기준이라(D3) 도련 세트의 풀블리드 틀에서도 흰 띠가 재단 안에 남는다.
+ * 유테 창은 (프레임 ∩ (workspace − bleed)) 기준이라 도련 세트의 풀블리드 틀에서도 흰 띠가 재단 안에 남는다.
  */
 export function resolvePhotoPrintBleedPx(
   printMark: { bleedMm: number; cropMarkEnabled: boolean } | null | undefined,
@@ -49,7 +49,7 @@ export function resolvePhotoPrintBleedPx(
 }
 
 /**
- * 항목 → 플러그인 옵션(§13-3 매핑). mmToPx 는 workspace 와 같은 화면 px 환산(mmToPxDisplay).
+ * 항목 → 플러그인 옵션. mmToPx 는 workspace 와 같은 화면 px 환산(mmToPxDisplay).
  * bleedPx(기본 0)는 `resolvePhotoPrintBleedPx(settings.printMarkConfig)` — apply/rehydrate 호출 전부가 전달한다.
  */
 export function resolvePhotoPrintCanvasOptions(photo: PhotoPrintProfile, item: PhotoItem, bleedPx = 0): PhotoPrintCanvasOptions {

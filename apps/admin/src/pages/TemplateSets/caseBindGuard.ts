@@ -1,5 +1,5 @@
 /**
- * 템플릿셋 저장 전 싸바리(hardcover_wrap) × caseBind 충돌 판정 (N-TD-2a, 2026-10-06).
+ * 템플릿셋 저장 전 싸바리(hardcover_wrap) × caseBind 충돌 판정.
  *
  * 편집기는 coverType 이 hardcover_wrap 이어도 caseBind 가 하나라도 있으면 싸바리 편집 모드를
  * 끈다(apps/editor/src/utils/hardcoverWrap.ts resolveHardcoverWrapMode 의 CASE_BIND 사유).

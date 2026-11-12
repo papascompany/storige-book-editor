@@ -16,7 +16,7 @@ const mockedFs = fs as jest.Mocked<typeof fs>;
 const { runGhostscript } = require('./ghostscript');
 
 /**
- * R5 인쇄 산출 정규화 — 운영 안전 계약 잠금.
+ * 인쇄 산출 정규화 — 운영 안전 계약 잠금.
  * 핵심: 기본 OFF no-op · 모든 실패 fail-open(원본 무접촉) · 대형 스킵.
  */
 
@@ -47,7 +47,7 @@ describe('buildNormalizeArgs', () => {
     expect(args).toContain('-dPDFX');
     // -dSAFER 가 PDFX def 의 ICC file 읽기를 차단(invalidfileaccess 실증) — 명시 허용 필수
     expect(args).toContain(`--permit-file-read=${opts.iccPath}`);
-    // 보존(트랙 B 정합)·주석 제거(R4a 정합)
+    // 별색 보존·주석 제거
     expect(args).toContain('-dPreserveSeparation=true');
     expect(args).toContain('-dPreserveOverprintSettings=true');
     expect(args).toContain('-dPreserveDeviceN=true');

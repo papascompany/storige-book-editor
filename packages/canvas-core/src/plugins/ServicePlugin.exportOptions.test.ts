@@ -1,4 +1,4 @@
-// P1 캘린더 (2026-10-17): 프로파일 세트 전용 PDF export 옵션의 fabric 측 계약.
+// 프로파일 세트 전용 PDF export 옵션의 fabric 측 계약.
 //
 // 배경: 워커 preflight 가 캘린더 완료 PDF 에서 TRANSPARENCY_DETECTED(`/ca 0` ExtGState)를 경고했다.
 // 원인은 fabric 이 'transparent' 색을 SVG 로 `fill: rgb(0,0,0); fill-opacity: 0` 으로 내보내고

@@ -21,7 +21,7 @@ import { useSettingsStore } from '@/stores/useSettingsStore'
 import { useCalendarStore } from '@/stores/useCalendarStore'
 
 /**
- * P1-d 캘린더 (2026-10-17): CalendarPanel — 시작연월 범위 밖 거부, 기념일 중복 거부, 범위 밖 배지,
+ * 캘린더: CalendarPanel — 시작연월 범위 밖 거부, 기념일 중복 거부, 범위 밖 배지,
  * 음력 데이터 없음 비활성, pendingDate(날짜칸 더블클릭) → 폼, editMode 그리드 도구 노출.
  */
 const calendarProfile: ProductProfile = {
@@ -126,7 +126,7 @@ describe('CalendarPanel — 시작연월', () => {
     expect(window.confirm).toHaveBeenCalledWith(START_MONTH_CONFIRM_MESSAGE)
     expect(useCalendarStore.getState().meta).toMatchObject({ startYear: 2027, startMonth: 3 })
     expect(rehydrateAll).toHaveBeenCalledTimes(1)
-    // 종료 월도 시작과 같은 형식(월 0 패딩 없음, e2e F2)
+    // 종료 월도 시작과 같은 형식(월 0 패딩 없음)
     expect(screen.getByText(/현재 2027년 3월 ~ 2028년 2월 ·/)).toBeInTheDocument()
     expect(screen.queryByText(/2028년 02월/)).toBeNull()
   })
@@ -167,7 +167,7 @@ describe('CalendarPanel — 표기 옵션', () => {
     expect(rehydrateAll).toHaveBeenCalledTimes(1)
   })
 
-  it('임시공휴일·선거일 체크박스: 기본 해제(키 없음 = false), 토글 → show.temporaryHolidays + rehydrateAll (2026-10-17)', async () => {
+  it('임시공휴일·선거일 체크박스: 기본 해제(키 없음 = false), 토글 → show.temporaryHolidays + rehydrateAll', async () => {
     wireCalendar()
     const box = screen.getByLabelText(TEMPORARY_HOLIDAYS_LABEL) as HTMLInputElement
     expect(box.checked).toBe(false)
@@ -185,7 +185,7 @@ describe('CalendarPanel — 표기 옵션', () => {
     expect(rehydrateAll).toHaveBeenCalledTimes(2)
   })
 
-  it('잡절(복날) 체크박스(T4r, v1.27): 기본 해제(키 없음), 토글 → show.minorTerms + rehydrateAll + 저장 metadata.calendar.show, 재오픈 후 유지', async () => {
+  it('잡절(복날) 체크박스(v1.27): 기본 해제(키 없음), 토글 → show.minorTerms + rehydrateAll + 저장 metadata.calendar.show, 재오픈 후 유지', async () => {
     const actual = await vi.importActual<typeof import('@/utils/calendarRehydrateAll')>('@/utils/calendarRehydrateAll')
     const { unmount } = wireCalendar()
     const box = screen.getByLabelText(MINOR_TERMS_LABEL) as HTMLInputElement
@@ -339,7 +339,7 @@ describe('CalendarPanel — editMode 그리드 도구', () => {
   })
 })
 
-// ─── T3b 연달력 (2026-10-24) ─────────────────────────────────────────────────
+// ─── 연달력 ─────────────────────────────────────────────────
 
 const yearGrid = (yearDelta = 0) => ({ extensionType: 'calendar-grid', extension: { variant: 'year', yearDelta } })
 
@@ -365,7 +365,7 @@ function wireYear(profile: ProductProfile, objectsAt: (index: number) => unknown
 const yearSection = () => screen.queryByRole('region', { name: '연달력' })
 const coverYearSelect = () => screen.getByLabelText('표지 연달력 연도') as HTMLSelectElement
 
-describe('CalendarPanel — 연달력 섹션 (T3b)', () => {
+describe('CalendarPanel — 연달력 섹션', () => {
   it('연달력 그리드가 없으면 섹션 없음(기존 세트 화면 불변)', () => {
     wireYear(withYearPolicy({ select: { minDelta: 0, maxDelta: 1 } }), () => [])
     expect(yearSection()).toBeNull()
@@ -401,7 +401,7 @@ describe('CalendarPanel — 연달력 섹션 (T3b)', () => {
     expect(coverYearSelect().value).toBe('')
   })
 
-  it('연도 선택 → yearDeltas[cover] + rehydrateAll, 기본으로 되돌리면 키 제거; 시작연월을 바꿔도 상대값 유지(Q4)·표기는 시작연월부터(Q1)', async () => {
+  it('연도 선택 → yearDeltas[cover] + rehydrateAll, 기본으로 되돌리면 키 제거; 시작연월을 바꿔도 상대값 유지·표기는 시작연월부터', async () => {
     wireYear(withYearPolicy({ select: { minDelta: 0, maxDelta: 1 } }), (i) => (i === 0 || i === 25 ? [yearGrid()] : []))
     expect(screen.getByLabelText('에필로그 연달력 연도')).toBeInTheDocument()
     await act(async () => {
@@ -435,7 +435,7 @@ describe('CalendarPanel — 연달력 섹션 (T3b)', () => {
   })
 })
 
-describe('CalendarPanel — 기념일 문구 스타일 최소(글자색, D1(b) · T3b-1a 굵게 입력 없음)', () => {
+describe('CalendarPanel — 기념일 문구 스타일 최소(글자색 · 굵게 입력 없음)', () => {
   it('추가: 글자색 지정 → anniversaries[].style {fill} 만(굵게 컨트롤 없음 → fontWeight 키 없음)', async () => {
     wireCalendar()
     fireEvent.click(screen.getByRole('button', { name: '추가' }))
@@ -496,7 +496,7 @@ describe('CalendarPanel — 기념일 문구 스타일 최소(글자색, D1(b) �
   })
 })
 
-describe('CalendarGridTools — 연달력 추가·스타일 4종 (T3b, editMode)', () => {
+describe('CalendarGridTools — 연달력 추가·스타일 4종 (editMode)', () => {
   function wireTools(opts: { profile?: ProductProfile; objects?: unknown[] } = {}) {
     const workspace = { id: 'workspace', width: 1000, height: 1000, scaleX: 1, scaleY: 1, getCenterPoint: () => ({ x: 0, y: 0 }) }
     const objects: unknown[] = [workspace, ...(opts.objects ?? [])]

@@ -10,11 +10,11 @@ export interface TouchContextMenuOptions {
 }
 
 /**
- * C6: 캔버스 wrapperEl 에 터치 롱프레스 컨텍스트 메뉴 트리거를 부착한다.
+ * 캔버스 wrapperEl 에 터치 롱프레스 컨텍스트 메뉴 트리거를 부착한다.
  *
  * - pointer 이벤트 기반(WorkspacePlugin.bindPinch 와 동일 레이어). fabric 의 터치→마우스
  *   매핑과 독립이며, 두 손가락 핀치(WorkspacePlugin)와 같은 wrapperEl 을 공유하되 자체
- *   포인터 카운터로 T-1(두 번째 포인터=핀치 즉시 취소)을 감지한다(_pinchPointers 는 private).
+ *   포인터 카운터로 두 번째 포인터(=핀치, 즉시 취소)를 감지한다(_pinchPointers 는 private).
  * - 데스크탑 마우스(pointerType!=='touch')는 전부 무시 → 기존 우클릭 컨텍스트 경로 무회귀.
  * - 발화 시 진행 중 fabric transform 만 중단(_currentTransform=undefined)하고 활성 객체는
  *   유지한다(discardActiveObject 금지 — onlyForActiveObject 메뉴가 살아 있어야 함).
@@ -42,7 +42,7 @@ export function attachTouchContextMenu(
   let pressTimer: ReturnType<typeof setTimeout> | null = null
   let startX = 0
   let startY = 0
-  // 이번 제스처에서 메뉴가 발화됐는지 — pointerup 에서 T-5 억제창 재-arm 판정
+  // 이번 제스처에서 메뉴가 발화됐는지 — pointerup 에서 히든 억제창 재-arm 판정
   let firedThisGesture = false
 
   const clearTimer = () => {
@@ -68,9 +68,9 @@ export function attachTouchContextMenu(
       pressTimer = null
       // 발화 시점 재확인: 여전히 단일 터치 포인터일 때만
       if (activePointers.size !== 1) return
-      // T-4: 진행 중 fabric transform 을 중단하되, 롱프레스 대기 동안 fabric 이 서브임계(<10px)
+      // 진행 중 fabric transform 을 중단하되, 롱프레스 대기 동안 fabric 이 서브임계(<10px)
       // 지터로 밀어놓은 위치를 변환 시작 시점(original)으로 복원한다. 미복원 시 그 이동이
-      // object:modified 없이(=undo 불가) 모델에 잔류해 canvasData 에 직렬화된다(적대 리뷰 MAJOR).
+      // object:modified 없이(=undo 불가) 모델에 잔류해 canvasData 에 직렬화된다.
       // discardActiveObject 는 제외(활성객체 유지 → onlyForActiveObject 메뉴 보존).
       const cAny = canvas as unknown as {
         _currentTransform?: {
@@ -104,7 +104,7 @@ export function attachTouchContextMenu(
   const onPointerMove = (e: PointerEvent) => {
     if (e.pointerType !== 'touch') return
     if (pressTimer === null || !activePointers.has(e.pointerId)) return
-    // T-2: 화면 px 이동이 임계 초과 → 취소(preventDefault 없이 스크롤/드래그 양보)
+    // 화면 px 이동이 임계 초과 → 취소(preventDefault 없이 스크롤/드래그 양보)
     if (Math.hypot(e.clientX - startX, e.clientY - startY) > moveTolerancePx) {
       clearTimer()
     }
@@ -114,7 +114,7 @@ export function attachTouchContextMenu(
     if (e.pointerType !== 'touch') return
     activePointers.delete(e.pointerId)
     clearTimer()
-    // T-5 보강: 이번 제스처에서 메뉴가 떠 있으면, 손 뗌 직후 도착할 합성 mousedown 이
+    // 이번 제스처에서 메뉴가 떠 있으면, 손 뗌 직후 도착할 합성 mousedown 이
     // (표시 시각 기준 창이 만료된 뒤라도) 메뉴를 닫지 않도록 억제창을 release 기준으로 재-arm.
     if (firedThisGesture) {
       contextMenu.armTouchHideSuppress()

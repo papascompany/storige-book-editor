@@ -42,7 +42,7 @@ const SUBJECT_OPTIONS: { value: CutoutSubject; label: string; hint: string }[] =
 /**
  * book/스프레드 상품 컨텍스트인가 — 모양컷 render()는 `canvas.clear()` 로 시작하므로
  * 이런 상품에서 실행하면 workspace/재단선/안전선이 통째로 지워지고, 이어지는
- * `clearHistory()` 가 undo 복구까지 차단한다(2026-08-18 동화책 하드커버 실사고).
+ * `clearHistory()` 가 undo 복구까지 차단한다.
  * 다중 캔버스 · spreadConfig · 연결된 인쇄 템플릿 중 하나라도 있으면 book 으로 판정.
  * ⚠️ hasCoverSlot 은 기본값이 true 라 단독 신호로 쓰면 모양컷 단품까지 오차단한다.
  *    (동일 조건이 ToolBar/CommandPaletteModal 에도 있다 — AppClipping 은 lazy 청크라
@@ -128,8 +128,8 @@ export default function AppClipping() {
    * 배경제거 대상 이미지를 고른다.
    *
    * `currentImage` 는 **모양컷 워크스페이스의 innerItem** 일 때만 채워진다(render/renderWorkspace).
-   * 종전에는 이것이 없으면 그대로 return 해서, 모양컷을 거치지 않은 템플릿(BOOK 등)에서는
-   * '효과' 클릭이 **아무 반응도 없었다**(2026-08-05 발견, 샤드3 동시 해소 항목).
+   * 이것이 없다고 그대로 return 하면, 모양컷을 거치지 않은 템플릿(BOOK 등)에서는
+   * '효과' 클릭이 **아무 반응도 없게 된다**.
    * → 활성 선택 이미지 → (모호하지 않은 경우) 캔버스의 단일 이미지 순으로 폴백한다.
    */
   const resolveTargetImage = useCallback((): fabric.Image | fabric.Group | null => {
@@ -163,7 +163,7 @@ export default function AppClipping() {
   }, [canvas])
 
   // Handle segment image (background removal)
-  // S-P2A-B 샤드3(2026-08-06): 추론이 서버(rembg)로 오프로드됐다 — 업로드·큐 대기·다운로드가
+  // 추론은 서버(rembg)에서 한다 — 업로드·큐 대기·다운로드가
   // 수 초 걸리므로 진행 중 재클릭 방지(isLoading 가드)는 그대로 유지한다. 진행 표시는
   // useImageStore.segmentImage 가 longTask 이벤트로 발행하고 EditorView 오버레이가 소비한다.
   const handleSegmentImage = useCallback(async () => {
@@ -278,8 +278,8 @@ export default function AppClipping() {
     if (!canvas) return
 
     // book/스프레드 상품 가드 — offHistory 전에 반환해 off/on 쌍 정합을 유지한다.
-    // (handleSegmentImage 에는 2026-08-05에 isClippingWorkspace 가드가 들어갔지만
-    //  업로드 경로에는 누락돼 있었다 — 여기가 파괴적 render() 의 유일한 진입점.)
+    // (handleSegmentImage 의 isClippingWorkspace 가드는
+    //  업로드 경로를 덮지 않는다 — 여기가 파괴적 render() 의 유일한 진입점.)
     if (isSpreadProductContext()) {
       showToast('이 상품에서는 모양컷을 사용할 수 없습니다.', 'info')
       return
@@ -294,10 +294,10 @@ export default function AppClipping() {
 
       const file = files[0]
 
-      // P2-d 사진인화(security-3): 프로파일 업로드 한도(maxPhotos/maxMb) — 프로파일 NULL 세트는 no-op
+      // 사진인화: 프로파일 업로드 한도(maxPhotos/maxMb) — 프로파일 NULL 세트는 no-op
       if (!checkPhotoPrintUploadLimit(files, currentPhotoPrintPhotoCount())) return
-      // D-6b② (2026-08-05): 모양컷 업로드 가드 — 이 경로만 모바일 4MB 가드가 없어
-      // 대용량 원본이 배경제거 파이프(추론 픽셀 캡 이전 단계)에 직행했다(Wave0 §3).
+      // 모양컷 업로드 가드 — 이 경로에 모바일 4MB 가드가 없으면
+      // 대용량 원본이 배경제거 파이프(추론 픽셀 캡 이전 단계)에 직행한다.
       if (!checkMobileFileSize(file)) return
 
       const imagePlugin = getPlugin<ImageProcessingPlugin>('ImageProcessingPlugin')
@@ -521,7 +521,7 @@ export default function AppClipping() {
 
       // Set zoom
       workspacePlugin?.setZoomAuto(0.7)
-      // ⚠️ requestRenderAll 만으로는 부족하다(2026-08-07 실적발). 예약은 requestAnimationFrame 이라
+      // ⚠️ requestRenderAll 만으로는 부족하다. 예약은 requestAnimationFrame 이라
       //    직전 구간이 메인 스레드를 오래 잡았거나 탭이 비활성이면 프레임이 오지 않아, 객체·좌표·
       //    뷰포트가 전부 정상인데도 **캔버스가 빈 화면으로 남는다**(사용자에겐 '사진이 사라진' 것).
       //    실제로 renderAll() 을 한 번 강제하면 즉시 나타났다. 여기서는 즉시 그린다.

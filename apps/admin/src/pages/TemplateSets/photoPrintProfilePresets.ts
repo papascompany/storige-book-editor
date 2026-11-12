@@ -1,9 +1,9 @@
 /**
- * 사진인화 상품 프리셋 4종 (P2-d, 2026-10-19) — 템플릿셋 폼 "사진인화 프리셋 적용" 용.
+ * 사진인화 상품 프리셋 4종 — 템플릿셋 폼 "사진인화 프리셋 적용" 용.
  *
  * ※ 오너 확정 전 기본값: 사이즈(4x6 102×152mm·카드 90×54mm·minDpi), 업로드 한도(maxPhotos/maxMb), 유테 폭(borderInsetMm 2),
- *    매수 범위(1~99), 도련 정책(digital = 캘린더 정책 A 준용 재단선+3mm, chemical = 미니랩 풀블리드 가정 0mm)은
- *    설계 §13·P2 계획의 openDecisions 항목이다. 프로파일 값이므로 확정 후 이 파일의 수치만 바꾸면 된다.
+ *    매수 범위(1~99), 도련 정책(digital = 캘린더 도련 정책 준용 재단선+3mm, chemical = 미니랩 풀블리드 가정 0mm)은
+ *    아직 확정되지 않았다. 프로파일 값이므로 확정 후 이 파일의 수치만 바꾸면 된다.
  *
  * - photo_chem            : 인화(chemical) — 단면 1캔버스/장, 자유 뒷면 없음, 단일 PDF
  * - photo_digital_items   : 인쇄 ① — 양면(canvas-pair, same-sheet), 자유 뒷면, sheet-map per-sheet
@@ -132,7 +132,7 @@ export function findPhotoPrintProfilePreset(key: string | undefined): PhotoPrint
 /**
  * 프리셋 적용 시 채울 템플릿셋 폼 필드 값(TemplateSetForm 의 Form 필드명 기준).
  * - 단일 모드·양면 원파일·내지 추가 가능·페이지 범위 = pages.min/max·증감 단위 = pages.step(digital 2 / chemical 1)·JSON textarea.
- * - 도련: digital 은 캘린더 정책 A 준용(재단선 마커 + 3mm), chemical 은 미니랩 풀블리드 가정(마커 없음 + 0mm) — 오너 확정 전.
+ * - 도련: digital 은 캘린더 도련 정책 준용(재단선 마커 + 3mm), chemical 은 미니랩 풀블리드 가정(마커 없음 + 0mm) — 오너 확정 전.
  * 순수 함수 — 폼 컴포넌트 테스트 없이 값 계약을 고정한다.
  */
 export interface PhotoPrintPresetFormValues {
@@ -172,8 +172,8 @@ export function photoPrintPresetFormValues(preset: PhotoPrintPresetFormValuesSou
 }
 
 /**
- * 템플릿셋 폼 "상품 프로파일" 섹션 안내 문구 (D7, 2026-10-19) — kind 중립.
- * 캘린더 프리셋만 선택돼 있으면 P1 캘린더 안내(페이지 수 26·내지 추가 불가)를 그대로, 사진인화 프리셋만 선택돼 있으면 사진인화 안내
+ * 템플릿셋 폼 "상품 프로파일" 섹션 안내 문구 — kind 중립.
+ * 캘린더 프리셋만 선택돼 있으면 캘린더 안내(페이지 수 26·내지 추가 불가)를 그대로, 사진인화 프리셋만 선택돼 있으면 사진인화 안내
  * (페이지 범위·증감 단위·내지 추가 가능·도련 digital 3mm/chemical 0mm)를, 그 외(미선택·둘 다 선택)는 공통 안내를 돌려준다.
  * 순수 함수 — 폼 컴포넌트 테스트 없이 문구 계약을 고정한다.
  */

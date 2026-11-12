@@ -10,7 +10,7 @@ import { assertSafeDownloadUrl } from '../utils/url-safety';
 
 jest.mock('fs/promises');
 jest.mock('axios');
-// SSRF 가드(P0-1 M1)는 url-safety.spec.ts 가 오프라인으로 단독 검증한다. 여기선 downloadFile
+// SSRF 가드는 url-safety.spec.ts 가 오프라인으로 단독 검증한다. 여기선 downloadFile
 // 단위테스트가 실제 DNS 조회를 타지 않도록 no-op 으로 목하고, 배선(호출 여부)만 확인한다.
 jest.mock('../utils/url-safety', () => ({
   assertSafeDownloadUrl: jest.fn().mockResolvedValue(undefined),
@@ -50,26 +50,26 @@ jest.mock('../utils/ghostscript', () => ({
     unembeddedFonts: [],
     allFontsEmbedded: true,
   }),
-  // R3: 기본 null = TAC 측정 부재(경고 스킵). R3 describe 에서 개별 override.
+  // 기본 null = TAC 측정 부재(경고 스킵). TAC describe 에서 개별 override.
   detectInkTac: jest.fn().mockResolvedValue(null),
 }));
 
-// R2: poppler 정밀 검출은 기본 null(미가용) 모킹 — 기존 74 테스트는 전부 '정규식 폴백'
+// poppler 정밀 검출은 기본 null(미가용) 모킹 — 기존 74 테스트는 전부 '정규식 폴백'
 // 경로의 계약을 검증한다(poppler 부재 환경에서도 종전과 동일해야 한다는 계약 그 자체).
-// poppler 우선 동작은 아래 'R2 poppler 우선' describe 에서 mockResolvedValueOnce 로 검증.
+// poppler 우선 동작은 아래 'poppler 우선' describe 에서 mockResolvedValueOnce 로 검증.
 jest.mock('../utils/poppler-preflight', () => ({
   detectFontsPoppler: jest.fn().mockResolvedValue(null),
   detectImageResolutionPoppler: jest.fn().mockResolvedValue(null),
 }));
 
-// R4a: 주석 검출 기본 null(검출 부재 = 경고 스킵). R4a describe 에서 개별 override.
-// R4b: 기하 검출 동거 — 동일 규약.
+// 주석 검출 기본 null(검출 부재 = 경고 스킵). 주석/양식 describe 에서 개별 override.
+// 기하 검출 동거 — 동일 규약.
 jest.mock('../utils/annotations-qpdf', () => ({
   detectAnnotationsQpdf: jest.fn().mockResolvedValue(null),
   detectPageGeometryQpdf: jest.fn().mockResolvedValue(null),
 }));
 
-// R4b: 화이트 오버프린트 스캔 기본 null. R4b describe 에서 개별 override.
+// 화이트 오버프린트 스캔 기본 null. 화이트 오버프린트 describe 에서 개별 override.
 jest.mock('../utils/white-overprint-scan', () => ({
   detectWhiteOverprintQpdf: jest.fn().mockResolvedValue(null),
 }));
@@ -130,7 +130,7 @@ describe('PdfValidatorService', () => {
       expect(result.errors[0].code).toBe(ErrorCode.FILE_CORRUPTED);
     });
 
-    // P0-4(2026-06-22): 0페이지 PDF 는 과거 firstPage.getSize() TypeError → FILE_CORRUPTED 오진.
+    // 0페이지 PDF 는 과거 firstPage.getSize() TypeError → FILE_CORRUPTED 오진.
     // 이제 PAGE_COUNT_INVALID 로 정확히 진단하고 크래시하지 않아야 한다.
     // pdf-lib 의 create/save/load 라운드트립은 빈 문서를 1페이지로 정규화하므로(검증됨),
     // 타 도구가 만든 진짜 0페이지 상태를 재현하려면 load 를 스텁해 getPages()=[] 를 강제한다.
@@ -550,7 +550,7 @@ describe('PdfValidatorService', () => {
 
       const bleedWarning = result.warnings.find(w => w.code === WarningCode.BLEED_MISSING);
       expect(bleedWarning).toBeDefined();
-      // 킬스위치 기본 OFF: 레거시 autoFixable=true 유지 (게이팅 ON 동작은 아래 C+ describe 참조)
+      // 킬스위치 기본 OFF: 레거시 autoFixable=true 유지 (게이팅 ON 동작은 아래 게이팅 describe 참조)
       expect(bleedWarning?.autoFixable).toBe(true);
       expect(bleedWarning?.fixMethod).toBe('extendBleed');
     });
@@ -578,12 +578,12 @@ describe('PdfValidatorService', () => {
       expect(sizeError).toBeDefined();
     });
 
-    // ── C+ 게이팅 (2026-07-11, 킬스위치 WORKER_WIRED_FIXABLE_GATING 기본 OFF) ──
+    // ── autoFixable 게이팅 (킬스위치 WORKER_WIRED_FIXABLE_GATING 기본 OFF) ──
     // ON 이면 autoFixable 은 실행기가 배선된 fixMethod(WIRED_FIX_METHODS=
     // {addBlankPages, extendBleed(2026-07-13 fix-bleed 배선)})에만
     // 부여 — 실행 수단 없는 항목이 FIXABLE(원클릭 해결처럼 보이는 상태)로 노출되는 것을 차단.
     // OFF(기본)는 레거시 byte-identical. fixMethod 는 양쪽 모두 의도 메타로 보존.
-    describe('C+ 게이팅: WIRED_FIXABLE_GATING 킬스위치', () => {
+    describe('autoFixable 게이팅: WIRED_FIXABLE_GATING 킬스위치', () => {
       const cfg = VALIDATION_CONFIG as unknown as { WIRED_FIXABLE_GATING: boolean };
       afterEach(() => {
         cfg.WIRED_FIXABLE_GATING = false; // 기본(OFF) 복원
@@ -761,8 +761,8 @@ describe('PdfValidatorService', () => {
       });
     });
 
-    // ── R-44 (2026-07-21): 양장 싸바리 전개·details 계약·이중발행 해소 ─────────
-    describe('R-44 spine 검증 — 양장 전개·details·이중발행', () => {
+    // ── 양장 싸바리 전개·details 계약·이중발행 해소 ─────────
+    describe('spine 검증 — 양장 전개·details·이중발행', () => {
       const spineErr = (r: any) => r.errors.find((e: any) => e.code === ErrorCode.SPINE_SIZE_MISMATCH);
       const sizeErr = (r: any) => r.errors.find((e: any) => e.code === ErrorCode.SIZE_MISMATCH);
 
@@ -776,7 +776,7 @@ describe('PdfValidatorService', () => {
           },
         }) as ValidationOptions;
 
-      it('AC#5 양장 골든: 전개 484×345 표지 → 통과 (mybookmake 골든 재현)', async () => {
+      it('양장 골든: 전개 484×345 표지 → 통과 (골든 재현)', async () => {
         // (210+8)×2 + 8 + 40 = 484 / (297+8) + 40 = 345 — 도련 추가 가산 없음
         const pdfBytes = await createMockPdf(1, 484, 345);
         mockedFs.readFile.mockResolvedValue(Buffer.from(pdfBytes));
@@ -784,7 +784,7 @@ describe('PdfValidatorService', () => {
         expect(spineErr(result)).toBeUndefined();
       });
 
-      it('AC#6 양장 오차 밖(전개폭 490) → SPINE_SIZE_MISMATCH + details {expectedMm,actualMm,toleranceMm}', async () => {
+      it('양장 오차 밖(전개폭 490) → SPINE_SIZE_MISMATCH + details {expectedMm,actualMm,toleranceMm}', async () => {
         const pdfBytes = await createMockPdf(1, 490, 345);
         mockedFs.readFile.mockResolvedValue(Buffer.from(pdfBytes));
         const result = await service.validate('./wrap-bad.pdf', hardcoverOpts());
@@ -814,7 +814,7 @@ describe('PdfValidatorService', () => {
         expect(sizeErr(result)).toBeUndefined();
       });
 
-      it('[R-53 갱신] spine 정보 없는 무선 표지 → 스킵 + SPINE_PARAMS_UNRESOLVED(NO_SPINE_PARAMS)', async () => {
+      it('spine 정보 없는 무선 표지 → 스킵 + SPINE_PARAMS_UNRESOLVED(NO_SPINE_PARAMS)', async () => {
         const pdfBytes = await createMockPdf(1, 100, 100);
         mockedFs.readFile.mockResolvedValue(Buffer.from(pdfBytes));
         const result = await service.validate('./cover-nospine.pdf', {
@@ -840,7 +840,7 @@ describe('PdfValidatorService', () => {
         expect(spineErr(result)).toBeDefined();
       });
 
-      it('F13 spineToleranceMm 상한 클램프: 10000 요청도 MAX(5) 로 캡 — 490 전개폭(오차6)은 여전히 실패', async () => {
+      it('spineToleranceMm 상한 클램프: 10000 요청도 MAX(5) 로 캡 — 490 전개폭(오차6)은 여전히 실패', async () => {
         const pdfBytes = await createMockPdf(1, 490, 345);
         mockedFs.readFile.mockResolvedValue(Buffer.from(pdfBytes));
         const result = await service.validate(
@@ -852,7 +852,7 @@ describe('PdfValidatorService', () => {
         expect(err.details.toleranceMm).toBe(5);
       });
 
-      it('F1/F4 양장 paperThickness 폴백도 합지4·min8 산식 — 정상 싸바리 표지(490×345) 통과', async () => {
+      it('양장 paperThickness 폴백도 합지4·min8 산식 — 정상 싸바리 표지(490×345) 통과', async () => {
         // 200p·0.095mm/장 → calcHardcoverSpine = 14mm → 전개 (210+8)×2+14+40 = 490
         // (무선식 폴백이었다면 기대 9.5mm → 485.5 → 4.5mm 오차로 확정 오탐)
         const pdfBytes = await createMockPdf(1, 490, 345);
@@ -868,8 +868,8 @@ describe('PdfValidatorService', () => {
         expect(result.metadata.spineSize).toBe(14);
       });
 
-      it('[R-53 갱신] 양장 폴백 유효성 위반(42p) → 스킵 + SPINE_PARAMS_UNRESOLVED(HARDCOVER_PAGE_RULE)', async () => {
-        // R-44 시점엔 validatePageSize 백스톱이었으나 R-53 완화(오너 확정)로
+      it('양장 폴백 유효성 위반(42p) → 스킵 + SPINE_PARAMS_UNRESOLVED(HARDCOVER_PAGE_RULE)', async () => {
+        // 양장 폴백 유효성 위반이어도
         // 스프레드 표지는 단일판형 검증 자체를 스킵 — 비차단 고지로 대체.
         const pdfBytes = await createMockPdf(1, 490, 345);
         mockedFs.readFile.mockResolvedValue(Buffer.from(pdfBytes));
@@ -886,7 +886,7 @@ describe('PdfValidatorService', () => {
         expect(warn?.details).toMatchObject({ binding: 'hardcover', reason: 'HARDCOVER_PAGE_RULE' });
       });
 
-      it('F6 서버 권위 spineWidthMm 소수 2자리 보존: 0.77 이 0.8 로 양자화되지 않음', async () => {
+      it('서버 권위 spineWidthMm 소수 2자리 보존: 0.77 이 0.8 로 양자화되지 않음', async () => {
         // 기대폭 = 200×2 + 0.77 + 6 = 406.77 → 407 근사 PDF 통과 + metadata.spineSize=0.77
         const pdfBytes = await createMockPdf(4, 406.77, 286);
         mockedFs.readFile.mockResolvedValue(Buffer.from(pdfBytes));
@@ -901,7 +901,7 @@ describe('PdfValidatorService', () => {
         expect(result.metadata.spineSize).toBe(0.77);
       });
 
-      it('[R-53 갱신] pages 무효 + paperThickness만 → NaN 없이 스킵 + 비차단 고지', async () => {
+      it('pages 무효 + paperThickness만 → NaN 없이 스킵 + 비차단 고지', async () => {
         const pdfBytes = await createMockPdf(1, 100, 100);
         mockedFs.readFile.mockResolvedValue(Buffer.from(pdfBytes));
         const result = await service.validate('./nan-guard.pdf', {
@@ -918,8 +918,8 @@ describe('PdfValidatorService', () => {
         ).toBe(true);
       });
 
-      // ── R-53 (2026-07-23, bookmoa §3-1 오너 확정): 미해석 스프레드 표지 완화 ──
-      it('R-53 미해석 무선 표지: SIZE/BLEED 미발행 + SPINE_PARAMS_UNRESOLVED(서버 스탬프 reason 우선)', async () => {
+      // ── 미해석 스프레드 표지 완화 ──
+      it('미해석 무선 표지: SIZE/BLEED 미발행 + SPINE_PARAMS_UNRESOLVED(서버 스탬프 reason 우선)', async () => {
         const pdfBytes = await createMockPdf(4, 430, 303);
         mockedFs.readFile.mockResolvedValue(Buffer.from(pdfBytes));
         const result = await service.validate('./cover-unmapped.pdf', {
@@ -940,7 +940,7 @@ describe('PdfValidatorService', () => {
         expect(result.isValid).toBe(true); // 비차단 — 경고만으로 통과
       });
 
-      it('R-53 reason 폴백: 서버 스탬프 없음 + paperType 있음 → UNMAPPED_PAPER', async () => {
+      it('reason 폴백: 서버 스탬프 없음 + paperType 있음 → UNMAPPED_PAPER', async () => {
         const pdfBytes = await createMockPdf(4, 430, 303);
         mockedFs.readFile.mockResolvedValue(Buffer.from(pdfBytes));
         const result = await service.validate('./cover-unmapped2.pdf', {
@@ -954,7 +954,7 @@ describe('PdfValidatorService', () => {
         expect(warn?.details).toMatchObject({ reason: 'UNMAPPED_PAPER' });
       });
 
-      it('R-53 범위 밖: saddle 표지는 현행 validatePageSize 유지(완화 비대상)', async () => {
+      it('완화 범위 밖: saddle 표지는 현행 validatePageSize 유지(완화 비대상)', async () => {
         const pdfBytes = await createMockPdf(1, 100, 100);
         mockedFs.readFile.mockResolvedValue(Buffer.from(pdfBytes));
         const result = await service.validate('./cover-saddle.pdf', {
@@ -967,7 +967,7 @@ describe('PdfValidatorService', () => {
         ).toBe(false);
       });
 
-      it('R-195: 사철 쪽수 규칙은 표지에 적용하지 않는다 — 1쪽 펼침 사철 표지(책등 0) 통과', async () => {
+      it('사철 쪽수 규칙은 표지에 적용하지 않는다 — 1쪽 펼침 사철 표지(책등 0) 통과', async () => {
         // 2W + 0 + bleed×2 = 426 × (H + bleed×2) = 303, pageMultiple 미전달(레거시 규칙 경로)
         const pdfBytes = await createMockPdf(1, 426, 303);
         mockedFs.readFile.mockResolvedValue(Buffer.from(pdfBytes));
@@ -980,7 +980,7 @@ describe('PdfValidatorService', () => {
         expect(sizeErr(result)).toBeUndefined();
       });
 
-      it('R-195 불변: 사철 내지는 여전히 4배수 규칙(SADDLE_STITCH_INVALID) 적용', async () => {
+      it('불변: 사철 내지는 여전히 4배수 규칙(SADDLE_STITCH_INVALID) 적용', async () => {
         const pdfBytes = await createMockPdf(6, 216, 303);
         mockedFs.readFile.mockResolvedValue(Buffer.from(pdfBytes));
         const result = await service.validate('./content-saddle.pdf', {
@@ -990,7 +990,7 @@ describe('PdfValidatorService', () => {
         expect(result.errors.some((e: any) => e.code === ErrorCode.SADDLE_STITCH_INVALID)).toBe(true);
       });
 
-      it('R-53 불변: 매핑 지종(spine 해석) 표지의 SPINE_SIZE_MISMATCH 차단은 유지', async () => {
+      it('불변: 매핑 지종(spine 해석) 표지의 SPINE_SIZE_MISMATCH 차단은 유지', async () => {
         const pdfBytes = await createMockPdf(1, 490, 345);
         mockedFs.readFile.mockResolvedValue(Buffer.from(pdfBytes));
         const result = await service.validate('./wrap-still-blocks.pdf', hardcoverOpts());
@@ -1000,7 +1000,7 @@ describe('PdfValidatorService', () => {
         ).toBe(false);
       });
 
-      it('F8 spine 대체 표지엔 허위 BLEED_MISSING 미발행(extendBleed 자동보정 오발화 차단)', async () => {
+      it('spine 대체 표지엔 허위 BLEED_MISSING 미발행(extendBleed 자동보정 오발화 차단)', async () => {
         const pdfBytes = await createMockPdf(1, 484, 345);
         mockedFs.readFile.mockResolvedValue(Buffer.from(pdfBytes));
         const result = await service.validate('./wrap-bleed.pdf', hardcoverOpts());
@@ -1008,7 +1008,7 @@ describe('PdfValidatorService', () => {
         expect(bleedWarn).toBeUndefined();
       });
 
-      it('F11 높이 단독 불일치 → 평탄 details 는 높이 축 기준(axis=height)', async () => {
+      it('높이 단독 불일치 → 평탄 details 는 높이 축 기준(axis=height)', async () => {
         const pdfBytes = await createMockPdf(1, 484, 340);
         mockedFs.readFile.mockResolvedValue(Buffer.from(pdfBytes));
         const result = await service.validate('./wrap-haxis.pdf', hardcoverOpts());
@@ -1018,8 +1018,8 @@ describe('PdfValidatorService', () => {
       });
     });
 
-    // ── S6 (2026-09-28): 앞/뒤 낱장(separate) 표지 — 단일 판형 검증, 책등 검증 생략 ──
-    describe('S6 coverLayout=separate 표지', () => {
+    // ── 앞/뒤 낱장(separate) 표지 — 단일 판형 검증, 책등 검증 생략 ──
+    describe('coverLayout=separate 표지', () => {
       const sizeErr = (r: any) => r.errors.find((e: any) => e.code === ErrorCode.SIZE_MISMATCH);
       const spineErr = (r: any) => r.errors.find((e: any) => e.code === ErrorCode.SPINE_SIZE_MISMATCH);
       const hasUnresolved = (r: any) =>
@@ -1140,7 +1140,7 @@ describe('PdfValidatorService', () => {
         expect(withLayout).toEqual(base);
       });
 
-      // ── 2026-10-17 P1-e(상품 프로파일): coverSpine='none' — 프로파일 세트 cover 슬롯(캘린더 단일 PDF)은
+      // ── 상품 프로파일: coverSpine='none' — 프로파일 세트 cover 슬롯(캘린더 단일 PDF)은
       //    책등이 없으므로 binding perfect 여도 spine 게이트를 건너뛰고 단일 판형·도련 검증으로 간다 ──
       describe("coverSpine='none' (프로파일 세트 cover 슬롯)", () => {
         const noSpine = (over: Record<string, unknown> = {}) => coverOpts({ coverSpine: 'none', ...over });
@@ -1223,7 +1223,7 @@ describe('PdfValidatorService', () => {
         });
       });
 
-      // ── S6 후속(2026-09-29): 2쪽(뒤표지)도 1쪽과 동일 규칙으로 판형 검증 ──
+      // ── 2쪽(뒤표지)도 1쪽과 동일 규칙으로 판형 검증 ──
       describe('뒤표지(2쪽) 판형 검증', () => {
         const createPdfPages = async (sizes: [number, number][]) => {
           const pdfDoc = await PDFDocument.create();
@@ -1327,7 +1327,7 @@ describe('PdfValidatorService', () => {
 
       const result = await service.validate('https://example.com/test.pdf', defaultOptions);
 
-      // SSRF 가드(P0-1 M1)가 raw-URL 다운로드 전에 호출됐는지 배선 확인
+      // SSRF 가드가 raw-URL 다운로드 전에 호출됐는지 배선 확인
       expect(assertSafeDownloadUrl).toHaveBeenCalledWith('https://example.com/test.pdf');
       expect(mockedAxios.get).toHaveBeenCalledWith(
         'https://example.com/test.pdf',
@@ -1369,10 +1369,10 @@ describe('PdfValidatorService', () => {
     });
 
     // ============================================================
-    // WBS 2.1 / R3: 페이지 방향 검증 테스트 (집계형 재구현)
+    // WBS 2.1: 페이지 방향 검증 테스트 (집계형)
     // 종전 무차별 LANDSCAPE_PAGE per-page emit 은 제거 → 카테고리당 1건 집계.
     // ============================================================
-    describe('page orientation detection (WBS 2.1 / R3)', () => {
+    describe('page orientation detection (WBS 2.1)', () => {
       // 더 이상 페이지마다 LANDSCAPE_PAGE 를 뿜지 않는다(레거시 enum 만 유지).
       it('should NOT emit per-page LANDSCAPE_PAGE warnings anymore (legacy removed)', async () => {
         const pdfDoc = await PDFDocument.create();
@@ -1610,9 +1610,9 @@ describe('PdfValidatorService', () => {
     });
 
     // ============================================================
-    // R5: 짝수책 경고 (spring 홀수) 테스트
+    // 짝수책 경고 (spring 홀수) 테스트
     // ============================================================
-    describe('odd page count warning (R5)', () => {
+    describe('odd page count warning', () => {
       // spring 제본 + 홀수 페이지 → ODD_PAGE_COUNT 경고 1건 (비차단)
       it('should warn ODD_PAGE_COUNT for spring binding with odd pages', async () => {
         const pdfBytes = await createMockPdf(5, 210, 297);
@@ -1752,16 +1752,16 @@ describe('PdfValidatorService', () => {
     });
 
     // ============================================================
-    // 내지 판형 규격표 CI 잠금 (2026-07-14 오너 스펙)
+    // 내지 판형 규격표 CI 잠금 (2026-07-14 확정 규격)
     // ============================================================
-    // 오너 확정 규격표 — 재단(mm), 작업 = 재단 + 사방 3mm:
+    // 확정 규격표 — 재단(mm), 작업 = 재단 + 사방 3mm:
     //   A4 210×297(216×303) / A5 148×210(154×216) / B5 182×257(188×263) / 46배판 188×257(194×263) /
     //   16절 190×260(196×266) / B6 128×182(134×188) / 정사각 210×210(216×216) /
     //   비규격 = 고객 입력값 + 사방 3mm.
-    // 가로형/세로형은 방향(W↔H 스왑)만 다르고 동일 기준. 검증 기준값 = bookmoa 전달값.
+    // 가로형/세로형은 방향(W↔H 스왑)만 다르고 동일 기준. 검증 기준값 = 파트너 사이트 전달값.
     // orderOptions 는 모달 규약대로 {size(재단), bleed(3)}만(+타입 필수 pages/binding) —
     // sizeToleranceMm 미전송 = LEGACY 1mm 폴백(오차허용 체계 무접촉).
-    describe('내지 판형 규격표 (2026-07-14 오너 스펙)', () => {
+    describe('내지 판형 규격표 (2026-07-14 확정 규격)', () => {
       const specOptions = (w: number, h: number): ValidationOptions => ({
         fileType: 'content',
         orderOptions: {
@@ -1969,7 +1969,7 @@ describe('PdfValidatorService', () => {
       expect(overprintWarning).toBeDefined();
     });
 
-    // 별색 노티 (요구사항7): 일반 인쇄 파일에서는 비차단 경고, 후가공 파일에서는 정상(경고 없음)
+    // 별색 노티: 일반 인쇄 파일에서는 비차단 경고, 후가공 파일에서는 정상(경고 없음)
     it('should add SPOT_COLOR_DETECTED warning for non post_process file', async () => {
       detectSpotColors.mockResolvedValueOnce({
         hasSpotColors: true,
@@ -2042,9 +2042,9 @@ describe('PdfValidatorService', () => {
   });
 
   // ============================================================
-  // 폰트 임베딩 검증 테스트 (요구사항6)
+  // 폰트 임베딩 검증 테스트
   // ============================================================
-  describe('font embedding detection (요구사항6)', () => {
+  describe('font embedding detection', () => {
     const { detectFonts } = require('../utils/ghostscript');
 
     beforeEach(() => {
@@ -2249,9 +2249,9 @@ describe('PdfValidatorService', () => {
   });
 
   // ============================================================
-  // R2 (2026-08-10): poppler 우선 / 정규식 폴백 계약
+  // poppler 우선 / 정규식 폴백 계약
   // ============================================================
-  describe('R2 poppler 우선 검출 계약', () => {
+  describe('poppler 우선 검출 계약', () => {
     const {
       detectFontsPoppler,
       detectImageResolutionPoppler,
@@ -2350,9 +2350,9 @@ describe('PdfValidatorService', () => {
   });
 
   // ============================================================
-  // R3 (2026-08-11): TAC(잉크총량) 경고 계약
+  // TAC(잉크총량) 경고 계약
   // ============================================================
-  describe('R3 TAC 잉크총량 경고', () => {
+  describe('TAC 잉크총량 경고', () => {
     beforeEach(() => {
       jest.clearAllMocks();
     });
@@ -2470,9 +2470,9 @@ describe('PdfValidatorService', () => {
   });
 
   // ============================================================
-  // R4a (2026-08-11): 주석/양식 경고 계약
+  // 주석/양식 경고 계약
   // ============================================================
-  describe('R4a 주석/양식 경고', () => {
+  describe('주석/양식 경고', () => {
     const { detectAnnotationsQpdf } = require('../utils/annotations-qpdf');
 
     beforeEach(() => {
@@ -2553,9 +2553,9 @@ describe('PdfValidatorService', () => {
   });
 
   // ============================================================
-  // R4b (2026-08-11): 화이트 오버프린트·페이지 기하 경고 계약
+  // 화이트 오버프린트·페이지 기하 경고 계약
   // ============================================================
-  describe('R4b 화이트 오버프린트·페이지 기하', () => {
+  describe('화이트 오버프린트·페이지 기하', () => {
     const { detectWhiteOverprintQpdf } = require('../utils/white-overprint-scan');
     const { detectPageGeometryQpdf } = require('../utils/annotations-qpdf');
 
@@ -2653,9 +2653,9 @@ describe('PdfValidatorService', () => {
   });
 
   // ============================================================
-  // 해상도 경고 메시지 정합 테스트 (요구사항4)
+  // 해상도 경고 메시지 정합 테스트
   // ============================================================
-  describe('low resolution warning message (요구사항4)', () => {
+  describe('low resolution warning message', () => {
     const { detectImageResolutionFromPdf } = require('../utils/ghostscript');
 
     beforeEach(() => {

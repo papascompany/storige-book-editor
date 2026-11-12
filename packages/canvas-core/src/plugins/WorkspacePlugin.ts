@@ -28,7 +28,7 @@ class WorkspacePlugin extends PluginBase {
 
   private cutBorder: fabric.Path | null = null
   private safeSizeBorder: fabric.Path | null = null
-  // P2: 재단선 코너 마커(crop marks) — 화면 전용 system 가이드, excludeFromExport
+  // 재단선 코너 마커(crop marks) — 화면 전용 system 가이드, excludeFromExport
   private cropMarks: fabric.Group | null = null
 
   private _cutlineTemplate: fabric.Object | null = null
@@ -38,7 +38,7 @@ class WorkspacePlugin extends PluginBase {
   private _boundHandleObjectRemoved: ((e: fabric.IEvent) => void) | null = null
   private _boundHandleObjectModified: ((e: fabric.IEvent) => void) | null = null
   private _boundHandleObjectMoved: (() => void) | null = null
-  // P2: object:moving (드래그/리사이즈 중) 재단선 이탈 라이브 감지
+  // object:moving (드래그/리사이즈 중) 재단선 이탈 라이브 감지
   private _boundHandleObjectMoving: ((e: fabric.IEvent) => void) | null = null
   private _boundEnsureTemplateBackgroundZOrder: (() => void) | null = null
   private _boundToggleCutBorder: ((value?: boolean) => void) | null = null
@@ -46,7 +46,7 @@ class WorkspacePlugin extends PluginBase {
   private _boundRestoreGuideElements: (() => void) | null = null
   private _boundMouseWheel: ((opt: IEvent<WheelEvent>) => void) | null = null
   private _afterZoomDebounced: ReturnType<typeof debounce> | null = null
-  // D2 핀치-투-줌 (2026-06-12): wrapperEl 포인터 이벤트 2지 추적
+  // 핀치-투-줌: wrapperEl 포인터 이벤트 2지 추적
   private _boundPinchDown: ((e: PointerEvent) => void) | null = null
   private _boundPinchMove: ((e: PointerEvent) => void) | null = null
   private _boundPinchUp: ((e: PointerEvent) => void) | null = null
@@ -92,7 +92,7 @@ class WorkspacePlugin extends PluginBase {
       this._canvas.off('mouse:wheel', this._boundMouseWheel)
     }
 
-    // D2 핀치 리스너 제거 (wrapperEl 네이티브 이벤트)
+    // 핀치 리스너 제거 (wrapperEl 네이티브 이벤트)
     const wrapperEl = (this._canvas as unknown as { wrapperEl?: HTMLElement }).wrapperEl
     if (wrapperEl) {
       if (this._boundPinchDown) wrapperEl.removeEventListener('pointerdown', this._boundPinchDown)
@@ -176,7 +176,7 @@ class WorkspacePlugin extends PluginBase {
       // 통합된 이벤트 핸들러 등록
       this._canvas.on('object:modified', this._boundHandleObjectModified)
       this._canvas.on('object:moved', this._boundHandleObjectMoved)
-      // P2: 드래그/리사이즈 중 재단선 이탈 라이브 감지
+      // 드래그/리사이즈 중 재단선 이탈 라이브 감지
       this._canvas.on('object:moving', this._boundHandleObjectMoving)
       this._canvas.on('object:scaling', this._boundHandleObjectMoving)
 
@@ -225,7 +225,7 @@ class WorkspacePlugin extends PluginBase {
     if (this.cutBorder) {
       this.cutBorder.visible = Boolean(this._options.showCutBorder)
       this.cutBorder.dirty = true
-      // P2: crop marks 도 cutBorder 가시성을 따른다
+      // crop marks 도 cutBorder 가시성을 따른다
       if (this.cropMarks) {
         this.cropMarks.visible = Boolean(this._options.showCutBorder)
         this.cropMarks.dirty = true
@@ -257,7 +257,7 @@ class WorkspacePlugin extends PluginBase {
       this.safeSizeBorder.bringToFront()
     }
 
-    // P2: crop marks(재단 코너 마커) 도 최상위로 (화면 전용 가이드)
+    // crop marks(재단 코너 마커) 도 최상위로 (화면 전용 가이드)
     if (this.cropMarks) {
       this.cropMarks.bringToFront()
     }
@@ -541,7 +541,7 @@ class WorkspacePlugin extends PluginBase {
       if (this.cutBorder) {
         this.cutBorder.visible = Boolean(this._options.showCutBorder)
         this.cutBorder.dirty = true
-        // P2: crop marks 도 cutBorder 가시성을 따른다
+        // crop marks 도 cutBorder 가시성을 따른다
         if (this.cropMarks) {
           this.cropMarks.visible = Boolean(this._options.showCutBorder)
           this.cropMarks.dirty = true
@@ -748,21 +748,21 @@ class WorkspacePlugin extends PluginBase {
     // 경계선 최상위로 가져오기
     this.bringBordersToFront()
 
-    // P2: 재단선(trim) 이탈 검사 — 이동/리사이즈 확정 시점
+    // 재단선(trim) 이탈 검사 — 이동/리사이즈 확정 시점
     this.checkObjectsOutOfTrim()
 
     // 기타 로직 처리
     this._editor.emit('object:modified', obj)
   }
 
-  // P2: object:moving / object:scaling (드래그/리사이즈 중) 라이브 이탈 감지
+  // object:moving / object:scaling (드래그/리사이즈 중) 라이브 이탈 감지
   private handleObjectMoving(_e: fabric.IEvent) {
     if (!this._canvas || !this._canvas.getContext()) return
     this.checkObjectsOutOfTrim()
   }
 
   /**
-   * P2: 사용자 객체가 재단선(trim) 사각형을 벗어났는지 검사하고
+   * 사용자 객체가 재단선(trim) 사각형을 벗어났는지 검사하고
    * `objectOutOfTrim` { count, objects } 이벤트를 발행한다 (화면 경고용).
    *
    * - 좌표계: workspace 중앙원점(scene). trim 사각형 = workspace 중심 ± trim 반폭.
@@ -1043,7 +1043,7 @@ class WorkspacePlugin extends PluginBase {
   }
 
   /**
-   * D2 핀치-투-줌 (2026-06-12, EDITOR.md §20.2).
+   * 핀치-투-줌 (EDITOR.md §20.2).
    *
    * fabric 5는 빌드 옵션 없이 `touch:gesture` 를 발화하지 않으므로 wrapperEl 에
    * 네이티브 pointer 이벤트로 2지(터치)를 직접 추적한다.
@@ -1147,7 +1147,7 @@ class WorkspacePlugin extends PluginBase {
       this._canvas.remove(this.cutBorder)
       this.cutBorder = null
     }
-    // P2: crop marks 도 함께 제거 (아래 early-return 경로에서도 잔존 방지)
+    // crop marks 도 함께 제거 (아래 early-return 경로에서도 잔존 방지)
     if (this.cropMarks) {
       this._canvas.remove(this.cropMarks)
       this.cropMarks = null
@@ -1278,7 +1278,7 @@ class WorkspacePlugin extends PluginBase {
     this._canvas.add(this.cutBorder)
     this._canvas.renderAll()
 
-    // P2: 재단선(trim) 코너 마커를 함께 갱신 (화면 전용, excludeFromExport)
+    // 재단선(trim) 코너 마커를 함께 갱신 (화면 전용, excludeFromExport)
     // adjustedWidth/Height = 재단선(trim) 사각형 폭/높이. 마커는 trim 4코너에 그린다.
     this.createOrUpdateCropMarks(adjustedWidth, adjustedHeight)
 
@@ -1286,7 +1286,7 @@ class WorkspacePlugin extends PluginBase {
   }
 
   /**
-   * P2: 재단선(trim) 4코너에 표준 crop marks 를 그린다 (화면 전용 가이드).
+   * 재단선(trim) 4코너에 표준 crop marks 를 그린다 (화면 전용 가이드).
    *
    * - cutSize(블리드) > 0 일 때만 생성. cutSize=0 이면 마커 없음(블리드 영역이 없어 의미 없음).
    * - 각 코너에 2개의 짧은 선(수평/수직). trim 코너에서 바깥(블리드 방향)으로 뻗는다.

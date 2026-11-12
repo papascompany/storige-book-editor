@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 
 /**
- * '내 업로드' → 자동편집 입력 등록 회귀 잠금 (2026-08-09).
+ * '내 업로드' → 자동편집 입력 등록 회귀 잠금.
  *
  * 종전 결함: `storageApi.uploadFile`(= `/storage/upload`, JWT+@Roles)을 쳐서 비로그인 고객은
  * 매 업로드마다 401 → uploadedPhotoMeta 가 항상 비었고, 자동편집(배지/EXIF)이 '내 업로드'

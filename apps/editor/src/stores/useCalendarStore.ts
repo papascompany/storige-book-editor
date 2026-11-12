@@ -17,15 +17,15 @@ import { getCalendarData } from '@storige/canvas-core'
 import { findDuplicateAnniversary } from '@/components/calendar/calendarPanelUtils'
 
 /**
- * useCalendarStore — 캘린더 세션 메타(`edit_sessions.metadata.calendar`) 순수 상태 (P1 캘린더, 2026-10-17)
+ * useCalendarStore — 캘린더 세션 메타(`edit_sessions.metadata.calendar`) 순수 상태 (캘린더)
  *
  * - 템플릿셋 `productProfile.kind==='calendar'` 일 때만 `meta` 가 채워진다(legacy 세트는 null).
  * - UI·fabric 호출 없음. 그리드 재합성은 `utils/calendarRehydrate` 가 이 스토어를 읽어 수행한다.
  * - `setStartMonth` 는 프로파일 `allowedRange` 밖이면 false 를 반환하고 상태를 바꾸지 않는다.
- * - T2 그리드·기념일 안전성(2026-10-22): `addAnniversary`/`updateAnniversary` 는 같은 날짜(양력 환산 기준,
+ * - 그리드·기념일 안전성: `addAnniversary`/`updateAnniversary` 는 같은 날짜(양력 환산 기준,
  *   `calendarPanelUtils.findDuplicateAnniversary` 와 같은 판정)의 기념일이 이미 있으면 거부한다(null/false, 변경 없음).
  *   `restore` 는 비파괴 — 저장분·런처 입력의 중복은 검사·삭제하지 않는다(경고는 `calendarRehydrateAll` 이 1회).
- * - T3b 연달력(2026-10-24): `yearDeltas`(표지·에필로그 연달력 연도, 시작연도 기준 상대값)는 프로파일
+ * - 연달력: `yearDeltas`(표지·에필로그 연달력 연도, 시작연도 기준 상대값)는 프로파일
  *   `calendar.yearPolicy.select` 허용 폭 안의 정수만 기록한다(`setYearDelta`). 정책·select 가 없으면 기록하지 않는다.
  *   값이 하나도 없으면 키를 두지 않는다 — 연도를 고르지 않은 세션의 저장 payload 키 집합은 종전과 같다.
  */

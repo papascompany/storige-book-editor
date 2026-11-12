@@ -119,7 +119,7 @@ function AlignBtn({
   )
 }
 
-// L2 §5 용어 동기화: 타입 한국어명 단일 소스(layerDisplay.selectionTypeLabel) 재사용 —
+// 용어 동기화: 타입 한국어명 단일 소스(layerDisplay.selectionTypeLabel) 재사용 —
 // 레이어 행 이름 규약과 ControlBar 헤더가 같은 명칭을 쓴다(사진/도형/사진틀…).
 const getObjectName = (type: SelectionType, selectionCount: number) =>
   selectionTypeLabel(type, selectionCount)
@@ -130,14 +130,14 @@ export default function ControlBar({ mobileOverlay = false }: { mobileOverlay?: 
   const selectionType = useSelectionType()
   const getPlugin = useAppStore((state) => state.getPlugin)
   const updateObjects = useAppStore((state) => state.updateObjects)
-  // P1-5: 관리자(editMode) 전용 "삭제 잠금" 토글 노출용
+  // 관리자(editMode) 전용 "삭제 잠금" 토글 노출용
   const editMode = useSettingsStore((state) => state.currentSettings.editMode)
   const isCoarsePointer = useIsCoarsePointer()
   // 폭 기반 mobileOverlay (EditorView 가 screenMode 로 결정) 또는 coarse pointer 감지 —
   // 어느 한쪽이라도 true 면 모바일 레이아웃. 두 신호를 모두 보아야 외장 키보드/마우스가
   // 연결된 태블릿 + 작은 viewport 같은 케이스에도 안전.
   const isMobile = mobileOverlay || isCoarsePointer
-  // T6-③ (2026-07-13): 데스크톱 폭 = FeatureSidebar 와 동일한 useUiPrefStore.sidebarWidth
+  // 데스크톱 폭 = FeatureSidebar 와 동일한 useUiPrefStore.sidebarWidth
   // (240~480 clamp). 객체 선택 시 FeatureSidebar unmount ↔ ControlBar mount 스왑에서
   // 두 패널 폭이 같아야(delta=0) 캔버스 컨테이너 좌측 엣지가 밀리지 않는다(구 280px 고정).
   // 모바일 시트 분기는 fixed 오버레이(레이아웃 불변)라 무관 — 무접촉.
@@ -173,7 +173,7 @@ export default function ControlBar({ mobileOverlay = false }: { mobileOverlay?: 
     )
   }, [activeSelection])
 
-  // T2 그리드·기념일 안전성(2026-10-22): 캘린더 날짜 그리드(extensionType 'calendar-grid')는 GroupPlugin.unGroup 이
+  // 그리드·기념일 안전성: 캘린더 날짜 그리드(extensionType 'calendar-grid')는 GroupPlugin.unGroup 이
   // no-op 이라 '그룹해제' 버튼을 내지 않는다(다른 그룹은 그대로). 핫키 컨텍스트 메뉴는 GroupPlugin.hideContext 가 같은 판정.
   const isCalendarGridSelection = useMemo(() => {
     if (!activeSelection || activeSelection.length !== 1) return false
@@ -190,17 +190,17 @@ export default function ControlBar({ mobileOverlay = false }: { mobileOverlay?: 
     return activeSelection?.every((e) => e.visible) ?? false
   }, [activeSelection])
 
-  // P1-5: 선택 객체 전부가 삭제잠금(deleteable===false)인지
+  // 선택 객체 전부가 삭제잠금(deleteable===false)인지
   const allDeleteLocked = useMemo(() => {
     return activeSelection?.every((e) => (e as any).deleteable === false) ?? false
   }, [activeSelection])
 
-  // Part B (2026-06-16): 선택 객체 전부가 위치고정(movable===false)인지
+  // Part B: 선택 객체 전부가 위치고정(movable===false)인지
   const allMovementLocked = useMemo(() => {
     return activeSelection?.every((e) => (e as any).movable === false) ?? false
   }, [activeSelection])
 
-  // B1 (2026-07-04): 레이어별 속성 4축 — 선택 객체 전부 기준 판정 (기존 토글 3종 패턴).
+  // 레이어별 속성 4축 — 선택 객체 전부 기준 판정 (기존 토글 3종 패턴).
   const allContentLocked = useMemo(() => {
     return activeSelection?.every((e) => (e as any).contentEditable === false) ?? false
   }, [activeSelection])
@@ -213,7 +213,7 @@ export default function ControlBar({ mobileOverlay = false }: { mobileOverlay?: 
     return activeSelection?.every((e) => (e as any).lockLayerOrder === true) ?? false
   }, [activeSelection])
 
-  // L7 (2026-07-11): 필수 편집(requiredEdit) — 선택 전부 기준 판정 (기존 토글 패턴).
+  // 필수 편집(requiredEdit) — 선택 전부 기준 판정 (기존 토글 패턴).
   // 텍스트·사진틀(frame)에만 의미 있으므로 그 외 타입 포함 선택은 항목 비활성.
   const allRequiredEdit = useMemo(() => {
     return activeSelection?.every((e) => (e as any).requiredEdit === true) ?? false
@@ -234,7 +234,7 @@ export default function ControlBar({ mobileOverlay = false }: { mobileOverlay?: 
     return levels.every((l) => l === levels[0]) ? levels[0] : 'mixed'
   }, [activeSelection])
 
-  // L3 B-2: 보호 드롭다운 트리거 활성 표시 — 축 하나라도 걸려 있으면 amber
+  // 보호 드롭다운 트리거 활성 표시 — 축 하나라도 걸려 있으면 amber
   const anyProtection = useMemo(
     () =>
       allMovementLocked ||
@@ -269,10 +269,10 @@ export default function ControlBar({ mobileOverlay = false }: { mobileOverlay?: 
     canvas?.requestRenderAll()
   }
 
-  // S2 (공유): 즉시 삭제 대신 확인 모달을 거친다(휴지통 버튼·DEL 핫키 공통 경로).
+  // 공유: 즉시 삭제 대신 확인 모달을 거친다(휴지통 버튼·DEL 핫키 공통 경로).
   // 실제 삭제는 store.confirmDeleteSelection → ObjectPlugin.del() 재사용.
   const requestDeleteSelection = useAppStore((state) => state.requestDeleteSelection)
-  // L1② (2026-07-06): 레이어 패널 진입점 — 객체 선택 중 빠른 접근(헤더 Layers 버튼과 병행)
+  // 레이어 패널 진입점 — 객체 선택 중 빠른 접근(헤더 Layers 버튼과 병행)
   const setShowSidePanel = useAppStore((state) => state.setShowSidePanel)
   const showSidePanel = useAppStore((state) => state.showSidePanel)
   const handleDelete = () => {
@@ -287,7 +287,7 @@ export default function ControlBar({ mobileOverlay = false }: { mobileOverlay?: 
     updateObjects()
   }
 
-  // B0-② (2026-07-04): 잠금 해제 권한 게이트.
+  // 잠금 해제 권한 게이트.
   // - 관리자 지정 위치고정(movable===false)은 비-editMode 에서 해제 불가(버튼도 숨김).
   // - LockPlugin 고급 잠금(lockInfo.isLocked)은 CAN_UNLOCK_MAP 역할 검사 통과 시에만 해제.
   //   (고객이 스스로 건 단순잠금은 legacy 판정이 'user' 레벨이라 현행대로 해제 가능.)
@@ -317,7 +317,7 @@ export default function ControlBar({ mobileOverlay = false }: { mobileOverlay?: 
     canvas?.requestRenderAll()
   }
 
-  // Phase 1-공유(2026-06-23): 레이어 z-order 4버튼 — 전 상품 공유 ObjectPlugin 로직 재사용.
+  // 레이어 z-order 4버튼 — 전 상품 공유 ObjectPlugin 로직 재사용.
   // up/upTop/down/downTop 은 단일 선택(active 1개)에서만 동작하고 내부에서 lockLayerOrder 가드 +
   // fillImage(사진틀 채움) 동반 이동 + layerChanged emit 을 처리하므로 forEach/인자 불필요.
   // 우클릭 컨텍스트 메뉴(ObjectPlugin 등록)와 동일 동작을 툴바에 노출할 뿐 — 신규 로직 없음.
@@ -326,7 +326,7 @@ export default function ControlBar({ mobileOverlay = false }: { mobileOverlay?: 
   const handleSendBackward = () => getPlugin<ObjectPlugin>('ObjectPlugin')?.down()
   const handleSendToBack = () => getPlugin<ObjectPlugin>('ObjectPlugin')?.downTop()
 
-  // P1-5: 관리자 전용 — 삭제 잠금 토글. deleteable=false 면 고객 진입 시 삭제 차단(ObjectPlugin.del).
+  // 관리자 전용 — 삭제 잠금 토글. deleteable=false 면 고객 진입 시 삭제 차단(ObjectPlugin.del).
   const handleToggleDeleteLock = () => {
     const next = !allDeleteLocked
     activeSelection?.forEach((obj) => {
@@ -335,7 +335,7 @@ export default function ControlBar({ mobileOverlay = false }: { mobileOverlay?: 
     updateObjects()
   }
 
-  // Part B (2026-06-16): 관리자 전용 — 위치 고정 토글. movable=false 면 고객 진입 시
+  // Part B: 관리자 전용 — 위치 고정 토글. movable=false 면 고객 진입 시
   // 이동/스케일/회전 차단(applyObjectPermissions 가 로드 시 lockMovement/Scaling/Rotation 적용).
   // 관리자 자신은 editMode 라 잠금 미적용 — 자유 편집(deleteable 패턴과 동일).
   const handleToggleMovementLock = () => {
@@ -346,7 +346,7 @@ export default function ControlBar({ mobileOverlay = false }: { mobileOverlay?: 
     updateObjects()
   }
 
-  // B1: 관리자 전용 — 내용편집 잠금 토글. contentEditable=false 면 고객 진입 시
+  // 관리자 전용 — 내용편집 잠금 토글. contentEditable=false 면 고객 진입 시
   // 텍스트 편집 진입/사진틀 채우기·교체가 차단된다(applyObjectPermissions·useImageStore 가드).
   const handleToggleContentLock = () => {
     const next = !allContentLocked
@@ -356,7 +356,7 @@ export default function ControlBar({ mobileOverlay = false }: { mobileOverlay?: 
     updateObjects()
   }
 
-  // B1: 관리자 전용 — 프린트 제외 토글. printExclude=true 면 PDF 출력에서만 제외
+  // 관리자 전용 — 프린트 제외 토글. printExclude=true 면 PDF 출력에서만 제외
   // (화면·썸네일에는 표시, ServicePlugin 이 excludeFromExport 로 임시 변환).
   const handleTogglePrintExclude = () => {
     const next = !allPrintExcluded
@@ -366,7 +366,7 @@ export default function ControlBar({ mobileOverlay = false }: { mobileOverlay?: 
     updateObjects()
   }
 
-  // B1: 관리자 전용 — 순서 잠금 토글. ObjectPlugin z-order 4메서드·reorderObject 에
+  // 관리자 전용 — 순서 잠금 토글. ObjectPlugin z-order 4메서드·reorderObject 에
   // 기능 가드 기존재(lockLayerOrder) — 여기선 플래그 지정만.
   const handleToggleOrderLock = () => {
     const next = !allOrderLocked
@@ -376,7 +376,7 @@ export default function ControlBar({ mobileOverlay = false }: { mobileOverlay?: 
     updateObjects()
   }
 
-  // L7: 관리자 전용 — 필수 편집 토글. requiredEdit=true 면 고객이 안 바꾸고 완료 시
+  // 관리자 전용 — 필수 편집 토글. requiredEdit=true 면 고객이 안 바꾸고 완료 시
   // 비차단 경고 모달(requiredEditGate). 지정(재지정) 시 requiredEditTouched 를 초기화해
   // 관리자 authoring 중 편집 흔적이 템플릿에 영속되는 것을 막는다(고객 무경고 구멍 방지).
   const handleToggleRequiredEdit = () => {
@@ -389,10 +389,10 @@ export default function ControlBar({ mobileOverlay = false }: { mobileOverlay?: 
     updateObjects()
   }
 
-  // B1: 관리자 전용 — 잠금 레벨 지정/해제 (LockPlugin 경유, CAN_UNLOCK_MAP 규약).
+  // 관리자 전용 — 잠금 레벨 지정/해제 (LockPlugin 경유, CAN_UNLOCK_MAP 규약).
   const handleLockLevelChange = (level: string) => {
     if (level === 'mixed' || level === 'system') return // 표시용 sentinel — 동작 없음
-    // L3(적대 리뷰): system 잠금은 어떤 레벨로도 변경 불가 — 침묵 실패 대신 안내
+    // system 잠금은 어떤 레벨로도 변경 불가 — 침묵 실패 대신 안내
     if (selectionLockLevel === 'system') {
       showToast('시스템 잠금은 해제할 수 없어요.', 'info')
       return
@@ -425,7 +425,7 @@ export default function ControlBar({ mobileOverlay = false }: { mobileOverlay?: 
     const objectPlugin = getPlugin<ObjectPlugin>('ObjectPlugin')
     let blocked = false
     activeSelection?.forEach((obj) => {
-      // L1④ 대칭 가드(적대 리뷰 major): 보호 객체는 고객이 숨길 수 없다 —
+      // 대칭 가드: 보호 객체는 고객이 숨길 수 없다 —
       // visible=false 는 저장 영속 → 필수 요소 미인쇄 사고 벡터. SidePanel 가드와 동일 규약.
       const o = obj as { movable?: boolean; deleteable?: boolean; contentEditable?: boolean }
       if (!editMode && (o.movable === false || o.deleteable === false || o.contentEditable === false)) {
@@ -446,7 +446,7 @@ export default function ControlBar({ mobileOverlay = false }: { mobileOverlay?: 
     getPlugin<AlignPlugin>('AlignPlugin')?.setV(type)
   }
 
-  // 분포 (트랙 T → E1 §5-4): 로직은 AlignPlugin.distributeH/V 공개 API 로 이관 — 위임만.
+  // 분포: 로직은 AlignPlugin.distributeH/V 공개 API 가 갖는다 — 여기서는 위임만.
   // 버튼 노출 조건(3개+)은 JSX 그대로, offHistory 쌍·object:modified 발화는 플러그인이 유지.
   const distribute = (axis: 'horizontal' | 'vertical') => {
     const align = getPlugin<AlignPlugin>('AlignPlugin')
@@ -454,7 +454,7 @@ export default function ControlBar({ mobileOverlay = false }: { mobileOverlay?: 
     else align?.distributeV()
   }
 
-  // L4-④ (CTO 결정): '내용편집 잠금' = 내용+스타일 모두 잠금. 비-editMode 에서
+  // '내용편집 잠금' = 내용+스타일 모두 잠금. 비-editMode 에서
   // contentEditable=false 선택이면 스타일 컨트롤(속성·색·효과·외곽선·그림자)을 감산(미노출).
   // editMode(디자이너)는 면제 — objectPermissions.isAppearanceLocked 단일 판정.
   const appearanceLocked = isAppearanceLocked(activeSelection, editMode)
@@ -476,7 +476,7 @@ export default function ControlBar({ mobileOverlay = false }: { mobileOverlay?: 
         expanded ? 'h-[70vh] max-h-[70vh]' : 'h-[88px] max-h-[88px]'
       }`
     : 'control-bar bg-editor-panel border-r border-editor-border flex flex-col h-full overflow-hidden'
-  // T6-③: 데스크톱은 FeatureSidebar 와 동일하게 inline style 로 폭 고정(min=max — flex 수축 방지).
+  // 데스크톱은 FeatureSidebar 와 동일하게 inline style 로 폭 고정(min=max — flex 수축 방지).
   const containerStyle = isMobile
     ? { paddingBottom: 'env(safe-area-inset-bottom, 0px)' }
     : { width: sidebarWidth, minWidth: sidebarWidth, maxWidth: sidebarWidth }
@@ -509,7 +509,7 @@ export default function ControlBar({ mobileOverlay = false }: { mobileOverlay?: 
             </div>
             <div className="actions flex flex-row justify-between">
               <div className="actions-left flex items-center gap-2">
-                {/* LockSimple/Unlock — B0-②: 관리자 위치고정은 비-editMode 에서 해제 버튼 숨김 */}
+                {/* LockSimple/Unlock — 관리자 위치고정은 비-editMode 에서 해제 버튼 숨김 */}
                 {allLocked ? (
                   (editMode || !allMovementLocked) && (
                     <Button variant="ghost" size="icon" onClick={handleUnlock}>
@@ -533,7 +533,7 @@ export default function ControlBar({ mobileOverlay = false }: { mobileOverlay?: 
                   </Button>
                 )}
 
-                {/* L1②: 레이어 패널 열기 — 선택 컨텍스트에서 즉시 레이어 구조 확인 */}
+                {/* 레이어 패널 열기 — 선택 컨텍스트에서 즉시 레이어 구조 확인 */}
                 <Button
                   variant="ghost"
                   size="icon"
@@ -544,10 +544,10 @@ export default function ControlBar({ mobileOverlay = false }: { mobileOverlay?: 
                   <Stack className="h-5 w-5" />
                 </Button>
 
-                {/* Phase 1-공유: 레이어 z-order (단일 선택에서만 — ObjectPlugin 이 active 1개만 처리) */}
+                {/* 레이어 z-order (단일 선택에서만 — ObjectPlugin 이 active 1개만 처리) */}
                 {activeSelection?.length === 1 && (
                   <>
-                    {/* B1: lockLayerOrder 객체는 UI 도 비활성 (ObjectPlugin 내부 가드와 정합) */}
+                    {/* lockLayerOrder 객체는 UI 도 비활성 (ObjectPlugin 내부 가드와 정합) */}
                     <Button variant="ghost" size="icon" onClick={handleBringToFront} title="맨 앞으로" disabled={allOrderLocked}>
                       <ArrowUpToLine className="h-5 w-5" />
                     </Button>
@@ -563,7 +563,7 @@ export default function ControlBar({ mobileOverlay = false }: { mobileOverlay?: 
                   </>
                 )}
 
-                {/* L3 B-2 (2026-07-06): '보호' 통합 드롭다운 — 보호 수단을 방패 하나로.
+                {/* '보호' 통합 드롭다운 — 보호 수단을 방패 하나로.
                     개별 토글 4종(위치/삭제/내용/순서)+잠금레벨 Select 를 대체. '내 잠금'(자물쇠)
                     과 시각·개념 분리(잠금 2어휘 규약). printExclude 는 보호가 아니라 출력 속성
                     이므로 별도 버튼 유지. */}
@@ -613,7 +613,7 @@ export default function ControlBar({ mobileOverlay = false }: { mobileOverlay?: 
                       >
                         순서 잠금 (레이어 순서 고정)
                       </DropdownMenuCheckboxItem>
-                      {/* L7: 필수 편집 — 텍스트·사진틀 전용(그 외 타입은 비활성+툴팁). 보호(제한)가
+                      {/* 필수 편집 — 텍스트·사진틀 전용(그 외 타입은 비활성+툴팁). 보호(제한)가
                           아니라 요구 플래그지만, 고객 편집 규칙 지정이라 같은 방패 드롭다운에 배치. */}
                       <DropdownMenuCheckboxItem
                         checked={allRequiredEdit && requiredEditApplicable}
@@ -655,7 +655,7 @@ export default function ControlBar({ mobileOverlay = false }: { mobileOverlay?: 
                   </DropdownMenu>
                 )}
 
-                {/* B1: 프린트 제외 (관리자 editMode 전용) — 화면 표시, PDF 출력만 제외 */}
+                {/* 프린트 제외 (관리자 editMode 전용) — 화면 표시, PDF 출력만 제외 */}
                 {editMode && (
                   <Button
                     variant="ghost"
@@ -697,7 +697,7 @@ export default function ControlBar({ mobileOverlay = false }: { mobileOverlay?: 
                 <AlignBtn label="아래" icon={AlignEndHorizontal} onClick={() => alignV('bottom')} />
               </div>
 
-              {/* 분포 (트랙 T) — 3개 이상 선택 시만 표시 */}
+              {/* 분포 — 3개 이상 선택 시만 표시 */}
               {(activeSelection?.length ?? 0) >= 3 && (
                 <>
                   <div className="text-[11px] font-semibold text-editor-text-muted mt-2 mb-1.5 px-1">
@@ -721,7 +721,7 @@ export default function ControlBar({ mobileOverlay = false }: { mobileOverlay?: 
           </div>
         )}
 
-        {/* 다른 표지 영역으로 이동 (cover.md §7 / D5 Phase 3b-v) */}
+        {/* 다른 표지 영역으로 이동 */}
         <MoveToCoverRegion />
 
         {/* Actions */}
@@ -738,7 +738,7 @@ export default function ControlBar({ mobileOverlay = false }: { mobileOverlay?: 
             </Button>
           )}
 
-          {/* Ungroup button for group selection — calendar-grid 는 비노출(T2) */}
+          {/* Ungroup button for group selection — calendar-grid 는 비노출 */}
           {selectionType === SelectionType.group && !isCalendarGridSelection && (
             <Button
               variant="secondary"
@@ -768,8 +768,8 @@ export default function ControlBar({ mobileOverlay = false }: { mobileOverlay?: 
           {/* Size control - for all types except background */}
           {selectionType !== SelectionType.background && <ObjectSize />}
 
-          {/* L4-④: 내용편집 잠금(contentEditable=false) 요소는 스타일 컨트롤 감산(§2 원칙 3)
-              — 내용+스타일 모두 잠금(CTO 결정). 사유는 안내 문구 1줄로 설명(감산형+설명 병행). */}
+          {/* 내용편집 잠금(contentEditable=false) 요소는 스타일 컨트롤 감산
+              — 내용+스타일 모두 잠금. 사유는 안내 문구 1줄로 설명(감산형+설명 병행). */}
           {appearanceLocked ? (
             <div className="px-4 py-2 text-[11px] text-editor-text-muted">
               내용 잠금 요소 — 내용과 스타일을 변경할 수 없어요.

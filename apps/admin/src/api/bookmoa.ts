@@ -21,7 +21,7 @@ export interface CategoriesQueryParams {
 
 export const bookmoaApi = {
   /**
-   * 북모아 카테고리 목록 조회
+   * 파트너 쇼핑몰 카테고리 목록 조회
    */
   getCategories: async (params?: CategoriesQueryParams): Promise<CategoriesResponse> => {
     const response = await axiosInstance.get<CategoriesResponse>('/bookmoa/categories', {

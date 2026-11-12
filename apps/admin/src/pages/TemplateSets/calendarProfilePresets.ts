@@ -1,12 +1,12 @@
 /**
- * 캘린더 상품 프리셋 7종 (오너 확정 2026-10-17, P1) — 템플릿셋 폼 "캘린더 프리셋 적용" 용.
+ * 캘린더 상품 프리셋 7종 — 템플릿셋 폼 "캘린더 프리셋 적용" 용.
  *
  * 탁상형 4종·벽걸이 2단 2종은 캔버스 26장(표지 1 + 12개월 × 2면 + 에필로그 1 = 13장 양면, offset-next), 단일 PDF 26쪽.
  * 벽걸이 1단(wall-1)은 단면 14장(표지 1 + 12개월 × 1면 + 에필로그 1, 월 한 장에 사진·날짜 그리드), 단일 PDF 14쪽(오너 확정 2026-10-24).
  * 프리셋은 폼 필드 값을 채우는 출발점이며, 운영자는 적용 후 JSON 을 손으로 고칠 수 있다.
  * 동작 분기는 editorType 이 아니라 프로파일 필드(pages·sheet·calendar)로만 한다.
  *
- * 연달력(T3b, 2026-10-24): 탁상형 4종만 `calendar.yearPolicy` 예시를 갖는다 — 고객이 표지·에필로그 연달력 연도를
+ * 연달력: 탁상형 4종만 `calendar.yearPolicy` 예시를 갖는다 — 고객이 표지·에필로그 연달력 연도를
  * 기준 연도~다음 해에서 고를 수 있음(`select {0, 1}`). `span` 은 생략 = 기본 규칙(1월 시작이면 기준 연도 1~12월,
  * 아니면 시작연월부터 12개월). 벽걸이 3종은 yearPolicy 없음(종전 JSON 그대로 — 구조 변경 트랙과 겹치지 않게).
  * 프리셋은 연달력 그리드의 템플릿 값(`extension.show.yearTitle`)을 정하지 않는다 — 연도 제목 on/off 는 고객 몫.
@@ -120,7 +120,7 @@ export interface CalendarPresetFormValues {
   pageCountMax: number;
   pageStep: undefined;
   productProfileJson: string;
-  /** 도련 정책(오너 결정 A, 2026-10-17): 재단선 마커 켬 + 도련 3mm */
+  /** 도련 정책: 재단선 마커 켬 + 도련 3mm */
   cropMarkEnabled: true;
   bleedMm: number;
 }
@@ -137,7 +137,7 @@ export function calendarPresetFormValues(preset: CalendarProfilePreset): Calenda
     pageCountMax: count,
     pageStep: undefined,
     productProfileJson: JSON.stringify(preset.profile, null, 2),
-    // 도련 정책(오너 결정 A, 2026-10-17): 판형은 재단 그대로, 재단선 마커 켬 + 도련 3mm — 편집기 PDF 는 재단+6mm·TrimBox, 워커는 작업사이즈 판정.
+    // 도련 정책: 판형은 재단 그대로, 재단선 마커 켬 + 도련 3mm — 편집기 PDF 는 재단+6mm·TrimBox, 워커는 작업사이즈 판정.
     cropMarkEnabled: true,
     bleedMm: 3,
   };

@@ -10,11 +10,11 @@ import {
 } from '../utils/snapCoordinator'
 
 /**
- * SmartGuidesPlugin (E1 §5-1) — 객체 간 정렬 가이드/스냅 + 회전 각도 스냅
+ * SmartGuidesPlugin — 객체 간 정렬 가이드/스냅 + 회전 각도 스냅
  *
  * - object:moving: 타 객체의 엣지/센터(수직 3선·수평 3선)와 근접 시 마젠타
  *   가이드라인 표시 + 스냅. threshold 는 화면 px 기준(canvas 좌표는 /zoom).
- * - RulerPlugin 경합 회피(AD-E2): RulerPlugin 무수정. 이동 객체 중심이 workspace
+ * - RulerPlugin 경합 회피: RulerPlugin 무수정. 이동 객체 중심이 workspace
  *   중앙 스냅 반경 이내인 축은 SmartGuides 가 양보(스킵) — 이중 당김 구조적 방지.
  * - object:rotating: 0/15/30…° ±3° 스냅, Shift 시 해제(데스크톱). 전역 snapAngle
  *   설정 금지 — 이벤트 방식(target.angle 직접 라운딩)이라 플래그로 개별 off 가능.
@@ -68,12 +68,12 @@ class SmartGuidesPlugin extends PluginBase {
   private _angleStep: number
   private _angleTolerance: number
   private _guideColor: string
-  // §6-3 스냅 설정(런타임 토글) — 기본 on(현행 거동). 순수 거동 게이트만 하고 생성자 옵션·
-  // 이벤트 바인딩은 불변(생성 순서 계약 P0 준수).
+  // 스냅 설정(런타임 토글) — 기본 on(현행 거동). 순수 거동 게이트만 하고 생성자 옵션·
+  // 이벤트 바인딩은 불변(생성 순서 계약 준수).
   private _objectSnapEnabled = true
   private _angleSnapEnabled = true
   // 중앙스냅 토글에 연동 — false 면 RulerPlugin 중앙스냅에 축을 양보하지 않는다(중앙스냅 OFF +
-  // 객체스냅 ON 시 중앙 근처가 무-스냅이 되는 데드존 방지, 적대 리뷰 함정).
+  // 객체스냅 ON 시 중앙 근처가 무-스냅이 되는 데드존 방지).
   private _centerYieldEnabled = true
 
   private _candidateBounds: SnapBounds[] | null = null
@@ -147,16 +147,16 @@ class SmartGuidesPlugin extends PluginBase {
     return { left: tl.x, top: tl.y, right: br.x, bottom: br.y }
   }
 
-  /** §6-3: 객체 스냅(정렬 가이드/스냅) 런타임 토글. early-return 게이트만 — 리스너 불변. */
+  /** 객체 스냅(정렬 가이드/스냅) 런타임 토글. early-return 게이트만 — 리스너 불변. */
   setObjectSnapEnabled(enabled: boolean): void {
     this._objectSnapEnabled = enabled
     if (!enabled) this._hideGuides()
   }
-  /** §6-3: 각도(회전) 스냅 런타임 토글. */
+  /** 각도(회전) 스냅 런타임 토글. */
   setAngleSnapEnabled(enabled: boolean): void {
     this._angleSnapEnabled = enabled
   }
-  /** §6-3: 중앙축 룰러 양보 토글(중앙스냅 토글에 연동) — off 면 중앙 근처도 객체 스냅 적용. */
+  /** 중앙축 룰러 양보 토글(중앙스냅 토글에 연동) — off 면 중앙 근처도 객체 스냅 적용. */
   setCenterYieldEnabled(enabled: boolean): void {
     this._centerYieldEnabled = enabled
   }
@@ -166,7 +166,7 @@ class SmartGuidesPlugin extends PluginBase {
     if (!target || this._isSystemObject(target)) return
 
     this._isDragging = true
-    // §6-3: 객체 스냅 OFF → 스냅·가이드 모두 스킵
+    // 객체 스냅 OFF → 스냅·가이드 모두 스킵
     if (!this._objectSnapEnabled) {
       this._hideGuides()
       return
@@ -223,7 +223,7 @@ class SmartGuidesPlugin extends PluginBase {
     const target = e.target
     if (!target || this._isSystemObject(target)) return
 
-    // §6-3: 각도 스냅 OFF → 라운딩 안 함
+    // 각도 스냅 OFF → 라운딩 안 함
     if (!this._angleSnapEnabled) return
 
     // Shift 홀드 시 스냅 해제 (데스크톱 전용 — 터치는 상시 스냅, 플래그로 개별 off 가능)
@@ -286,7 +286,7 @@ class SmartGuidesPlugin extends PluginBase {
       originY: 'center' as const,
     }
     // 레포 타입 규약(fabric.d.ts ILineOptions)은 사용자 객체에 id 를 강제하지만,
-    // 스마트 가이드는 "id 미부여" 가 계약(§8.2 — _loadHistory 삭제 판정 원천 회피)
+    // 스마트 가이드는 "id 미부여" 가 계약(_loadHistory 삭제 판정 원천 회피)
     // 이므로 이 지점만 좁게 캐스팅한다(전역 타입 약화 금지).
     this._guideV = new fabric.Line(
       [0, -GUIDE_EXTENT, 0, GUIDE_EXTENT],

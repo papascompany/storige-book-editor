@@ -11,7 +11,7 @@ const execFileAsync = promisify(execFile);
 const logger = new Logger('WhiteOverprintScan');
 
 /**
- * R4b (2026-08-11) — 화이트 오버프린트 정밀 검출.
+ * 화이트 오버프린트 정밀 검출.
  *
  * 흰색 채움/획 객체에 오버프린트가 설정되면 인쇄 시 해당 객체가 **소멸**한다
  * (흰색=잉크 0 → 오버프린트는 '내 분판만 덮어씀' → 아무것도 안 찍힘). GWG 2022 는
@@ -29,7 +29,7 @@ const logger = new Logger('WhiteOverprintScan');
  *     페인트 연산자 실행 시점에 (흰색 채움+op) 또는 (흰색 획+OP) 이면 검출.
  *
  * v1 한계(명시): Form XObject 내부 스트림·sc/scn(비표준 색공간) 색 지정·패턴은
- * 미판정 — 보수적으로 미검출 방향(오탐 0 우선). 실패는 null 흡수(R2~R4a 규약).
+ * 미판정 — 보수적으로 미검출 방향(오탐 0 우선). 실패는 null 흡수(다른 검출기와 같은 규약).
  */
 
 const QPDF_PATH = process.env.QPDF_PATH || 'qpdf';

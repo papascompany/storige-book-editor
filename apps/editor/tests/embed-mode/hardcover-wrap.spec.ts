@@ -3,7 +3,7 @@
  *
  * fixture(responses/)
  * - template-set.storybook-wrap.json: 동화책 싸바리 세트(9e768d01)의 공개 조회
- *   `GET /api/template-sets/{id}/with-templates` 응답(2026-10-06 캡처). 구조·값은 그대로 두고
+ *   `GET /api/template-sets/{id}/with-templates` 응답 캡처본. 구조·값은 그대로 두고
  *   식별자만 가짜 값으로 바꿨다 — 세트 id → ts-e2e-storybook-wrap, 표지 템플릿 id →
  *   tpl-e2e-storybook-wrap-cover, 내지 템플릿 id → tpl-e2e-storybook-inner, 카테고리 id →
  *   cat-e2e-storybook, 내지 editCode·templateCode → EDIT-E2E-INNER·TMPL-E2E-INNER, createdBy → e2e-admin.
@@ -105,7 +105,7 @@ function detailByTemplateIndex(body: Record<string, unknown>, index: number): Re
 // 실행 공통
 // ============================================================
 
-/** bookmoa 전환 후 동화책 진입과 같은 값(두 테스트 공통 — 결과 차이는 데이터에서만 나온다). */
+/** 파트너 사이트의 동화책 진입과 같은 값(두 테스트 공통 — 결과 차이는 데이터에서만 나온다). */
 const ENTRY: Record<string, string | number> = {
   mode: 'both',
   pageCount: 16,

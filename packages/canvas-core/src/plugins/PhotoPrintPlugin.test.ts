@@ -1,4 +1,4 @@
-// PhotoPrintPlugin — 사진인화 사진틀 채움 규칙·촬영일·흑백·직렬화 왕복 (P2-d, 2026-10-19)
+// PhotoPrintPlugin — 사진인화 사진틀 채움 규칙·촬영일·흑백·직렬화 왕복
 //
 // 실 fabric(5.5.2 dist, node-canvas) + 실 core.extendFabricOption / core.loadFromJSON 으로
 // embed/useEmbedAutoSave/ServicePlugin 저장 경로와 같은 계약을 고정한다(CalendarPlugin.test 패턴).
@@ -12,8 +12,8 @@
 //  (6) grayscale: 멱등(필터 1개 유지), off 로 제거, 왕복 뒤(태그 소실) 재입양·해제
 //  (7) undo 미기록(historyProcessing), (8) FrameInteractionPlugin._syncFromFrame 회귀 가드(inset 미설정/0 = 기존 값 동일)
 //  (9) 그룹화(GroupPlugin)·clone 경로에서 fillImage extension(takenAt) 보존
-//  (10) D3 창(window): 도련 세트의 풀블리드 틀에서 유테 창 = (프레임 ∩ 재단 상자) − inset, bleed 0·inset 0 은 종전 값과 동일
-//  (11) D4 formatTakenAt: ISO 일시는 로컬 연월일(TZ 비의존 기대값), 날짜만/EXIF 원문은 날짜 부분 그대로
+//  (10) 창(window): 도련 세트의 풀블리드 틀에서 유테 창 = (프레임 ∩ 재단 상자) − inset, bleed 0·inset 0 은 종전 값과 동일
+//  (11) formatTakenAt: ISO 일시는 로컬 연월일(TZ 비의존 기대값), 날짜만/EXIF 원문은 날짜 부분 그대로
 //  (12) serialization-3: 런타임 키 유실(undo 재생성) 뒤 드래그 → frameInsetMm+bleed 폴백으로 유테 유지, rehydrate 가 clip 자가 복구
 //  (13) serialization-4: undo 로 plain 객체가 된 filters 에도 TypeError 없이 동작(fromObject 복원·태그 입양), applyFilters 예외 격리
 //  (14) serialization-6/tests-4: 채워진 사진(또는 틀째) 삭제 뒤 apply/rehydrate → date-overlay ''
@@ -146,7 +146,7 @@ function filtersOf(img: fabric.Object): Array<{ type?: string; effectType?: stri
   return ((img as fabric.Image).filters ?? []) as Array<{ type?: string; effectType?: string }>
 }
 
-/** 브라우저 TZ 기준 로컬 연월일 — D4 기대값(TZ 비의존): 테스트가 도는 머신의 getTimezoneOffset 을 그대로 따른다 */
+/** 브라우저 TZ 기준 로컬 연월일 — 기대값(TZ 비의존): 테스트가 도는 머신의 getTimezoneOffset 을 그대로 따른다 */
 function localYmd(iso: string): string {
   const d = new Date(iso)
   const p = (n: number): string => (n < 10 ? `0${n}` : String(n))
@@ -184,7 +184,7 @@ describe('PhotoPrintPlugin 순수 헬퍼', () => {
   })
 
   it('(1)(11) formatTakenAt: ISO 일시는 로컬 연월일, 날짜만·EXIF 원문은 날짜 부분 그대로, 해석 불가 → null', () => {
-    // D4: exifr 는 EXIF 로컬시각을 브라우저 TZ Date 로 만들어 UTC ISO 로 저장 — UTC 날짜 부분이 아니라 로컬 날짜로 되돌린다
+    // exifr 는 EXIF 로컬시각을 브라우저 TZ Date 로 만들어 UTC ISO 로 저장 — UTC 날짜 부분이 아니라 로컬 날짜로 되돌린다
     const utcMidnightEdge = '2026-03-14T23:30:00.000Z' // KST 라면 03-15, UTC 라면 03-14
     expect(formatTakenAt(utcMidnightEdge)).toBe(localYmd(utcMidnightEdge))
     const offsetMin = new Date(utcMidnightEdge).getTimezoneOffset()

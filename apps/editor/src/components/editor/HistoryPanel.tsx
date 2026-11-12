@@ -18,7 +18,7 @@ import {
   sortVersionsNewestFirst,
 } from '@/utils/sessionVersions'
 
-// 썸네일 URL 정규화는 공유 헬퍼 resolveAssetUrl 로 일원화(P0-B, 2026-06-15).
+// 썸네일 URL 정규화는 공유 헬퍼 resolveAssetUrl 로 일원화.
 // 백엔드는 `/storage/files/...` 상대 경로를 반환하므로 API origin 을 prefix 한다.
 
 interface BackendVersion {
@@ -30,7 +30,7 @@ interface BackendVersion {
 }
 
 /**
- * P1-4 (2026-08-22) — 임베드(/embed, file_edit_sessions) 세션 버전 소스.
+ * 임베드(/embed, file_edit_sessions) 세션 버전 소스.
  * 임베드는 useEditorStore.sessionId 를 쓰지 않고 세션을 embed.tsx 가 소유하므로,
  * 목록/복원을 콜백으로 주입받는다. 복원 후 라이브 재하이드레이션도 embed 가 수행한다
  * (레거시 경로의 window.location.reload 와 달리 iframe 내 in-place 재초기화).
@@ -48,7 +48,7 @@ export interface HistoryPanelProps {
   /**
    * 레거시 시점 분기(useEditorStore.sessionId persist + /editor/sessions) 사용 여부. 기본 true.
    * 임베드는 false — 같은 origin 의 레거시 `/` 방문에서 persist 된 sessionId 가 남아 있으면
-   * 소스가 null 인 창(ready 이전·replace 세션)에 다른 세션의 이력이 뜨고 리로드 복원까지 가능했다.
+   * 소스가 null 인 창(ready 이전·replace 세션)에 다른 세션의 이력이 뜨고 리로드 복원까지 가능해진다.
    */
   legacyVersions?: boolean
 }
@@ -64,7 +64,7 @@ function describeApiError(err: unknown, fallback: string): string {
 }
 
 /**
- * 히스토리 요약 패널 (트랙 Q — 작은 진척)
+ * 히스토리 요약 패널
  *
  * 헤더의 History 아이콘 버튼을 누르면 popover로 표시:
  * - 되돌릴 수 있는 단계 수 (canvas.historyUndo.length)
@@ -72,7 +72,7 @@ function describeApiError(err: unknown, fallback: string): string {
  * - 마지막 저장 시각 (useSaveStore.lastSavedAt)
  * - 현재 dirty 여부
  *
- * 향후 확장 (Phase 2 — cover.md 향후 작업 표 참고):
+ * 아직 없는 기능:
  * - 자동저장 스냅샷 list (백엔드 versions API 필요)
  * - 시점별 thumbnail 미리보기 + "여기로 복원" 액션
  * - 사용자 마일스톤 마킹 (별표)
@@ -96,22 +96,22 @@ export default function HistoryPanel({ sessionVersions = null, legacyVersions = 
   const getPlugin = useAppStore((s) => s.getPlugin)
   const lastSavedAt = useSaveStore((s) => s.lastSavedAt)
   const isDirty = useSaveStore((s) => s.isDirty)
-  /** P1-4: 서버 저장이 진행 중이면 복원을 잠시 막는다(진행 중 PATCH 가 복원본을 되덮는 경합 차단) */
+  /** 서버 저장이 진행 중이면 복원을 잠시 막는다(진행 중 PATCH 가 복원본을 되덮는 경합 차단) */
   const isSavingNow = useSaveStore((s) => s.status === 'saving')
   const allEditors = useAppStore((s) => s.allEditors)
   const snapshots = useAutoSaveSnapshotsStore((s) => s.snapshots)
   const clearSnapshots = useAutoSaveSnapshotsStore((s) => s.clearSnapshots)
-  // BB-Phase 3 — sessionId가 있으면 백엔드 versions 페치, 없으면 localStorage snapshots 사용
+  // sessionId가 있으면 백엔드 versions 페치, 없으면 localStorage snapshots 사용
   const sessionId = useEditorStore((s) => s.sessionId)
   const userId = useEditorStore((s) => s.userId)
   const [backendVersions, setBackendVersions] = useState<BackendVersion[] | null>(null)
-  /** P1-4 — 임베드 세션 버전 목록(null=미로드/로드 중, 배열=로드 완료) */
+  /** 임베드 세션 버전 목록(null=미로드/로드 중, 배열=로드 완료) */
   const [sessionVersionList, setSessionVersionList] = useState<EditSessionVersionSummary[] | null>(null)
   const [sessionVersionError, setSessionVersionError] = useState<string | null>(null)
   const [restoringId, setRestoringId] = useState<string | null>(null)
-  /** P0-4: 복원 confirm 대기 중인 versionId (실수 클릭 방지). null이면 일반 list 모드 */
+  /** 복원 confirm 대기 중인 versionId (실수 클릭 방지). null이면 일반 list 모드 */
   const [confirmingId, setConfirmingId] = useState<string | null>(null)
-  /** BB-Phase 3 follow-up: hover 시 큰 썸네일 미리보기 표시할 versionId */
+  /** hover 시 큰 썸네일 미리보기 표시할 versionId */
   const [hoverPreviewId, setHoverPreviewId] = useState<string | null>(null)
 
   // 스택 길이 — historyUpdate 이벤트 구독으로 갱신
@@ -163,7 +163,7 @@ export default function HistoryPanel({ sessionVersions = null, legacyVersions = 
     setOpen(false)
   }
 
-  // P1-4 — popover 열릴 때 임베드 세션 버전 목록 페치(소스가 주입된 경우만)
+  // popover 열릴 때 임베드 세션 버전 목록 페치(소스가 주입된 경우만)
   useEffect(() => {
     if (!open || !sessionVersions) {
       setSessionVersionList(null)
@@ -189,7 +189,7 @@ export default function HistoryPanel({ sessionVersions = null, legacyVersions = 
     }
   }, [open, sessionVersions])
 
-  // BB-Phase 3 — popover 열릴 때 백엔드 versions 페치 (sessionId 있을 때만, 임베드 소스가 없을 때)
+  // popover 열릴 때 백엔드 versions 페치 (sessionId 있을 때만, 임베드 소스가 없을 때)
   useEffect(() => {
     if (!open || !sessionId || sessionVersions || !legacyVersions) {
       setBackendVersions(null)
@@ -211,15 +211,15 @@ export default function HistoryPanel({ sessionVersions = null, legacyVersions = 
     }
   }, [open, sessionId, userId, sessionVersions, legacyVersions])
 
-  // P0-4 — 복원 클릭 시 confirm 단계 enter (즉시 API 호출하지 않음)
+  // 복원 클릭 시 confirm 단계 enter (즉시 API 호출하지 않음)
   const handleRestoreClick = useCallback((versionId: string) => {
     setConfirmingId(versionId)
   }, [])
 
-  // P0-4 — confirm 후 실제 복원 수행 + 성공 시 자동 페이지 reload
+  // confirm 후 실제 복원 수행 + 성공 시 자동 페이지 reload
   const handleRestoreConfirm = useCallback(
     async (versionId: string) => {
-      // P1-4 — 임베드 세션 버전: embed 가 서버 복원 + in-place 재하이드레이션을 수행(리로드 없음)
+      // 임베드 세션 버전: embed 가 서버 복원 + in-place 재하이드레이션을 수행(리로드 없음)
       if (sessionVersions) {
         setRestoringId(versionId)
         try {
@@ -259,7 +259,7 @@ export default function HistoryPanel({ sessionVersions = null, legacyVersions = 
     [sessionId, userId, sessionVersions]
   )
 
-  // P0-4 — confirm 취소
+  // confirm 취소
   const handleRestoreCancel = useCallback(() => {
     setConfirmingId(null)
   }, [])
@@ -279,7 +279,7 @@ export default function HistoryPanel({ sessionVersions = null, legacyVersions = 
           <History className="h-5 w-5" />
         </Button>
       </PopoverTrigger>
-      {/* P1-4 실기(2026-08-23): align=end 는 트리거(헤더 좌측 x≈157)에서 왼쪽으로 펼쳐져 z-[101] ToolBar/FeatureSidebar(z-100)
+      {/* align=end 는 트리거(헤더 좌측 x≈157)에서 왼쪽으로 펼쳐져 z-[101] ToolBar/FeatureSidebar(z-100)
           아래 가려졌다(기본 z-50). 오른쪽으로 펼치고 z 를 올린다. */}
       <PopoverContent align="start" sideOffset={8} collisionPadding={8} className="w-80 p-3 z-[150]">
         <div className="text-[12px] font-semibold text-editor-text mb-2 flex items-center gap-2">
@@ -310,7 +310,7 @@ export default function HistoryPanel({ sessionVersions = null, legacyVersions = 
           </Button>
         </div>
 
-        {/* 자동저장 스냅샷 list — P1-4 임베드 세션 버전 > BB-Phase 3 백엔드 versions > localStorage minimal */}
+        {/* 자동저장 스냅샷 list — 임베드 세션 버전 > 백엔드 versions > localStorage minimal */}
         <div className="border-t border-editor-border mt-3 pt-2">
           {sessionVersions ? (
             <div data-testid="session-versions">
@@ -463,7 +463,7 @@ export default function HistoryPanel({ sessionVersions = null, legacyVersions = 
                         title={confirming ? undefined : date.toLocaleString('ko-KR')}
                       >
                         {confirming ? (
-                          // P0-4 — confirm 카드 (실수 클릭 방지)
+                          // confirm 카드 (실수 클릭 방지)
                           <div className="px-2 py-2 flex flex-col gap-1.5">
                             <p className="text-[11px] text-editor-text leading-snug">
                               <span className="font-semibold text-editor-accent">
@@ -556,7 +556,7 @@ export default function HistoryPanel({ sessionVersions = null, legacyVersions = 
             </>
           ) : (
             <>
-              {/* sessionId 없는 경우(임베드 미연결) — 트랙 BB minimal localStorage 메타 표시 */}
+              {/* sessionId 없는 경우(임베드 미연결) — localStorage 메타만 표시 */}
               <div className="flex items-center justify-between mb-1.5">
                 <span className="text-[11px] font-semibold text-editor-text-muted flex items-center gap-1">
                   <FileText className="h-3.5 w-3.5" />
@@ -634,7 +634,7 @@ function Row({
 }
 
 /**
- * BB-Phase 3 follow-up — 시점 list item에 표시하는 썸네일 mini.
+ * 시점 list item에 표시하는 썸네일 mini.
  * - 28x40 (A4 portrait 비율 근사)
  * - URL이 null이면 placeholder 아이콘 (모바일에서 캡처 스킵된 시점)
  */

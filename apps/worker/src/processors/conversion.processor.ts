@@ -21,17 +21,17 @@ interface ConversionJobData {
     targetSize?: { width: number; height: number };
     /**
      * 고객 업로드 PDF 사이즈 비교 허용오차(mm, 선택).
-     * PdfConverterService(P4)가 사용 — resolveMode 의 실측 vs editSize 비교(미지정 시 0.2mm),
-     * X1 재단선 크롭의 no-op 허용오차 하한.
+     * PdfConverterService 가 사용 — resolveMode 의 실측 vs editSize 비교(미지정 시 0.2mm),
+     * 재단선 크롭의 no-op 허용오차 하한.
      */
     sizeToleranceMm?: number;
     /**
-     * 편집(원본) 사이즈(mm, 선택). PdfConverterService(P4)가 사용 — mode 미지정이면 실측과 비교해
-     * mode 를 정하고(resolveMode), X1 재단선 크롭의 게이트·목표 크기로 쓴다.
+     * 편집(원본) 사이즈(mm, 선택). PdfConverterService 가 사용 — mode 미지정이면 실측과 비교해
+     * mode 를 정하고(resolveMode), 재단선 크롭의 게이트·목표 크기로 쓴다.
      */
     editSize?: { width: number; height: number };
     /**
-     * 변환 모드(선택). PdfConverterService(P4)가 처리한다. 미지정이고 editSize 가 있으면
+     * 변환 모드(선택). PdfConverterService 가 처리한다. 미지정이고 editSize 가 있으면
      * resolveMode 가 정하고, editSize 도 없으면 레거시 경로.
      * - passthrough: 원본 그대로
      * - innerfit: 내지 맞춤
@@ -40,7 +40,7 @@ interface ConversionJobData {
     mode?: 'passthrough' | 'innerfit' | 'center';
     /** 페이지수 배수 보정(2026-06-25, fix-pagecount) — 현재 페이지수를 다음 배수까지 백지로 채움. */
     padToMultiple?: number;
-    /** X1F-1c: attach-page-pad 잡의 주문 재단·도련(공유 계약 키). 변환 서비스가 검증해 읽는다. */
+    /** attach-page-pad 잡의 주문 재단·도련(공유 계약 키). 변환 서비스가 검증해 읽는다. */
     contentTrim?: unknown;
   };
 }
@@ -51,7 +51,7 @@ export class ConversionProcessor {
   private readonly storagePath =
     process.env.STORAGE_PATH || '/app/storage';
   private readonly convertedDir = 'converted';
-  // WK-4 — 상태 업데이트 재시도 공유 서비스 (DI 대신 직접 생성 — 기존 스펙 생성자 고정)
+  // 상태 업데이트 재시도 공유 서비스 (DI 대신 직접 생성 — 기존 스펙 생성자 고정)
   private readonly jobStatusService = new JobStatusService();
 
   constructor(private readonly converterService: PdfConverterService) {}
@@ -114,7 +114,7 @@ export class ConversionProcessor {
   }
 
   /**
-   * JD-4: pdf-conversion 큐의 failed 리스너(이 큐에서 유일 — RenderProcessor 는 두지 않는다).
+   * pdf-conversion 큐의 failed 리스너(이 큐에서 유일 — RenderProcessor 는 두지 않는다).
    * stalled 한도 초과 실패만 FAILED(JOB_STALLED)로 기록하고, job.name 으로 convert·render-pages 를 나눈다.
    */
   @OnQueueFailed()
@@ -133,7 +133,7 @@ export class ConversionProcessor {
   /**
    * Update job status in API
    *
-   * WK-4: 무재시도 axios.patch → 공유 JobStatusService(재시도 5회·최대 30s 백오프,
+   * 무재시도 axios.patch → 공유 JobStatusService(재시도 5회·최대 30s 백오프,
    * 최종 실패 시 Sentry capture)로 대체. 페이로드 wire 포맷은 기존 그대로 유지.
    */
   private async updateJobStatus(

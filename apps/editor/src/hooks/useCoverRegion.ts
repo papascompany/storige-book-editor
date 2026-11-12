@@ -6,7 +6,7 @@ import { type SpreadPlugin, FONT_SUBSTITUTED_EVENT, type FontSubstitutedEvent } 
 import type { SpreadRegion } from '@storige/types'
 
 /**
- * 표지 region 인식 helper (cover.md §7-8 / D5 Phase 3b 인프라).
+ * 표지 region 인식 helper.
  *
  * SpreadPlugin이 활성(spread 모드)일 때 canvas X 좌표 → SpreadRegion 매핑을 반환.
  * spread 모드가 아니면 null.
@@ -18,7 +18,7 @@ import type { SpreadRegion } from '@storige/types'
  *     newObject.set('meta', { anchor: { kind: 'region', xNorm: ..., yNorm: ... } })
  *   }
  *
- * Phase 3b 향후 활용:
+ * 활용:
  *   1. 객체 추가 시 마우스 이벤트 좌표 → region 매핑 → ObjectAnchor 저장
  *   2. 객체 드래그 종료(modified) 시 새 region 결정 → 메타 갱신
  *   3. 책등 폭 변경 시 region 객체 자동 재배치 (SpreadPlugin.computeResizedLayout)
@@ -48,7 +48,7 @@ export function useIsCoverContext(): boolean {
 }
 
 /**
- * Spread 모드에서 신규 객체에 region 앵커 메타를 자동 부여 (cover.md §7 / D5 Phase 3b-ii).
+ * Spread 모드에서 신규 객체에 region 앵커 메타를 자동 부여.
  *
  * SpreadPlugin은 object:modified로 메타를 갱신하지만(3b-iii), 객체가 막 추가된 직후에는
  * meta.regionRef/anchor가 비어 있다. 이 훅이 object:added를 구독해
@@ -74,10 +74,10 @@ export function useSpreadAutoAnchor(ready: boolean): void {
       if (target.meta?.system) return
       if (target.meta?.regionRef !== undefined) return
 
-      // ⚠️ 좌표계 주의(라이브 P1, 2026-06-11/12): 과거 이 훅은 `target.getBoundingRect()`
+      // ⚠️ 좌표계 주의: `target.getBoundingRect()`
       // (무인자 = viewport 좌표, 줌·팬 의존)를 resolveRegionRef(content 좌표 엔진)에 그대로
-      // 넘겨 fit-zoom(≈0.49)에서 front-cover 객체를 back-cover 로 오판/재앵커했고, 오염된
-      // anchor 가 다음 책등가변(repositionObjects) 때 객체를 반대편 표지로 텔레포트시켰다.
+      // 넘기면 fit-zoom(≈0.49)에서 front-cover 객체를 back-cover 로 오판/재앵커하고, 오염된
+      // anchor 가 다음 책등가변(repositionObjects) 때 객체를 반대편 표지로 텔레포트시킨다.
       // SpreadPlugin.resolveRegionMetaForObject 가 scene bbox(getBoundingRect(true,true))
       // → content 변환을 캡슐화한다 — 외부에서는 반드시 이 API 를 사용.
       const result = spreadPlugin.resolveRegionMetaForObject(target, null)
@@ -98,7 +98,7 @@ export function useSpreadAutoAnchor(ready: boolean): void {
 
 /**
  * 책등 폭 변경 후 캔버스 밖으로 이탈한 객체가 있을 때 toast 알림
- * (cover.md §7 / D5 Phase 3b-iv).
+ * (책등 폭 변경 후 캔버스 밖 객체 안내).
  *
  * `SpreadPlugin.checkObjectsOutOfBounds`가 `resizeSpine` 마지막에 발행하는
  * `spreadObjectsOutOfBounds` 이벤트를 구독해 사용자에게 warning toast 표시.
@@ -119,7 +119,7 @@ export function useSpreadOutOfBoundsToast(ready: boolean): void {
       showToast(msg, payload.autoRelocated ? 'info' : 'warning', 5000)
     }
 
-    // 책등 콘텐츠 오버플로우(책등이 좁아져 책등 객체가 표지 침범) 경고. (SF-5)
+    // 책등 콘텐츠 오버플로우(책등이 좁아져 책등 객체가 표지 침범) 경고.
     // 텍스트 자동 축소는 하지 않음(폰트품질 보존) — 사용자에게 조정 안내만.
     const spineHandler = (payload: { count: number; spineWidthMm?: number }) => {
       const count = payload?.count ?? 0
@@ -141,7 +141,7 @@ export function useSpreadOutOfBoundsToast(ready: boolean): void {
 }
 
 /**
- * P2: 객체가 재단선(트림박스)을 벗어났을 때 warning toast 알림 (화면 가이드).
+ * 객체가 재단선(트림박스)을 벗어났을 때 warning toast 알림 (화면 가이드).
  *
  * `WorkspacePlugin`이 object:modified / object:moving / object:scaling 시 발행하는
  * `objectOutOfTrim` { count, objects } 이벤트를 구독해 사용자에게 경고 toast 표시.
@@ -182,7 +182,7 @@ export function useObjectOutOfTrimToast(ready: boolean): void {
 }
 
 /**
- * E1 §5-5: 재단/안전영역 침범 실시간 경고 toast (화면 가이드).
+ * 재단/안전영역 침범 실시간 경고 toast (화면 가이드).
  *
  * `SafeZoneWarningPlugin`(canvas-core) 이 object:moving/scaling 중 침범 **진입 전이**
  * 시 1회 발행하는 `safeZoneViolation` 이벤트를 구독해 안내 toast 를 띄운다
@@ -215,7 +215,7 @@ export function useSafeZoneWarningToast(ready: boolean): void {
 }
 
 /**
- * R8: 배치 이미지 유효 DPI 실시간 경고 toast (화면 가이드 — 업계 표준 table stakes).
+ * 배치 이미지 유효 DPI 실시간 경고 toast (화면 가이드 — 업계 표준 table stakes).
  *
  * `ImageDpiWarningPlugin`(canvas-core) 이 object:added/modified 시 이미지 유효 DPI 가
  * 인쇄 최소 기준(150DPI) **미만으로 진입하는 전이**에서 1회 발행하는 `imageLowDpi`
@@ -255,7 +255,7 @@ export function useImageLowDpiToast(ready: boolean): void {
 }
 
 /**
- * 미등록 폰트 → 기본 폰트 대체 안내 toast (2026-11-05).
+ * 미등록 폰트 → 기본 폰트 대체 안내 toast.
  *
  * `FontPlugin` 이 텍스트의 fontFamily 를 라이브러리에서 찾지 못해 기본 폰트로 대체할 때
  * (fabric 기본값 'Times New Roman', 삭제·비활성화된 라이브러리 폰트, 로드 실패 폴백 'Arial' 등)
@@ -298,7 +298,7 @@ export function useFontSubstitutionToast(ready: boolean): void {
 }
 
 /**
- * A-3① (트랙 C, 2026-07-23): 무선제본 얇은 책등 텍스트 배치 경고 toast.
+ * 무선제본 얇은 책등 텍스트 배치 경고 toast.
  *
  * 무선 책등이 SPINE_TEXT_MIN_WIDTH_MM(3mm) 미만이면 책등 글자가 접힘·재단
  * 편차로 표지면에 걸릴 수 있어 배치 자체를 권장하지 않는다(제작 안내 관행).
@@ -311,7 +311,7 @@ export function useFontSubstitutionToast(ready: boolean): void {
  *      (useSpreadAutoAnchor 가 add 직후 보장) && 현재 폭이 임계 미만이면 발화.
  * 게이트: spineConfig.bindingType === 'perfect' (양장은 최소 8mm 라 비대상).
  * 폭 소스: spineWidthChange payload > spineConfig.calculatedSpineWidth 캐시.
- * 임계값 3mm 는 제작(bookmoa) 정본 미확정 — 확정 시 상수 1곳 수정(설계 §7-6).
+ * 임계값 3mm 는 제작처 기준에 맞춰 상수 1곳에서 조정한다.
  */
 export const SPINE_TEXT_MIN_WIDTH_MM = 3
 

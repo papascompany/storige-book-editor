@@ -1,13 +1,13 @@
-// touchContextMenu — 모바일 롱프레스 컨텍스트 메뉴 트리거 (C6 / E2 W3)
+// touchContextMenu — 모바일 롱프레스 컨텍스트 메뉴 트리거
 //
 // node env + mock wrapperEl + fake timers 로 결정론적 검증(SmartGuides.test 패턴 계열).
-// 증명 대상(설계 §5 T-1~T-6, 정찰 종합 §4 유닛 항목):
-//  ① T-1: touch 단일 포인터 롱프레스(500ms) → showAt(start좌표,{touch:true}) 1회
+// 증명 대상:
+//  ① touch 단일 포인터 롱프레스(500ms) → showAt(start좌표,{touch:true}) 1회
 //  ② pointerType!=='touch'(마우스) → 미발화(우클릭 경로 회귀 차단)
-//  ③ T-1 취소: 두 번째 포인터(핀치) 도착 → 미발화
-//  ④ T-2: 이동 임계(10px) 초과 → 미발화 / 이하 → 발화
+//  ③ 취소: 두 번째 포인터(핀치) 도착 → 미발화
+//  ④ 이동 임계(10px) 초과 → 미발화 / 이하 → 발화
 //  ⑤ 임계 전 pointerup(단순 탭) → 미발화
-//  ⑥ T-4: 발화 시 _currentTransform=undefined + discardActiveObject 미호출(활성객체 유지)
+//  ⑥ 발화 시 _currentTransform=undefined + discardActiveObject 미호출(활성객체 유지)
 //  ⑦ haptic: showAt 이 실제 표시(true) 시만 vibrate, 미표시(false·빈 곳)면 무진동
 //  ⑧ dispose: 리스너 4종 해제 + 대기 타이머 취소(발화 안 함), 멱등
 //  ⑨ SSR/구형: window/PointerEvent 부재 시 no-op disposer
@@ -140,7 +140,7 @@ describe('touchContextMenu — 발화 조건', () => {
 })
 
 describe('touchContextMenu — 발화 부수효과', () => {
-  it('⑥ T-4: _currentTransform=undefined + discardActiveObject 미호출', () => {
+  it('⑥ _currentTransform=undefined + discardActiveObject 미호출', () => {
     const wrapper = makeWrapper()
     const canvas = makeCanvas(wrapper)
     canvas._currentTransform = { some: 'transform' }
@@ -151,10 +151,10 @@ describe('touchContextMenu — 발화 부수효과', () => {
     vi.advanceTimersByTime(500)
 
     expect(canvas._currentTransform).toBeUndefined()
-    expect(canvas.discardActiveObject).not.toHaveBeenCalled() // 활성객체 유지(T-6)
+    expect(canvas.discardActiveObject).not.toHaveBeenCalled() // 활성객체 유지
   })
 
-  it('⑥-b T-4: 서브임계 지터로 밀린 객체를 original 위치로 복원(무-undo 오염 방지, 적대 리뷰 MAJOR)', () => {
+  it('⑥-b 서브임계 지터로 밀린 객체를 original 위치로 복원(무-undo 오염 방지)', () => {
     const wrapper = makeWrapper()
     const canvas = makeCanvas(wrapper)
     const target: Record<string, unknown> = {
@@ -179,7 +179,7 @@ describe('touchContextMenu — 발화 부수효과', () => {
     expect(canvas._currentTransform).toBeUndefined()
   })
 
-  it('⑥-c release 시 armTouchHideSuppress 재-arm(T-5 늦은 손뗌 방어)', () => {
+  it('⑥-c release 시 armTouchHideSuppress 재-arm(늦은 손뗌 방어)', () => {
     const wrapper = makeWrapper()
     const cm = makeContextMenu(true)
     attachTouchContextMenu(makeCanvas(wrapper) as never, cm as never)

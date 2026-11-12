@@ -10,7 +10,7 @@ import { applyPhotoPrintItem, resolvePhotoItemIndexForCanvas } from '@/utils/pho
 import { applyAllPhotoPrint } from '@/utils/photoPrintRehydrateAll'
 
 /**
- * PhotoPrintPanel — 좌측 메뉴 `PHOTO_PRINT`(사진인화) 패널 (P2-d, 2026-10-19; CalendarPanel 모방)
+ * PhotoPrintPanel — 좌측 메뉴 `PHOTO_PRINT`(사진인화) 패널 (CalendarPanel 과 같은 구조)
  *
  * 항목 목록(사진 N): 매수 ±, 유테(none/white), 맞춤(paper-full/image-full), 마감(matte/glossy), 촬영일·흑백·밝기보정 토글
  * + '전체 적용'(현재 캔버스 항목의 옵션을 모든 항목에 복사). 프로파일 options 가 허용하지 않는 값은 노출하지 않는다

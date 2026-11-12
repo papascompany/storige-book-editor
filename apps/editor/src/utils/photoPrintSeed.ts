@@ -9,12 +9,12 @@ import { isPhotoPrintProfile, type PhotoPrintProductProfile } from '@/utils/prod
 import { photoPrintStride, rehydratePhotoPrint } from '@/utils/photoPrintRehydrate'
 
 /**
- * photoPrintSeed.ts — 사진인화 페이지 추가 시 캔버스 시드 (P2-d, 2026-10-19; 계약 결정 7)
+ * photoPrintSeed.ts — 사진인화 페이지 추가 시 캔버스 시드
  *
  * SidePanel '페이지 추가' 로 만든 빈 캔버스 k 에 템플릿셋 refs[k % refs.length](settings.linkedPrintTemplates,
  * digital = [앞, 뒤] / chemical = [앞]) 의 canvasData 를 useEditorContents 의 세트 페이지 로드와 같은
  * ServicePlugin.loadJSON 경로로 앉히고, 초기 페이지 로드와 같은 초기화(사진틀 인터랙션 재바인딩·
- * applyObjectPermissions(canvas, editMode)·trackRequiredEdits)와 PhotoPrintPlugin rehydrate 를 수행한다(editor-flow-7/D6:
+ * applyObjectPermissions(canvas, editMode)·trackRequiredEdits)와 PhotoPrintPlugin rehydrate 를 수행한다(
  * editMode(관리자)에서는 잠그지 않고, 고객 세션의 시드 앞면도 초기 페이지와 같은 보호·필수편집 추적을 받는다).
  * composition 'per-photo-fixed-back' 의 뒷면(digital 홀수 캔버스)은 로드 객체 전부에
  * movable/deleteable/contentEditable=false 를 먼저 강제한다.
@@ -59,11 +59,11 @@ export function lockSeededObjects(canvas: fabric.Canvas): number {
 }
 
 /**
- * 시드/초기 캔버스 공통 초기화 (D11, 2026-10-21): ② 고정 뒷면(digital 홀수 캔버스) 잠금 → 사진틀 재바인딩 →
+ * 시드/초기 캔버스 공통 초기화: ② 고정 뒷면(digital 홀수 캔버스) 잠금 → 사진틀 재바인딩 →
  * applyObjectPermissions(canvas, editMode) → trackRequiredEdits. loadJSON 콜백 안(= canvas-core TemplatePlugin.afterLoad 가
  * 텍스트의 hasControls/lockScaling 을 되살린 **뒤**)에서 불러야 잠금이 유지된다. 페이지 추가(seedPhotoPrintCanvas)와
  * 템플릿셋 초기 로드(useEditorContents 2번째 이후 페이지)가 같은 함수를 쓴다 — 초기 페이지만 applyCustomerLocks 를
- * 건너뛰어 고정 뒷면 textbox 가 hasControls true·lockScaling false·editable true 로 남던 결함(D11)의 수정.
+ * 건너뛰어 고정 뒷면 textbox 가 hasControls true·lockScaling false·editable true 로 남던 결함의 수정.
  * 사진인화 세트 전용(호출측 게이트) — 프로파일 NULL 세트의 로더 동작은 바꾸지 않는다.
  */
 export function initPhotoPrintSeededCanvas(

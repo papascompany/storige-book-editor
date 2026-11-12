@@ -1,4 +1,4 @@
-// SmartGuides ↔ FrameInteraction 바인딩 순서 계약 테스트 (적대 리뷰 P0, 2026-07-15)
+// SmartGuides ↔ FrameInteraction 바인딩 순서 계약 테스트
 //
 // 사실관계: fabric 이벤트 핸들러는 등록(=생성자 바인딩) 순서대로 발화한다.
 // SmartGuidesPlugin(스냅)과 FrameInteractionPlugin(사진틀 fillImage/clipPath 동기화)은
@@ -256,6 +256,6 @@ describe('SmartGuides → FrameInteraction 바인딩 순서 계약 (② ③ 통�
     fire(canvas, 'object:rotating', { target })
 
     expect(target.angle).toBe(45) // 최종 각은 스냅되지만
-    expect(seen[0].angle).toBeCloseTo(43.4) // FI 는 raw 각으로 이미 동기화해 버렸다 (P0 결함 재현)
+    expect(seen[0].angle).toBeCloseTo(43.4) // FI 는 raw 각으로 이미 동기화해 버렸다 (결함 재현)
   })
 })

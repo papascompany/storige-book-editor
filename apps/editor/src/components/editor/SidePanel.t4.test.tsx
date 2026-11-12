@@ -6,7 +6,7 @@ import { useSettingsStore } from '@/stores/useSettingsStore'
 import { SelectionType, type CanvasObject } from '@storige/canvas-core'
 
 /**
- * T4 (2026-07-13): 헤더 Layers 아이콘 → "페이지 네비" 오인 해소 스펙.
+ * 헤더 Layers 아이콘 → "페이지 네비" 오인 해소 스펙.
  * - ① DOM 순서: '요소'(레이어) 섹션이 '페이지' 섹션보다 문서상 먼저
  * - ② 데스크톱 헤더: '레이어' 제목 + 닫기 버튼 상시 노출 (구 lg:hidden 닫기 바 대체)
  * - ③ 패널 열림(show false→true) 시 선택 행 scrollIntoView({block:'nearest'}) 1회
@@ -86,7 +86,7 @@ afterEach(() => {
 
 // -- 스펙 -----------------------------------------------------------------------
 
-describe('SidePanel T4 — 섹션 순서/헤더/열림 스크롤/페이지 collapsible', () => {
+describe('SidePanel — 섹션 순서/헤더/열림 스크롤/페이지 collapsible', () => {
   it("① '요소' 섹션이 '페이지' 섹션보다 문서상 먼저 온다", () => {
     wireStores()
     render(<SidePanel show onClose={() => {}} />)

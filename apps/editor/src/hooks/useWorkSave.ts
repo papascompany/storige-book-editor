@@ -73,7 +73,7 @@ export interface UseWorkSaveReturn {
 /**
  * Work Save Hook
  * 작업 저장 및 로드를 위한 React Hook
- * REST API 사용 (외부 점검 정합화 — 8c383de + 5c4145a 반영)
+ * REST API 사용
  */
 export function useWorkSave(): UseWorkSaveReturn {
   // 로컬 상태
@@ -561,7 +561,7 @@ export function useWorkSave(): UseWorkSaveReturn {
   /**
    * 스프레드 모드 작업 완료 (PDF 생성 및 Worker Job 생성)
    *
-   * §4.7 설계서에 따라:
+   * 처리 순서:
    * 1. allCanvas[0] (스프레드) → cover.pdf 업로드
    * 2. allCanvas[1~N] (내지) → 개별 PDF 업로드
    * 3. EditSession 완료 API 호출 → Worker Job 자동 생성
@@ -598,7 +598,7 @@ export function useWorkSave(): UseWorkSaveReturn {
       }
 
       const orderSeqnoFromSession = (session as any)?.orderSeqno as number | undefined
-      // Track 1 (2026-07-06): 출력 크기 산출은 embed.tsx handleFinish 와 photobookSpread 헬퍼를
+      // 출력 크기 산출은 embed.tsx handleFinish 와 photobookSpread 헬퍼를
       // **단일 진실원**으로 공유한다(경로별 출력 크기 불일치 회귀 방지).
       const settingsAtFinish = useSettingsStore.getState()
       const spreadCfg = settingsAtFinish.spreadConfig
@@ -617,7 +617,7 @@ export function useWorkSave(): UseWorkSaveReturn {
       })
       const cutSize = 3
 
-      // P3 (2026-06-10): 작업사이즈(재단+블리드)+코너마커+TrimBox 출력 게이팅.
+      // 작업사이즈(재단+블리드)+코너마커+TrimBox 출력 게이팅.
       // templateSet 에서 운반한 printMarkConfig 를 saveMultiPagePDFAsBlob 의 size 에 전달.
       // ServicePlugin 게이트(cropMarkEnabled && bleedMm>0)에서만 작업사이즈 경로 활성.
       // 미설정(null) → undefined → 게이트 OFF(현행 trim 출력 그대로).
@@ -647,7 +647,7 @@ export function useWorkSave(): UseWorkSaveReturn {
       // 표지(펼침면) = 단일 페이지 PDF. 기존 spreadPlugin.exportToPDF() 는 ServicePlugin 에
       // 미정의(TypeError) 였음 → 내지와 동일하게 saveMultiPagePDFAsBlob 사용.
       // 폭/높이는 표지 '펼침면 전체' mm, dpi=300(내지와 통일).
-      // ⚠️ 무결성(SF-3): 책등 가변(비동기 트랜잭션) 직후 저장 시 settingsStore 가 아직 stale 일 수
+      // ⚠️ 무결성: 책등 가변(비동기 트랜잭션) 직후 저장 시 settingsStore 가 아직 stale 일 수
       // 있으므로, 방금 트랜잭션이 갱신한 SpreadPlugin.currentLayout(getLayout)을 단일 진실 소스로
       // 우선 사용. 폴백: settingsStore → 내지 치수.
       const spreadLayout = (
@@ -659,10 +659,10 @@ export function useWorkSave(): UseWorkSaveReturn {
       const coverHeightMm = spreadLayout?.totalHeightMm ?? spreadCfg?.totalHeightMm ?? innerHeightMm
       // 표지 PDF size 옵션(buildCoverPdfSizeOpt, embed 와 같은 헬퍼):
       //  - 싸바리 모드 → wrapMm (printSize·markOpt 없음)
-      //  - D-4 하드커버(caseBind) → printSize = wrap 포함 출력 사이즈(콘텐츠 trim 렌더 중앙 배치, markOpt 없음)
+      //  - 하드커버(caseBind) → printSize = wrap 포함 출력 사이즈(콘텐츠 trim 렌더 중앙 배치, markOpt 없음)
       //  - 그 밖 → markOpt
       const coverOutputSize = computeCoverOutputSizeMm(spreadCfg)
-      // L4-②: PDF 생성 창(excludeFromExport 임시 플래깅) 동안 autosave suspend — 누락 방지.
+      // PDF 생성 창(excludeFromExport 임시 플래깅) 동안 autosave suspend — 누락 방지.
       const coverPdfBlob = await runWithAutosaveSuspended(() => spreadPlugin.saveMultiPagePDFAsBlob(
         [spreadCanvas] as any,
         [spreadEditor],
@@ -750,7 +750,7 @@ export function useWorkSave(): UseWorkSaveReturn {
       // ========================================================================
       console.log('[useWorkSave:Spread] 3. EditSession 완료 API 호출 중...')
 
-      // B38 출력재현 단일소스: metadata.spread/spine 스냅샷 저장(additive). 실패해도 완료 무중단.
+      // 출력재현 단일소스: metadata.spread/spine 스냅샷 저장(additive). 실패해도 완료 무중단.
       const spreadSnapshots = buildSpreadSnapshots(
         useSettingsStore.getState().spreadConfig,
         useSettingsStore.getState().spineConfig,
@@ -762,7 +762,7 @@ export function useWorkSave(): UseWorkSaveReturn {
         contentFileId: contentPdfFileId,
         metadata: {
           spreadContentPageCount: innerCanvases.length,
-          // R5 정밀화: 산출물 fileId 기록 → 재진입 시 첨부 오인/underlay 재승격 차단을 값 일치로 좁힘
+          // 정밀화: 산출물 fileId 기록 → 재진입 시 첨부 오인/underlay 재승격 차단을 값 일치로 좁힘
           editorOutputContentFileId: contentPdfFileId,
           ...(spreadSnapshots.spread ? { spread: spreadSnapshots.spread } : {}),
           ...(spreadSnapshots.spine ? { spine: spreadSnapshots.spine } : {}),

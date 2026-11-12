@@ -37,7 +37,7 @@ vi.mock('@/stores/useAppStore', () => {
   return { useAppStore }
 })
 
-// 서버 저장 API 스텁 — R2 덮어쓰기 가드는 저장을 차단하지 않고 표면화만 해야 한다.
+// 서버 저장 API 스텁 — 덮어쓰기 가드는 저장을 차단하지 않고 표면화만 해야 한다.
 const { updateMock, updateGuestMock } = vi.hoisted(() => ({
   updateMock: vi.fn(),
   updateGuestMock: vi.fn(),
@@ -85,7 +85,7 @@ function renderGuardHook(currentSession: any = null) {
   )
 }
 
-describe('useEmbedAutoSave — R2 canvasData 축소 저장 가드 (경고 표면화, 차단 아님)', () => {
+describe('useEmbedAutoSave — canvasData 축소 저장 가드 (경고 표면화, 차단 아님)', () => {
   let warnSpy: ReturnType<typeof vi.spyOn>
 
   beforeEach(() => {
@@ -108,7 +108,7 @@ describe('useEmbedAutoSave — R2 canvasData 축소 저장 가드 (경고 표면
     warnSpy.mock.calls.filter((c) => String(c[0]).includes('페이지 수 감소 감지'))
 
   it('세션 로드 기준선(canvasData 배열)보다 짧게 저장하면 — 삭제 액션 없이 — 경고 + Sentry, 저장은 수행', async () => {
-    // R2 실사고 시그니처: 서버 canvas_data 17장 → 재진입 시드 반감으로 9장 직렬화.
+    // 재현 대상: 서버 canvas_data 17장 → 재진입 시드 반감으로 9장 직렬화.
     // 여기서는 3장 기준선 → 2장 저장으로 축소 재현. allCanvas 는 한 번도 줄지 않는다
     // (절단은 직렬화 길이만 짧아진다) → 사용자 삭제 관찰 플래그가 서지 않아 경고 대상.
     setCanvases([fakeCanvas('c0'), fakeCanvas('c1')])
@@ -208,7 +208,7 @@ describe('useEmbedAutoSave — R2 canvasData 축소 저장 가드 (경고 표면
     expect(localStorage.getItem(LOCAL_BACKUP_KEY)).toBeNull()
   })
 
-  // P1-4 (2026-08-22): 초기화/재초기화 창(initializedRef=false)에는 어떤 입구로도 PATCH 하지 않는다 —
+  // 초기화/재초기화 창(initializedRef=false)에는 어떤 입구로도 PATCH 하지 않는다 —
   // 호스트 saveNow 가 캔버스 dispose~ready 사이에 오면 collectCanvasData 가 null/부분 배열을 만들어
   // 방금 복원한 서버 canvasData 를 되덮는다. 거부(false)이지 지연이 아니다.
   it('initializedRef=false 동안 saveNow 는 PATCH 없이 false 를 반환하고, true 가 되면 정상 저장한다', async () => {

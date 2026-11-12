@@ -1,4 +1,4 @@
-// parseColorValue 방어 회귀 테스트 (A1 적대 리뷰 MINOR-6).
+// parseColorValue 방어 회귀 테스트.
 // fabric Gradient 객체(colorStops 만 보유, r/g/b 없음)가 들어오면 종전엔
 // { r: undefined, ... } 를 통과시켜 호출처에서 "rgba(undefined,...)" fill 오염을 만들었다.
 // r/g/b 비숫자 시 null 을 반환해야 한다.

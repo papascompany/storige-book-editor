@@ -9,7 +9,7 @@ import {
 } from '@storige/types';
 
 export interface TemplateSetQueryParams {
-  /** P3b 테넌트 스위처 — 소유 site 필터(서버 TemplateSetQueryDto.siteId) */
+  /** 테넌트 스위처 — 소유 site 필터(서버 TemplateSetQueryDto.siteId) */
   siteId?: string;
   type?: TemplateSetType;
   categoryId?: string;
@@ -161,7 +161,7 @@ export const templateSetsApi = {
   /**
    * 반대 방향 세트 파생 생성 — 판형 W↔H 스왑 + 설정 복사, page류 템플릿만 비율 재배치 이월,
    * is_active=0(초안) 생성 즉시 원본과 페어링. 응답 = 새로 생성된 세트.
-   * [트랙 C] includeCover 시 표지(spread)도 면 단위 자동 변환 이월 — 응답 meta 로
+   * includeCover 시 표지(spread)도 면 단위 자동 변환 이월 — 응답 meta 로
    * 제외 사유(coverSkipped)·검수 노트(coverReviewNotes) 안내.
    */
   deriveOrientation: async (

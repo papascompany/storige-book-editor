@@ -3,7 +3,7 @@ import type { FontPlugin } from '@storige/canvas-core'
 import type Editor from '@storige/canvas-core'
 
 /**
- * 복원된 캔버스의 미등록 폰트를 기본 폰트로 정규화한다(2026-11-05).
+ * 복원된 캔버스의 미등록 폰트를 기본 폰트로 정규화한다.
  *
  * 임베드 세션·로컬 백업 복원은 `core.loadFromJSON`(순수 fabric 로드)을 써서 FontPlugin 의
  * 객체 폰트 적용(applyFontToObject)을 거치지 않는다. 그래서 저장본의 'Times New Roman' 같은

@@ -8,7 +8,7 @@ import { showToast } from '@/stores/useToastStore'
 vi.mock('@/stores/useToastStore', () => ({ showToast: vi.fn() }))
 
 /**
- * useFontSubstitutionToast (2026-11-05): FontPlugin 의 `fontSubstituted` 이벤트 → 안내 toast 브리지.
+ * useFontSubstitutionToast: FontPlugin 의 `fontSubstituted` 이벤트 → 안내 toast 브리지.
  * - 구독 시점에 FontPlugin 이 보관한 지난 대체 내역(ready 이전 로드분)을 재생한다
  * - 이후 이벤트는 요청 패밀리당 1회만 toast
  * - ready=false 또는 editor 없음이면 아무것도 하지 않는다

@@ -24,7 +24,7 @@ export interface TemplateSet {
   height: number;
   canAddPage: boolean;
   pageCountRange: number[];
-  /** S8: 내지 페이지 증감 단위 (null=제약 없음) */
+  /** 내지 페이지 증감 단위 (null=제약 없음) */
   pageStep?: number | null;
   /** 첨부 내지 PDF 쪽수를 pageStep 배수로 빈 페이지 채움 (opt-in) */
   padToPageStep?: boolean;

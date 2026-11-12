@@ -25,7 +25,7 @@ import {
 } from './calendarRehydrateAll'
 
 /**
- * P1-d 캘린더 (2026-10-17): 전 캔버스 그리드 재합성 + dirty 마킹, 세션 metadata.calendar 판독/복원/동봉.
+ * 캘린더: 전 캔버스 그리드 재합성 + dirty 마킹, 세션 metadata.calendar 판독/복원/동봉.
  * NULL 프로파일(legacy)이면 모두 no-op({}·0·false).
  */
 function calendarProfile(): ProductProfile {
@@ -150,7 +150,7 @@ describe('readCalendarSessionMeta', () => {
     })
   })
 
-  it('show.temporaryHolidays: 저장분 boolean 은 그대로, 없으면 fallback 값, 둘 다 없으면 키 생략(= false) (2026-10-17)', () => {
+  it('show.temporaryHolidays: 저장분 boolean 은 그대로, 없으면 fallback 값, 둘 다 없으면 키 생략(= false)', () => {
     const base = { startYear: 2027, startMonth: 4, anniversaries: [] }
     expect(readCalendarSessionMeta({ calendar: { ...base, show: { holidays: true, lunar: false, solarTerms: false, temporaryHolidays: true } } }, fallback)?.show)
       .toEqual({ holidays: true, lunar: false, solarTerms: false, temporaryHolidays: true })
@@ -179,7 +179,7 @@ describe('restoreCalendarSessionMeta / calendarSessionMetadataFields', () => {
     expect(calendarSessionMetadataFields()).toEqual({ metadata: { productProfile: profile, calendar: savedMeta } })
   })
 
-  it('캘린더 세트: setShow({ temporaryHolidays }) 가 저장 payload metadata.calendar.show 에 실린다 (2026-10-17)', () => {
+  it('캘린더 세트: setShow({ temporaryHolidays }) 가 저장 payload metadata.calendar.show 에 실린다', () => {
     const profile = calendarProfile()
     useSettingsStore.getState().setProductProfile(profile)
     useCalendarStore.getState().setFromProfile(profile)
@@ -199,7 +199,7 @@ describe('restoreCalendarSessionMeta / calendarSessionMetadataFields', () => {
 })
 
 /**
- * T2 그리드·기념일 안전성 (2026-10-22): 복원은 **비파괴** — 같은 날짜 기념일(저장분·런처 입력)을 삭제하지 않고
+ * 그리드·기념일 안전성: 복원은 **비파괴** — 같은 날짜 기념일(저장분·런처 입력)을 삭제하지 않고
  * 그대로 복원하고 console.warn 1회만 남긴다. 거부는 store add/update(편집 시점)에서만.
  */
 describe('restoreCalendarSessionMeta — 같은 날짜 기념일 비파괴 복원', () => {
@@ -249,10 +249,10 @@ describe('restoreCalendarSessionMeta — 같은 날짜 기념일 비파괴 복�
 })
 
 /**
- * T3b 연달력 (2026-10-24): 판독기는 `show.yearTitle`(boolean)과 정책 허용 폭 안의 `yearDeltas` 를 보존한다.
+ * 연달력: 판독기는 `show.yearTitle`(boolean)과 정책 허용 폭 안의 `yearDeltas` 를 보존한다.
  * 정책(`calendar.yearPolicy.select`)이 없으면 `yearDeltas` 는 버린다. 킬스위치는 판독·동봉 경로를 바꾸지 않는다.
  */
-describe('readCalendarSessionMeta — 연달력 show.yearTitle·yearDeltas (T3b)', () => {
+describe('readCalendarSessionMeta — 연달력 show.yearTitle·yearDeltas', () => {
   const fallback: CalendarSessionMeta = {
     startYear: 2027,
     startMonth: 1,
@@ -289,7 +289,7 @@ describe('readCalendarSessionMeta — 연달력 show.yearTitle·yearDeltas (T3b)
   })
 })
 
-describe('restoreCalendarSessionMeta — 연달력 보존·킬스위치 (T3b)', () => {
+describe('restoreCalendarSessionMeta — 연달력 보존·킬스위치', () => {
   function yearProfile(): ProductProfile {
     const p = calendarProfile()
     return { ...p, calendar: { ...p.calendar!, yearPolicy: { select: { minDelta: 0, maxDelta: 1 } } } }
@@ -335,7 +335,7 @@ describe('restoreCalendarSessionMeta — 연달력 보존·킬스위치 (T3b)', 
   })
 })
 
-describe('readCalendarSessionMeta — 잡절 show.minorTerms 재오픈 보존 (T4 v1.27)', () => {
+describe('readCalendarSessionMeta — 잡절 show.minorTerms 재오픈 보존 (v1.27)', () => {
   it('저장분 minorTerms boolean 은 재오픈 뒤 스토어·저장 payload 에 그대로, 형식 불량은 fallback, 둘 다 없으면 키 생략(= 끔)', () => {
     const profile = calendarProfile()
     useSettingsStore.getState().setProductProfile(profile)

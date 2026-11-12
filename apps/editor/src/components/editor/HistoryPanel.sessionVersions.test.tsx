@@ -5,7 +5,7 @@ import type { EditSessionVersionSummary } from '@/api/edit-sessions'
 import { useSaveStore } from '@/stores/useSaveStore'
 
 /**
- * P1-4 (2026-08-22): 임베드 세션 버전 이력 패널 + "여기로 복원".
+ * 임베드 세션 버전 이력 패널 + "여기로 복원".
  * - 소스 주입 시 목록을 최신순으로 보여주고(사유 배지·페이지 감소 문구), 레거시 sessionsApi 는 호출하지 않는다.
  * - 복원 = 확인 단계 → restore 콜백 → 성공 토스트 + 팝오버 닫힘 / 실패 토스트 + 상태 원복.
  */
@@ -60,7 +60,7 @@ async function openPanel() {
   await screen.findByTestId('session-versions')
 }
 
-describe('HistoryPanel — 임베드 세션 버전 (P1-4)', () => {
+describe('HistoryPanel — 임베드 세션 버전', () => {
   beforeEach(() => {
     showToast.mockReset()
     legacyList.mockReset()

@@ -1,5 +1,5 @@
 /**
- * X1 (2026-09-30): TrimBox 크롭 정규화 spec.
+ * TrimBox 크롭 정규화 spec.
  *
  * - planTrimBoxCrop 순수 단위(A/B/4mm/C·stale·회전·UserUnit·editSize·주문 bleed)
  * - normalizeTrimBoxFile(qpdf) / normalizeTrimBoxPdfDoc(pdf-lib) 결과 박스 수치 동등성, 원본 불변, 멱등
@@ -83,7 +83,7 @@ const M4_PAGE: PageSpec = {
   trim: mmBox(4, 4, 210, 297),
   bleed: mmBox(0, 0, 218, 305),
 };
-/** 사방 4mm 여백 + BleedBox 없음(CTO X1-R2 기대 결과 대상) */
+/** 사방 4mm 여백 + BleedBox 없음 */
 const M4_NO_BLEED_PAGE: PageSpec = { media: M4_PAGE.media, trim: M4_PAGE.trim };
 /** 도련만 있는 정상 파일(사방 bleedMm, TrimBox 명시) — BleedBox=MediaBox 또는 부재 */
 const bleedOnly = (bleedMm: number, withBleedBox: boolean): PageSpec => ({
@@ -199,7 +199,7 @@ const cfg = VALIDATION_CONFIG as unknown as {
 };
 
 /**
- * API ↔ worker 계약 fixture — L-A1 spec(생성 결과 deep-equal)과 같은 JSON 리터럴.
+ * API ↔ worker 계약 fixture — API 쪽 spec(생성 결과 deep-equal)과 같은 JSON 리터럴.
  * 키 이름·값 형태가 바뀌면 양쪽 spec 이 함께 실패한다.
  */
 const CONTRACT_FIXTURE_TEMPLATE_SET =
@@ -220,7 +220,7 @@ const EDITOR_TRIM_SIZE_WITH_TRIMBOX_PAGE: PageSpec = {
   trim: mmBox(0, 0, 210, 297),
 };
 
-describe('X1 TrimBox 크롭 정규화', () => {
+describe('TrimBox 크롭 정규화', () => {
   let tmpDir: string;
   let seq = 0;
   const writePdf = async (pages: PageSpec[]): Promise<string> => {
@@ -306,7 +306,7 @@ describe('X1 TrimBox 크롭 정규화', () => {
       expect(planTrimBoxCrop(boxes(spec))).toEqual({ action: 'none', reason });
     });
 
-    it('편집기 P3 산출물(bleedMm 5: MediaBox=BleedBox=작업사이즈 220x307, TrimBox 재단) → none', () => {
+    it('편집기 산출물(bleedMm 5: MediaBox=BleedBox=작업사이즈 220x307, TrimBox 재단) → none', () => {
       expect(planTrimBoxCrop(boxes(bleedOnly(5, true))).action).toBe('none');
     });
 
@@ -340,7 +340,7 @@ describe('X1 TrimBox 크롭 정규화', () => {
       const m3: PageSpec = { media: mmBox(0, 0, 216, 303), trim: mmBox(3, 3, 210, 297), bleed: mmBox(0, 0, 216, 303) };
       expect(planTrimBoxCrop(boxes(m3))).toEqual({ action: 'none', reason: 'noSlugMargin' });
       expect(planTrimBoxCrop(boxes(M4_PAGE))).toEqual({ action: 'none', reason: 'noSlugMargin' });
-      // X1-R2 기대 결과: 사방 4mm·BleedBox 없음 → 합성 크롭 없음(원본 박스 유지)
+      // 기대 결과: 사방 4mm·BleedBox 없음 → 합성 크롭 없음(원본 박스 유지)
       expect(planTrimBoxCrop(boxes(M4_NO_BLEED_PAGE))).toEqual({ action: 'none', reason: 'noSlugMargin' });
     });
 
@@ -435,7 +435,7 @@ describe('X1 TrimBox 크롭 정규화', () => {
     });
   });
 
-  describe('evaluateTrimSizeBasis (판정 공용 함수, CTO X1-R2)', () => {
+  describe('evaluateTrimSizeBasis (판정 공용 함수)', () => {
     /** 주문 210x297 · bleed 1 (B_order = 1) */
     const base = {
       pageCount: 2,
@@ -932,10 +932,10 @@ describe('X1 TrimBox 크롭 정규화', () => {
     it('pdf-lib 병합 경로 — 파일 A → 210x297(B=0 크롭)', async () => {
       await run(false);
     });
-    it('X1-R2 파일 B(BleedBox=trim+3) → 합성 산출 216x303(선언 도련 3 크롭), TrimBox 중앙', async () => {
+    it('파일 B(BleedBox=trim+3) → 합성 산출 216x303(선언 도련 3 크롭), TrimBox 중앙', async () => {
       await run(false, B_PAGE, { width: 216, height: 303 });
     });
-    it('X1-R2 사방 4mm·BleedBox 없음 → 크롭 없음: 원본 218x305·내지 입력 바이트 불변, TrimBox 중앙 보존', async () => {
+    it('사방 4mm·BleedBox 없음 → 크롭 없음: 원본 218x305·내지 입력 바이트 불변, TrimBox 중앙 보존', async () => {
       const r = await run(false, M4_NO_BLEED_PAGE, { width: 218, height: 305 });
       expect(sha256(r.sourceContentPath)).toBe(r.before);
     });
@@ -1101,7 +1101,7 @@ describe('X1 TrimBox 크롭 정규화', () => {
       });
     });
 
-    it('편집기 P3 산출물(작업사이즈 220x307) + 템플릿 도련 5 → none(targetEqualsMedia)', () => {
+    it('편집기 산출물(작업사이즈 220x307) + 템플릿 도련 5 → none(targetEqualsMedia)', () => {
       expect(planTrimBoxCrop(boxes(bleedOnly(5, true)), ctxOf(210, 297, 5))).toEqual({
         action: 'none',
         reason: 'targetEqualsMedia',
@@ -1362,7 +1362,7 @@ describe('X1 TrimBox 크롭 정규화', () => {
       await expectContent216(r.contentPath as string, false);
     });
 
-    it('편집기 P3 패턴 + 템플릿 도련 5 → 내지 입력 바이트 불변', async () => {
+    it('편집기 산출 패턴 + 템플릿 도련 5 → 내지 입력 바이트 불변', async () => {
       const { r, before } = await runCtx(false, bleedOnly(5, true), {
         ...ORDER_CTX_210_B3,
         bleedMm: 5,

@@ -62,13 +62,13 @@ export const MainLayout = () => {
     },
   ];
 
-  // P3a 멀티테넌시 — 전역 전용 메뉴(운영자 관리·사이트 관리·저장소 설정) 게이팅.
+  // 멀티테넌시 — 전역 전용 메뉴(운영자 관리·사이트 관리·저장소 설정) 게이팅.
   // user.role 이 있고 전역 admin 이 아니면 숨긴다(사이트 운영자 SITE_ADMIN/SITE_MANAGER).
   // user 미하이드레이션(role 없음) 이면 기존처럼 노출(현 admin 회귀 방지).
   const hasRole = !!user?.role;
   const showGlobalOnly = !hasRole || isGlobalAdmin(user?.role);
 
-  // S2-4 파트너 포털 v0 — SITE_ADMIN 배정이 하나라도 있는 사이트 운영자에게만
+  // 파트너 포털 v0 — SITE_ADMIN 배정이 하나라도 있는 사이트 운영자에게만
   // "내 사이트" 노출. 전역 admin 은 기존 화면(기본설정) 그대로 — 메뉴 무변경.
   const showMySite =
     hasRole && !isGlobalAdmin(user?.role) && hasSiteAdminAssignment(user?.siteRoles);
@@ -291,7 +291,7 @@ export const MainLayout = () => {
               onClick={() => setCollapsed(!collapsed)}
               style={{ fontSize: '16px', width: 64, height: 64 }}
             />
-            {/* P3b — 테넌트 스위처(전역 admin 드롭다운 / 사이트 운영자 고정) */}
+            {/* 테넌트 스위처(전역 admin 드롭다운 / 사이트 운영자 고정) */}
             <TenantSwitcher />
           </Space>
 

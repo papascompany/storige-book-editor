@@ -1,12 +1,12 @@
 /**
- * P2-d 사진인화 (2026-10-19): 세션 복원·런처 선생성 세션의 캔버스 수 (D1 editor-flow-4 / D2 editor-flow-3·tests-2·contract-4).
+ * 사진인화: 세션 복원·런처 선생성 세션의 캔버스 수.
  *
  * 잠그는 것:
- *   D1-a 재오픈(canvasData 4장): 로더에 restoredInnerCanvasCount 3(= length−1, 로더가 kind 'photo-print' 면 +1 로 4장 시드)·
+ *   재오픈(canvasData 4장): 로더에 restoredInnerCanvasCount 3(= length−1, 로더가 kind 'photo-print' 면 +1 로 4장 시드)·
  *        photoItemCount 없음 → 로더가 4장을 시드하면 증설 없이 4장 전량 복원, "세션 복원 캔버스 부족" 오류 로그 없음.
- *   D1-b 심층방어: 로더가 3장만 시드해도 사진인화 세트는 addPage 로 1장 증설해 4장 전량 복원(오류 로그 없음).
+ *   심층방어: 로더가 3장만 시드해도 사진인화 세트는 addPage 로 1장 증설해 4장 전량 복원(오류 로그 없음).
  *        NULL 프로파일 단일 모드는 종전대로 증설 없이 오류 로그 1회(바이트 동일).
- *   D2   런처 선생성(canvasData 없음, metadata.items 2건): 로더에 photoItemCount 2 → 로더가 4장(2×stride) 시드 →
+ *   런처 선생성(canvasData 없음, metadata.items 2건): 로더에 photoItemCount 2 → 로더가 4장(2×stride) 시드 →
  *        스토어 items 2건(copies 5/2·옵션 보존, 잘림 없음) → 첫 저장(instance.save) payload 의 metadata.items 2건.
  *        items 가 없으면 photoItemCount 키 자체가 없다.
  *
@@ -199,7 +199,7 @@ async function flushInit() {
   })
 }
 
-describe('EmbeddedEditor — 사진인화 세션 복원·런처 items 캔버스 수 (D1/D2)', () => {
+describe('EmbeddedEditor — 사진인화 세션 복원·런처 items 캔버스 수', () => {
   const realParent = Object.getOwnPropertyDescriptor(window, 'parent')
   const parentPost = vi.fn()
   let errorSpy: ReturnType<typeof vi.spyOn>
@@ -243,7 +243,7 @@ describe('EmbeddedEditor — 사진인화 세션 복원·런처 items 캔버스 
 
   const deficitErrors = () => errorSpy.mock.calls.filter((c) => String(c[0]).includes('세션 복원 캔버스 부족'))
 
-  it('D1-a 재오픈 canvasData 4장: 로더 config restoredInnerCanvasCount 3·photoItemCount 없음, 로더가 4장 시드하면 증설 없이 4장 전량 복원·오류 로그 없음', async () => {
+  it('재오픈 canvasData 4장: 로더 config restoredInnerCanvasCount 3·photoItemCount 없음, 로더가 4장 시드하면 증설 없이 4장 전량 복원·오류 로그 없음', async () => {
     api.get.mockResolvedValue(session({ canvasData: canvasDataOf(4), metadata: { items: [{ copies: 5 }, { copies: 2 }] } }))
     contents.loadTemplateSetEditor.mockImplementation(async () => { seedLoader(photoProfile, 4) })
     renderEmbed()
@@ -260,7 +260,7 @@ describe('EmbeddedEditor — 사진인화 세션 복원·런처 items 캔버스 
     expect(usePhotoPrintStore.getState().items.map((i) => i.copies)).toEqual([5, 2])
   })
 
-  it('D1-b 심층방어: 로더가 3장만 시드해도 사진인화 세트는 addPage 1회로 4장 전량 복원(오류 로그 없음)', async () => {
+  it('심층방어: 로더가 3장만 시드해도 사진인화 세트는 addPage 1회로 4장 전량 복원(오류 로그 없음)', async () => {
     api.get.mockResolvedValue(session({ canvasData: canvasDataOf(4) }))
     contents.loadTemplateSetEditor.mockImplementation(async () => { seedLoader(photoProfile, 3) })
     renderEmbed()
@@ -272,7 +272,7 @@ describe('EmbeddedEditor — 사진인화 세션 복원·런처 items 캔버스 
     expect(deficitErrors()).toHaveLength(0)
   })
 
-  it('D1-b 대조(NULL 프로파일 단일 모드): 증설 없이 3장만 복원 + "세션 복원 캔버스 부족" 오류 로그 1회(종전 동작)', async () => {
+  it('대조(NULL 프로파일 단일 모드): 증설 없이 3장만 복원 + "세션 복원 캔버스 부족" 오류 로그 1회(종전 동작)', async () => {
     api.get.mockResolvedValue(session({ canvasData: canvasDataOf(4) }))
     contents.loadTemplateSetEditor.mockImplementation(async () => { seedLoader(null, 3) })
     renderEmbed()
@@ -284,7 +284,7 @@ describe('EmbeddedEditor — 사진인화 세션 복원·런처 items 캔버스 
     expect(deficitErrors()).toHaveLength(1)
   })
 
-  it('D2 런처 선생성(canvasData 없음, items 2건): 로더 config photoItemCount 2 → 4장 시드 → 스토어 items 2건(copies 5/2·옵션 보존) → 첫 저장 metadata.items 2건', async () => {
+  it('런처 선생성(canvasData 없음, items 2건): 로더 config photoItemCount 2 → 4장 시드 → 스토어 items 2건(copies 5/2·옵션 보존) → 첫 저장 metadata.items 2건', async () => {
     api.get.mockResolvedValue(
       session({ metadata: { items: [{ copies: 5 }, { copies: 2, border: 'white', fit: 'image-full', grayscale: true }] } }),
     )
@@ -312,7 +312,7 @@ describe('EmbeddedEditor — 사진인화 세션 복원·런처 items 캔버스 
     expect(payload.canvasData[0]).toEqual({ id: 'c0', props: core.extendFabricOption })
   })
 
-  it('D2 대조: metadata.items 없음 → 로더 config 에 photoItemCount 키 없음, 무편집 세션은 dirty 아님, 첫 저장은 프로파일 기본 항목(2장 = 1건)', async () => {
+  it('대조: metadata.items 없음 → 로더 config 에 photoItemCount 키 없음, 무편집 세션은 dirty 아님, 첫 저장은 프로파일 기본 항목(2장 = 1건)', async () => {
     api.get.mockResolvedValue(session())
     contents.loadTemplateSetEditor.mockImplementation(async () => { seedLoader(photoProfile, 2) })
     renderEmbed()

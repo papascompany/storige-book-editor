@@ -65,7 +65,7 @@ export enum WarningCode {
   FONT_NOT_EMBEDDED = 'FONT_NOT_EMBEDDED',
   /** 별색(Spot Color) 사용 감지 (주문 전 확인 권장) */
   SPOT_COLOR_DETECTED = 'SPOT_COLOR_DETECTED',
-  // ── C-2a: crop mark(재단 기하) 검증 — 전부 비차단 warning, error 승격 금지 ──
+  // ── crop mark(재단 기하) 검증 — 전부 비차단 warning, error 승격 금지 ──
   /** 재단 기하(TrimBox) 미선언 — 재단선 확인 불가(정보). cropMarkEnabled opt-in 잡 한정 */
   TRIMBOX_MISSING = 'TRIMBOX_MISSING',
   /** 선언된 TrimBox 크기가 주문 재단 사이즈와 불일치 */
@@ -73,7 +73,7 @@ export enum WarningCode {
   /** TrimBox↔MediaBox/BleedBox 블리드 기하 부정합 (TrimBox 이탈 또는 BleedBox 크기 불일치) */
   TRIMBOX_BLEED_INCONSISTENT = 'TRIMBOX_BLEED_INCONSISTENT',
   /**
-   * X1 (2026-09-30): 내지 판형을 MediaBox 가 아니라 전 페이지 명시 TrimBox(재단 크기)
+   * 내지 판형을 MediaBox 가 아니라 전 페이지 명시 TrimBox(재단 크기)
    * 기준으로 확인함 — 정보성·비차단(autoFixable=false). MediaBox 판정이 SIZE_MISMATCH 이고
    * 엄격 조건(전 페이지 명시 TrimBox ≈ 주문 재단, ⊂ MediaBox, 비회전, UserUnit 1)을
    * 만족할 때만 발행되며 이때 SIZE_MISMATCH 는 제거된다. 킬스위치 WORKER_TRIMBOX_SIZE_CHECK.
@@ -81,33 +81,33 @@ export enum WarningCode {
    */
   TRIMBOX_SIZE_BASIS = 'TRIMBOX_SIZE_BASIS',
   /**
-   * R-53(2026-07-23, bookmoa §3-1 완화 확정): 표지(cover)+무선/양장인데 책등 두께를
+   * 표지(cover)+무선/양장인데 책등 두께를
    * 해석하지 못해 표지 규격(전개폭) 검증을 생략함 — 비차단 고지. 단일 판형 SIZE 검증도
    * 함께 스킵(표지 폭은 W×2+spine 이라 단일 판형과 원리적으로 절대 불일치 → 오차단 방지).
    * details: { paperType?, binding, reason: 'UNMAPPED_PAPER'|'V1_FALLBACK'|'HARDCOVER_PAGE_RULE'|'NO_SPINE_PARAMS' }
    */
   SPINE_PARAMS_UNRESOLVED = 'SPINE_PARAMS_UNRESOLVED',
   /**
-   * R3 (2026-08-11): TAC(잉크총량) 한계 초과 — 비차단 warning 전용(GWG 2022 도 TAC 는
+   * TAC(잉크총량) 한계 초과 — 비차단 warning 전용(GWG 2022 도 TAC 는
    * warning 등급). 판정 기준은 GS ink_cov 의 **페이지 평균** 잉크량 합(c+m+y+k)이라
    * 국소 최대 TAC 와 다르다 — 페이지 평균이 한계를 넘으면 사실상 전면 과다잉크
    * (전면 리치블랙 배경 등)로, 오탐 없는 보수적 신호다. details.basis 참조.
    */
   INK_TAC_EXCEEDED = 'INK_TAC_EXCEEDED',
   /**
-   * R4a (2026-08-11): 주석/양식 필드 감지 — 비차단 warning. Link/Popup 제외 집계.
+   * 주석/양식 필드 감지 — 비차단 warning. Link/Popup 제외 집계.
    * GS 재증류 경로(pdfwrite)는 -dPreserveAnnots=false 로 자동 제거하지만,
    * 경량(qpdf) 병합·pass-through 경로에는 잔존할 수 있어 재업로드 권장 문구를 쓴다.
    */
   ANNOTATIONS_DETECTED = 'ANNOTATIONS_DETECTED',
   /**
-   * R4b (2026-08-11): 화이트 오버프린트 — 흰색 채움/획 + 오버프린트 ON 페인트.
+   * 화이트 오버프린트 — 흰색 채움/획 + 오버프린트 ON 페인트.
    * 인쇄 시 해당 객체 소멸(GWG R0007 텍스트=error 급 사고). 비차단 warning 이되
    * 문구는 소멸 위험을 명시. 검출은 QDF 연산자 스캔(오탐 0 방향 보수 판정).
    */
   WHITE_OVERPRINT_DETECTED = 'WHITE_OVERPRINT_DETECTED',
   /**
-   * R4b: 페이지 기하 이상(UserUnit≠1·Rotate≠0·CropBox≠MediaBox) — GWG R0002~R0006
+   * 페이지 기하 이상(UserUnit≠1·Rotate≠0·CropBox≠MediaBox) — GWG R0002~R0006
    * 슬라이스. Rotate/CropBox 는 재증류가 정규화하므로 정보성, UserUnit 은 스케일
    * 왜곡 위험 고지. details.issues 로 세분.
    */
@@ -200,26 +200,26 @@ export interface PdfMetadata {
    */
   ignoredStandardFonts?: string[];
   /**
-   * C-2a: 첫 페이지 TrimBox 크기(mm, 소수1자리) — TrimBox 명시 선언 시에만 기록.
-   * X1: crop mark 검증 수행 시 + TrimBox 기준 판형 통과(TRIMBOX_SIZE_BASIS) 시 기록.
+   * 첫 페이지 TrimBox 크기(mm, 소수1자리) — TrimBox 명시 선언 시에만 기록.
+   * crop mark 검증 수행 시 + TrimBox 기준 판형 통과(TRIMBOX_SIZE_BASIS) 시 기록.
    */
   trimBox?: { width: number; height: number };
-  /** C-2a: 재단 기하(TrimBox) 명시 선언 여부 — crop mark 검증 수행 시에만 기록 */
+  /** 재단 기하(TrimBox) 명시 선언 여부 — crop mark 검증 수행 시에만 기록 */
   hasCropMarkGeometry?: boolean;
   /**
    * 2026-11-11: crop mark 검증을 건너뛴 이유 — 양장 싸바리 전개 표지(`'HARDCOVER_WRAP'`: 사방 감싸기 여분이
    * 있어 재단 기하 개념이 없고 규격은 책등 전개식이 판정)일 때만 기록. 그 밖에는 키 없음(additive).
    */
   cropMarkSkipReason?: 'HARDCOVER_WRAP';
-  /** R3: 최대 페이지 평균 TAC(%) — ink_cov 측정 성공 시에만 기록 */
+  /** 최대 페이지 평균 TAC(%) — ink_cov 측정 성공 시에만 기록 */
   maxTacPercent?: number;
-  /** R3: 적용된 TAC 한계(%) — ink_cov 측정 성공 시에만 기록 */
+  /** 적용된 TAC 한계(%) — ink_cov 측정 성공 시에만 기록 */
   tacLimitPercent?: number;
-  /** R4a: 인쇄 유의 주석 수(Link/Popup 제외) — 검출 성공 시에만 기록 */
+  /** 인쇄 유의 주석 수(Link/Popup 제외) — 검출 성공 시에만 기록 */
   annotationCount?: number;
-  /** R4a: 양식(AcroForm) 필드 존재 여부 — 검출 성공 시에만 기록 */
+  /** 양식(AcroForm) 필드 존재 여부 — 검출 성공 시에만 기록 */
   hasAcroForm?: boolean;
-  /** R4b: 화이트 오버프린트 존재 여부 — 스캔 성공 시에만 기록 */
+  /** 화이트 오버프린트 존재 여부 — 스캔 성공 시에만 기록 */
   hasWhiteOverprint?: boolean;
 }
 
@@ -252,7 +252,7 @@ export interface ValidationOptions {
     };
     /** 주문 페이지 수 */
     pages: number;
-    /** 제본 방식 — R-44: bookmoa canonical hardcover/spiral additive('spring'=레거시 표기 보존) */
+    /** 제본 방식 — 파트너 사이트 canonical hardcover/spiral additive('spring'=레거시 표기 보존) */
     binding: 'perfect' | 'saddle' | 'spring' | 'spiral' | 'hardcover';
     /** 재단 여백 (mm) */
     bleed: number;
@@ -260,32 +260,32 @@ export interface ValidationOptions {
     paperThickness?: number;
     /**
      * 책등 폭 (mm) — API 가 /products/spine/calculate 로 재계산해 주입한 권위 값
-     * (R-44 injectServerSpine, spineSource='server'). 레거시 경로는 클라 계산값.
+     * (injectServerSpine, spineSource='server'). 레거시 경로는 클라 계산값.
      * 제공 시 표지 책등 검증이 이 값을 직접 사용. 미제공 시 paperThickness 로 fallback 재계산.
      */
     spineWidthMm?: number;
-    /** R-44: 내지 지종 라벨(감사·재계산 추적용 — 워커는 두께표를 직접 조회하지 않음) */
+    /** 내지 지종 라벨(감사·재계산 추적용 — 워커는 두께표를 직접 조회하지 않음) */
     paperType?: string;
     /**
-     * R3 (2026-08-11): TAC(잉크총량) 경고 한계(%) — API 가 지종별 값을 주입하는 자리
-     * (R-44 spineWidthMm 와 동일한 '서버 주입 권위값' 패턴 — 워커는 지종표를 직접
+     * TAC(잉크총량) 경고 한계(%) — API 가 지종별 값을 주입하는 자리
+     * (spineWidthMm 와 동일한 '서버 주입 권위값' 패턴 — 워커는 지종표를 직접
      * 조회하지 않는다). 미제공 시 env TAC_WARN_PERCENT → 기본 320(GWG SheetCMYK).
      */
     tacLimitPercent?: number;
-    /** R-44: 표지 spine 검증 허용오차(mm) 오버라이드. 미제공 시 env/기본값(2mm) */
+    /** 표지 spine 검증 허용오차(mm) 오버라이드. 미제공 시 env/기본값(2mm) */
     spineToleranceMm?: number;
-    /** R-44: spineWidthMm 출처('server'=API 재계산 주입) — details.spineSource 로 노출 */
+    /** spineWidthMm 출처('server'=API 재계산 주입) — details.spineSource 로 노출 */
     spineSource?: 'server' | 'client';
-    /** R-44: 서버 덮어쓰기 전 클라 원본(대조 계측) */
+    /** 서버 덮어쓰기 전 클라 원본(대조 계측) */
     clientSpineWidthMm?: number;
     /**
-     * R-53: API injectServerSpine 이 spine 미해석 사유를 스탬프(서버 전유 —
+     * API injectServerSpine 이 spine 미해석 사유를 스탬프(서버 전유 —
      * 'UNMAPPED_PAPER'=지종 미해석 404 / 'V1_FALLBACK'=legacy 두께만 보유).
      * SPINE_PARAMS_UNRESOLVED 경고 details.reason 으로 노출.
      */
     spineUnresolvedReason?: 'UNMAPPED_PAPER' | 'V1_FALLBACK';
     /**
-     * S6: 표지 레이아웃(additive). 'separate'=앞/뒤 낱장 2쪽 표지 → 단일 판형(W×H+도련)
+     * 표지 레이아웃(additive). 'separate'=앞/뒤 낱장 2쪽 표지 → 단일 판형(W×H+도련)
      * 검증, 책등·스프레드 기대치 생략. 미전송·'spread'·무효값=현행 스프레드 판정 경로.
      */
     coverLayout?: 'spread' | 'separate';
@@ -294,23 +294,23 @@ export interface ValidationOptions {
     /** 날개 한쪽 폭 (mm) */
     wingWidthMm?: number;
     /**
-     * 사방(per-edge) 블리드 mm — 상품별 설정값(P1). P4: validatePageSize 가
+     * 사방(per-edge) 블리드 mm — 상품별 설정값. validatePageSize 가
      * 작업사이즈 비교 시 사용(workSize 미제공 시 trim + bleedMm*2 로 파생).
      */
     bleedMm?: number;
-    /** 재단선 마커 표기 ON/OFF (P1). */
+    /** 재단선 마커 표기 ON/OFF. */
     cropMarkEnabled?: boolean;
     /**
-     * 고객 업로드 PDF 사이즈 검증 허용오차(mm) — P4 validatePageSize tolerance.
+     * 고객 업로드 PDF 사이즈 검증 허용오차(mm) — validatePageSize tolerance.
      * 미제공 시 1mm(현행 기본) 유지. ⚠️ 0.2mm 로 좁히지 말 것(단계 인하는 별도).
      */
     sizeToleranceMm?: number;
-    /** 재단(완성) 사이즈(mm) — P1. 미제공 시 size 를 재단으로 간주. */
+    /** 재단(완성) 사이즈(mm) — 미제공 시 size 를 재단으로 간주. */
     trimSize?: { width: number; height: number };
-    /** 작업 사이즈(재단 + bleedMm*2, mm) — P1. validatePageSize 매칭 케이스에 사용. */
+    /** 작업 사이즈(재단 + bleedMm*2, mm) — validatePageSize 매칭 케이스에 사용. */
     workSize?: { width: number; height: number };
     /**
-     * 주문 의도 페이지 방향 (R3). 'portrait'/'landscape' 명시 시 그와 다른 페이지를
+     * 주문 의도 페이지 방향. 'portrait'/'landscape' 명시 시 그와 다른 페이지를
      * ORIENTATION_MISMATCH 로 1건 집계. 미제공/'auto' 면 혼재일 때만
      * MIXED_PAGE_ORIENTATION 으로 1건 집계(단일 방향이면 경고 없음 — 가로책 오탐 해소).
      */
@@ -338,7 +338,7 @@ export interface ValidationOptions {
      */
     pageStep?: number;
     /**
-     * 2026-10-17 P1-e(상품 프로파일): 표지 책등 없음(additive). 'none' = cover 슬롯이 책등 없는 단일 판형(캘린더
+     * 2026-10-17(상품 프로파일): 표지 책등 없음(additive). 'none' = cover 슬롯이 책등 없는 단일 판형(캘린더
      * 단일 PDF 등) → coverSpineAuthoritative 게이트 false(binding 무관)로 validatePageSize/validateBleed 수행,
      * validateSpine 생략(SPINE_SIZE_MISMATCH·SPINE_PARAMS_UNRESOLVED·metadata.spineSize 없음).
      * 미제공·무효값 = 현행(binding 기준 스프레드 표지) 경로 byte-identical.
@@ -452,7 +452,7 @@ export interface InkCoverageResult {
 }
 
 // ============================================================
-// R3 (2026-08-11): TAC(잉크총량) 측정 결과
+// TAC(잉크총량) 측정 결과
 // ============================================================
 
 /**
@@ -468,7 +468,7 @@ export interface InkTacPageResult {
 }
 
 // ============================================================
-// R4a (2026-08-11): 주석/양식 검출 결과
+// 주석/양식 검출 결과
 // ============================================================
 
 /** 주석/양식 검출 결과 (검출 실패 시 결과 자체가 부재 — null) */
@@ -483,7 +483,7 @@ export interface AnnotationDetectionResult {
   hasAcroForm: boolean;
 }
 
-/** R4b: 페이지 기하 이상 집계 (검출 실패 시 null) */
+/** 페이지 기하 이상 집계 (검출 실패 시 null) */
 export interface PageGeometryResult {
   /** /UserUnit ≠ 1 페이지(1-base) — 페이지 스케일 왜곡(GWG error 급) */
   userUnitPages: number[];
@@ -493,7 +493,7 @@ export interface PageGeometryResult {
   cropBoxMismatchPages: number[];
 }
 
-/** R4b: 화이트 오버프린트 스캔 결과 (스캔 실패/생략 시 null) */
+/** 화이트 오버프린트 스캔 결과 (스캔 실패/생략 시 null) */
 export interface WhiteOverprintResult {
   /** 흰색 채움/획 + 오버프린트 ON 페인트 존재 여부 */
   hasWhiteOverprint: boolean;
@@ -530,7 +530,7 @@ export interface ColorModeResult {
   /** 2차 GS inkcov 결과 (선택적) */
   inkCoverage?: InkCoverageResult;
   /**
-   * R3: GS ink_cov TAC 측정 결과 (선택적 — inkcov 와 같은 게이트에서만 시도,
+   * GS ink_cov TAC 측정 결과 (선택적 — inkcov 와 같은 게이트에서만 시도,
    * 측정 실패는 null 흡수 후 부재). additive — 기존 소비자 무영향.
    */
   inkTac?: InkTacResult;

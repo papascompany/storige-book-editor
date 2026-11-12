@@ -12,7 +12,7 @@ import { workSize } from '../../components/formatPresetHelpers';
 
 const { Option } = Select;
 
-// 템플릿 타입 (인쇄 워크플로우 v1 Phase 3, 2026-05-19: endpaper 추가)
+// 템플릿 타입 (endpaper = 면지)
 type TemplateType = 'wing' | 'cover' | 'spine' | 'page' | 'spread' | 'endpaper';
 
 // PostMessage 이벤트 타입
@@ -565,8 +565,8 @@ export const TemplateEditor = () => {
             }
           </Form.Item>
 
-          {/* 판형 정본은 DB(format_presets) — 하드코딩 규격표 제거(판형 프리셋 트랙, 2026-07-14).
-              G-E 규격표는 '판형 관리' 화면 + 프리셋 픽커로 이관. */}
+          {/* 판형 정본은 DB(format_presets) — 이 화면에는 하드코딩 규격표를 두지 않는다.
+              규격표는 '판형 관리' 화면 + 프리셋 픽커에서 다룬다. */}
           <div style={{ color: '#888', fontSize: 12, marginTop: 8 }}>
             판형은 위 프리셋에서 선택하거나 직접 입력하세요. (프리셋 주입은 재단 기준, 작업 = 재단 +
             사방 도련)

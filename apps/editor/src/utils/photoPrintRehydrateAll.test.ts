@@ -28,7 +28,7 @@ import {
 } from './photoPrintRehydrateAll'
 
 /**
- * P2-d 사진인화 (2026-10-19): 세션 메타 동봉/복원 배선 — 사진인화 세트가 아니면 전부 {}·false·0(payload 키 집합 불변).
+ * 사진인화: 세션 메타 동봉/복원 배선 — 사진인화 세트가 아니면 전부 {}·false·0(payload 키 집합 불변).
  */
 const photoProfile: ProductProfile = {
   version: 1,
@@ -165,7 +165,7 @@ describe('applyAllPhotoPrint', () => {
   })
 })
 
-describe('bindPhotoPrintCanvasEvents (D5 / serialization-6 — undo/redo·사진 삭제 뒤 apply)', () => {
+describe('bindPhotoPrintCanvasEvents (undo/redo·사진 삭제 뒤 apply)', () => {
   type Handler = (e?: { target?: { extensionType?: string } }) => void
   function eventCanvas(id: string) {
     const handlers: Record<string, Handler[]> = {}

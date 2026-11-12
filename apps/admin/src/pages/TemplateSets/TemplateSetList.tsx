@@ -57,7 +57,7 @@ export const TemplateSetList = () => {
   const [searchText, setSearchText] = useState('');
   const [selectedType, setSelectedType] = useState<TemplateSetType | undefined>();
   const { accessToken } = useAuthStore();
-  // P3b — 테넌트 스위처 컨텍스트: 전역 admin 은 선택 site 필터, 운영자는 자동 고정.
+  // 테넌트 스위처 컨텍스트: 전역 admin 은 선택 site 필터, 운영자는 자동 고정.
   // (운영자는 서버 applySiteScope 가 권위 — 이 파라미터는 뷰 필터일 뿐이다.)
   const currentSiteId = useAuthStore((s) => s.currentSiteId) ?? undefined;
 
@@ -141,7 +141,7 @@ export const TemplateSetList = () => {
    * - 저장(편집완료) 시 각 페이지 fabric canvas → 해당 templates.canvas_data 로 PATCH 처리
    *   (editor_designs 에 작품으로 저장하던 기존 admin 흐름과 분리)
    *
-   * 고객(PHP/bookmoa) 흐름은 이 파라미터를 보내지 않으므로 영향 없음.
+   * 고객(외부 쇼핑몰) 흐름은 이 파라미터를 보내지 않으므로 영향 없음.
    */
   const handleEditTemplateSet = (id: string) => {
     // 상대 경로인 경우 현재 origin을 base로 사용

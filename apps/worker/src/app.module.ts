@@ -34,7 +34,7 @@ import { resolveDevLogTransport } from './config/dev-log-transport';
       ],
     }),
 
-    // P2-10 구조화 로깅 (Pino → JSON stdout → Promtail → Loki)
+    // 구조화 로깅 (Pino → JSON stdout → Promtail → Loki)
     // Worker는 HTTP 서버가 거의 없고 잡 처리 중심이라 autoLogging 비활성
     LoggerModule.forRoot({
       pinoHttp: {
@@ -71,7 +71,7 @@ import { resolveDevLogTransport } from './config/dev-log-transport';
           host: config.get('REDIS_HOST', 'localhost'),
           port: config.get('REDIS_PORT', 6379),
         },
-        // P0-5(2026-06-22): 대형 PDF 합성/변환이 Bull 기본 lockDuration(30s)을 초과하면
+        // 대형 PDF 합성/변환이 Bull 기본 lockDuration(30s)을 초과하면
         // stalled 로 오판돼 잡이 중복 재실행되고 DB 상태(PROCESSING)·콜백이 경합한다.
         // lock 을 10분으로 늘리고 주기 갱신해 애초에 stalled 판정을 막는다.
         // ⚠️ maxStalledCount 는 0 금지(0=stalled 1회에 즉시 영구 FAILED → 정상완료 잡 오탐).

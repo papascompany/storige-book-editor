@@ -1,5 +1,5 @@
 /**
- * B10: 편집완료 진행 오버레이(단계·캔버스 진행 수) + 이탈 경고 가드(arm/disarm 동기 등록·해제).
+ * 편집완료 진행 오버레이(단계·캔버스 진행 수) + 이탈 경고 가드(arm/disarm 동기 등록·해제).
  */
 import { describe, it, expect, vi } from 'vitest'
 import { render, screen } from '@testing-library/react'

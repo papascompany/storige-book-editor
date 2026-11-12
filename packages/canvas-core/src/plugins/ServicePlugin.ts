@@ -9,7 +9,7 @@ import { dlog } from '../utils/debugLog'
 import { computePdfPageGeometry } from './pdfPageGeometry'
 
 /**
- * P1 캘린더 (2026-10-17): 상품 프로파일 세트 전용 PDF export 옵션(additive).
+ * 상품 프로파일 세트 전용 PDF export 옵션(additive).
  * 모든 필드 미전달/false 면 종전 코드 경로·바이트와 동일하다(프로파일 NULL 세트 불변).
  * 워커 preflight 경고(FONT_NOT_EMBEDDED / TRANSPARENCY_DETECTED)의 편집기 측 원인을 제거한다.
  */
@@ -67,7 +67,7 @@ class ServicePlugin extends PluginBase {
   }
 
   /**
-   * P1 캘린더 (2026-10-17): 캔버스 객체(그룹 하위 재귀, excludeFromExport 제외)의 fill/stroke 'transparent' 를
+   * 캔버스 객체(그룹 하위 재귀, excludeFromExport 제외)의 fill/stroke 'transparent' 를
    * ''(fabric getSvgStyles → `fill: none`) 로 치환하고, 원래 값으로 되돌리는 함수를 반환한다.
    * svg2pdf 는 `none` 을 fill=null 로 읽어 ExtGState(`/ca`·`/CA`) 없이 그리기만 생략한다(fillOrStroke → discardPath).
    * 치환 대상은 'transparent' 문자열만 — rgba(…,0)·opacity<1 등 사용자 지정 투명도는 건드리지 않는다.
@@ -99,15 +99,15 @@ class ServicePlugin extends PluginBase {
   }
 
   /**
-   * P0-3 (2026-06-02): PDF 합성 시 이미지 다운스케일 상한(px).
+   * PDF 합성 시 이미지 다운스케일 상한(px).
    * 종전 1280/1536/1600/2048 캡은 300 DPI A4(≈2480×3508px) 미달 → 인쇄 부적합 화질.
-   * 300 DPI × A4 장변(297mm) ≈ 3508px 로 통일하여 원본급 화질 보존(요구 #11·#12).
+   * 300 DPI × A4 장변(297mm) ≈ 3508px 로 통일하여 원본급 화질 보존.
    * (svg2pdf callstack 회피용 timeout/try-catch/null 폴백은 기존대로 유지.)
    */
   private static readonly PRINT_MAX_IMAGE_DIMENSION = 3508
 
   /**
-   * R6 (2026-08-18): PDF 저장 전 글리프 검증 대상 텍스트 수집.
+   * PDF 저장 전 글리프 검증 대상 텍스트 수집.
    *
    * export 경로(_prepareObjectsForSvgExport 의 !excludeFromExport 게이트 + fabric toSVG 의
    * excludeFromExport 제외)와 **동일한 게이트**를 적용한다 — 출력물에 실리지 않는 객체의
@@ -173,9 +173,9 @@ class ServicePlugin extends PluginBase {
       height: number
       cutSize: number
       printSize?: { width: number; height: number }
-      /** 사방(per-edge) 블리드 mm. 작업사이즈 = 재단 + bleedMm*2. (P3, 2026-06-10) */
+      /** 사방(per-edge) 블리드 mm. 작업사이즈 = 재단 + bleedMm*2. */
       bleedMm?: number
-      /** 재단선(crop mark) 마커 표기 ON/OFF. (P3, 2026-06-10) */
+      /** 재단선(crop mark) 마커 표기 ON/OFF. */
       cropMarkEnabled?: boolean
     },
     cutLine?: fabric.Object,
@@ -326,9 +326,9 @@ class ServicePlugin extends PluginBase {
       height: number
       cutSize: number
       printSize?: { width: number; height: number }
-      /** 사방(per-edge) 블리드 mm. 작업사이즈 = 재단 + bleedMm*2. (P3, 2026-06-10) */
+      /** 사방(per-edge) 블리드 mm. 작업사이즈 = 재단 + bleedMm*2. */
       bleedMm?: number
-      /** 재단선(crop mark) 마커 표기 ON/OFF. (P3, 2026-06-10) */
+      /** 재단선(crop mark) 마커 표기 ON/OFF. */
       cropMarkEnabled?: boolean
       /** 사방(per-edge) 싸바리 여분 mm. 양수일 때 페이지 = 콘텐츠 + wrapMm*2 (computePdfPageGeometry). */
       wrapMm?: number
@@ -699,9 +699,9 @@ class ServicePlugin extends PluginBase {
       height: number
       cutSize: number
       printSize?: { width: number; height: number }
-      /** 사방(per-edge) 블리드 mm. 작업사이즈 = 재단 + bleedMm*2. (P3, 2026-06-10) */
+      /** 사방(per-edge) 블리드 mm. 작업사이즈 = 재단 + bleedMm*2. */
       bleedMm?: number
-      /** 재단선(crop mark) 마커 표기 ON/OFF. (P3, 2026-06-10) */
+      /** 재단선(crop mark) 마커 표기 ON/OFF. */
       cropMarkEnabled?: boolean
       /** 사방(per-edge) 싸바리 여분 mm. 양수일 때 페이지 = 콘텐츠 + wrapMm*2 (computePdfPageGeometry). */
       wrapMm?: number
@@ -734,7 +734,7 @@ class ServicePlugin extends PluginBase {
             const allMissingChars: Map<string, string[]> = new Map() // 폰트명 -> 미지원 문자 배열
 
             // 1) 폰트별 사용 문자 집합 수집(중복 제거) — 텍스트마다 검증하던 것을 폰트당 1회로 축소
-            // R6: 수집기는 export 게이트(excludeFromExport/meta.system) 적용 static 헬퍼로 일원화.
+            // 수집기는 export 게이트(excludeFromExport/meta.system) 적용 static 헬퍼로 일원화.
             const fontCharSets = new Map<string, Set<string>>()
             for (const canvas of canvases) {
               const textObjects: fabric.Object[] = []
@@ -936,15 +936,15 @@ class ServicePlugin extends PluginBase {
             // PDF 저장 전 모든 객체에 순서 정보 부여
             this._assignOrderToAllObjects(canvas)
 
-            // B1 (2026-07-04): printExclude===true 객체는 PDF 출력에서만 제외.
+            // printExclude===true 객체는 PDF 출력에서만 제외.
             // 반드시 _prepareSaveOperation(내부에서 _prepareObjectsForSvgExport 가 텍스트를
             // 벡터화·원본 제거) **이전**에 세팅해야 한다 — 벡터화 산출 Path Group 은 커스텀
             // 속성을 복사하지 않으므로, 이후에 세팅하면 printExclude 텍스트가 PDF 에 그대로
-            // 인쇄된다(적대 리뷰 critical). 이 위치면 !excludeFromExport 게이트로 벡터화/
+            // 인쇄된다. 이 위치면 !excludeFromExport 게이트로 벡터화/
             // 평탄화 비용까지 스킵되고 toSVG 도 자동 제외한다.
             // 사진틀(frame)에 지정된 경우 채워진 사진(fillImage: parentLayerId/frameRef 연결)도
             // 동반 제외 — 프레임만 빠지고 사진이 인쇄되는 절반 동작 방지.
-            // 원복은 originalState(위 :833, 플래그 세팅 전 toJSON) 전체 loadFromJSON 복원이
+            // 원복은 originalState(플래그 세팅 전 toJSON) 전체 loadFromJSON 복원이
             // 성공/오류 양 경로에서 수행되므로 별도 해제 불필요(moldIcon 과 동일 패턴).
             {
               const allObjs = canvas.getObjects() as fabric.Object[]
@@ -1108,7 +1108,7 @@ class ServicePlugin extends PluginBase {
                       viewBoxY += (svgHeight - backgroundHeight)
                     }
                   }
-                  // ── #2 export 방어 (2026-06-10, CTO 감사 §4-(라)-2) ──────────────────
+                  // ── export 방어 ──────────────────
                   // canvas.clipPath 가 workspace 사각형이면 toSVG 출력이 workspace 경계
                   // (trim+cutSize px)로 클립된다. 게이트 ON(useEditSize) 또는 싸바리 출력(wrapMm) 시
                   // viewBox 는 renderSize 로 확장되므로, 화면 cutSize 가 그보다 작은
@@ -1225,7 +1225,7 @@ class ServicePlugin extends PluginBase {
                     }
                   }
 
-                  // ── P3: 코너 재단 마커 + TrimBox/BleedBox 등록 (게이트 ON 일 때만, 싸바리 출력 제외) ──
+                  // ── 코너 재단 마커 + TrimBox/BleedBox 등록 (게이트 ON 일 때만, 싸바리 출력 제외) ──
                   // svg2pdf 변환 직후, 현재 페이지에 마커를 그리고 박스를 등록한다.
                   // 실패해도 throw 금지(현행 출력 보호) — try/catch 로 감싼다.
                   if (useEditSize) {
@@ -1415,7 +1415,7 @@ class ServicePlugin extends PluginBase {
   }
 
   /**
-   * P3 (2026-06-10): 작업사이즈 PDF 페이지에 코너 재단 마커(crop marks)를 그리고
+   * 작업사이즈 PDF 페이지에 코너 재단 마커(crop marks)를 그리고
    * TrimBox/BleedBox/MediaBox 를 등록한다. 게이트 ON(cropMarkEnabled && bleedMm>0) 일 때만 호출.
    *
    * 좌표계: jsPDF 기본 = 좌상단 원점, mm 단위(이 PDF 는 'mm' 로 생성). 페이지=작업사이즈.
@@ -2000,7 +2000,7 @@ class ServicePlugin extends PluginBase {
   }
 
   /**
-   * Phase 2 — PNG 액자형 사진틀의 fillImage 를 창 모양으로 평탄화(raster)하여 in-place 치환.
+   * PNG 액자형 사진틀의 fillImage 를 창 모양으로 평탄화(raster)하여 in-place 치환.
    *
    * inverted/absolutePositioned image clipPath 는 fabric toSVG 에서 누락되어(svg2pdf 가 image
    * clipPath 미지원) PDF 에서 사진이 사라진다. fabric 의 raster 렌더는 image clipPath 를 정상
@@ -2190,7 +2190,7 @@ class ServicePlugin extends PluginBase {
 
         promises.push(promise)
       }
-      // Phase 2 (2026-06-16): PNG 액자형 사진틀 평탄화.
+      // PNG 액자형 사진틀 평탄화.
       // PNG 프레임에 채운 사진(fillImage)은 clipPath 가 inverted/absolutePositioned image 인데,
       // fabric toSVG 는 image clipPath 를 표현하지 못해(빈 클립) PDF 에서 사진이 사라진다.
       // fabric 의 raster 렌더는 image clipPath 를 정상 처리하므로, 임시 캔버스에 사진(clip 포함)을
@@ -2588,7 +2588,7 @@ class ServicePlugin extends PluginBase {
               return
             }
 
-            // P0-3: 300 DPI 인쇄 화질 보존 — 포맷 구분 없이 인쇄 등급 상한 적용
+            // 300 DPI 인쇄 화질 보존 — 포맷 구분 없이 인쇄 등급 상한 적용
             const maxSize = ServicePlugin.PRINT_MAX_IMAGE_DIMENSION
             let { width, height } = img
 
@@ -2688,7 +2688,7 @@ class ServicePlugin extends PluginBase {
               return
             }
 
-            // P0-3: PNG 무손실 — 300 DPI 인쇄 등급 상한으로 통일(종전 1280은 인쇄 부적합)
+            // PNG 무손실 — 300 DPI 인쇄 등급 상한으로 통일(종전 1280은 인쇄 부적합)
             const maxSize = ServicePlugin.PRINT_MAX_IMAGE_DIMENSION
             let { width, height } = img
 
@@ -2770,7 +2770,7 @@ class ServicePlugin extends PluginBase {
               return
             }
 
-            // P0-3: SVG/GIF/WEBP 래스터라이즈 — 300 DPI 인쇄 등급 상한으로 통일(종전 1600)
+            // SVG/GIF/WEBP 래스터라이즈 — 300 DPI 인쇄 등급 상한으로 통일(종전 1600)
             const maxSize = ServicePlugin.PRINT_MAX_IMAGE_DIMENSION
             let { width, height } = img
             if (!width || !height) {

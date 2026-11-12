@@ -1,9 +1,9 @@
-// CopyPlugin — Alt+드래그 다중 복제 통합 테스트 (C5 / E2 W2, 실 fabric)
+// CopyPlugin — Alt+드래그 다중 복제 통합 테스트 (실 fabric)
 //
 // 목적: mock 하네스(CopyPlugin.altDragClone.test.ts)가 흉내내는 "이중 clone → set(start)
 // → destroy() → 멤버 절대좌표 실체화" 를 **실 fabric 5.5.2 로 확증**한다. mock 은 destroy 의
 // 그룹행렬 baking 을 시뮬할 뿐이므로, 실제로 각 멤버 사본이 멤버 시작 절대좌표에 land 하는지는
-// 실 객체로만 증명된다(설계 §4-4 (c) — 순수 기하, 렌더 회피).
+// 실 객체로만 증명된다(순수 기하, 렌더 회피).
 //
 // 환경: 기본 node env. fabric 5.5.2 는 node-canvas(canvas@2.11.2, fabric peer)로 StaticCanvas 를
 // 헤드리스 구동하므로 jsdom 불필요(LockPlugin/HistoryPlugin 등 실-fabric 유닛과 동일 관행).

@@ -1,5 +1,5 @@
 /**
- * P2-d 사진인화 (2026-10-19): editor.complete additive `items` 키 + `product.kind 'photo-print'` + 세션 PATCH metadata.items.
+ * 사진인화: editor.complete additive `items` 키 + `product.kind 'photo-print'` + 세션 PATCH metadata.items.
  *   - digital 프로파일 6캔버스: product {kind:'photo-print', canvasCount 6, sheetCount 3, faces 2} + items 3건(캔버스 수 동기화·옵션 반영),
  *     `files`·`pages` 중첩 구조 불변, 세션 update 에 metadata { productProfile, items } 동봉(calendar 키 없음).
  *   - NULL 프로파일(legacy): result 에 product/items 키 없음, payload 키 집합이 기존과 동일, update payload 는 { canvasData } 그대로.
@@ -229,7 +229,7 @@ function completePayload(): EditorResult {
 
 const canvasDataOf = (n: number) => Array.from({ length: n }, (_, i) => ({ id: `c${i}`, props: core.extendFabricOption }))
 
-describe('EmbeddedEditor — editor.complete items (P2-d 사진인화)', () => {
+describe('EmbeddedEditor — editor.complete items (사진인화)', () => {
   const realParent = Object.getOwnPropertyDescriptor(window, 'parent')
 
   beforeEach(() => {

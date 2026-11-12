@@ -1,7 +1,7 @@
 /**
- * D1 외부 사진 주입 스토어 (2026-06-12, EDITOR.md §20.1).
+ * 외부 사진 주입 스토어 (EDITOR.md §20.1).
  *
- * 호스트(예: ShareSnap 공유방)가 세션 metadata.externalPhotos 로 주입한 사진 목록.
+ * 호스트(예: 사진 공유 서비스)가 세션 metadata.externalPhotos 로 주입한 사진 목록.
  * - embed.tsx 가 세션 로드 시 setPhotos() 로 채움.
  * - 목록이 비어있지 않으면 이미지 패널(AppImage)에 "공유방 사진" 탭이 조건부 렌더.
  * - usageTick: 캔버스 배치/삭제 시 증가 → '사용됨' 뱃지 재계산 트리거.
@@ -31,7 +31,7 @@ export const useExternalPhotosStore = create<ExternalPhotosState & ExternalPhoto
 /**
  * 모든 캔버스를 스캔해 externalPhotoUrl 이 일치하는 이미지 객체가 있는지 검사.
  * (그룹 내부까지는 v1 미탐색 — 공유방 사진은 직접 배치가 기본 경로)
- * @deprecated S-E4(2026-08-04): 패널 배지는 utils/photoUsage.buildPhotoUsageCountMap
+ * @deprecated 패널 배지는 utils/photoUsage.buildPhotoUsageCountMap
  * (1패스 O(objects), src 키 포함, 그룹 탐색)로 대체됨. 사진별 O(objects) 재스캔이라
  * 대량 사진에 부적합 — 신규 사용 금지.
  */

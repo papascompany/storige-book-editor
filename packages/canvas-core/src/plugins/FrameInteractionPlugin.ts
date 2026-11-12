@@ -159,11 +159,11 @@ class FrameInteractionPlugin extends PluginBase {
       fore.setCoords()
     }
 
-    // 마스크 창은 absolutePositioned 라 캔버스 좌표를 직접 갱신해야 사진을 따라간다(버그 #4 핵심).
+    // 마스크 창은 absolutePositioned 라 캔버스 좌표를 직접 갱신해야 사진을 따라간다.
     const cp = (fore as AnyObj).clipPath as fabric.Object | undefined
     if (cp) {
       const fc = frame.getCenterPoint()
-      // P2-d 사진인화(2026-10-19): 유테(frameInsetMm)는 마스크 창(window)만 축소한다 — 창은 (프레임 ∩ 재단 상자) 기준이라
+      // 사진인화: 유테(frameInsetMm)는 마스크 창(window)만 축소한다 — 창은 (프레임 ∩ 재단 상자) 기준이라
       // 도련 세트의 풀블리드 틀에서도 흰 띠가 재단 안에 남는다. inset px 는 PhotoPrintPlugin 이 둔 런타임 키를 쓰고, 틀 인스턴스가
       // undo 로 재생성돼 런타임 키가 없으면 직렬화된 frameInsetMm(mmToPxDisplay) + 캔버스 런타임 bleed 로 다시 계산한다.
       // 둘 다 없거나 0 이면 종전 1:1(scale = frame.scaleX/Y, 중심 = 프레임 중심) 그대로.

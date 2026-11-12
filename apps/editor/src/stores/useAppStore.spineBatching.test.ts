@@ -3,10 +3,10 @@ import { useAppStore } from './useAppStore'
 import { recalculateSpineWidth } from '@/utils/spineCalculator'
 
 /**
- * debouncedRecalcSpine — 대량 페이지 생성 구간의 책등 재계산 배칭 (2026-08-26 적대검증 후속).
+ * debouncedRecalcSpine — 대량 페이지 생성 구간의 책등 재계산 배칭.
  *
- * 배경: 3ddce60 은 addPage 의 책등 재계산을 debounce(300ms)로 바꾸면 재진입 증설 루프에서
- * "9회 → 1회"로 접힌다고 봤으나, addPage 1회가 실측 ≈390ms 라 타이머가 매 반복 만료된다.
+ * 배경: addPage 의 책등 재계산을 debounce(300ms)로만 묶으면 재진입 증설 루프에서
+ * "9회 → 1회"로 접히지 않는다 — addPage 1회가 실측 ≈390ms 라 타이머가 매 반복 만료된다.
  * 즉 debounce 는 이 루프에서 배칭 도구가 아니다(아래 대조군 스펙이 그 사실을 고정한다).
  * 실제 배칭은 썸네일과 동일한 runBulkPageOps 구간 게이트가 담당한다.
  */

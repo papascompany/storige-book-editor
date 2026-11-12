@@ -35,7 +35,7 @@ export interface RecalculateSpineOptions {
   /** 호출자(useAppStore.spineResizeAbortController)의 취소를 HTTP 까지 전달한다. 옵셔널. */
   signal?: AbortSignal
   /**
-   * R-195: 초기 로드 호출(useEditorContents 스프레드 12단계)임을 표시한다.
+   * 초기 로드 호출(useEditorContents 스프레드 12단계)임을 표시한다.
    * 호스트 책등(spineConfig.hostSpineWidthMm)이 있으면 API 대신 호스트 값을 적용한다.
    * 호스트 값이 없으면 무시된다(기존 동작 그대로).
    */
@@ -61,7 +61,7 @@ export interface RecalculateSpineResult {
 // ────────────────────────────────────────────────────────────────────────────
 // 세대(generation) 가드 — 스테일 응답이 최신 응답을 덮어쓰는 경합을 막는다.
 //
-// 배경: 542fa18 의 runBulkPageOps 구간 게이트로 "재진입 증설 루프" 기인 다중 in-flight 는
+// 배경: runBulkPageOps 구간 게이트로 "재진입 증설 루프" 기인 다중 in-flight 는
 // 구조적으로 사라졌지만, 구간 밖 사용자 연타('+내지' 400~600ms 간격 + API 지연)는 여전히
 // 여러 요청을 동시에 띄운다. 늦게 도착한 구(舊) pageCount 응답이 최신 응답보다 나중에
 // 효과를 적용하면 최종 책등 폭이 스테일 값으로 확정된다.
@@ -203,7 +203,7 @@ export async function recalculateSpineWidth(
   const spineConfig = settingsStore.spineConfig
 
   // ============================================================================
-  // 스프레드 모드 분기 (§4.3 설계서)
+  // 스프레드 모드 분기
   // ============================================================================
   if (appStore.isSpreadMode) {
     return await recalculateSpineWidthSpreadMode(options)
@@ -374,9 +374,9 @@ async function recalculateSpineWidthSpreadMode(
   // spineWidth 는 템플릿 고정값을 그대로 반환해 호출측 로그/스냅샷 정합 유지.
   // ── 내지 펼침면 가드 (책등 없음) ────────────────────────────────────────
   // 포토북 내지(regionScope='inner')는 좌면+거터+우면 2-up 이라 책등 자체가 없다.
-  // 그런데 이 함수가 무조건 실행돼 책등 API 를 호출하고, placeholder spec 으로
-  // 레이아웃을 계산하다 `roundMm01: non-finite value NaN` 로 매 트리거마다 실패했다
-  // (2026-08-03 E2E 실측 — 콘솔 에러 반복). flat-spread 와 동일하게 여기서 차단한다.
+  // 이 함수가 무조건 실행되면 책등 API 를 호출하고, placeholder spec 으로
+  // 레이아웃을 계산하다 `roundMm01: non-finite value NaN` 로 매 트리거마다 실패한다.
+  // flat-spread 와 동일하게 여기서 차단한다.
   if (settingsStore.spreadConfig?.regionScope === 'inner') {
     return {
       success: false,
@@ -404,7 +404,7 @@ async function recalculateSpineWidthSpreadMode(
     }
   }
 
-  // ── R-195 호스트 지정 책등 ────────────────────────────────────────────────
+  // ── 호스트 지정 책등 ────────────────────────────────────────────────
   // flat-spread / 내지 펼침면 가드 **이후**에만 적용한다(두 경우는 기존 동작 유지).
   // 호스트 값이 없으면(null/undefined) 이 블록 전체를 건너뛴다 → 기존 경로 byte-identical.
   // 모든 트리거(초기 로드·내지 추가/삭제 debounce·즉시)가 이 함수를 거치므로 단일 판정 지점.
@@ -438,7 +438,7 @@ async function recalculateSpineWidthSpreadMode(
   }
 
   // paperType과 bindingType 결정 (옵션 > spineConfig > URL 파라미터 > 기본값)
-  // S5 (R-195): 각 단계 trim + ''/'-' → 미지정 정규화, URL 은 camel/snake 양쪽 수용(getParamCompat).
+  // 각 단계 trim + ''/'-' → 미지정 정규화, URL 은 camel/snake 양쪽 수용(getParamCompat).
   const urlParams = new URLSearchParams(window.location.search)
   const paperType =
     normalizeSpineCode(options?.paperType) ||
@@ -553,7 +553,7 @@ async function recalculateSpineWidthSpreadMode(
       paperType,
       bindingType,
       calculatedSpineWidth: spineResult.spineWidth,
-      appliedSource: 'formula', // R-195: 완료 metadata.appliedSpine.source 용
+      appliedSource: 'formula', // 완료 metadata.appliedSpine.source 용
     })
 
     // SpreadConfig의 spineWidthMm도 업데이트
@@ -582,7 +582,7 @@ async function recalculateSpineWidthSpreadMode(
 }
 
 /**
- * R-195: 호스트 지정 책등 폭을 API 없이 적용한다(스프레드 전용).
+ * 호스트 지정 책등 폭을 API 없이 적용한다(스프레드 전용).
  * API 결과와 **같은 경로**(SpreadPlugin.resizeSpine → setSpineConfig → updateSpreadSpineWidth)로
  * 적용해 캔버스·스토어·spec 이 동기화된다. calculatedSpineWidth 도 같은 값으로 맞춰
  * buildSpreadSnapshots 의 spineWidthSource 판정(spec vs calc)이 'formula' 로 일관되게 나온다.
@@ -597,7 +597,7 @@ async function applyHostSpineWidthSpreadMode(
   const pageCount = countInnerPrintPages()
 
   // 0mm 가드(제품 정책): 책등 영역 소속 객체가 있으면 호스트 0mm 적용을 차단하고 템플릿 폭을 유지한다.
-  // canvas-core 는 2026-09-28 부터 spine 영역 소멸 시 해당 객체를 자유 객체로 강등해 오류 없이 처리하지만,
+  // canvas-core 는 spine 영역 소멸 시 해당 객체를 자유 객체로 강등해 오류 없이 처리하지만,
   // 그러면 책등 텍스트 등이 접지선 위에 남은 채 인쇄되므로 편집기에서 막는다(hostSpine.ts 참조).
   if (hostSpineWidthMm <= 0) {
     const spreadCanvas = appStore.allCanvas[0] as unknown as
@@ -661,7 +661,7 @@ async function applyHostSpineWidthSpreadMode(
 /**
  * 초기 로딩 시 spineConfig를 설정합니다.
  *
- * R-195: `host.spineWidthMm`(유한수 ≥ 0)이 오면 호스트 책등 모드를 켠다. 미전달이면 호스트 필드를
+ * `host.spineWidthMm`(유한수 ≥ 0)이 오면 호스트 책등 모드를 켠다. 미전달이면 호스트 필드를
  * 초기화한다(이전 로드의 잔존값 제거) — 호스트 필드는 host 가 있을 때만 소비되므로 기존 동작 불변.
  */
 export function initSpineConfig(

@@ -16,7 +16,7 @@ class DraggingPlugin extends PluginBase {
 
   dragMode = false
 
-  // C5 (E2): alt+드래그가 객체 위에서 시작되면 CopyPlugin 복제에 양보하기 위한 게이트.
+  // alt+드래그가 객체 위에서 시작되면 CopyPlugin 복제에 양보하기 위한 게이트.
   // 기본 on. off 면 종전 거동(객체 위 alt+드래그도 팬) 복원 — 기능별 즉시 롤백 경로.
   private _altDragCloneEnabled: boolean = true
 
@@ -140,7 +140,7 @@ class DraggingPlugin extends PluginBase {
     // 핸들러 참조 저장 (cleanup을 위해)
     this._boundMouseDown = function (this: ExtCanvas, opt: fabric.IEvent) {
       const { x, y, altKey } = getEventPoint(opt.e)
-      // C5 (E2): 객체 위에서 시작한 alt+드래그는 CopyPlugin 복제로 양보 → 팬 금지.
+      // 객체 위에서 시작한 alt+드래그는 CopyPlugin 복제로 양보 → 팬 금지.
       // 빈 곳(target 없음) alt+드래그는 기존대로 팬. 플래그 off 면 종전 거동(객체 위도 팬).
       const altPanBlocked = altKey && !!opt.target && vm._altDragCloneEnabled
       // 터치에서는 altKey 가 항상 false → dragMode 일 때만 panning 시작

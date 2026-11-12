@@ -1,5 +1,5 @@
 /**
- * S8 (2026-09-28): 템플릿셋 내지 페이지 증감 단위(pageStep) 순수 헬퍼.
+ * 템플릿셋 내지 페이지 증감 단위(pageStep) 순수 헬퍼.
  *
  * - templateSet.pageStep = N(>=1 정수): 물리 내지 페이지 수가 N 의 배수여야 한다(예: 2 = 짝수만).
  *   null/1/비정상 값 = 제약 없음 → 기존 1장 단위 동작 그대로(byte-identical).
@@ -88,7 +88,7 @@ export function pageStepViolationMessage(v: PageStepViolation): string {
  * 단 0 은 폴백하지 않고 0 = 측정 불가로 돌려준다 — 가드가 빈 세션을 막지 않도록).
  * - 내지 전용 펼침면(regionScope='inner'): 캔버스 × 2
  * - 표지+내지 스프레드: (캔버스 − 표지 1) × pagesPerCanvas (캔버스 1장 = 표지 단독이면 0).
- *   표지+내지펼침면 세트는 pagesPerCanvas=2(2026-09-28, 책등 산식과 같은 기준), 낱장 내지는 1.
+ *   표지+내지펼침면 세트는 pagesPerCanvas=2(책등 산식과 같은 기준), 낱장 내지는 1.
  * - 그 외(단일 모드): 캔버스 수
  */
 export function livePhysicalPageCount(input: {
@@ -112,7 +112,7 @@ function spreadInnerPerCanvas(raw: number | undefined): number {
 /**
  * pageStep 산정 기준(세션 형태). 완료 가드(livePhysicalPageCount)와 추가/삭제 단위 계산이
  * **같은 산식**을 쓰도록 스토어에 적재한다 — 둘이 다르면 단위 이동으로 배수에 영영 도달하지 못해
- * 완료가 영구 차단될 수 있다(S8 리뷰: 펼침면 내지 TemplateType.SPREAD 를 0장으로 셌던 결함).
+ * 완료가 영구 차단될 수 있다(예: 펼침면 내지 TemplateType.SPREAD 를 0장으로 세는 경우).
  */
 export interface PageStepBasis {
   isSpreadMode: boolean

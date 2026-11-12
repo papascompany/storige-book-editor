@@ -3,7 +3,7 @@ import { useAuthStore } from '../stores/authStore';
 import { authApi } from '../api/auth';
 
 /**
- * P3a 보강 — 새로고침/딥링크/새 탭 시 authStore.user(role + siteRoles)는 메모리 전용이라 null 이 된다.
+ * 새로고침/딥링크/새 탭 시 authStore.user(role + siteRoles)는 메모리 전용이라 null 이 된다.
  * (accessToken 은 localStorage 에 영속되지만 user 는 아님 → MainLayout 역할 게이팅이 role 을 잃음.)
  *
  * 토큰이 있는데 user 가 없으면 앱 마운트 시 GET /auth/me 로 1회 재하이드레이션한다.

@@ -12,8 +12,6 @@ import { resolveStorageUrl } from '../lib/axios';
  *
  * 운영 nginx 가 /storage/* 직접 서빙. resolveStorageUrl 이 dev/prod 경로를
  * 자동 처리하므로 사용처는 url 만 넘기면 됨.
- *
- * 2026-05-15: 더미 데이터 청소 + 친절한 placeholder UX (옵션 C)
  */
 interface ThumbnailImageProps {
   url: string | null | undefined;

@@ -56,7 +56,7 @@ export const DeletedSessionList = () => {
   const [selectedSiteId, setSelectedSiteId] = useState<string | undefined>(undefined);
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(20);
-  // 주문 연결 세션 삭제의 사후 통지(세션 id·삭제 시각 UTC)는 여기서 복사한다(3-B 운영 원칙).
+  // 주문 연결 세션 삭제의 사후 통지(세션 id·삭제 시각 UTC)는 여기서 복사한다.
   const { copyingId, copyNotice } = usePartnerNoticeCopy();
   // 헤더 테넌트 스위처가 고정한 site 가 로컬 필터보다 우선(EditSessionList 와 동일)
   const currentSiteId = useAuthStore((s) => s.currentSiteId) ?? undefined;

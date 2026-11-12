@@ -1,5 +1,5 @@
 /**
- * 템플릿셋 폼 "상품 프로파일(JSON)" 섹션의 텍스트 ↔ ProductProfile 변환 (P1 캘린더, 2026-10-17).
+ * 템플릿셋 폼 "상품 프로파일(JSON)" 섹션의 텍스트 ↔ ProductProfile 변환.
  *
  * - 빈 문자열/공백 → null(프로파일 미사용 = 기존 동작). 저장 payload 는 `productProfile: null`.
  * - JSON 파싱 오류·`validateProductProfile` 오류는 errors 로 돌려주고 value 는 null.

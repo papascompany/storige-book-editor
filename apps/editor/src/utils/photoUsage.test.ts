@@ -21,7 +21,7 @@ describe('buildPhotoUsageCountMap', () => {
     expect(map.get('b.png')).toBe(1)
   })
 
-  it('externalPhotoUrl 을 집계한다 (D1 외부주입)', () => {
+  it('externalPhotoUrl 을 집계한다 (외부주입)', () => {
     const map = buildPhotoUsageCountMap([
       canvasOf({ type: 'image', externalPhotoUrl: 'https://x/p.jpg', getSrc: () => 'blob:local' }),
     ])

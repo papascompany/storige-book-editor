@@ -1,7 +1,7 @@
 /**
- * 호스트(상품) 지정 내지 쪽수 범위·증감 단위 — 순수 헬퍼 (R-196 host page limits (2026-09-29)).
+ * 호스트(상품) 지정 내지 쪽수 범위·증감 단위 — 순수 헬퍼.
  *
- * 파트너(bookmoa 등)가 상품별 관리자 설정 쪽수(예: 16~300p)를 `/embed?pageCountMin=&pageCountMax=&pageStep=`
+ * 파트너 사이트가 상품별 관리자 설정 쪽수(예: 16~300p)를 `/embed?pageCountMin=&pageCountMax=&pageStep=`
  * (snake `page_count_min`·`page_count_max`·`page_step`) 또는 EditorConfig.options 로 전달한다.
  * 유효한 값은 템플릿셋 pageCountRange / pageStep 보다 우선한다. 미전달·무효값이면 모든 결과가
  * 종전 인라인 식과 byte-identical 이다(아래 identity 불변식 — 단위 테스트로 고정).
@@ -10,18 +10,18 @@
  *
  * 규약 요약:
  *  - 값은 물리 내지 쪽수. pageCountMin/Max = 정수 1~500, pageStep = 정수 1~500(0부터 센 N의 배수).
- *  - pageStep 1 = **배수 제약 없음**(템플릿셋 pageStep 을 무시 — 2026-09-29 오너 채택, bookmoa R-205).
+ *  - pageStep 1 = **배수 제약 없음**(템플릿셋 pageStep 을 무시).
  *  - 미전달·''·공백 → 경고 없이 부재. 그 외 무효값 → console.warn('[hostPageLimits] …') 후 무시.
  *  - 키별 사다리: options(props/URL) → metadata.orderOptions → 템플릿셋.
  *  - min > max: 같은 계층이면 둘 다 폐기, 계층이 다르면 orderOptions 쪽만 폐기.
  *  - pageStep 은 min 이 배수가 아니거나 범위 안에 배수가 없으면 폐기(템플릿 단위 적용).
  *  - 제본 최소/최대 쪽수는 키별로 대체: 호스트 pageCountMin 이 있으면 제본 최소, pageCountMax 가 있으면
- *    제본 최대를 적용하지 않는다(W5 — hostPageLimitSides·bindingPageBounds). 보내지 않은 쪽은 제본 값 유지.
+ *    제본 최대를 적용하지 않는다(hostPageLimitSides·bindingPageBounds). 보내지 않은 쪽은 제본 값 유지.
  */
 import { BINDING_CONSTRAINTS, type BindingType } from '@storige/types'
 import { normalizePageStep } from './pageStep'
 
-/** 호스트 쪽수 상한(물리 페이지). bookmoa 최대 상품(500p) 기준. */
+/** 호스트 쪽수 상한(물리 페이지). 파트너 최대 상품(500p) 기준. */
 export const HOST_PAGE_LIMIT_MAX = 500
 
 /**
@@ -74,7 +74,7 @@ function coerceCountLimit(raw: unknown): Coerced {
 
 /**
  * pageStep: 1 = 배수 제약 없음(유효값 — 템플릿셋 단위를 무시하도록 전달), 그 외 normalizePageStep(≥2 정수)
- * && ≤ HOST_PAGE_LIMIT_MAX. (종전 bb626de 는 1 을 부재로 버렸다 — 2026-09-29 오너 채택으로 의미 부여)
+ * && ≤ HOST_PAGE_LIMIT_MAX. (1 은 값 부재가 아니라 "배수 제약 없음"을 뜻한다)
  */
 function coercePageStep(raw: unknown): Coerced {
   const c = coerceInteger(raw)
@@ -301,7 +301,7 @@ export function resolveSeedPageCount(input: {
     ) {
       // 요청값은 실효 상한으로만 클램프한다(잘못된 큰 pageCount 로 캔버스 폭주 방지).
       // 하한은 걸지 않고(재진입에서 빈 페이지를 덧붙이지 않음), 저장된 페이지 수는 절대
-      // 줄이지 않는다(복원 절단 금지 — R2 원칙).
+      // 줄이지 않는다(복원 절단 금지).
       const range = mergePageCountRange(templateRange, limits) || []
       const effMax = range.length > 0 ? Math.max(...range) : undefined
       const cappedRequested = effMax !== undefined && requested > effMax ? effMax : requested

@@ -331,7 +331,7 @@ describe('SynthesisProcessor — 합성 입력 오류(실파일)', () => {
     describe('spread', () => {
       /**
        * 메타는 GET /files/:id/external, 바이트는 api:// → GET /files/:id/download/external 로 받는다
-       * (SEC-008: DTO 에 filePath 없음). 다운로드 mock 은 로컬 fixture 를 스트림/버퍼로 흘리고,
+       * (DTO 에 filePath 없음). 다운로드 mock 은 로컬 fixture 를 스트림/버퍼로 흘리고,
        * 없는 파일은 API 와 같이 HTTP 404 로 거절한다.
        */
       function mockLookups(spreadFile: string, contentFile: string): void {

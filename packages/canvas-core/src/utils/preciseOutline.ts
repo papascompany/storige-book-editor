@@ -1,5 +1,5 @@
 /**
- * 알파 기반 '정밀 외곽' 순수 계산 (R7, 2026-08-11)
+ * 알파 기반 '정밀 외곽' 순수 계산
  *
  * 종전 `createPrecisePathFromObject` / `drawCaseOutlinePrecise` 의 cv 파이프라인
  * (split→threshold→distanceTransform→threshold→findContours→hull)을 순수 JS 로 이식한 코어다.

@@ -2,13 +2,13 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import type { ProductProfile } from '@storige/types'
 
 /**
- * P2-d 사진인화 (2026-10-19): 사진틀 채움 스케일 회귀 가드.
+ * 사진인화: 사진틀 채움 스케일 회귀 가드.
  *  - fitMode 미설정(legacy)·inset 없음 → image 틀 cover = Math.max(frameW/imgW, frameH/imgH), 벡터 틀 = 폭 기준, clip scale = frame scale (종전 값과 동일)
- *  - D8/serialization-1: 벡터 틀 fitMode 'cover' 는 창을 가로·세로 모두 덮는 max 비율·창 중심, 'contain' 은 min
+ *  - 벡터 틀 fitMode 'cover' 는 창을 가로·세로 모두 덮는 max 비율·창 중심, 'contain' 은 min
  *  - 창(window): `__frameWindow`(플러그인) 우선, 없으면 resolveFrameWindowFor(캔버스 workspace − bleed) 폴백, 캔버스를 모르면 frameInsetScale
- *  - tests-3: image(PNG, inverted clipPath) 틀은 inset 을 0 으로 취급(console.warn 1회)
+ *  - image(PNG, inverted clipPath) 틀은 inset 을 0 으로 취급(console.warn 1회)
  *  - 촬영일(extension.takenAt)은 사진인화 세트에서만 기록(legacy 세트는 extension 미기록)
- *  - contract-1/2: 사진인화 세트에서 채움 시 items[].lowRes(dpi < minDpi)·sourcePhotoId(업로드 파일 id / 외부 사진 id, 없으면 키 제거) 기록
+ *  - 사진인화 세트에서 채움 시 items[].lowRes(dpi < minDpi)·sourcePhotoId(업로드 파일 id / 외부 사진 id, 없으면 키 제거) 기록
  */
 vi.mock('@/api', () => ({
   storageApi: { uploadFilePublic: vi.fn(), uploadFile: vi.fn() },
@@ -105,7 +105,7 @@ describe('fillImageIntoFrame — 스케일/clip 회귀', () => {
     expect(frame.fillImage).toBe('f1_fillImage')
   })
 
-  it("tests-3: image 틀 + fitMode 'contain' + __frameInsetPx 10 → inset 무시(min 비율·원래 창 기준, clip scale = 프레임 scale) + console.warn 1회", async () => {
+  it("image 틀 + fitMode 'contain' + __frameInsetPx 10 → inset 무시(min 비율·원래 창 기준, clip scale = 프레임 scale) + console.warn 1회", async () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
     const frame = fakeFrame({ fitMode: 'contain', [FRAME_INSET_PX_RUNTIME_KEY]: 10 })
     const fore = fakeImage()
@@ -123,7 +123,7 @@ describe('fillImageIntoFrame — 스케일/clip 회귀', () => {
     warn.mockRestore()
   })
 
-  it("tests-3: image 틀 + fitMode 'cover' + inset → 사진이 원래 창 전체를 덮는다(max 비율), 경고는 다시 찍지 않는다", async () => {
+  it("image 틀 + fitMode 'cover' + inset → 사진이 원래 창 전체를 덮는다(max 비율), 경고는 다시 찍지 않는다", async () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
     const frame = fakeFrame({ fitMode: 'cover', [FRAME_INSET_PX_RUNTIME_KEY]: 10 })
     const fore = fakeImage()
@@ -204,8 +204,8 @@ describe('fillImage(벡터/모양 틀) — 스케일 회귀', () => {
     expect(clip.top).toBe(20)
   })
 
-  // D8 / serialization-1: 페이퍼풀(cover)은 창을 가로·세로 모두 덮는다(가로 사진 × 세로 틀) — 플러그인 resolveFillScale 과 일치.
-  it("D8: 1800×1200 사진 × 637.8×933 세로 rect 틀 fitMode 'cover' → scale 933/1200(0.7775), 창 중심 정렬", async () => {
+  // 페이퍼풀(cover)은 창을 가로·세로 모두 덮는다(가로 사진 × 세로 틀) — 플러그인 resolveFillScale 과 일치.
+  it("1800×1200 사진 × 637.8×933 세로 rect 틀 fitMode 'cover' → scale 933/1200(0.7775), 창 중심 정렬", async () => {
     const rear = vectorFrame({ width: 637.8, height: 933, scaleX: 1, scaleY: 1, fitMode: 'cover', getCenterPoint: () => ({ x: 318.9, y: 466.5 }) })
     const fore = fakeImage({ width: 1800, height: 1200 })
     await useImageStore.getState().fillImage(canvas, fore, rear, plugin)
@@ -219,7 +219,7 @@ describe('fillImage(벡터/모양 틀) — 스케일 회귀', () => {
     expect(clip).not.toHaveProperty('scaleX')
   })
 
-  it("D8: 4000×3000 × 602.4×897.6 'cover' → 0.2992; legacy(fitMode 미설정) 틀은 종전 폭 기준 0.3543 그대로", async () => {
+  it("4000×3000 × 602.4×897.6 'cover' → 0.2992; legacy(fitMode 미설정) 틀은 종전 폭 기준 0.3543 그대로", async () => {
     const fore = fakeImage({ width: 4000, height: 3000 })
     await useImageStore.getState().fillImage(canvas, fore, vectorFrame({ width: 602.4, height: 897.6, scaleX: 1, scaleY: 1, fitMode: 'cover' }), plugin)
     expect(fore.scaleX).toBeCloseTo(897.6 / 3000, 6) // 0.2992
@@ -278,7 +278,7 @@ describe('fillImage(벡터/모양 틀) — 스케일 회귀', () => {
   })
 })
 
-describe('contract-1/contract-2 — 채움 시 items[].lowRes·sourcePhotoId 기록(사진인화 세트)', () => {
+describe('채움 시 items[].lowRes·sourcePhotoId 기록(사진인화 세트)', () => {
   function wireCanvas() {
     const cv: Props = { id: 'c0', getObjects: () => [] as Props[] }
     useAppStore.setState({ allCanvas: [cv], allEditors: [{ getPlugin: () => undefined }] } as never)

@@ -57,7 +57,7 @@ const PRINT_PRESERVE_ARGS = [
 ];
 
 /**
- * R4a (2026-08-11): pdfwrite 재증류 시 인쇄 무관 요소 제거 — 주석/폼 필드.
+ * pdfwrite 재증류 시 인쇄 무관 요소 제거 — 주석/폼 필드.
  *
  * 고객이 교정 코멘트(스티키노트·하이라이트)나 양식 필드가 남은 PDF 를 제출하는
  * 고전 사고 대응(GWG: 주석/폼 제거는 무손실 표준 fixup). pdfwrite 는 기본값으로
@@ -79,20 +79,20 @@ export interface GsOptions {
 }
 
 // ============================================================
-// WK-3/WK-5 (2026-06-13) — GS spawn 타임아웃 + 동시 실행 제한
+// GS spawn 타임아웃 + 동시 실행 제한
 // ============================================================
 
-/** WK-3 — runGhostscript 기본 타임아웃 (ms) */
+/** runGhostscript 기본 타임아웃 (ms) */
 export const DEFAULT_GS_TIMEOUT_MS = 120_000;
-/** WK-3 — pdfwrite 계열(addBleed/resize/center/merge) 타임아웃 (ms) */
+/** pdfwrite 계열(addBleed/resize/center/merge) 타임아웃 (ms) */
 export const GS_PDFWRITE_TIMEOUT_MS = 60_000;
-/** WK-3 — 페이지 래스터(pdfToImage) 타임아웃 (ms) */
+/** 페이지 래스터(pdfToImage) 타임아웃 (ms) */
 export const GS_RASTER_TIMEOUT_MS = 30_000;
-/** WK-3 — SIGTERM 후 SIGKILL 까지의 유예 (ms) */
+/** SIGTERM 후 SIGKILL 까지의 유예 (ms) */
 const SIGKILL_GRACE_MS = 5_000;
 
 /**
- * WK-5 — 카운팅 세마포어 (의존성 추가 없이 직접 구현).
+ * 카운팅 세마포어 (의존성 추가 없이 직접 구현).
  *
  * Ghostscript 는 프로세스당 메모리/CPU 를 크게 쓰므로, 큐 동시성
  * (VALIDATION_CONCURRENCY 등)과 무관하게 실제 GS spawn 동시 수를
@@ -135,7 +135,7 @@ export class CountingSemaphore {
 }
 
 /**
- * WK-5 — GS spawn 동시 수 제한 세마포어.
+ * GS spawn 동시 수 제한 세마포어.
  * env GS_CONCURRENCY (기본 2, 최소 1). runGhostscript / runGhostscriptWithTimeout
  * 양쪽 spawn 경로 모두 이 세마포어를 통과한다.
  */
@@ -146,9 +146,9 @@ export const gsSemaphore = new CountingSemaphore(
 /**
  * Ghostscript 명령 실행.
  *
- * WK-3: timeoutMs(기본 120s) 만료 시 SIGTERM → 5s 후에도 살아있으면 SIGKILL.
+ * timeoutMs(기본 120s) 만료 시 SIGTERM → 5s 후에도 살아있으면 SIGKILL.
  *       close 시 모든 타이머 정리. 타임아웃으로 종료된 경우 reject.
- * WK-5: gsSemaphore 로 동시 spawn 수 제한 (GS_CONCURRENCY, 기본 2).
+ * gsSemaphore 로 동시 spawn 수 제한 (GS_CONCURRENCY, 기본 2).
  */
 export async function runGhostscript(
   args: string[],
@@ -228,7 +228,7 @@ function spawnGhostscript(args: string[], timeoutMs: number): Promise<string> {
 const MM_TO_PT = 2.83465;
 
 /**
- * WK-2 — addBleedToPdf 의 GS 인자 빌더 (단위테스트용 분리).
+ * addBleedToPdf 의 GS 인자 빌더 (단위테스트용 분리).
  *
  * 원본 실측 치수(mm) 기반으로 출력 페이지를 (원본 + 2×블리드)로 확장하고,
  * BeginPage translate 로 원본 콘텐츠를 블리드만큼 안쪽으로 평행이동한다.
@@ -273,9 +273,9 @@ export function buildAddBleedArgs(
 /**
  * PDF에 블리드 추가 (페이지 확장 + 콘텐츠 중앙 배치)
  *
- * WK-2 (2026-06-13): getPdfInfo 로 원본 첫 페이지를 실측(mm)한 뒤
- * (원본 + 2×블리드) 크기로 페이지를 확장한다. 종전에는 원본 치수를
- * 반영하지 않은 bleedPt*2 가 페이지 크기로 들어가 콘텐츠가 잘렸다.
+ * getPdfInfo 로 원본 첫 페이지를 실측(mm)한 뒤
+ * (원본 + 2×블리드) 크기로 페이지를 확장한다. 페이지 크기에 원본 치수를
+ * 반영하지 않으면(bleedPt*2 만 지정) 콘텐츠가 잘린다.
  * (-dFIXEDMEDIA + BeginPage translate 기법은 유지)
  */
 export async function addBleedToPdf(
@@ -336,7 +336,7 @@ export async function resizePdf(
  * 대신 (목표 − 원본)/2 만큼 평행이동해 **비대칭 패딩**으로 중앙 정렬한다.
  * 스케일을 건드리지 않으므로(-dPDFFitPage 미사용) 콘텐츠는 1:1 크기로 보존된다.
  *
- * 사용처(P4 고객 업로드 내지):
+ * 사용처(고객 업로드 내지):
  *   - 블리드 없음 & 작업사이즈보다 작은 PDF → 작업사이즈 페이지 중앙에 무스케일 배치.
  *
  * @param input   입력 PDF 경로
@@ -478,7 +478,7 @@ const A4_HEIGHT_MM = 297;
 /**
  * PDF 정보 추출 (페이지 수 + 첫 페이지 실측 치수).
  *
- * P4: 기존 하드코딩 A4(210×297) → 첫 페이지 MediaBox 실측(pt→mm)으로 정확화.
+ * 첫 페이지 MediaBox 를 실측(pt→mm)한다.
  *   - 1차: pdf-lib `getSize()` 로 첫 페이지 width/height(pt) 추출 후 mm 변환.
  *   - 추출/로드 실패 시 A4(210×297) 폴백 — 콜러(centerOnPage/convert 분기 등)가 깨지지 않게.
  *   - 반환 필드(pageCount/width/height)는 기존 시그니처 그대로 유지(width/height 만 정확화).
@@ -537,7 +537,7 @@ export async function isGhostscriptAvailable(): Promise<boolean> {
  * WBS 3.2: Ghostscript 명령 실행 (타임아웃 포함)
  * GS 실행 시간이 길어지면 폴백 처리를 위해 타임아웃 적용
  *
- * WK-5: 이 spawn 경로도 gsSemaphore(GS_CONCURRENCY, 기본 2)를 통과한다.
+ * 이 spawn 경로도 gsSemaphore(GS_CONCURRENCY, 기본 2)를 통과한다.
  * (타임아웃 reject 메시지 'Ghostscript timeout' 은 기존 콜러 호환을 위해 유지)
  */
 export async function runGhostscriptWithTimeout(
@@ -683,7 +683,7 @@ function parseInkCoverage(output: string): InkCoverageResult {
 }
 
 // ============================================================
-// R3 (2026-08-11): TAC(잉크총량) 측정 — GS ink_cov
+// TAC(잉크총량) 측정 — GS ink_cov
 // ============================================================
 
 /**
@@ -736,7 +736,7 @@ export function parseInkTacOutput(output: string): InkTacResult | null {
  * GS `ink_cov` 로 페이지 평균 TAC 를 측정한다.
  *
  * 게이팅·캡은 detectCmykUsage(inkcov)와 동일 계층(콜러=detectColorMode 의 GS 게이트
- * 안에서만 호출됨, GS_MAX_PAGES 캡). 실패는 **null 흡수**(R2 poppler 와 동일 규약) —
+ * 안에서만 호출됨, GS_MAX_PAGES 캡). 실패는 **null 흡수**(poppler 검출과 동일 규약) —
  * TAC 는 비차단 경고 전용이라 측정 실패가 검증을 방해하면 안 된다.
  */
 export async function detectInkTac(

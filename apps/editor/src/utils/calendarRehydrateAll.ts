@@ -19,7 +19,7 @@ import { rehydrateCalendarGrids } from '@/utils/calendarRehydrate'
 import { normalizeSkinUploads, restoreSkinUploads } from '@/utils/calendarSkinUploads'
 
 /**
- * calendarRehydrateAll.ts — 캘린더 세션 메타의 편집기 측 배선 (P1-d 캘린더, 2026-10-17)
+ * calendarRehydrateAll.ts — 캘린더 세션 메타의 편집기 측 배선 (캘린더)
  *
  * 1. `rehydrateAllCalendarGrids()` — 시작연월·표기 옵션·기념일이 바뀐 뒤 모든 캔버스의 calendar-grid 를
  *    순서대로 다시 그리고(사진·텍스트 보존) 자동저장이 변경을 감지하도록 dirty 마킹.
@@ -29,7 +29,7 @@ import { normalizeSkinUploads, restoreSkinUploads } from '@/utils/calendarSkinUp
  *
  * 모든 함수는 profile 이 null/legacy 면 no-op(`{}`·0·null)이라 기존 세트의 payload 키 집합이 바뀌지 않는다.
  *
- * T2 그리드·기념일 안전성(2026-10-22): 복원은 **비파괴** — 저장분·런처 입력에 같은 날짜 기념일이 섞여 있어도
+ * 그리드·기념일 안전성: 복원은 **비파괴** — 저장분·런처 입력에 같은 날짜 기념일이 섞여 있어도
  * 삭제하지 않고 그대로 복원하고 `console.warn` 1회만 남긴다. 거부는 `useCalendarStore.addAnniversary/updateAnniversary`(편집 시점)에서만.
  */
 
@@ -85,7 +85,7 @@ function readAnniversary(v: unknown): CalendarAnniversary | null {
 }
 
 /**
- * 연달력 연도 선택(T3b, 2026-10-24) 판독 — 프로파일 정책 `yearPolicy.select` 허용 폭 안의 정수만 남긴다.
+ * 연달력 연도 선택 판독 — 프로파일 정책 `yearPolicy.select` 허용 폭 안의 정수만 남긴다.
  * 정책·select 가 없으면 전부 버린다(관리자가 선택을 끈 세트는 템플릿 값으로 돌아간다). 남은 값이 없으면 undefined.
  */
 function readYearDeltas(v: unknown, policy: CalendarYearPolicy | undefined): CalendarYearDeltas | undefined {
@@ -100,7 +100,7 @@ function readYearDeltas(v: unknown, policy: CalendarYearPolicy | undefined): Cal
  * 세션 metadata → 캘린더 세션 메타. `startYear/startMonth` 가 정수(월 1~12)이고 `anniversaries` 가
  * 배열일 때만 유효. `show`·`dataVersion` 이 빠졌거나 형식이 틀리면 `fallback`(프로파일 기본 메타)에서 채운다.
  * `yearDeltas` 는 `yearPolicy`(프로파일 calendar.yearPolicy) 허용 폭 안의 값만 보존한다(정책이 없으면 버림).
- * 유효하지 않으면 null(P1-b 의 setFromProfile 결과 유지).
+ * 유효하지 않으면 null(setFromProfile 결과 유지).
  */
 export function readCalendarSessionMeta(
   metadata: unknown,
@@ -122,10 +122,10 @@ export function readCalendarSessionMeta(
     lunar: typeof show.lunar === 'boolean' ? show.lunar : fallbackShow.lunar,
     solarTerms: typeof show.solarTerms === 'boolean' ? show.solarTerms : fallbackShow.solarTerms,
   }
-  // 임시공휴일·선거일 표시(2026-10-17): 저장분 boolean 이면 그 값, 없으면 fallback 값, 둘 다 없으면 키 생략(= false)
+  // 임시공휴일·선거일 표시: 저장분 boolean 이면 그 값, 없으면 fallback 값, 둘 다 없으면 키 생략(= false)
   if (typeof show.temporaryHolidays === 'boolean') restoredShow.temporaryHolidays = show.temporaryHolidays
   else if (typeof fallbackShow.temporaryHolidays === 'boolean') restoredShow.temporaryHolidays = fallbackShow.temporaryHolidays
-  // 연달력 연도 제목(T3b, 2026-10-24)·잡절(T4 v1.27 show.minorTerms): 같은 규칙 — 저장분 boolean > fallback boolean > 키 생략
+  // 연달력 연도 제목·잡절(v1.27 show.minorTerms): 같은 규칙 — 저장분 boolean > fallback boolean > 키 생략
   // (yearTitle 생략 = 표시, minorTerms 생략 = 끔). 허용 목록 재구성이라 여기서 빠뜨린 키는 재오픈 때 사라진다.
   for (const key of ['yearTitle', 'minorTerms'] as const) {
     if (typeof show[key] === 'boolean') restoredShow[key] = show[key] as boolean

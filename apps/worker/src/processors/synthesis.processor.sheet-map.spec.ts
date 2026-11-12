@@ -1,5 +1,5 @@
 /**
- * P2-c (2026-10-18) — 합성 mode 'sheet-map' 골든 행렬.
+ * 합성 mode 'sheet-map' 골든 행렬.
  *
  * 픽스처: pdf-lib 로 25p·26p PDF(페이지 i MediaBox 폭 = 100+i → 산출 페이지 순서를 폭으로 검증).
  * 행렬: sheets {same-sheet(26p: 표지 단면 + 12짝 + 뒤표지 단면), offset-next(25p: 13시트, 마지막 back null)}

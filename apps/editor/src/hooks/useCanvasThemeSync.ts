@@ -38,7 +38,7 @@ function isSystemObject(obj: any): boolean {
 }
 
 /**
- * 캔버스 측 다크 모드 동기화 (editor_layout_custom.md §8.3 다크 모드 Phase 3).
+ * 캔버스 측 다크 모드 동기화.
  *
  * `useThemeSync()`가 <html data-theme>를 갱신하면 CSS 토큰은 자동 반영되지만
  * 캔버스 내부의 fabric 객체(룰러·선택 핸들)는 fabric의 자체 색상 옵션을 사용한다.
@@ -77,7 +77,7 @@ export function useCanvasThemeSync(ready: boolean): void {
       // 2-A. fabric.Object.prototype + 특수 prototype 기본값 갱신
       // (기존엔 시작 시점의 light theme 색상이 prototype에 박혀있어 테마 전환 후
       // 추가된 객체는 hover/selection 색상이 light로 남아있는 버그 수정)
-      // P2-13: ActiveSelection (다중 선택 그룹) + IText caret color 동기화 추가
+      // ActiveSelection (다중 선택 그룹) + IText caret color 동기화 추가
       try {
         ;(fabric.Object.prototype as any).borderColor = controls.borderColor
         ;(fabric.Object.prototype as any).cornerColor = controls.cornerColor

@@ -6,7 +6,7 @@ import {
 } from './white-overprint-scan';
 
 /**
- * R4b 화이트 오버프린트 스캐너 회귀 잠금 — 연산자 수준 상태 추적의 계약.
+ * 화이트 오버프린트 스캐너 회귀 잠금 — 연산자 수준 상태 추적의 계약.
  */
 
 const stream = (

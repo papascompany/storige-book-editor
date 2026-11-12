@@ -1,5 +1,5 @@
 /**
- * kr-2025-2035-v1.test.ts — 생성 데이터 교차 검증 (P1-c, 2026-10-17)
+ * kr-2025-2035-v1.test.ts — 생성 데이터 교차 검증
  *
  * 참고값: KASI 달력자료·우주항공청 2027 월력요항·대통령령 제36290호(2026-04-30 개정) 대조 결과(2026-10-17).
  * 설날 2027-02-07·2028-01-27 은 KASI 와 일치(중국력 2/6·1/26 과 하루 차이 — KST 자정 직후 합삭).
@@ -162,7 +162,7 @@ describe('kr-2025-2035-v1 — 공휴일', () => {
     const t = (y: number) => data.holidays[String(y)].filter((h) => h.temporary).map((h) => `${h.date} ${h.name}`);
     expect(t(2025)).toEqual(['2025-01-27 임시공휴일', '2025-06-03 대통령선거일']);
     expect(t(2026)).toEqual(['2026-06-03 지방선거일']);
-    // D4(2026-10-24): 2028 국회의원선거일(공직선거법 제34조 — 임기만료일 전 50일 이후 첫 수요일)은 temporary·기본 미표시
+    // 2028 국회의원선거일(공직선거법 제34조 — 임기만료일 전 50일 이후 첫 수요일)은 temporary·기본 미표시
     expect(t(2027)).toEqual([]);
     expect(t(2028)).toEqual(['2028-04-12 국회의원선거일']);
     expect(weekdayOf('2028-04-12')).toBe(3);
@@ -223,7 +223,7 @@ const nthGyeongFrom = (start: string, n: number): string => {
   }
 };
 
-describe('kr-2025-2035-v1 — 잡절(삼복, T4)', () => {
+describe('kr-2025-2035-v1 — 잡절(삼복)', () => {
   it('2025~2027 초복·중복·말복이 월력요항 공표값과 정확히 같다(2028 은 미공고로 제외)', () => {
     for (const [y, exp] of Object.entries(MINOR_TERMS_PUBLISHED)) {
       const got = Object.fromEntries((data.minorTerms?.[y] ?? []).map((t) => [t.name, t.date]));

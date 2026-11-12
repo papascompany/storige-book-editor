@@ -9,7 +9,7 @@ import { useCrossCanvasMoveStore } from '@/stores/useCrossCanvasMoveStore'
 import { buildPageMeta, type PageMeta } from '@/components/PageNavigation/BookNavigation'
 
 /**
- * 표지 영역 사이로 객체 이동 (cover.md §7 / D5 Phase 3b-v + Phase 2-A 정밀 좌표).
+ * 표지 영역 사이로 객체 이동 (정밀 좌표 매핑).
  *
  * 활성 페이지가 표지 그룹이고, 표지 그룹에 다른 region이 있을 때만 노출.
  * 클릭 시:
@@ -19,7 +19,7 @@ import { buildPageMeta, type PageMeta } from '@/components/PageNavigation/BookNa
  *      source 워크스페이스 내부 상대 위치를 target 워크스페이스에서 그대로 유지
  *   3) target region 페이지로 자동 전환
  *
- * 좌표 매핑 정책 (Phase 2-A)
+ * 좌표 매핑 정책
  * - 객체 중심점을 source 워크스페이스 좌상단 기준 정규화 (0~1, 범위 외 허용)
  * - target 워크스페이스 크기에 비례해서 역변환 → target 캔버스 좌표
  * - 객체 자체 크기(width/height/scale)는 그대로 유지 — 같은 mm/dpi 환경 가정
@@ -27,7 +27,7 @@ import { buildPageMeta, type PageMeta } from '@/components/PageNavigation/BookNa
  *
  * 두 캔버스 history는 분리 (각각 1 step씩) — Undo는 target 페이지에서 add를,
  * source 페이지에서 remove를 각각 1번씩 되돌려야 양쪽 동기화. cross-canvas
- * atomic history는 Phase 2-B로 분리.
+ * atomic undo 는 아래 "방금 이동 되돌리기" 액션이 맡는다.
  *
  * meta.regionRef/anchor는 target SpreadPlugin이 있으면 자동 재계산,
  * 없으면 (separated 모드) regionRef를 target의 coverPosition으로 단순 설정.
@@ -115,7 +115,7 @@ export default function MoveToCoverRegion() {
     let movedCount = 0
 
     for (const obj of moveableObjects) {
-      // target 좌표 계산 (Phase 2-A: 워크스페이스 기준 xNorm/yNorm 비례 변환)
+      // target 좌표 계산 (워크스페이스 기준 xNorm/yNorm 비례 변환)
       let targetLeft: number | undefined
       let targetTop: number | undefined
       if (srcBox && tgtBox) {
@@ -152,7 +152,7 @@ export default function MoveToCoverRegion() {
       if (targetSpread?.resolveRegionMetaForObject) {
         try {
           // ⚠️ raw getBoundingRect()(무인자 = viewport 좌표) 금지 — 줌에 따라 영역을 오판해
-          // meta 를 오염시킨다(라이브 P1, 2026-06-12). scene→content 변환을 캡슐화한
+          // meta 를 오염시킨다. scene→content 변환을 캡슐화한
           // SpreadPlugin.resolveRegionMetaForObject 만 사용한다.
           const result = targetSpread.resolveRegionMetaForObject(moved as any, null)
           if (result) {
@@ -184,7 +184,7 @@ export default function MoveToCoverRegion() {
 
     const targetLabel = targetMeta?.label ?? '대상 영역'
 
-    // cross-canvas move log push (Phase 2-B — "방금 이동 되돌리기" 액션 활성화)
+    // cross-canvas move log push ("방금 이동 되돌리기" 액션 활성화)
     pushCrossMove({
       id: `move-${Date.now()}`,
       sourceIdx: currentPageIndex,
@@ -197,7 +197,7 @@ export default function MoveToCoverRegion() {
     showToast(`${objWord}를 "${targetLabel}"(으)로 이동했습니다. 30초 안에 "되돌리기"로 복구 가능.`, 'success', 3500)
   }
 
-  // "방금 이동 되돌리기" — Phase 2-B
+  // "방금 이동 되돌리기"
   // 양 캔버스의 history undo를 count만큼 호출 (target N add 되돌림 + source N remove 되돌림)
   const handleUndoLastMove = () => {
     const last = lastCrossMove
@@ -253,7 +253,7 @@ export default function MoveToCoverRegion() {
         ))}
       </div>
 
-      {/* 방금 영역 이동 되돌리기 — Phase 2-B (cross-canvas atomic undo) */}
+      {/* 방금 영역 이동 되돌리기 (cross-canvas atomic undo) */}
       {showUndoBtn && (
         <button
           type="button"

@@ -1,5 +1,5 @@
 /**
- * createCanvas 플러그인 생성 순서 계약 (적대 리뷰 P0, 2026-07-15)
+ * createCanvas 플러그인 생성 순서 계약
  *
  * fabric 이벤트 핸들러는 등록(=생성자 바인딩) 순서대로 발화한다. SmartGuidesPlugin(스냅)과
  * FrameInteractionPlugin(사진틀 fillImage/clipPath 동기화)은 둘 다 **생성자**에서

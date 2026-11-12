@@ -1,4 +1,4 @@
-// snapCoordinator — 스냅 계산 순수 로직 테스트 (E1 §5-1)
+// snapCoordinator — 스냅 계산 순수 로직 테스트
 import { describe, it, expect } from 'vitest'
 import {
   SnapBounds,
