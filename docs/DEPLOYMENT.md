@@ -1991,6 +1991,34 @@ npx vitest run src/calendar src/plugins/CalendarPlugin.test.ts   # 데이터·co
 **롤백**
 1. `docker tag storige-worker:rollback-pre-trimboxwrap-20261112 storige-worker:latest` → `docker compose up -d --no-deps --no-build worker` → `[FLAGS-CHECK] worker ok n=9` 확인.
 2. 편집기·관리자·api·`.env`·DB 는 변경이 없어 롤백 불요.
+
+### 2026-11-12 운영 반영 — redis 패치 · 리버스 프록시 nginx 1.30 (기반 이미지 갱신, 앱 이미지 변경 없음)
+
+> master `62de4448` → `0d48a62b`(PR #28 fast-forward). api·worker 이미지는 재빌드하지 않았다(그 사이 변경은 주석·테스트뿐). 시각은 UTC.
+
+**범위**
+- redis — 같은 태그 `redis:7.2-alpine` 를 다시 받아 7.2.13 → 7.2.17. compose 변경 없음.
+- nginx(리버스 프록시) — `nginx:1.25-alpine` → `nginx:1.30-alpine`(1.25.5 → 1.30.6). compose 1줄. 설정 파일 변경 없음.
+- `docker/editor/Dockerfile`·`docker/admin/Dockerfile` 의 기반 이미지도 1.30 으로 바꿨으나 해당 이미지는 이번에 다시 만들지 않았다.
+- 마이그레이션 0, `.env` 변경 0, mariadb 변경 0.
+
+**redis(14:37Z)**
+- 사전: 모든 Bull 큐의 대기·진행 중 잡 0 확인(진행 중 잡이 있으면 재생성 순간 stalled 재시도가 생긴다).
+- 0단계: `docker tag redis:7.2-alpine redis:rollback-pre-eol-20261112` → `redis-cli SAVE`.
+- 반영: `docker pull redis:7.2-alpine` → `docker compose up -d --no-deps redis`(14:37:06Z, 재생성 약 1초). RDB 552키 로드.
+- 확인: `redis-server --version` 7.2.17·healthy, api·worker 가 재시작 없이 재접속(최근 3분 error 0), health 200, exporter `redis_up 1`.
+
+**nginx(15:55Z)**
+- 0단계: `docker tag nginx:1.25-alpine nginx:rollback-pre-eol-20261112`.
+- 반영: `git pull --ff-only origin master`(`0d48a62b`) → `docker pull nginx:1.30-alpine` → 운영과 같은 마운트·네트워크의 임시 컨테이너에서 `nginx -t` 통과 → `docker compose up -d --no-deps nginx`(15:55:17Z~15:55:19Z).
+- 확인: `nginx -v` 1.30.6, 외부 `/api/health` 200(HTTP/2), http → https 301, 인증서 만료일 그대로, nginx 로그 emerg/alert/crit/error 0·5xx 0, api error 0. 인증서 갱신 훅은 컨테이너 이름으로 reload 하므로 그대로 동작한다.
+- api 를 재생성하지 않았으므로 프록시 대상 IP 는 그대로다(nginx 는 기동 시 1회 IP 를 고정한다).
+
+**롤백**
+1. redis: `docker tag redis:rollback-pre-eol-20261112 redis:7.2-alpine` → `docker compose up -d --no-deps redis`(같은 7.2 계열이라 RDB 를 그대로 읽는다).
+2. nginx: compose 의 이미지를 `nginx:rollback-pre-eol-20261112` 로 지정한 임시 override 파일로 `docker compose -f docker-compose.yml -f <override> up -d --no-deps nginx`.
+3. api·worker·`.env`·DB 는 변경이 없어 롤백 불요.
+
 ### 1. 컨테이너가 시작되지 않음
 
 ```bash
