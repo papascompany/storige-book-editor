@@ -2,6 +2,7 @@ import { describe, it, expect, vi, afterEach } from 'vitest'
 import { BindingType } from '@storige/types'
 import { getParamCompat } from './searchParams'
 import { normalizePageStep } from './pageStep'
+import { UNDERLAY_MAX_PAGES } from './contentPdfGuide'
 import {
   HOST_PAGE_LIMIT_MAX,
   SPREAD_INNER_HOST_MAX,
@@ -634,8 +635,9 @@ describe('warnPageStepMismatch — 호스트 단위 적용 시 불일치 경고'
 })
 
 describe('상수', () => {
-  it('SPREAD_INNER_HOST_MAX === UNDERLAY_MAX_PAGES * 2', async () => {
-    const { UNDERLAY_MAX_PAGES } = await import('./contentPdfGuide')
+  // 무거운 모듈(contentPdfGuide)은 파일 머리에서 불러온다 — 테스트 안에서 불러오면 부하 때
+  // 모듈 로딩 시간이 테스트 제한 시간에 포함된다.
+  it('SPREAD_INNER_HOST_MAX === UNDERLAY_MAX_PAGES * 2', () => {
     expect(SPREAD_INNER_HOST_MAX).toBe(UNDERLAY_MAX_PAGES * 2)
     expect(HOST_PAGE_LIMIT_MAX).toBe(500)
   })

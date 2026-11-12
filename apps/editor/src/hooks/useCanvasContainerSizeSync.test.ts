@@ -5,7 +5,7 @@ import { useCanvasContainerSizeSync } from './useCanvasContainerSizeSync'
 import { useAppStore } from '@/stores/useAppStore'
 
 /**
- * T6 (2026-07-13): EditorView 에서 추출한 캔버스 컨테이너 크기 동기화 훅 스펙.
+ * EditorView 에서 추출한 캔버스 컨테이너 크기 동기화 훅 스펙.
  * - 폭 변화 → setDimensions 호출 + sizeChange emit
  * - 재정렬 분기: fits(5% 패딩) → setCenterPointOf(줌 유지) / 미적합 → setZoomAuto
  * - 동일 치수 → setDimensions 스킵(no-op)
@@ -75,21 +75,37 @@ function makeContainer(w: number, h: number) {
   }
 }
 
-/** window resize → schedule → RAF(setTimeout 스텁) 플러시 */
-async function fireResizeAndFlush(): Promise<void> {
+/** 예약된 RAF 콜백 — 실제 타이머 없이 테스트가 직접 비운다 */
+let rafQueue = new Map<number, (time: number) => void>()
+let rafSeq = 0
+
+function flushRaf(): void {
+  const pending = Array.from(rafQueue.values())
+  rafQueue.clear()
+  pending.forEach((cb) => cb(0))
+}
+
+/** window resize → schedule → 예약된 RAF 플러시 */
+function fireResizeAndFlush(): void {
   window.dispatchEvent(new Event('resize'))
-  await new Promise((r) => setTimeout(r, 10))
+  flushRaf()
 }
 
 // -- 셋업 -----------------------------------------------------------------------
 
 beforeEach(() => {
-  // RAF 를 setTimeout(0) 으로 스텁 — schedule 의 rafId 병합 가드(동기 실행 시 오동작)를
-  // 존중하면서 테스트에서 결정적으로 플러시할 수 있게 한다.
-  vi.stubGlobal('requestAnimationFrame', ((cb: (time: number) => void) =>
-    setTimeout(() => cb(0), 0) as unknown as number) as typeof requestAnimationFrame)
-  vi.stubGlobal('cancelAnimationFrame', ((id: number) =>
-    clearTimeout(id as unknown as ReturnType<typeof setTimeout>)) as typeof cancelAnimationFrame)
+  // RAF 를 대기열로 스텁 — schedule 의 rafId 병합 가드(동기 실행 시 오동작)를 존중하도록
+  // 콜백은 예약만 하고, 실행은 flushRaf() 로 테스트가 직접 한다(실제 타이머·대기 시간 의존 없음).
+  rafQueue = new Map()
+  rafSeq = 0
+  vi.stubGlobal('requestAnimationFrame', ((cb: (time: number) => void) => {
+    rafSeq += 1
+    rafQueue.set(rafSeq, cb)
+    return rafSeq
+  }) as typeof requestAnimationFrame)
+  vi.stubGlobal('cancelAnimationFrame', ((id: number) => {
+    rafQueue.delete(id)
+  }) as typeof cancelAnimationFrame)
 })
 
 afterEach(() => {
@@ -104,7 +120,7 @@ function wireStore(canvas: unknown, editor: unknown): void {
 
 // -- 스펙 -----------------------------------------------------------------------
 
-describe('useCanvasContainerSizeSync (T6)', () => {
+describe('useCanvasContainerSizeSync', () => {
   it('ready=false 면 아무 것도 하지 않는다', () => {
     const { canvas } = makeFakeCanvas()
     const { editor } = makeFakeEditor()
@@ -117,7 +133,7 @@ describe('useCanvasContainerSizeSync (T6)', () => {
     expect(editor.emit).not.toHaveBeenCalled()
   })
 
-  it('초기 1회 동기화: 기존 치수가 stale(≠컨테이너)이면 setDimensions + 재정렬까지 수행 (C-2)', () => {
+  it('초기 1회 동기화: 기존 치수가 stale(≠컨테이너)이면 setDimensions + 재정렬까지 수행', () => {
     const { canvas, workspace } = makeFakeCanvas() // 0×0 = 생성 시점 동결(stale) 치수
     const { editor, wsPlugin } = makeFakeEditor()
     wireStore(canvas, editor)
@@ -128,7 +144,7 @@ describe('useCanvasContainerSizeSync (T6)', () => {
     expect(canvas.setDimensions).toHaveBeenCalledTimes(1)
     expect(canvas.setDimensions).toHaveBeenCalledWith({ width: 800, height: 600 })
     expect(editor.emit).toHaveBeenCalledWith('sizeChange', { width: 800, height: 600 })
-    // C-2: 첫 apply 재정렬 스킵은 '기존 fabric 치수 == 새 w/h' 캔버스에만 — 치수가 달랐으면
+    // 첫 apply 재정렬 스킵은 '기존 fabric 치수 == 새 w/h' 캔버스에만 — 치수가 달랐으면
     // 생성 시점 setZoomAuto 기준이 stale 이므로 첫 apply 에서도 재정렬한다.
     // 100px 워크스페이스 <= 800*0.95 → fits → 줌 유지 중앙 이동.
     expect(wsPlugin.setCenterPointOf).toHaveBeenCalledTimes(1)
@@ -136,8 +152,8 @@ describe('useCanvasContainerSizeSync (T6)', () => {
     expect(wsPlugin.setZoomAuto).not.toHaveBeenCalled()
   })
 
-  it('폭 변화 + 페이지가 들어가면(fits): setDimensions 후 setCenterPointOf (줌 유지)', async () => {
-    // 컨테이너와 동일 치수로 시작 — 첫 apply 는 no-op(C-2 좁힌 스킵), 이후 리사이즈만 검증
+  it('폭 변화 + 페이지가 들어가면(fits): setDimensions 후 setCenterPointOf (줌 유지)', () => {
+    // 컨테이너와 동일 치수로 시작 — 첫 apply 는 no-op(좁힌 스킵), 이후 리사이즈만 검증
     const { canvas, workspace } = makeFakeCanvas({ width: 800, height: 600, workspaceSize: 100 }) // 100px @zoom1
     const { editor, wsPlugin } = makeFakeEditor()
     wireStore(canvas, editor)
@@ -147,7 +163,7 @@ describe('useCanvasContainerSizeSync (T6)', () => {
     canvas.setDimensions.mockClear()
 
     setSize(520, 600) // ControlBar(≈280px) 마운트로 컨테이너 폭 축소 시나리오
-    await fireResizeAndFlush()
+    fireResizeAndFlush()
 
     expect(canvas.setDimensions).toHaveBeenCalledWith({ width: 520, height: 600 })
     // 100 <= 520*0.95 → fits → 줌 유지 중앙 이동
@@ -157,7 +173,7 @@ describe('useCanvasContainerSizeSync (T6)', () => {
     expect(editor.emit).toHaveBeenCalledWith('sizeChange', { width: 520, height: 600 })
   })
 
-  it('폭 변화 + 페이지가 안 들어가면(미적합): setZoomAuto 로 자동 맞춤', async () => {
+  it('폭 변화 + 페이지가 안 들어가면(미적합): setZoomAuto 로 자동 맞춤', () => {
     // workspace 1000px @zoom1 > 520*0.95 → 미적합 (첫 apply no-op 을 위해 컨테이너 동일 치수 시작)
     const { canvas } = makeFakeCanvas({ width: 800, height: 600, workspaceSize: 1000 })
     const { editor, wsPlugin } = makeFakeEditor()
@@ -167,7 +183,7 @@ describe('useCanvasContainerSizeSync (T6)', () => {
     renderHook(() => useCanvasContainerSizeSync(true, ref))
 
     setSize(520, 600)
-    await fireResizeAndFlush()
+    fireResizeAndFlush()
 
     expect(wsPlugin.setZoomAuto).toHaveBeenCalledTimes(1)
     expect(wsPlugin.setCenterPointOf).not.toHaveBeenCalled()
@@ -182,7 +198,7 @@ describe('useCanvasContainerSizeSync (T6)', () => {
     renderHook(() => useCanvasContainerSizeSync(true, ref))
 
     expect(canvas.setDimensions).not.toHaveBeenCalled()
-    // C-2 회귀 가드: 첫 apply 재정렬은 '기존 치수 == 새 w/h'일 때만 스킵 —
+    // 회귀 가드: 첫 apply 재정렬은 '기존 치수 == 새 w/h'일 때만 스킵 —
     // WorkspacePlugin.reset() 의 setZoomAuto 가 이미 올바른 기준으로 처리한 캔버스는 보존.
     expect(wsPlugin.setCenterPointOf).not.toHaveBeenCalled()
     expect(wsPlugin.setZoomAuto).not.toHaveBeenCalled()
@@ -190,8 +206,8 @@ describe('useCanvasContainerSizeSync (T6)', () => {
     expect(editor.emit).toHaveBeenCalledWith('sizeChange', { width: 800, height: 600 })
   })
 
-  it('1px 미만 지터는 apply 자체를 스킵한다 (모바일 viewport 지터 흡수)', async () => {
-    // 컨테이너와 동일 치수로 시작 — 첫 apply no-op(C-2 좁힌 스킵), 지터 스킵만 검증
+  it('1px 미만 지터는 apply 자체를 스킵한다 (모바일 viewport 지터 흡수)', () => {
+    // 컨테이너와 동일 치수로 시작 — 첫 apply no-op(좁힌 스킵), 지터 스킵만 검증
     const { canvas } = makeFakeCanvas({ width: 800, height: 600 })
     const { editor, wsPlugin } = makeFakeEditor()
     wireStore(canvas, editor)
@@ -202,7 +218,7 @@ describe('useCanvasContainerSizeSync (T6)', () => {
     editor.emit.mockClear()
 
     setSize(800.5, 600.4)
-    await fireResizeAndFlush()
+    fireResizeAndFlush()
 
     expect(canvas.setDimensions).not.toHaveBeenCalled()
     expect(editor.emit).not.toHaveBeenCalled()
@@ -210,7 +226,7 @@ describe('useCanvasContainerSizeSync (T6)', () => {
     expect(wsPlugin.setZoomAuto).not.toHaveBeenCalled()
   })
 
-  it('unmount 시 resize 리스너를 정리한다 (이후 resize 무반응)', async () => {
+  it('unmount 시 resize 리스너를 정리한다 (이후 resize 무반응)', () => {
     const { canvas } = makeFakeCanvas()
     const { editor } = makeFakeEditor()
     wireStore(canvas, editor)
@@ -221,7 +237,7 @@ describe('useCanvasContainerSizeSync (T6)', () => {
     unmount()
 
     setSize(500, 500)
-    await fireResizeAndFlush()
+    fireResizeAndFlush()
 
     expect(canvas.setDimensions).not.toHaveBeenCalled()
   })
