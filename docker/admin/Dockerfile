@@ -30,7 +30,7 @@ RUN pnpm --filter @storige/types build
 RUN pnpm --filter @storige/admin build
 
 # Production stage
-FROM nginx:1.25-alpine
+FROM nginx:1.30-alpine
 
 # Copy built files to nginx
 COPY --from=builder /app/apps/admin/dist /usr/share/nginx/html

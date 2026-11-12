@@ -37,7 +37,7 @@ RUN pnpm --filter @storige/canvas-core build || true
 RUN pnpm --filter @storige/editor build
 
 # Production stage
-FROM nginx:1.25-alpine
+FROM nginx:1.30-alpine
 
 # Copy built files to nginx
 COPY --from=builder /app/apps/editor/dist /usr/share/nginx/html

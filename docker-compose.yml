@@ -2,7 +2,7 @@ version: '3.8'
 
 services:
   nginx:
-    image: nginx:1.25-alpine
+    image: nginx:1.30-alpine
     container_name: storige-nginx
     ports:
       - "80:80"
