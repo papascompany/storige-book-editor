@@ -129,7 +129,7 @@ docker-compose logs -f
 
 ### Backend
 - NestJS 10 (Node 22 LTS)
-- TypeORM + MariaDB 11.2
+- TypeORM + MariaDB 11.4
 - Redis 7.2
 - Bull (Queue)
 - JWT Authentication

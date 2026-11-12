@@ -78,8 +78,8 @@
 |----------|----------|--------|
 | **App** | `storige-api` | NestJS (자체 빌드, node:24-alpine) |
 | App | `storige-worker` | NestJS Bull worker (자체 빌드) |
-| App | `storige-nginx` | nginx:1.25-alpine (리버스 프록시) |
-| **Data** | `storige-mariadb` | mariadb:11.2 |
+| App | `storige-nginx` | nginx:1.30-alpine (리버스 프록시) |
+| **Data** | `storige-mariadb` | mariadb:11.4 (LTS) |
 | Data | `storige-redis` | redis:7.2-alpine |
 | **Monitoring** (P2-8) | `storige-prometheus` | prom/prometheus:v2.55.1 |
 | Monitoring | `storige-grafana` | grafana/grafana:11.2.2 |
@@ -220,7 +220,7 @@ pnpm dev
 
 #### 5. 로컬 기동 시 알아둘 점 (2026-10-17)
 
-- **compose 서비스 이름은 `mariadb`** 다(`docker compose up -d mariadb redis`, 컨테이너 `storige-mariadb`). `mariadb:11.2` 이미지에는 `mysql`·`mysqladmin`·`mysqldump` 심볼릭 링크가 없으므로 클라이언트는 `mariadb`·`mariadb-admin`·`mariadb-dump` 를 쓴다(`scripts/dev-start.sh` 2026-10-17 정리). Redis 는 Homebrew 서비스(`brew services start redis`)로 대신할 수 있다.
+- **compose 서비스 이름은 `mariadb`** 다(`docker compose up -d mariadb redis`, 컨테이너 `storige-mariadb`). `mariadb:11.4` 이미지에는 `mysql`·`mysqladmin`·`mysqldump` 심볼릭 링크가 없으므로 클라이언트는 `mariadb`·`mariadb-admin`·`mariadb-dump` 를 쓴다(`scripts/dev-start.sh` 2026-10-17 정리). Redis 는 Homebrew 서비스(`brew services start redis`)로 대신할 수 있다.
 - **개발 모드 로그**: api·worker 는 `pino-pretty` 가 설치돼 있을 때만 pretty 로 출력하고, 없으면 JSON 으로 **그대로 기동**한다(`apps/*/src/config/dev-log-transport.ts`). pretty 가 필요하면 설치 대신 `pnpm --filter @storige/api dev | npx pino-pretty` 로 파이프한다. `LOG_PRETTY=false` 면 개발 모드에서도 JSON.
 - **worker 환경 파일**: `apps/worker/.env.development.example` 을 `.env.development` 로 복사한다(gitignored). `STORAGE_PATH` 는 api 의 storage 디렉터리 절대 경로, `WORKER_API_KEY` 는 api 의 `WORKER_API_KEY` 와 같고 sites 테이블의 어느 사이트 `worker_auth_code` 와도 일치해야 잡 상태 보고가 401 로 떨어지지 않는다.
 - **Bookmoa 연동 끄기**: api `.env.development` 에 `BOOKMOA_DB_PASSWORD` 가 있으면 원격 bookmoa DB 에 접속을 시도해 부팅이 멈출 수 있다. 로컬에서는 `BOOKMOA_DB_PASSWORD= pnpm --filter @storige/api dev` 처럼 빈 값으로 덮어 끈다.
@@ -2018,6 +2018,39 @@ npx vitest run src/calendar src/plugins/CalendarPlugin.test.ts   # 데이터·co
 1. redis: `docker tag redis:rollback-pre-eol-20261112 redis:7.2-alpine` → `docker compose up -d --no-deps redis`(같은 7.2 계열이라 RDB 를 그대로 읽는다).
 2. nginx: compose 의 이미지를 `nginx:rollback-pre-eol-20261112` 로 지정한 임시 override 파일로 `docker compose -f docker-compose.yml -f <override> up -d --no-deps nginx`.
 3. api·worker·`.env`·DB 는 변경이 없어 롤백 불요.
+
+### 2026-11-12 운영 반영 — MariaDB 11.2 → 11.4 LTS (DB 이미지 갱신, 앱 이미지 변경 없음)
+
+> master `2b62c61e` → `bb550a02`(PR #30 fast-forward). api·worker 이미지는 재빌드하지 않았다. 시각은 UTC. 서비스 중단 21:17:26Z~21:19:41Z(약 2분 15초).
+
+**범위**
+- mariadb — `mariadb:11.2`(11.2.6) → `mariadb:11.4`(11.4.13). 데이터 볼륨은 그대로 쓰고 기동 때 `MARIADB_AUTO_UPGRADE=1` 로 시스템 테이블을 올린다.
+- collation 고정 — 11.4 는 utf8mb4 의 기본 collation 이 `utf8mb4_uca1400_ai_ci` 로 바뀌었다. compose `command` 에 `--character-set-server=utf8mb4 --collation-server=utf8mb4_general_ci --character-set-collations=utf8mb4=utf8mb4_general_ci` 를 넣어 종전 기본값을 유지한다.
+- 마이그레이션 0, `.env` 변경 0, api·worker·redis·nginx 이미지 변경 0.
+
+**사전 검증**
+- 운영 서버에서 최신 백업 덤프로 리허설: (가) 새 11.4 에 복원, (나) 11.2 임시 볼륨에 복원 → 같은 볼륨을 11.4 로 기동. 두 경로 모두 오류 0, 테이블·행 수·체크섬·collation·이벤트·인덱스 차이 0. 임시 컨테이너는 네트워크 없이 띄우고 끝난 뒤 지웠다.
+- 로컬에서 api·worker 를 11.2 와 11.4 에 각각 붙여 스키마 동기화 결과·시드·조회/쓰기 응답·운영 모드 기동을 비교: 차이 0, 오류 로그 0.
+
+**반영(VPS, `deploy@<VPS_HOST>`, `~/storige`)**
+- 0단계: `~/backup.sh`(즉시 논리 백업) → `docker tag mariadb:11.2 mariadb:rollback-pre-eol-20261112` → 모든 Bull 큐 대기·진행 중 0 확인.
+- 정지: `docker compose stop worker` → `docker compose stop api` → 정지 직전 스냅샷(테이블별 행 수·`CHECKSUM TABLE`·collation·이벤트·인덱스·계정) → `docker compose stop -t 180 mariadb`(exit 0, `Shutdown complete` 확인).
+- 볼륨 사본: 정지 상태에서 `storige_mariadb_data` 를 `~/backups/mariadb-volume-pre-eol-20261112.tar.gz` 로 묶고 gzip 검사·항목 수·핵심 파일 존재를 확인. 사본이 정상이 아니면 교체하지 않고 원래대로 다시 기동한다.
+- 교체: `git pull --ff-only origin master`(`bb550a02`) → `docker compose up -d --no-deps mariadb`(21:19:12Z) → 11초 뒤 준비, 로그 `Finished mariadb-upgrade`.
+- 점검(앱을 올리기 전): `mariadb-check --check-upgrade --all-databases`·`mariadb-check --all-databases` 비정상 0, 정지 직전 스냅샷과 테이블 41·행 수·체크섬·collation·이벤트·인덱스·계정 차이 0, `event_scheduler=ON`·`max_allowed_packet=268435456`·`collation_server=utf8mb4_general_ci`·`character_set_collations=utf8mb4=utf8mb4_general_ci`.
+- 기동: `docker compose start api`(5초 뒤 health 200) → `docker compose restart nginx` → `docker compose start worker`.
+- 기동 확인: `[FLAGS-CHECK] api ok n=18`·`worker ok n=9`, 외부 `/api/health` 200, api·worker error 0, nginx 5xx 0.
+
+**알아둘 것**
+- 자동 업그레이드는 시스템 테이블만 올린다(로그에 `Check required`). 사용자 테이블은 `mariadb-check --check-upgrade` 로 따로 확인한다.
+- 업그레이드 중 임시 서버가 남기는 `[ERROR] Event Scheduler will not function when starting with --skip-grant-tables` 1줄은 정상이다. 본 서버에서는 이벤트 스케줄러가 켜진다.
+- api·worker 는 `stop` 때 30초 대기 뒤 강제 종료됐다(exit 137). 큐와 DB 연결이 비어 있을 때 멈췄으므로 영향은 없었다.
+- `backup.sh` 는 `~/backups` 의 7일 지난 파일을 지운다. 볼륨 사본과 스냅샷도 그 대상이다.
+
+**롤백**
+1. 11.4 로 한 번 열린 볼륨은 11.2 로 다시 열 수 없다. 반드시 볼륨 사본을 복원한다. 교체 뒤 쓰인 데이터는 사라진다.
+2. `docker compose stop worker api mariadb` → 빈 볼륨에 `mariadb-volume-pre-eol-20261112.tar.gz` 를 풀기 → compose 의 이미지를 `mariadb:rollback-pre-eol-20261112` 로, `command` 를 종전 값으로 지정한 임시 override 파일로 `docker compose -f docker-compose.yml -f <override> up -d --no-deps mariadb` → `docker compose start api` → `docker compose restart nginx` → `docker compose start worker`.
+3. 볼륨 사본을 쓸 수 없으면 빈 볼륨 + 11.2 + 직전 `db-*.sql.gz` 복원.
 
 ### 1. 컨테이너가 시작되지 않음
 

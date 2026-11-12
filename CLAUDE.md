@@ -111,7 +111,7 @@ docker-compose logs -f
 
 ### Infrastructure
 
-- **Database**: MariaDB 11.2 (TypeORM with synchronize in dev)
+- **Database**: MariaDB 11.4 (TypeORM with synchronize in dev)
 - **Queue**: Redis 7.2 (Bull for job processing)
 - **File Storage**: Local filesystem at `/app/storage` (mapped via Docker volume)
 - **Reverse Proxy**: Nginx for production routing
