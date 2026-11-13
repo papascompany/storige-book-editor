@@ -81,12 +81,12 @@
 | App | `storige-nginx` | nginx:1.30-alpine (리버스 프록시) |
 | **Data** | `storige-mariadb` | mariadb:11.4 (LTS) |
 | Data | `storige-redis` | redis:7.2-alpine |
-| **Monitoring** (P2-8) | `storige-prometheus` | prom/prometheus:v2.55.1 |
-| Monitoring | `storige-grafana` | grafana/grafana:11.2.2 |
-| Monitoring | `storige-node-exporter` | prom/node-exporter:v1.8.2 |
-| Monitoring | `storige-redis-exporter` | oliver006/redis_exporter:v1.66.0-alpine |
-| **Logging** (P2-10) | `storige-loki` | grafana/loki:3.2.1 |
-| Logging | `storige-promtail` | grafana/promtail:3.2.1 |
+| **Monitoring** (P2-8) | `storige-prometheus` | prom/prometheus:v3.13.5 |
+| Monitoring | `storige-grafana` | grafana/grafana:12.4.15 |
+| Monitoring | `storige-node-exporter` | prom/node-exporter:v1.12.1 |
+| Monitoring | `storige-redis-exporter` | oliver006/redis_exporter:v1.97.0-alpine |
+| **Logging** (P2-10) | `storige-loki` | grafana/loki:3.7.9 |
+| Logging | `storige-promtail` | grafana/promtail:3.6.11 |
 | **선택** (S-P2A) | `storige-rembg` | python:3.12-slim + rembg 2.0.77 (자체 빌드) — compose profile `cutout` 로만 기동. [배경제거 사이드카](#배경제거cutout-사이드카--rembg) 참조 |
 
 ---
@@ -2051,6 +2051,46 @@ npx vitest run src/calendar src/plugins/CalendarPlugin.test.ts   # 데이터·co
 1. 11.4 로 한 번 열린 볼륨은 11.2 로 다시 열 수 없다. 반드시 볼륨 사본을 복원한다. 교체 뒤 쓰인 데이터는 사라진다.
 2. `docker compose stop worker api mariadb` → 빈 볼륨에 `mariadb-volume-pre-eol-20261112.tar.gz` 를 풀기 → compose 의 이미지를 `mariadb:rollback-pre-eol-20261112` 로, `command` 를 종전 값으로 지정한 임시 override 파일로 `docker compose -f docker-compose.yml -f <override> up -d --no-deps mariadb` → `docker compose start api` → `docker compose restart nginx` → `docker compose start worker`.
 3. 볼륨 사본을 쓸 수 없으면 빈 볼륨 + 11.2 + 직전 `db-*.sql.gz` 복원.
+
+### 2026-11-13 운영 반영 — 모니터링·로그 수집 이미지 갱신 (앱 이미지 변경 없음)
+
+> master `30279ad4` → `16be32a7`(PR #32 fast-forward). api·worker·nginx·mariadb·redis 컨테이너는 건드리지 않았다. 시각은 UTC. 고객 서비스 중단 없음. 교체 04:18:40Z~04:21:12Z.
+
+**범위**
+- prometheus `v2.55.1` → `v3.13.5`(LTS), grafana `11.2.2` → `12.4.15`, loki `3.2.1` → `3.7.9`, promtail `3.2.1` → `3.6.11`, node-exporter `v1.8.2` → `v1.12.1`, redis_exporter `v1.66.0` → `v1.97.0`.
+- compose 의 이미지 태그 6줄만 바뀐다. prometheus·loki·promtail·grafana 설정 파일, 규칙, 대시보드, `.env` 변경 0.
+- promtail 은 개발이 종료되어 `3.6.11` 이 마지막 배포 이미지다. 다른 수집기로 옮기는 일은 후속 과제다.
+
+**사전 검증(로컬)**
+- loki·promtail 을 기존/새 버전으로 각각 띄우고 같은 로그를 넣어 비교: 스트림 라벨, 서비스·레벨별 줄 수, 규칙 로드(2그룹 6규칙), 규칙 식 결과, 로그 대시보드 질의 차이 0.
+- 기존 버전이 쓴 데이터 볼륨을 새 버전이 여는지 확인: loki 는 기존 로그 조회, prometheus 는 이전 샘플 조회·대상 3개 정상·`promtool check config` 통과·메트릭 대시보드 질의 차이 0, grafana 는 데이터소스·대시보드·서브패스 로그인 동일.
+- 운영 수집 대상 3개의 `Content-Type` 이 `text/plain; version=0.0.4` 임을 확인(prometheus 3 은 형식을 알 수 없는 응답을 수집 실패로 처리한다).
+
+**반영(VPS, `deploy@<VPS_HOST>`, `~/storige`)**
+- 사전: `git pull --ff-only origin master`(`16be32a7`) → 모니터링 밖 5개 서비스의 `docker compose config --hash` 가 실행 중 컨테이너와 같은지 확인 → `docker compose pull` 로 새 이미지 6개를 미리 받기 → 기존 이미지 6개에 `rollback-pre-eol-20261113` 태그 → 교체 전 스냅샷(수집 대상, 규칙 목록, 서비스별 로그 줄 수, grafana 데이터소스·대시보드·사용자 수).
+- 순서: node-exporter·redis-exporter → prometheus → loki → promtail → grafana. 모두 `docker compose up -d --no-deps <서비스>`. prometheus 의 `depends_on` 에 api 가 있으므로 `--no-deps` 를 빼면 안 된다.
+- 볼륨 사본: prometheus·loki·grafana 는 각각 정지(exit 0) 직후 `~/backups/<이름>-volume-pre-eol-20261113.tar.gz` 로 묶고 gzip 검사와 항목 수를 확인한 뒤 새 이미지로 올렸다.
+- grafana 는 재생성 뒤에도 컨테이너 IP 가 같아 nginx 를 재시작하지 않았다. IP 가 바뀌면 `docker compose restart nginx` 가 필요하다.
+
+**확인**
+- prometheus `3.13.5`: 수집 대상 3개 up, 교체 전 시각과 7일 전 샘플 조회 가능, 보존 30일 유지, 메트릭 대시보드 질의 16개 모두 결과 있음, error·warn 로그 0.
+- loki `3.7.9`: ready, 규칙 6개 로드·평가 정상, 재시작으로 비워진 알림 상태는 다음 평가 주기 뒤 8개로 복구.
+- promtail `3.6.11`: 5개 서비스 로그 유입, api·worker 의 `level`·`app` 라벨 그대로.
+- grafana `12.4.15`: DB 마이그레이션 완료, 데이터소스 2개·대시보드 2개·사용자 수 동일, 데이터소스 상태 OK, 공개 `/grafana/login` 200, 비로그인 API 401.
+- api 외부 health 200, api·worker error 0, nginx 5xx 0. api·worker·nginx·mariadb·redis 의 시작 시각 그대로.
+
+**알아둘 것**
+- promtail 은 읽은 위치를 컨테이너 안(`/tmp/positions.yaml`)에 두므로 재생성하면 컨테이너 로그를 처음부터 다시 보낸다. loki 는 1시간보다 오래된 줄을 거부하지만(promtail·loki 에 `entry too far behind` 오류가 남는다, 정상), 그 안쪽의 nginx 줄은 한 번 더 들어갔다. 이번에는 03:00Z~04:20Z 구간 nginx 로그 37줄이 중복됐고, 이 구간을 포함하는 24시간 창 규칙 값은 2026-11-14 04:20Z 무렵까지 실제보다 크게 나온다. api·worker 줄은 중복되지 않았다.
+- promtail 의 컨테이너 이름 필터는 부분 일치라 `storige-redis-exporter` 로그도 `service="redis-exporter"` 로 들어온다(종전에도 같았고, 이 컨테이너가 평소 로그를 남기지 않아 보이지 않았을 뿐이다).
+- loki 3.5.8 부터 이미지에 셸과 `wget` 이 없다. `docker exec storige-loki …` 로 상태를 볼 수 없으므로 호스트에서 컨테이너 IP 로 요청한다: `curl -s http://$(docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' storige-loki):3100/ready`.
+- prometheus 3 은 `le`·`quantile` 라벨 값을 실수 형태로 저장한다(`1` → `1.0`). 이 값을 직접 고르는 질의를 새로 쓸 때 주의한다. 지금 대시보드와 규칙에는 없다.
+- grafana 기동 로그의 `provisioning/plugins`·`provisioning/alerting` 디렉터리 없음 오류 2줄은 해당 디렉터리를 쓰지 않아 나는 것으로 동작과 무관하다.
+- `backup.sh` 는 `~/backups` 의 7일 지난 파일을 지운다. 볼륨 사본 3개도 그 대상이다.
+
+**롤백**
+1. grafana·loki 는 새 버전이 연 볼륨을 이전 버전으로 되돌려 열지 않는다. 해당 서비스를 멈추고 빈 볼륨에 `<이름>-volume-pre-eol-20261113.tar.gz` 를 푼 뒤, 이미지를 `rollback-pre-eol-20261113` 태그로 지정한 임시 override 파일로 `docker compose -f docker-compose.yml -f <override> up -d --no-deps <서비스>`. 교체 뒤 쌓인 로그와 grafana 변경은 사라진다.
+2. prometheus 는 볼륨을 그대로 두고 `2.55.1` 로 내려갈 수 있다(3.x 는 2.55 까지만 내려감). exporter·promtail 은 볼륨이 없어 이미지만 되돌린다.
+3. grafana 를 되돌린 뒤 컨테이너 IP 가 바뀌었으면 `docker compose restart nginx`.
 
 ### 1. 컨테이너가 시작되지 않음
 
