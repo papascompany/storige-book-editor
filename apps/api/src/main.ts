@@ -18,10 +18,16 @@ import { ConfigService } from '@nestjs/config';
 import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
 import { filterToPartnerRoutes } from './config/swagger-partner-routes';
 import { NestExpressApplication } from '@nestjs/platform-express';
+import { getQueueToken } from '@nestjs/bull';
 import cookieParser from 'cookie-parser';
 import helmet from 'helmet';
 import { Logger as PinoLogger } from 'nestjs-pino';
 import { AppModule } from './app.module';
+import {
+  DrainableQueue,
+  drainQueues,
+  installGracefulShutdown,
+} from './common/graceful-shutdown';
 import { PayloadTooLargeResponseDto } from './common/dto/error-response.dto';
 import { SentryExceptionFilter } from './sentry/sentry.filter';
 import {
@@ -36,6 +42,13 @@ import {
 import { FileOrphanService } from './files/file-orphan.service';
 import { QueueMonitorService } from './health/queue-monitor.service';
 import { StorageConfigService } from './settings/storage-config.service';
+import { WEBHOOK_DELIVERY_QUEUE } from './webhook/v2/webhook-v2.constants';
+
+/**
+ * 종료 신호 뒤 처리 중인 요청과 웹훅 발송을 기다리는 최대 시간.
+ * compose 의 api stop_grace_period(30s)보다 짧게 둔다.
+ */
+const SHUTDOWN_TIMEOUT_MS = 25_000;
 
 // Prevent unhandled rejections from crashing the process
 process.on('unhandledRejection', (reason: any) => {
@@ -283,6 +296,18 @@ async function bootstrap() {
     ? filterToPartnerRoutes(document)
     : document;
   SwaggerModule.setup('api/docs', app, docsDocument);
+
+  // api 가 직접 처리하는 큐는 웹훅 발송 하나다. 나머지 큐는 넣기만 하고 worker 가 처리한다.
+  installGracefulShutdown(app, {
+    name: 'api',
+    timeoutMs: SHUTDOWN_TIMEOUT_MS,
+    logger: pinoLogger,
+    drain: () =>
+      drainQueues(
+        [app.get<DrainableQueue>(getQueueToken(WEBHOOK_DELIVERY_QUEUE), { strict: false })],
+        pinoLogger,
+      ),
+  });
 
   const port = process.env.PORT || 4000;
   await app.listen(port);

@@ -12,8 +12,15 @@ import { initSentry, Sentry } from './sentry/sentry.init';
 initSentry('storige-worker');
 
 import { NestFactory } from '@nestjs/core';
+import { getQueueToken } from '@nestjs/bull';
+import { CUTOUT_QUEUE_NAME } from '@storige/types';
 import { Logger as PinoLogger } from 'nestjs-pino';
 import { AppModule } from './app.module';
+import {
+  DrainableQueue,
+  drainQueues,
+  installGracefulShutdown,
+} from './common/graceful-shutdown';
 import {
   buildWorkerFeatureFlagSnapshot,
   checkFlagExpectation,
@@ -32,6 +39,16 @@ process.on('uncaughtException', (err) => {
   console.error('[Worker] Uncaught Exception:', err);
   Sentry.captureException(err);
 });
+
+/** 이 프로세스가 잡을 처리하는 큐. AppModule 의 BullModule.registerQueue 목록과 같아야 한다. */
+const CONSUMED_QUEUES = ['pdf-validation', 'pdf-conversion', 'pdf-synthesis', CUTOUT_QUEUE_NAME];
+
+/**
+ * 종료 신호 뒤 처리 중인 잡을 기다리는 최대 시간.
+ * compose 의 worker stop_grace_period(300s)보다 짧게 둔다. 넘기면 잡은 끊기고,
+ * Bull 이 lock 만료 뒤 stalled 로 판정해 한 번 다시 처리한다.
+ */
+const SHUTDOWN_TIMEOUT_MS = 280_000;
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule, { bufferLogs: true });
@@ -77,6 +94,19 @@ async function bootstrap() {
       pinoLogger.warn('[FLAGS-CHECK] worker 검사 실패', 'FeatureFlags');
     }
   }
+
+  installGracefulShutdown(app, {
+    name: 'worker',
+    timeoutMs: SHUTDOWN_TIMEOUT_MS,
+    logger: pinoLogger,
+    drain: () =>
+      drainQueues(
+        CONSUMED_QUEUES.map((name) =>
+          app.get<DrainableQueue>(getQueueToken(name), { strict: false }),
+        ),
+        pinoLogger,
+      ),
+  });
 
   const port = process.env.PORT || 4001;
   await app.listen(port);
