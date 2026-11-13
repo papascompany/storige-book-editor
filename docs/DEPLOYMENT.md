@@ -2092,6 +2092,46 @@ npx vitest run src/calendar src/plugins/CalendarPlugin.test.ts   # 데이터·co
 2. prometheus 는 볼륨을 그대로 두고 `2.55.1` 로 내려갈 수 있다(3.x 는 2.55 까지만 내려감). exporter·promtail 은 볼륨이 없어 이미지만 되돌린다.
 3. grafana 를 되돌린 뒤 컨테이너 IP 가 바뀌었으면 `docker compose restart nginx`.
 
+### 2026-11-13 운영 반영 — api·worker 가 종료 신호를 받으면 하던 일을 마치고 내려감 (api·worker)
+
+> master `16be32a7` → `ee9cbd22`(PR #34 fast-forward). api·worker 이미지를 다시 빌드해 재생성하고 nginx 를 재시작했다. mariadb·redis·모니터링 컨테이너는 건드리지 않았다. `.env` 변경 0. 시각은 UTC. 교체 09:16:23Z~09:16:54Z.
+
+**배경**
+- 컨테이너의 주 프로세스(PID 1)는 핸들러가 없는 `SIGTERM` 을 무시한다. 그래서 api·worker 는 `docker stop`·재생성 때 기본 유예 10초를 다 쓴 뒤 강제 종료(exit 137)됐다.
+- worker 가 잡을 처리하던 중이면 그 잡은 잠금이 풀릴 때까지(최대 10분) 멈춰 있다가 처음부터 다시 실행됐고, api 는 처리 중이던 요청이 끊겼다.
+
+**변경**
+- `apps/{api,worker}/src/common/graceful-shutdown.ts`: `SIGTERM`·`SIGINT` 를 받으면 ① 이 프로세스가 소비하는 큐를 로컬 일시정지해 새 잡을 받지 않고 처리 중인 잡이 끝나기를 기다린 뒤 ② 앱을 닫고(HTTP 서버·DB·Redis 연결) ③ `exit 0` 으로 끝낸다. 제한 시간을 넘기면 `exit 1`. 로그는 `[SHUTDOWN] <서비스>: …`.
+- 제한 시간: api 25초, worker 280초. compose `stop_grace_period`: api `30s`, worker `300s`(제한 시간보다 조금 길게).
+- worker 유예의 근거: 운영 최근 90일 완료 잡 가운데 가장 오래 걸린 것이 242초이고 300초를 넘긴 것은 없다.
+- 큐 일시정지는 해당 프로세스에만 적용된다(Redis 에 일시정지 표시를 남기지 않는다). 대기 중인 잡은 그대로 남아 다음 기동 때 처리된다.
+
+**사전 검증(로컬)**
+- 단위 테스트 api 9개·worker 9개, worker 전체 테스트 통과, 타입 검사 통과. CI 8개 항목 통과.
+- 실제 Bull + Redis: 처리 중인 잡 1개는 완료되고, 그 뒤 잡은 대기 상태로 남는 것을 확인.
+- 수정한 이미지로 띄운 컨테이너에 `docker stop`: worker 유휴 0.8초 exit 0, worker 잡 처리 중 13.4초(잡 완료 뒤) exit 0, api 는 처리 중이던 요청에 응답한 뒤 4.4초 exit 0. 수정 전 이미지는 유예를 다 쓰고 exit 137.
+
+**반영(VPS, `deploy@<VPS_HOST>`, `~/storige`)**
+- 사전: master CI 통과 확인 → 실행 중인 이미지에 롤백 태그 `storige-api:rollback-pre-gs-20261113b`(`23251ca47d6f`)·`storige-worker:rollback-pre-gs-20261113b`(`fc7e684c31d7`) → `git pull --ff-only origin master` → 서비스별 `docker compose config --hash` 로 정의가 바뀐 서비스가 api·worker 둘뿐임을 확인 → `docker compose build api worker`(102초) → 큐에 처리 중인 잡이 0 임을 확인.
+- 순서: `docker compose up -d --no-deps worker`(09:16:23Z, 11초) → `docker compose up -d --no-deps api`(09:16:36Z, 11초) → `docker compose restart nginx`(09:16:52Z) → 외부 health 200(09:16:54Z).
+- api 가 응답하지 못한 구간은 약 18초이고 그 사이 nginx 5xx 는 0건이다.
+
+**확인**
+- `docker inspect` 의 `StopTimeout`: api 30, worker 300. 두 컨테이너의 PID 1 에 `SIGTERM`·`SIGINT` 핸들러 등록(`/proc/1/status` 의 `SigCgt`).
+- `[FLAGS-CHECK] api ok n=18`, `[FLAGS-CHECK] worker ok n=9`. api·worker error 0, 재시작 횟수 0, prometheus 수집 대상 3개 up, 외부 api·editor·admin 200.
+- 실제 종료 동작(12:14Z, worker 유휴 상태): `docker compose stop worker` 1.2초, exit 0. 로그 `[SHUTDOWN] worker: SIGTERM 수신, 종료 시작 (최대 280000ms)` → `[SHUTDOWN] worker: 종료 완료 (536ms)`. `docker compose start worker` 뒤 2초에 대기 상태, `[FLAGS-CHECK] worker ok n=9`, 오류 0. api·nginx 는 건드리지 않았다.
+- 운영에서 잡을 처리하는 중의 종료와 api 의 종료는 아직 관찰하지 않았다(로컬 컨테이너 시험으로만 확인). 다음 배포 때 종료 코드와 `[SHUTDOWN]` 로그를 본다.
+
+**알아둘 것**
+- worker 를 멈추거나 재생성할 때 처리 중인 잡이 있으면 그 잡이 끝날 때까지 명령이 돌아오지 않는다(최대 300초). 정상이므로 중간에 끊지 않는다. 배포 전에 큐가 비어 있는지 보면 기다리지 않는다: `docker exec storige-redis redis-cli --scan --pattern 'bull:*:active'` 로 나온 키마다 `LLEN`.
+- 잡이 280초 안에 끝나지 않으면 worker 는 `exit 1` 로 내려가고, 그 잡은 종전처럼 잠금이 풀린 뒤 한 번 다시 실행된다.
+- 배포 뒤 확인 항목에 종료 코드를 더한다: 재생성 직전 컨테이너가 `exit 0` 으로 내려갔는지는 `docker compose stop <서비스>` 뒤 `docker inspect -f '{{.State.ExitCode}}' storige-<서비스>` 로 본다(재생성하면 이전 컨테이너 기록은 사라진다). 137 이면 유예 안에 끝나지 않은 것이다.
+- 이번 교체에서 내려간 것은 수정 전 컨테이너라 종전처럼 강제 종료됐다.
+
+**롤백**
+1. `### 0. 되돌릴 기준점` 의 절차대로 `rollback-pre-gs-20261113b` 태그를 `latest` 로 되돌리고 `docker compose up -d --no-deps --no-build <서비스>`, api 를 되돌렸으면 `docker compose restart nginx`.
+2. 이전 이미지는 종료 신호를 무시하므로, compose 의 `stop_grace_period` 가 그대로면 그 뒤의 정지·재생성이 유예 시간(api 30초, worker 300초)을 다 채운다. 이전 이미지로 운영하는 동안에는 `docker stop -t 10 storige-<서비스>` 로 먼저 멈춘 뒤 재생성한다.
+
 ### 1. 컨테이너가 시작되지 않음
 
 ```bash
