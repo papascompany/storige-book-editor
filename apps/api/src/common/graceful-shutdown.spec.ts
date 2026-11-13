@@ -2,19 +2,20 @@ import {
   drainQueues,
   installGracefulShutdown,
   ShutdownLogger,
+  ShutdownSignal,
   SignalSource,
 } from './graceful-shutdown';
 
-type Listener = (signal: NodeJS.Signals) => void;
+type Listener = (signal: ShutdownSignal) => void;
 
-function makeSignalSource(): SignalSource & { emit(signal: NodeJS.Signals): void } {
-  const listeners = new Map<NodeJS.Signals, Listener[]>();
+function makeSignalSource(): SignalSource & { emit(signal: ShutdownSignal): void } {
+  const listeners = new Map<ShutdownSignal, Listener[]>();
   return {
-    on(signal: NodeJS.Signals, listener: Listener) {
+    on(signal: ShutdownSignal, listener: Listener) {
       listeners.set(signal, [...(listeners.get(signal) ?? []), listener]);
       return this;
     },
-    emit(signal: NodeJS.Signals) {
+    emit(signal: ShutdownSignal) {
       for (const l of listeners.get(signal) ?? []) l(signal);
     },
   };

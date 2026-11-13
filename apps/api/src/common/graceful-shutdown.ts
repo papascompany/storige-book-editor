@@ -21,8 +21,11 @@ export interface ClosableApp {
   close(): Promise<void>;
 }
 
+/** 처리하는 종료 신호. 컨테이너 중지는 SIGTERM, 터미널 중단은 SIGINT 다. */
+export type ShutdownSignal = 'SIGTERM' | 'SIGINT';
+
 export interface SignalSource {
-  on(signal: NodeJS.Signals, listener: (signal: NodeJS.Signals) => void): unknown;
+  on(signal: ShutdownSignal, listener: (signal: ShutdownSignal) => void): unknown;
 }
 
 export interface GracefulShutdownOptions {
@@ -33,7 +36,7 @@ export interface GracefulShutdownOptions {
   logger: ShutdownLogger;
   /** app.close() 전에 실행한다. 실패해도 종료는 계속한다. */
   drain?: () => Promise<unknown>;
-  signals?: NodeJS.Signals[];
+  signals?: ShutdownSignal[];
   /** 테스트용 주입. 기본은 process. */
   signalSource?: SignalSource;
   /** 테스트용 주입. 기본은 process.exit. */
@@ -75,7 +78,7 @@ export function installGracefulShutdown(
 
   let started = false;
 
-  const onSignal = (signal: NodeJS.Signals): void => {
+  const onSignal = (signal: ShutdownSignal): void => {
     if (started) return;
     started = true;
 
