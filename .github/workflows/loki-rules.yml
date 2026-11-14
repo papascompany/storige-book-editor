@@ -96,7 +96,7 @@ jobs:
           # 아래 docker run 은 compose 의 command·마운트를 그대로 따른다. 테넌트 디렉터리 이름 fake 를 바꾸면 규칙이 로드되지 않는다.
           python3 - <<'PY'
           import re, sys, yaml
-          # 이미지 태그는 compose 의 loki 서비스에서만 읽는다(promtail 은 별도 서비스라 섞이지 않는다)
+          # 이미지 태그는 compose 의 loki 서비스에서만 읽는다(로그 수집기는 별도 서비스라 섞이지 않는다)
           svc = ((yaml.safe_load(open("docker-compose.yml", encoding="utf-8")) or {}).get("services") or {}).get("loki") or {}
           errs = []
           if not re.fullmatch(r"grafana/loki:\S+", str(svc.get("image") or "")):

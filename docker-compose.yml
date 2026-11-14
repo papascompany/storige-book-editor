@@ -506,7 +506,7 @@ services:
       - redis
 
   # ─────────────────────────────────────────────────────────────────
-  # P2-10 로그 일원화 (Loki + Promtail, Grafana로 통합)
+  # P2-10 로그 일원화 (Loki + Alloy, Grafana로 통합)
   # ─────────────────────────────────────────────────────────────────
   loki:
     image: grafana/loki:3.7.9
@@ -521,15 +521,18 @@ services:
     networks:
       - storige-network
 
-  promtail:
-    image: grafana/promtail:3.6.11
-    container_name: storige-promtail
+  # 로그 수집기. Docker API 로 컨테이너 로그를 읽어 loki 로 보낸다.
+  alloy:
+    image: grafana/alloy:v1.21.3
+    container_name: storige-alloy
     restart: unless-stopped
-    command: -config.file=/etc/promtail/config.yml
+    # --disable-reporting: 익명 사용 통계를 외부로 보내지 않는다.
+    command: run /etc/alloy/config.alloy --storage.path=/var/lib/alloy/data --disable-reporting
     volumes:
-      - ./docker/promtail/promtail-config.yml:/etc/promtail/config.yml:ro
-      - /var/lib/docker/containers:/var/lib/docker/containers:ro
+      - ./docker/alloy/config.alloy:/etc/alloy/config.alloy:ro
       - /var/run/docker.sock:/var/run/docker.sock:ro
+      # 읽은 위치를 보관한다. 이 볼륨이 없으면 재생성할 때 컨테이너 로그를 처음부터 다시 보낸다.
+      - alloy_data:/var/lib/alloy/data
     networks:
       - storige-network
     depends_on:
@@ -545,6 +548,8 @@ volumes:
   grafana_data:
     driver: local
   loki_data:
+    driver: local
+  alloy_data:
     driver: local
   # rembg 모델 가중치 캐시(S-P2A). 컨테이너 재생성 시 콜드 다운로드 방지용.
   rembg_models:

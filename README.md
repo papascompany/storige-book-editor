@@ -145,7 +145,7 @@ docker-compose logs -f
 
 ### Monitoring (P2-8 + P2-10)
 - Prometheus 2.55.1 + Grafana 11.2.2
-- Loki 3.2.1 + Promtail 3.2.1 (Docker json-file 수집)
+- Loki 3.7 + Grafana Alloy 1.21 (Docker 컨테이너 로그 수집)
 - Sentry (4 프로젝트, Slack 알림 연동 가능)
 - node-exporter / redis-exporter
 

@@ -1,0 +1,93 @@
+// 로그 수집 설정 (Grafana Alloy)
+// Docker 컨테이너 로그 → Loki 푸시. 컨테이너 이름으로 service 라벨을 붙인다.
+// 라벨(container·service·stream·level·app)은 Loki 규칙(docker/loki/rules)과 Grafana 로그 대시보드가 쓰므로 바꾸지 않는다.
+
+logging {
+	level = "warn"
+}
+
+// storige-* 컨테이너만 찾는다. name 필터는 부분 일치다(storige-redis 는 storige-redis-exporter 도 포함).
+discovery.docker "storige_containers" {
+	host             = "unix:///var/run/docker.sock"
+	refresh_interval = "10s"
+
+	filter {
+		name   = "name"
+		values = ["storige-api", "storige-worker", "storige-nginx", "storige-mariadb", "storige-redis"]
+	}
+}
+
+discovery.relabel "storige_containers" {
+	targets = []
+
+	// 컨테이너 이름 → container, service 라벨
+	rule {
+		source_labels = ["__meta_docker_container_name"]
+		regex         = "/?(.*)"
+		target_label  = "container"
+	}
+
+	rule {
+		source_labels = ["__meta_docker_container_name"]
+		regex         = "/?storige-(.*)"
+		target_label  = "service"
+	}
+
+	// stdout / stderr
+	rule {
+		source_labels = ["__meta_docker_container_log_stream"]
+		target_label  = "stream"
+	}
+}
+
+// 읽은 위치는 --storage.path 아래에 저장된다(compose 에서 볼륨으로 유지).
+loki.source.docker "storige_containers" {
+	host          = "unix:///var/run/docker.sock"
+	targets       = discovery.docker.storige_containers.targets
+	forward_to    = [loki.process.storige_containers.receiver]
+	relabel_rules = discovery.relabel.storige_containers.rules
+}
+
+loki.process "storige_containers" {
+	forward_to = [loki.write.default.receiver]
+
+	// api·worker 는 pino JSON → level·app 라벨과 시각을 꺼낸다
+	stage.match {
+		selector = "{service=~\"api|worker\"}"
+
+		stage.json {
+			expressions = {
+				app   = "app",
+				level = "level",
+				msg   = "msg",
+				time  = "time",
+			}
+		}
+
+		// pino 숫자 level → 문자열 (대시보드 변수·규칙과 같은 값)
+		// 10=trace 20=debug 30=info 40=warn 50=error 60=fatal
+		stage.template {
+			source   = "level"
+			template = "{{ if eq .Value \"60\" }}fatal{{ else if eq .Value \"50\" }}error{{ else if eq .Value \"40\" }}warn{{ else if eq .Value \"30\" }}info{{ else if eq .Value \"20\" }}debug{{ else if eq .Value \"10\" }}trace{{ else }}{{ .Value }}{{ end }}"
+		}
+
+		stage.labels {
+			values = {
+				app   = null,
+				level = null,
+			}
+		}
+
+		stage.timestamp {
+			source           = "time"
+			format           = "UnixMs"
+			fallback_formats = ["RFC3339Nano", "UnixMs"]
+		}
+	}
+}
+
+loki.write "default" {
+	endpoint {
+		url = "http://loki:3100/loki/api/v1/push"
+	}
+}
