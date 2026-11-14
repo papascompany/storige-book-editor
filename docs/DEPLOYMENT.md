@@ -2132,6 +2132,43 @@ npx vitest run src/calendar src/plugins/CalendarPlugin.test.ts   # 데이터·co
 1. `### 0. 되돌릴 기준점` 의 절차대로 `rollback-pre-gs-20261113b` 태그를 `latest` 로 되돌리고 `docker compose up -d --no-deps --no-build <서비스>`, api 를 되돌렸으면 `docker compose restart nginx`.
 2. 이전 이미지는 종료 신호를 무시하므로, compose 의 `stop_grace_period` 가 그대로면 그 뒤의 정지·재생성이 유예 시간(api 30초, worker 300초)을 다 채운다. 이전 이미지로 운영하는 동안에는 `docker stop -t 10 storige-<서비스>` 로 먼저 멈춘 뒤 재생성한다.
 
+### 2026-11-14 운영 반영 — 로그 수집기를 Promtail 에서 Grafana Alloy 로 교체 (모니터링)
+
+> master `e5f35e23` → `41f9c626`(PR #36 fast-forward). 로그 수집 컨테이너 하나만 바꿨다(`storige-promtail` → `storige-alloy`). api·worker·nginx·mariadb·redis·loki·grafana·prometheus 는 건드리지 않았다(기동 시각 변화 0). `.env` 변경 0. 시각은 UTC. 교체 17:21:41Z~17:22:22Z.
+
+**배경**
+- Promtail 은 지원 종료가 예고된 수집기이고 후속은 Grafana Alloy 다. 수집 대상·라벨·처리 단계는 그대로 두고 수집기만 바꿨다.
+
+**변경**
+- `docker-compose.yml`: 서비스 `promtail` → `alloy`(`grafana/alloy:v1.21.3`, 컨테이너 `storige-alloy`). 설정은 `docker/alloy/config.alloy`, 읽은 위치는 볼륨 `alloy_data` 에 남는다. 컨테이너 로그는 Docker 소켓으로 읽으므로 `/var/lib/docker/containers` 마운트는 없앴다. 사용 통계 전송은 끈다(`--disable-reporting`).
+- `docker/promtail/promtail-config.yml` 삭제. 라벨(`container`, `service`, `stream`, api·worker 의 `app`·`level`)과 api·worker 로그의 시각 처리는 종전과 같다.
+
+**사전 검증(로컬)**
+- 같은 Loki 버전에서 Promtail 과 나란히 비교: 스트림 라벨, 서비스·레벨별 줄 수, 규칙 로드(2그룹 6규칙), 규칙 식 결과, 로그 대시보드 질의 차이 0.
+- 볼륨을 유지한 채 재생성했을 때 재전송 0, 원본 컨테이너를 재시작한 뒤 누락 0. CI 8개 항목 통과.
+
+**반영(VPS, `deploy@<VPS_HOST>`, `~/storige`)**
+- 사전: master CI 통과 확인 → 되돌릴 파일 보관(`~/backups/promtail-rollback-20261114/` 에 교체 전 `docker-compose.yml`·`promtail-config.yml`) → `git pull --ff-only origin master` → 서비스별 `docker compose config --hash` 로 다른 서비스 11개의 정의가 그대로임을 확인 → `docker compose pull alloy` → 교체 전 스냅샷(규칙, 서비스별 줄 수, 스트림 라벨 구성).
+- 순서: `docker stop storige-promtail`(17:21:41Z, exit 0) → `docker compose up -d --no-deps alloy` → 확인 뒤 `docker rm storige-promtail`(17:30Z). 서비스 이름이 바뀌어 기존 컨테이너는 compose 가 치워 주지 않으므로 직접 멈추고 지운다.
+
+**확인**
+- `storige-alloy` running, 재시작 0, 메모리 약 55MiB(Promtail 은 약 16MiB).
+- 규칙 6개 차이 0, 모두 `health: ok`. 경보 수는 교체 전후 같다.
+- 교체 뒤 새 유입: api(`app`·`level` 라벨 포함), nginx, redis. worker·mariadb 는 그 사이 낸 로그가 없어 새 줄로는 확인하지 못했다(수집 대상에는 등록됨).
+- nginx 5xx 0, 외부 health 200, 디스크 여유 변화 없음.
+
+**알아둘 것**
+- 교체 때 한 번, 직전 1시간 구간의 api 로그 39줄이 중복으로 들어갔다(nginx·redis·mariadb 는 0). Alloy 는 Promtail 의 읽은 위치를 이어받지 못해 컨테이너 로그를 처음부터 다시 읽고, Loki 는 그중 오래된 줄을 거부하지만 최근 구간은 받아들이기 때문이다. 그 시각대의 줄 수 집계는 그만큼 많게 보인다.
+- 같은 이유로 기동 직후 Alloy 로그에 `status=400` 오류 1건, Loki 로그에 `entry too far behind` 가 남는다. 처음 기동할 때만 생기고 그 뒤에는 `alloy_data` 볼륨의 위치에서 이어 읽는다. 볼륨을 지우면 같은 일이 다시 생긴다.
+- 수집 대상 이름 필터는 부분 일치라 `storige-redis-exporter` 도 대상에 잡힌다(Promtail 때와 같다). 이 컨테이너는 로그를 거의 내지 않는다.
+- 상태 확인: `docker logs storige-alloy 2>&1 | grep -ciE 'level=(error|warn)'`, 읽은 위치는 `docker exec storige-alloy sh -c 'cat /var/lib/alloy/data/loki.source.docker.*/positions.yml'`.
+
+**롤백**
+1. `docker rm -f storige-alloy`.
+2. 보관한 설정을 제자리에 둔다: `mkdir -p docker/promtail && cp ~/backups/promtail-rollback-20261114/promtail-config.yml docker/promtail/`.
+3. `docker compose -f ~/backups/promtail-rollback-20261114/docker-compose.yml --project-directory ~/storige up -d --no-deps promtail`(이미지 `grafana/promtail:3.6.11` 은 서버에 남아 있다).
+4. Promtail 도 위치를 새로 잡으므로 되돌릴 때 최근 구간이 한 번 더 중복될 수 있다.
+
 ### 1. 컨테이너가 시작되지 않음
 
 ```bash
