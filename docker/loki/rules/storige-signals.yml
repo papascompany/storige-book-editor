@@ -59,7 +59,7 @@ groups:
         annotations:
           summary: "{{ $labels.service }} [FLAGS-CHECK] 비정상 {{ $value }}건(24h)"
 
-      # pino level 50(error)·60(fatal). level 라벨은 promtail 이 붙인다(docker/promtail/promtail-config.yml)
+      # pino level 50(error)·60(fatal). level 라벨은 로그 수집기가 붙인다(docker/alloy/config.alloy)
       - alert: ErrorLevelLogs
         expr: |
           sum by (service) (

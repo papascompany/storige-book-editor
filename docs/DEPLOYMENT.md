@@ -86,7 +86,7 @@
 | Monitoring | `storige-node-exporter` | prom/node-exporter:v1.12.1 |
 | Monitoring | `storige-redis-exporter` | oliver006/redis_exporter:v1.97.0-alpine |
 | **Logging** (P2-10) | `storige-loki` | grafana/loki:3.7.9 |
-| Logging | `storige-promtail` | grafana/promtail:3.6.11 |
+| Logging | `storige-alloy` | grafana/alloy:v1.21.3 |
 | **선택** (S-P2A) | `storige-rembg` | python:3.12-slim + rembg 2.0.77 (자체 빌드) — compose profile `cutout` 로만 기동. [배경제거 사이드카](#배경제거cutout-사이드카--rembg) 참조 |
 
 ---
@@ -872,7 +872,7 @@ lc 'sum(count_over_time({service="nginx"} |~ "\" 5[0-9][0-9] " [1h]))'          
 ```
 
 - `count_over_time({선택자} |= "문자열" [기간])` 은 기간 안에 그 문자열을 포함한 줄 수, `|~ "정규식"` 은 정규식에 맞는 줄 수다. `sum(...)` 으로 스트림을 합친다.
-- `service` 라벨은 컨테이너 이름에서 `storige-` 를 뺀 값(`api`·`worker`·`nginx`·`mariadb`·`redis`)이고, api·worker 에는 pino 레벨을 문자열로 바꾼 `level` 라벨(`info`·`warn`·`error`·`fatal`)이 붙는다(`docker/promtail/promtail-config.yml`).
+- `service` 라벨은 컨테이너 이름에서 `storige-` 를 뺀 값(`api`·`worker`·`nginx`·`mariadb`·`redis`)이고, api·worker 에는 pino 레벨을 문자열로 바꾼 `level` 라벨(`info`·`warn`·`error`·`fatal`)이 붙는다(`docker/alloy/config.alloy`).
 - 결과가 없으면 `0` 을 출력한다. 쿼리가 틀렸을 때도 `0` 이 나오므로, 새 쿼리는 줄이 확실히 있는 구간(예: 배포 시각 앞뒤의 nginx `/api/health` 줄)으로 먼저 양성 대조한다.
 - 출력은 숫자뿐이다. 줄 내용을 보려면 Grafana Explore 를 쓴다(로그 원문을 셸 화면이나 파일로 옮기지 않는다).
 
@@ -906,7 +906,7 @@ docker stats
 docker stats storige-api storige-worker
 
 # 모니터링 스택 메모리 사용량 (~400MB)
-docker stats storige-prometheus storige-grafana storige-loki storige-promtail
+docker stats storige-prometheus storige-grafana storige-loki storige-alloy
 ```
 
 ### 🚨 알림 채널
