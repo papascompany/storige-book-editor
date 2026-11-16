@@ -534,3 +534,179 @@ describe('TemplatePlugin — 화면 전용 오버레이 판정(cut-guide id 등�
     expect(byId(b.canvas, 'cut-guide')).toHaveLength(0)
   })
 })
+
+describe('TemplatePlugin.replaceTemplate — 고객이 고친 템플릿 글상자의 문구를 새 템플릿으로 옮김', () => {
+  beforeAll(() => {
+    vi.stubGlobal('window', { addEventListener: vi.fn(), removeEventListener: vi.fn() })
+  })
+  afterAll(() => {
+    vi.unstubAllGlobals()
+  })
+
+  const WS: Plain = { type: 'rect', id: 'workspace', left: 0, top: 0, width: 600, height: 600, fill: 'white' }
+  const text = (id: string | undefined, value: string, left: number, extra: Plain = {}): Plain => ({
+    type: 'textbox',
+    ...(id ? { id } : {}),
+    styles: {},
+    text: value,
+    left,
+    top: 40,
+    width: 150,
+    ...extra,
+  })
+  /** 글상자 3개 템플릿(id 체계 a-) */
+  const TEXT_A: Plain[] = [WS, text('a-t1', 'A 제목', 10), text('a-t2', 'A 부제', 200), text('a-t3', 'A 본문', 400)]
+  /** 글상자 3개 템플릿(id 체계 b-, 위치 다름) */
+  const TEXT_B: Plain[] = [WS, text('b-t1', 'B 제목', 30), text('b-t2', 'B 부제', 230), text('b-t3', 'B 본문', 430)]
+
+  /** 템플릿을 연 뒤 고객이 일부 글상자를 고치고 저장했다가 다시 연 상태 */
+  const reopened = (template: Plain[], edits: Record<string, Plain>): Plain => ({
+    version: '5.3.0',
+    objects: [
+      ...template.map((o) => (typeof o.id === 'string' && edits[o.id] ? { ...o, ...edits[o.id] } : o)),
+      { type: 'textbox', id: 'u-text', styles: {}, text: '고객 추가 문구', left: 300, top: 400, width: 100 },
+    ],
+  })
+  const textOf = (canvas: fabric.StaticCanvas, id: string) => byId(canvas, id).map((o) => o.text)
+
+  it('fillTemplateObjectIds 는 id 없는 객체에만 정해진 id 를 채우고 입력을 바꾸지 않는다', () => {
+    const input = [{ id: 'workspace' }, { type: 'textbox' }, { id: 'keep' }, null, { type: 'rect', id: '' }]
+    const snapshot = JSON.stringify(input)
+    const a1 = TemplatePlugin.fillTemplateObjectIds('tpl-1', input) as Array<Plain | null>
+    const a2 = TemplatePlugin.fillTemplateObjectIds('tpl-1', input) as Array<Plain | null>
+    const b = TemplatePlugin.fillTemplateObjectIds('tpl-2', input) as Array<Plain | null>
+    expect(JSON.stringify(input)).toBe(snapshot)
+    expect(a1).toEqual(a2)
+    expect(a1[0]).toBe(input[0])
+    expect(a1[2]).toBe(input[2])
+    expect(a1[3]).toBeNull()
+    expect(a1[1]?.id).toMatch(/^tplobj-[0-9a-f]{8}-1$/)
+    expect(a1[4]?.id).toMatch(/^tplobj-[0-9a-f]{8}-4$/)
+    expect(b[1]?.id).not.toBe(a1[1]?.id)
+    // 템플릿 요소 판정에 쓰는 id 패턴과 겹치지 않는다
+    for (const id of [a1[1]?.id, a1[4]?.id, b[1]?.id]) expect(String(id)).not.toMatch(/fixed|floating|outline|default/)
+    // 채울 것이 없으면 같은 배열을 돌려준다
+    const full = [{ id: 'x' }, { id: 'y' }]
+    expect(TemplatePlugin.fillTemplateObjectIds('tpl-1', full)).toBe(full)
+    expect(TemplatePlugin.fillTemplateObjectIds('tpl-1', undefined)).toBeUndefined()
+  })
+
+  it('templateTextOriginals 는 id 있는 top-level 글상자의 문구만 모은다', () => {
+    expect(
+      TemplatePlugin.templateTextOriginals([
+        ...TEXT_A,
+        { type: 'rect', id: 'r', text: '도형' },
+        { type: 'i-text', text: 'id 없음' },
+        { type: 'text', id: 'a-t1', text: '중복 id' },
+      ]),
+    ).toEqual({ 'a-t1': 'A 제목', 'a-t2': 'A 부제', 'a-t3': 'A 본문' })
+    expect(TemplatePlugin.templateTextOriginals(null)).toEqual({})
+  })
+
+  it('고친 글상자만 순서 짝의 새 글상자로 옮기고, 위치는 새 템플릿을 따른다', async () => {
+    const { canvas, plugin } = makeHarness()
+    await loadJSON(canvas, reopened(TEXT_A, { 'a-t1': { text: '우리 가족 앨범', left: 77 }, 'a-t3': { text: '2026년 여름' } }))
+    const events: Plain[] = []
+    ;(plugin as unknown as { _editor: Plain })._editor.emit = (_name: string, payload: Plain) => events.push(payload)
+
+    await plugin.replaceTemplate(await enliven(TEXT_B), {
+      currentTemplateIds: TemplatePlugin.templateObjectIds(TEXT_A),
+      currentTemplateTexts: TemplatePlugin.templateTextOriginals(TEXT_A),
+    })
+
+    const ids = canvas.getObjects().map((o) => (o as AnyObj).id as string)
+    expect(ids.filter((id) => id.startsWith('a-'))).toEqual([])
+    expect(textOf(canvas, 'b-t1')).toEqual(['우리 가족 앨범'])
+    // 고치지 않은 가운데 글상자는 새 템플릿 문구 그대로 — 뒤 글상자의 순번도 밀리지 않는다
+    expect(textOf(canvas, 'b-t2')).toEqual(['B 부제'])
+    expect(textOf(canvas, 'b-t3')).toEqual(['2026년 여름'])
+    expect(byId(canvas, 'b-t1')[0].left).toBe(30)
+    // 고객이 추가한 글상자는 그대로
+    expect(textOf(canvas, 'u-text')).toEqual(['고객 추가 문구'])
+    expect(events).toEqual([{ preservedCount: 1, carriedTextCount: 2 }])
+  })
+
+  it('같은 id 글상자가 새 템플릿에 있으면 그 글상자로 옮긴다', async () => {
+    const { canvas, plugin } = makeHarness()
+    const next: Plain[] = [WS, text('b-t1', 'B 제목', 30), text('a-t3', '새 본문', 430)]
+    await loadJSON(canvas, reopened(TEXT_A, { 'a-t3': { text: '고객 본문' } }))
+
+    await plugin.replaceTemplate(await enliven(next), {
+      currentTemplateIds: TemplatePlugin.templateObjectIds(TEXT_A),
+      currentTemplateTexts: TemplatePlugin.templateTextOriginals(TEXT_A),
+    })
+
+    expect(textOf(canvas, 'a-t3')).toEqual(['고객 본문'])
+    expect(byId(canvas, 'a-t3')[0].left).toBe(430)
+    expect(textOf(canvas, 'b-t1')).toEqual(['B 제목'])
+  })
+
+  it('원래 문구를 넘기지 않으면 옮기지 않는다(종전 동작)', async () => {
+    const { canvas, plugin } = makeHarness()
+    await loadJSON(canvas, reopened(TEXT_A, { 'a-t1': { text: '우리 가족 앨범' } }))
+
+    await plugin.replaceTemplate(await enliven(TEXT_B), { currentTemplateIds: TemplatePlugin.templateObjectIds(TEXT_A) })
+
+    expect(textOf(canvas, 'b-t1')).toEqual(['B 제목'])
+  })
+
+  it('비운 글상자·내용 편집이 잠긴 새 글상자·짝이 없는 글상자는 옮기지 않는다', async () => {
+    const { canvas, plugin } = makeHarness()
+    const next: Plain[] = [WS, text('b-t1', 'B 제목', 30), text('b-t2', 'B 부제', 230, { contentEditable: false })]
+    await loadJSON(
+      canvas,
+      reopened(TEXT_A, { 'a-t1': { text: '   ' }, 'a-t2': { text: '고객 부제' }, 'a-t3': { text: '고객 본문' } }),
+    )
+
+    await plugin.replaceTemplate(await enliven(next), {
+      currentTemplateIds: TemplatePlugin.templateObjectIds(TEXT_A),
+      currentTemplateTexts: TemplatePlugin.templateTextOriginals(TEXT_A),
+    })
+
+    expect(textOf(canvas, 'b-t1')).toEqual(['B 제목'])
+    expect(textOf(canvas, 'b-t2')).toEqual(['B 부제'])
+    const ids = canvas.getObjects().map((o) => (o as AnyObj).id as string)
+    expect(ids.filter((id) => id.startsWith('a-'))).toEqual([])
+  })
+
+  it('여러 템플릿이 같은 id 를 쓰면 그중 한 원래 문구와 같을 때 고치지 않은 것으로 본다', async () => {
+    const { canvas, plugin } = makeHarness()
+    await loadJSON(canvas, reopened(TEXT_A, { 'a-t1': { text: '다른 템플릿의 제목' }, 'a-t2': { text: '고객 부제' } }))
+
+    await plugin.replaceTemplate(await enliven(TEXT_B), {
+      currentTemplateIds: TemplatePlugin.templateObjectIds(TEXT_A),
+      currentTemplateTexts: { 'a-t1': ['A 제목', '다른 템플릿의 제목'], 'a-t2': ['A 부제'], 'a-t3': ['A 본문'] },
+    })
+
+    expect(textOf(canvas, 'b-t1')).toEqual(['B 제목'])
+    expect(textOf(canvas, 'b-t2')).toEqual(['고객 부제'])
+  })
+
+  it('id 가 없던 템플릿 글상자도 id 를 채워 불러오면 교체 때 남지 않고 문구가 옮겨진다', async () => {
+    const strip = (objects: Plain[]) => objects.map((o) => (o.id === 'workspace' ? o : (({ id: _id, ...rest }) => rest)(o)))
+    const rawA = strip(TEXT_A)
+    const rawB = strip(TEXT_B)
+    // id 를 채우지 않으면: 옛 글상자가 사용자 요소로 남아 새 글상자와 겹친다
+    {
+      const { canvas, plugin } = makeHarness()
+      await loadJSON(canvas, { version: '5.3.0', objects: rawA })
+      await plugin.replaceTemplate(await enliven(rawB), { currentTemplateIds: TemplatePlugin.templateObjectIds(rawA) })
+      expect(canvas.getObjects().filter((o) => o.type === 'textbox')).toHaveLength(6)
+    }
+    // id 를 채우면: 옛 글상자 0개, 고친 문구만 이동
+    const filledA = TemplatePlugin.fillTemplateObjectIds('tpl-a', rawA) as Plain[]
+    const filledB = TemplatePlugin.fillTemplateObjectIds('tpl-b', rawB) as Plain[]
+    const { canvas, plugin } = makeHarness()
+    const edited = filledA.map((o, i) => (i === 2 ? { ...o, text: '고객 부제' } : o))
+    await loadJSON(canvas, { version: '5.3.0', objects: edited })
+
+    await plugin.replaceTemplate(await enliven(filledB), {
+      currentTemplateIds: TemplatePlugin.templateObjectIds(filledA),
+      currentTemplateTexts: TemplatePlugin.templateTextOriginals(filledA),
+    })
+
+    const texts = (canvas.getObjects() as AnyObj[]).filter((o) => o.type === 'textbox')
+    expect(texts.map((o) => o.text)).toEqual(['B 제목', '고객 부제', 'B 본문'])
+    expect(texts.map((o) => o.id)).toEqual(filledB.slice(1).map((o) => o.id))
+  })
+})

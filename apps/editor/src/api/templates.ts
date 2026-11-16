@@ -1,4 +1,5 @@
 import { apiClient } from './client';
+import { withTemplateObjectIds } from '@/utils/templateObjectIds';
 import type { CanvasData, TemplateType, TemplateSetType, TemplateRef, PaginatedResponse, SpreadConfig } from '@storige/types';
 
 export interface Template {
@@ -87,7 +88,8 @@ export const templatesApi = {
    */
   getTemplate: async (id: string) => {
     const response = await apiClient.get<Template>(`/templates/${id}`);
-    return response.data;
+    // id 가 없는 템플릿 객체에 정해진 id 를 채운다(템플릿셋 조회와 같은 규칙)
+    return withTemplateObjectIds(response.data);
   },
 
   /**

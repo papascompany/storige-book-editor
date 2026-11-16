@@ -19,24 +19,39 @@ import { resolveAssetUrl } from '@/utils/resolveAssetUrl'
 import { isEditorCanvasId } from '@/utils/editorCanvasId'
 import { TemplateReplaceModal } from '@/components/TemplatePanel/TemplateReplaceModal'
 
+/** 교체 판정 입력 — 템플릿 유래 객체 id 와, 그 템플릿들의 글상자 원래 문구(id → 문구 목록) */
+interface SwapTemplateInfo {
+  ids: string[]
+  texts: Record<string, string[]>
+}
+
 /**
- * 교체 때 템플릿 유래로 볼 top-level 객체 id — 연결 템플릿 전체 ∪ 현재 페이지 템플릿.
+ * 교체 때 템플릿 유래로 볼 top-level 객체 id 와 글상자 원래 문구 — 연결 템플릿 전체 ∪ 현재 페이지 템플릿.
  * 저장본은 isUserAdded 를 남기지 않고, 다시 열면 pages[].templateId 가 세트 원본으로 돌아올 수 있어
  * (앞 세션에서 다른 연결 템플릿으로 바꾼 캔버스) 현재 템플릿 하나만으로는 옛 요소를 가려낼 수 없다.
  * canvasData 가 없는 연결 템플릿·목록 밖 현재 템플릿은 상세를 조회하고, 일부 실패면 얻은 것만으로 합집합,
  * 하나도 못 구하면 undefined(종전 판정).
+ * 원래 문구는 고객이 글상자를 고쳤는지 가리는 데 쓴다. 여러 템플릿이 같은 id 를 쓰면 문구를 모두 모은다.
  */
-async function swapTemplateObjectIds(
+async function swapTemplateInfo(
   templateId: string | undefined,
   linked: LinkedPrintTemplate[],
-): Promise<string[] | undefined> {
+): Promise<SwapTemplateInfo | undefined> {
   const ids = new Set<string>()
+  const texts: Record<string, string[]> = {}
+  const collect = (objects: unknown[]) => {
+    TemplatePlugin.templateObjectIds(objects).forEach((id) => ids.add(id))
+    for (const [id, text] of Object.entries(TemplatePlugin.templateTextOriginals(objects))) {
+      const list = texts[id] ?? (texts[id] = [])
+      if (!list.includes(text)) list.push(text)
+    }
+  }
   let resolved = 0
   const toFetch: string[] = []
   for (const t of linked) {
     const objects = t.canvasData?.objects
     if (Array.isArray(objects)) {
-      TemplatePlugin.templateObjectIds(objects).forEach((id) => ids.add(id))
+      collect(objects)
       resolved += 1
     } else if (t.id) {
       toFetch.push(t.id)
@@ -48,13 +63,13 @@ async function swapTemplateObjectIds(
   fetched.forEach((r, i) => {
     const objects = r.status === 'fulfilled' ? r.value?.canvasData?.objects : undefined
     if (Array.isArray(objects)) {
-      TemplatePlugin.templateObjectIds(objects).forEach((id) => ids.add(id))
+      collect(objects)
       resolved += 1
     } else {
       console.warn('[AppTemplateSwap] 템플릿 조회 실패 — 이 템플릿 id 없이 교체:', toFetch[i], r.status === 'rejected' ? r.reason : '')
     }
   })
-  return resolved > 0 ? Array.from(ids) : undefined
+  return resolved > 0 ? { ids: Array.from(ids), texts } : undefined
 }
 
 function swapProbe(
@@ -124,7 +139,7 @@ export default function AppTemplateSwap() {
   }, [linked, currentLinked, currentPage, probe])
 
   const applyLive = useCallback(
-    async (tpl: LinkedPrintTemplate, currentTemplateIds?: string[]) => {
+    async (tpl: LinkedPrintTemplate, info?: SwapTemplateInfo) => {
       const objects = tpl.canvasData?.objects
       const plugin = getPlugin<TemplatePlugin>('TemplatePlugin')
       if (!plugin || !Array.isArray(objects) || objects.length === 0) return
@@ -140,7 +155,12 @@ export default function AppTemplateSwap() {
           core.ensureImageCrossOrigin(objects) as unknown as fabric.Object[],
           async (enlivened: fabric.Object[]) => {
             try {
-              await plugin.replaceTemplate(enlivened, { currentTemplateIds, refitFill })
+              // 원래 문구를 넘기면 고객이 고친 템플릿 글상자의 문구가 새 템플릿의 대응 글상자로 옮겨진다
+              await plugin.replaceTemplate(enlivened, {
+                currentTemplateIds: info?.ids,
+                currentTemplateTexts: info?.texts,
+                refitFill,
+              })
               const kind = classifyPrintTemplate(tpl)
               const spreadPlugin = getPlugin<SpreadPlugin>('SpreadPlugin')
               if (spreadPlugin && kind === 'cover-split') {
@@ -176,7 +196,7 @@ export default function AppTemplateSwap() {
     setReplacing(true)
     try {
       // 교체 전(세션·store 갱신 전) 연결 템플릿 전체 ∪ 현재 페이지 템플릿 기준으로 옛 템플릿 요소 id 를 구한다
-      const currentTemplateIds = await swapTemplateObjectIds(currentPage?.templateId, linked)
+      const info = await swapTemplateInfo(currentPage?.templateId, linked)
       if (sessionId && currentPage?.id) {
         try {
           await sessionsApi.replaceTemplate(
@@ -188,7 +208,7 @@ export default function AppTemplateSwap() {
           console.warn('[AppTemplateSwap] 세션 교체 생략(라이브만 적용):', e)
         }
       }
-      await applyLive(pending, currentTemplateIds)
+      await applyLive(pending, info)
       if (pages[currentPageIndex]) {
         const next = pages.slice()
         next[currentPageIndex] = { ...next[currentPageIndex], templateId: pending.id }

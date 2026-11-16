@@ -104,7 +104,7 @@ describe('AppTemplateSwap — 다시 연 세션(templateId=세트 원본, 캔버
     render(<AppTemplateSwap />)
 
     fireEvent.click(screen.getByText('템플릿 C'))
-    expect(screen.getByText(/템플릿 문구 칸에 쓴 글은 새 템플릿 값으로 바뀝니다/)).toBeTruthy()
+    expect(screen.getByText(/템플릿 문구 칸에 쓴 글은 새 템플릿의 문구 칸으로 옮깁니다/)).toBeTruthy()
     await act(async () => {
       fireEvent.click(screen.getByText('교체'))
       for (let i = 0; i < 50 && !ids(canvas).includes('c-bg'); i++) await new Promise((r) => setTimeout(r, 10))
@@ -151,5 +151,55 @@ describe('AppTemplateSwap — 다시 연 세션(templateId=세트 원본, 캔버
     expect(ids(canvas)).toEqual(expect.arrayContaining(['workspace', 'c-bg', 'c-frame']))
     expect(ids(canvas).filter((id) => id.startsWith('b-'))).toEqual([])
     warn.mockRestore()
+  })
+
+  it('고객이 고친 템플릿 글상자의 문구는 새 템플릿의 글상자로 옮기고, 고치지 않은 글상자는 새 템플릿 문구 그대로', async () => {
+    const text = (id: string, value: string, left: number): Plain => ({ type: 'textbox', id, styles: {}, text: value, left, top: 40, width: 150 })
+    const T1 = linked('tpl-t1', '글 템플릿 1', [text('t1-title', '제목을 입력하세요', 10), text('t1-sub', '부제를 입력하세요', 200)])
+    const T2 = linked('tpl-t2', '글 템플릿 2', [text('t2-title', '새 제목', 30), text('t2-sub', '새 부제', 230)])
+    // happy-dom 에는 캔버스 2D 컨텍스트가 없어 글자 폭을 잴 수 없다 — 이 테스트는 문구·id·위치만 본다
+    const measure = vi.spyOn(fabric.Textbox.prototype, 'initDimensions').mockImplementation(() => undefined)
+    const canvas = new fabric.StaticCanvas(null, { width: 800, height: 800, renderOnAddRemove: false })
+    const c = canvas as unknown as Plain
+    c.requestRenderAll = () => canvas
+    c.offHistory = () => undefined
+    c.onHistory = () => undefined
+    c.setActiveObject = () => canvas
+    c.discardActiveObject = () => canvas
+    const editor = { emit: () => undefined, getPlugin: () => null, hooks: { get: () => ({ callAsync: (_a: unknown, cb: () => void) => cb() }) } }
+    const plugin = new TemplatePlugin(canvas as unknown as fabric.Canvas, editor as never, {} as never)
+    ;(plugin as unknown as Plain)._getWorkspace = () => canvas.getObjects().find((o) => (o as unknown as Plain).id === 'workspace')
+    // 템플릿 1 을 연 뒤 제목만 고친 상태
+    const opened = (T1.canvasData!.objects as Plain[]).map((o) => (o.id === 't1-title' ? { ...o, text: '민서의 첫돌' } : o))
+    for (const o of await enliven([...opened, ...CUSTOMER])) canvas.add(o)
+    act(() => {
+      useAppStore.setState({
+        canvas,
+        allCanvas: [canvas],
+        allEditors: [{}],
+        getPlugin: (name: string) => (name === 'TemplatePlugin' ? plugin : undefined),
+      } as never)
+      useSettingsStore.setState({ linkedPrintTemplates: [T1, T2], spreadConfig: null } as never)
+      useEditorStore.setState({
+        sessionId: null,
+        pages: [{ id: 'p1', templateId: 'tpl-t1', templateType: 'page' }],
+        currentPageIndex: 0,
+      } as never)
+    })
+    render(<AppTemplateSwap />)
+
+    fireEvent.click(screen.getByText('글 템플릿 2'))
+    await act(async () => {
+      fireEvent.click(screen.getByText('교체'))
+      for (let i = 0; i < 50 && !ids(canvas).includes('t2-title'); i++) await new Promise((r) => setTimeout(r, 10))
+    })
+
+    const byId = (id: string) => (canvas.getObjects() as unknown as Plain[]).filter((o) => o.id === id)
+    expect(ids(canvas).filter((id) => id.startsWith('t1-'))).toEqual([])
+    expect(byId('t2-title').map((o) => o.text)).toEqual(['민서의 첫돌'])
+    expect(byId('t2-title')[0].left).toBe(30)
+    expect(byId('t2-sub').map((o) => o.text)).toEqual(['새 부제'])
+    expect(ids(canvas).filter((id) => id.startsWith('u-')).sort()).toEqual(['u-note', 'u-sticker'])
+    measure.mockRestore()
   })
 })

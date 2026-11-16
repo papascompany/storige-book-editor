@@ -56,9 +56,16 @@ export const TemplateReplaceModal = memo(function TemplateReplaceModal({
             <Warning className="w-5 h-5 text-yellow-600 flex-shrink-0 mt-0.5" />
             <div className="text-sm text-yellow-800">
               <p className="font-medium">사용자 요소는 보존됩니다</p>
-              <p className="mt-1 text-yellow-700">
-                직접 추가한 텍스트·사진은 옮겨지고, 템플릿 문구 칸에 쓴 글은 새 {itemType} 값으로 바뀝니다.
-              </p>
+              {mode === 'template' ? (
+                <p className="mt-1 text-yellow-700">
+                  직접 추가한 텍스트·사진은 그대로 두고, 템플릿 문구 칸에 쓴 글은 새 템플릿의 문구 칸으로 옮깁니다.
+                  위치와 글꼴은 새 템플릿을 따르며, 옮길 칸이 없는 글은 사라집니다.
+                </p>
+              ) : (
+                <p className="mt-1 text-yellow-700">
+                  직접 추가한 텍스트·사진은 옮겨지고, 템플릿 문구 칸에 쓴 글은 새 {itemType} 값으로 바뀝니다.
+                </p>
+              )}
             </div>
           </div>
 

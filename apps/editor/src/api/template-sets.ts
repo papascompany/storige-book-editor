@@ -4,6 +4,7 @@
 
 import { apiClient } from './client'
 import type { TemplateSet, Template } from '@storige/types'
+import { withTemplateObjectIds } from '@/utils/templateObjectIds'
 
 export interface TemplateSetWithDetails {
   templateSet: TemplateSet
@@ -24,6 +25,9 @@ export const templateSetsApi = {
    */
   getTemplateSetWithTemplates: async (id: string): Promise<TemplateSetWithDetails> => {
     const response = await apiClient.get(`/template-sets/${id}/with-templates`)
-    return response.data
+    const data = response.data as TemplateSetWithDetails
+    // id 가 없는 템플릿 객체에 정해진 id 를 채운다 — 페이지 템플릿 교체가 템플릿 요소를 가려내는 데 쓴다
+    if (!data || !Array.isArray(data.templateDetails)) return data
+    return { ...data, templateDetails: data.templateDetails.map((t) => withTemplateObjectIds(t)) }
   },
 }

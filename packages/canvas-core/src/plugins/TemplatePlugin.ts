@@ -22,6 +22,30 @@ export interface ReplaceTemplateOptions {
   currentTemplateIds?: string[]
   /** 옮긴 채움 사진을 새 틀 기하(마스크·배율·위치)에 다시 맞추는 콜백 — 편집기의 틀 채우기 경로를 주입 */
   refitFill?: (fill: fabric.Object, frame: fabric.Object) => unknown
+  /**
+   * 현재 페이지에 적용된 템플릿의 글상자 원래 문구(TemplatePlugin.templateTextOriginals).
+   * 넘기면 고객이 고친 템플릿 글상자의 문구를 새 템플릿의 대응 글상자로 옮긴다. 없으면 옮기지 않는다.
+   * 여러 템플릿이 같은 id 를 쓰면 값을 배열로 넘긴다 — 그중 하나와 같으면 고치지 않은 것으로 본다.
+   */
+  currentTemplateTexts?: Record<string, string | string[]>
+}
+
+/** 문구를 옮길 옛 글상자 ↔ 새 글상자 짝 */
+interface TextCarryPair {
+  text: string
+  target: fabric.Object
+}
+
+const TEXT_TYPES = ['text', 'i-text', 'textbox']
+
+/** 32비트 FNV-1a — 템플릿 id 를 객체 id 에 넣을 짧은 16진 문자열로 줄인다 */
+function shortHash(value: string): string {
+  let h = 0x811c9dc5
+  for (let i = 0; i < value.length; i++) {
+    h ^= value.charCodeAt(i)
+    h = Math.imul(h, 0x01000193)
+  }
+  return (h >>> 0).toString(16).padStart(8, '0')
 }
 
 interface FillFramePair {
@@ -226,6 +250,42 @@ class TemplatePlugin extends PluginBase {
   }
 
   /**
+   * canvasData objects 의 top-level 객체 중 id 가 없는 것에 `tplobj-<템플릿 id 해시>-<순번>` id 를 채운 사본을 돌려준다.
+   * id 가 없는 템플릿 객체는 교체 때 템플릿 유래인지 가려낼 수 없어 옛 요소가 남는다. 같은 템플릿·같은 순번이면
+   * 언제 불러와도 같은 id 가 되므로, 세션에 저장된 객체와 템플릿 원본을 id 로 다시 맞출 수 있다.
+   * 이미 id 가 있는 객체와 객체가 아닌 항목은 그대로 둔다. 입력은 바꾸지 않는다.
+   */
+  static fillTemplateObjectIds<T>(templateId: string, objects: T): T {
+    if (!Array.isArray(objects) || typeof templateId !== 'string' || !templateId) return objects
+    const prefix = `tplobj-${shortHash(templateId)}`
+    let changed = false
+    const out = objects.map((obj, index) => {
+      if (!obj || typeof obj !== 'object' || Array.isArray(obj)) return obj
+      const id = (obj as { id?: unknown }).id
+      if (typeof id === 'string' && id) return obj
+      changed = true
+      return { ...obj, id: `${prefix}-${index}` }
+    })
+    return (changed ? out : objects) as unknown as T
+  }
+
+  /**
+   * canvasData objects 의 top-level 글상자 원래 문구(id → text) — replaceTemplate 의 currentTemplateTexts 입력용.
+   * 같은 id 가 여러 번 나오면 첫 값을 쓴다.
+   */
+  static templateTextOriginals(objects: unknown): Record<string, string> {
+    const out: Record<string, string> = {}
+    if (!Array.isArray(objects)) return out
+    for (const obj of objects) {
+      if (!obj || typeof obj !== 'object') continue
+      const { id, type, text } = obj as { id?: unknown; type?: unknown; text?: unknown }
+      if (typeof id !== 'string' || !id || typeof type !== 'string' || !TEXT_TYPES.includes(type)) continue
+      if (typeof text === 'string' && !(id in out)) out[id] = text
+    }
+    return out
+  }
+
+  /**
    * 템플릿 교체 (사용자 요소 보존 포함)
    *
    * - 배열 입력 = 편집기 canvasData 의 objects(enliven 결과). 서버 세션 교체와 같은 결과가 되도록
@@ -239,14 +299,19 @@ class TemplatePlugin extends PluginBase {
    *   새 템플릿의 같은 id 틀 → 없으면 순서 짝(같은 id 짝이 없는 옛 틀 k번째 ↔ 같은 id 짝이 없는 새 틀 k번째)으로
    *   옮기고(frameRef·parentLayerId 갱신, 사진 id 유지, 틀 바로 아래로), options.refitFill 로 새 틀 기하에 다시 맞춘다.
    *   짝이 없으면 제자리에 남긴다. 옮긴 틀에 새 템플릿이 채워 둔 견본 사진은 추가하지 않는다(한 틀에 사진 1장).
+   * - 고객이 고친 템플릿 글상자(options.currentTemplateTexts 의 원래 문구와 다른 것)는 문구만 새 템플릿으로 옮긴다.
+   *   짝은 같은 id 글상자 → 없으면 순서 짝(같은 id 짝이 없는 옛 글상자 k번째 ↔ 같은 id 짝이 없는 새 글상자 k번째).
+   *   위치·서체·크기는 새 템플릿을 따른다. 고치지 않은 글상자, 비운 글상자, 내용 편집이 잠긴 새 글상자,
+   *   짝이 없는 글상자는 옮기지 않는다(새 템플릿의 문구 그대로).
    * @param newTemplate 새 템플릿 데이터
-   * @param options currentTemplateIds·refitFill (모두 선택 — 없으면 종전 판정)
+   * @param options currentTemplateIds·refitFill·currentTemplateTexts (모두 선택 — 없으면 종전 판정)
    */
   async replaceTemplate(
     newTemplate: fabric.Group | fabric.Object | fabric.Object[],
     options: ReplaceTemplateOptions = {}
   ): Promise<void> {
     this._canvas.offHistory()
+    let carriedTextCount = 0
 
     try {
       const isObjectList = Array.isArray(newTemplate)
@@ -272,6 +337,9 @@ class TemplatePlugin extends PluginBase {
         const additions = templateObjects.filter((obj) => obj.id !== 'workspace')
         const pairs = this.pairFillsWithNewFrames(userElements, removed, additions)
         const finalAdditions = this.relinkFills(pairs, userElements, additions)
+        const carries = this.pairTextCarryOver(removed, finalAdditions, options.currentTemplateTexts)
+        carries.forEach(({ text, target }) => target.set('text', text))
+        carriedTextCount = carries.length
         await this.addTemplateObjects(finalAdditions, userElements, pairs, options.refitFill)
       } else {
         await this.addTemplateToCanvas(newTemplate)
@@ -282,7 +350,7 @@ class TemplatePlugin extends PluginBase {
       console.log(`✅ 사용자 요소 복원 완료: ${userElements.length}개`)
 
       // 5. 이벤트 발생
-      this._editor.emit('templateReplaced', { preservedCount: userElements.length })
+      this._editor.emit('templateReplaced', { preservedCount: userElements.length, carriedTextCount })
 
     } finally {
       this._canvas.onHistory()
@@ -351,6 +419,49 @@ class TemplatePlugin extends PluginBase {
       }
       return true
     })
+  }
+
+  /**
+   * 제거되는 옛 템플릿 글상자 중 고객이 고친 것 ↔ 새 템플릿 글상자 짝.
+   * 원래 문구는 originals(현재 템플릿) → 없으면 새 템플릿의 같은 id 글상자 문구로 본다. 둘 다 없으면 고쳤는지 알 수 없어 옮기지 않는다.
+   * 순서 짝의 순번은 고친 것만이 아니라 같은 id 짝이 없는 글상자 전체로 센다 — 일부만 고쳐도 자리가 밀리지 않는다.
+   */
+  private pairTextCarryOver(
+    removed: fabric.Object[],
+    additions: fabric.Object[],
+    originals?: Record<string, string | string[]>
+  ): TextCarryPair[] {
+    if (!originals) return []
+    const isText = (o: fabric.Object) => TEXT_TYPES.includes(o.type as string) && typeof o.id === 'string' && !!o.id
+    const oldTexts = removed.filter(isText)
+    const newTexts = additions.filter(isText)
+    if (oldTexts.length === 0 || newTexts.length === 0) return []
+
+    const oldIds = new Set(oldTexts.map((o) => o.id))
+    const newById = new Map(newTexts.map((o) => [o.id, o]))
+    const oldUnmatched = oldTexts.filter((o) => !newById.has(o.id))
+    const newUnmatched = newTexts.filter((o) => !oldIds.has(o.id))
+
+    const claimed = new Set<fabric.Object>()
+    const pairs: TextCarryPair[] = []
+    for (const old of oldTexts) {
+      const text = (old as any).text
+      if (typeof text !== 'string' || text.trim() === '') continue
+      const sameId = newById.get(old.id)
+      const known: unknown[] = Object.prototype.hasOwnProperty.call(originals, old.id)
+        ? ([] as unknown[]).concat(originals[old.id])
+        : sameId
+          ? [(sameId as any).text]
+          : []
+      const candidates = known.filter((v) => typeof v === 'string')
+      if (candidates.length === 0 || candidates.includes(text)) continue
+      const target = sameId ?? newUnmatched[oldUnmatched.indexOf(old)]
+      if (!target || claimed.has(target)) continue
+      if ((target as any).contentEditable === false) continue
+      claimed.add(target)
+      pairs.push({ text, target })
+    }
+    return pairs
   }
 
   /** replaceTemplate 배열 입력 검증 — 캔버스를 건드리기 전에 실패시킨다 */
