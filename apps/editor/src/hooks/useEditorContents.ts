@@ -1574,11 +1574,16 @@ export function useEditorContents(): UseEditorContentsReturn {
                     void rehydratePhotoPrint(targetEditor, cvs, newPageIndex)
                     // 사진인화: 런처 items 증설('cycle')로 템플릿에서 시드된
                     // 페이지도 SidePanel 시드(seedPhotoPrintCanvas)와 같은 초기화 — ② 고정 뒷면 잠금(홀수 캔버스) → 사진틀
-                    // 클릭 채움 재바인딩 → applyObjectPermissions(editMode) → trackRequiredEdits. 이 경로는 첫 페이지
-                    // (loadCanvasData 의 applyCustomerLocks)와 달리 권한 적용이 없어 TemplatePlugin.afterLoad 가 되살린
-                    // 텍스트 hasControls/lockScaling 이 그대로 남았다. 사진인화 세트에만 적용해 NULL·캘린더 세트의
-                    // 잠금·권한 동작은 그대로 둔다(사진틀 재바인딩만 위에서 모든 세트에 수행).
-                    if (photoPrintProfile) initPhotoPrintSeededCanvas(targetEditor, cvs, newPageIndex, photoPrintProfile)
+                    // 클릭 채움 재바인딩 → applyObjectPermissions(editMode) → trackRequiredEdits.
+                    // 그 밖의 세트(프로파일 NULL·캘린더)는 첫 페이지(loadCanvasData)와 같은 고객 잠금·필수 편집 추적을 건다.
+                    // 이 호출이 없으면 처음 연 세트의 2쪽 이후에서는 관리자가 고정한 요소(movable·contentEditable 등)가
+                    // 잠기지 않는다(새로 고침하면 복원 경로가 잠가서 해소). loadJSON 콜백 안이라 TemplatePlugin.afterLoad 뒤다.
+                    if (photoPrintProfile) {
+                      initPhotoPrintSeededCanvas(targetEditor, cvs, newPageIndex, photoPrintProfile)
+                    } else {
+                      applyCustomerLocks(cvs)
+                      trackRequiredEdits(cvs)
+                    }
                     const totalWidth = mmToPxDisplay(capturedWidth + screenCutSizeMm)
                     const totalHeight = mmToPxDisplay(capturedHeight + screenCutSizeMm)
 

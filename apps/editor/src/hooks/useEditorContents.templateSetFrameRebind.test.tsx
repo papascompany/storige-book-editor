@@ -106,6 +106,8 @@ const page = (i: number, type: string) => ({
       WS,
       { type: 'rect', id: `frame-${i}`, extensionType: 'frame', left: 50, top: 50, width: 200, height: 200, fill: '#ccc' },
       { type: 'rect', id: `deco-${i}`, left: 300, top: 300, width: 40, height: 40, fill: '#f00' },
+      // 관리자가 위치를 고정한 요소 — 고객 진입 시 이동·크기·회전이 잠겨야 한다
+      { type: 'rect', id: `fixed-deco-${i}`, movable: false, left: 400, top: 300, width: 40, height: 40, fill: '#00f' },
     ],
   },
 })
@@ -277,4 +279,27 @@ describe('loadTemplateSetEditor — 처음 연 세트의 모든 쪽 사진틀 �
     framesOf(canvases[2])[0].fire('mousedown', { e: new MouseEvent('mousedown') })
     await vi.waitFor(() => expect(h.selectFiles).toHaveBeenCalledTimes(1))
   })
+})
+
+describe('loadTemplateSetEditor — 처음 연 세트의 모든 쪽에 고객 잠금 적용', () => {
+  const lockState = (canvas: fabric.StaticCanvas, prefix: string) =>
+    (canvas.getObjects() as unknown as Plain[])
+      .filter((o) => String(o.id).startsWith(prefix))
+      .map((o) => [o.lockMovementX, o.lockScalingX, o.lockRotation, o.hasControls])
+
+  it.each([
+    ['프로파일 NULL', null, 4],
+    ['캘린더(탁상 26캔버스)', CALENDAR, 26],
+    ['사진인화', PHOTO_PRINT, 4],
+  ] as const)('%s 세트: 위치 고정 요소는 첫 쪽뿐 아니라 모든 쪽에서 잠기고, 일반 요소는 잠기지 않는다', async (_label, profile, pageCount) => {
+    const canvases = await openSet(profile, pageCount)
+    expect(canvases).toHaveLength(pageCount)
+    expect(canvases.map((cvs) => lockState(cvs, 'fixed-deco-'))).toEqual(
+      Array.from({ length: pageCount }, () => [[true, true, true, false]]),
+    )
+    for (const cvs of canvases) {
+      for (const [lockMove] of lockState(cvs, 'deco-')) expect(lockMove).not.toBe(true)
+    }
+  })
+
 })
