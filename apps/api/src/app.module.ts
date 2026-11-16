@@ -54,7 +54,7 @@ if (process.env.BOOKMOA_DB_PASSWORD) {
       ],
     }),
 
-    // 구조화 로깅 (Pino → JSON stdout → Promtail → Loki)
+    // 구조화 로깅 (Pino → JSON stdout → Alloy → Loki)
     LoggerModule.forRoot({
       pinoHttp: {
         // production: JSON 한 줄, development: pretty

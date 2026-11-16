@@ -1,0 +1,82 @@
+name: alloy-config
+
+# 로그 수집기(Grafana Alloy) 설정 검증. docker/alloy 나 compose 의 alloy 서비스가 바뀔 때만 돈다.
+# 설정에 오류가 있으면 컨테이너가 기동하지 못하고 재시작을 반복해 로그 수집이 멈춘다.
+# compose 와 같은 이미지로 `alloy validate` 를 돌려 구문, 없는 컴포넌트·속성, 없는 참조를 잡는다.
+# validate 는 Docker 소켓이나 Loki 에 연결하지 않는다. 수집 대상과 라벨이 맞는지는 이 검사로 알 수 없다.
+# YAML 해석은 러너의 python3(PyYAML)로 한다. run 블록에는 GitHub 표현식을 쓰지 않는다.
+# 저장소 루트에서 각 run 블록을 bash 로 그대로 돌려 로컬 docker 로 같은 검사를 할 수 있다.
+
+on:
+  push:
+    branches: [master]
+    paths:
+      - 'docker/alloy/**'
+      - 'docker-compose.yml'
+      - '.github/workflows/alloy-config.yml'
+  pull_request:
+    paths:
+      - 'docker/alloy/**'
+      - 'docker-compose.yml'
+      - '.github/workflows/alloy-config.yml'
+
+permissions:
+  contents: read   # 코드 체크아웃만
+
+# 같은 ref 의 중복 실행은 취소
+concurrency:
+  group: alloy-config-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    name: verify alloy config
+    # 러너 이미지 고정 이유는 ci.yml test 잡 주석과 같다
+    runs-on: ubuntu-24.04
+    # 이미지 받기가 대부분이다
+    timeout-minutes: 5
+    env:
+      # 저장소 루트 기준 상대 경로. 로컬 대조 실험에서 저장소 안의 사본 파일로 바꿔 돌릴 수 있게 둔다
+      ALLOY_CONFIG: docker/alloy/config.alloy
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # 이 잡은 checkout 뒤 git 자격증명을 쓰지 않는다
+          persist-credentials: false
+
+      - name: PyYAML 확인
+        run: |
+          set -euo pipefail
+          python3 -c "import yaml" || { echo "::error::python3 에서 yaml 모듈(PyYAML)을 불러올 수 없다"; exit 1; }
+          python3 -c "import sys, yaml; print('python', sys.version.split()[0], 'PyYAML', yaml.__version__)"
+
+      - name: compose 의 alloy 서비스 확인
+        run: |
+          set -euo pipefail
+          # 아래 스텝의 docker run 은 compose 의 이미지와 설정 파일 경로를 따른다. 여기서 그 전제가 그대로인지 본다.
+          python3 - <<'PY'
+          import re, sys, yaml
+          svc = ((yaml.safe_load(open("docker-compose.yml", encoding="utf-8")) or {}).get("services") or {}).get("alloy") or {}
+          errs = []
+          if not re.fullmatch(r"grafana/alloy:\S+", str(svc.get("image") or "")):
+              errs.append("services.alloy.image 가 grafana/alloy:<tag> 형식이 아니다")
+          cmd = svc.get("command")
+          cmd = " ".join(cmd) if isinstance(cmd, list) else str(cmd or "")
+          if not cmd.startswith("run /etc/alloy/config.alloy"):
+              errs.append("compose alloy command 가 run /etc/alloy/config.alloy 로 시작하지 않는다 — 이 워크플로의 docker run 을 함께 고친다")
+          if "./docker/alloy/config.alloy:/etc/alloy/config.alloy:ro" not in (svc.get("volumes") or []):
+              errs.append("compose alloy 마운트에 설정 파일이 없다 — 이 워크플로의 docker run 을 함께 고친다")
+          for e in errs: print(f"::error::{e}")
+          sys.exit(1 if errs else 0)
+          PY
+
+      - name: compose 와 같은 이미지로 설정 검증
+        run: |
+          set -euo pipefail
+          f="$(cd "$(dirname "$ALLOY_CONFIG")" && pwd)/$(basename "$ALLOY_CONFIG")"
+          [ -s "$f" ] || { echo "::error::설정 파일이 없거나 비어 있다"; exit 1; }
+          image="$(python3 -c 'import yaml; print(yaml.safe_load(open("docker-compose.yml", encoding="utf-8"))["services"]["alloy"]["image"])')"
+          echo "image=$image"
+          # 이미지가 없으면 docker run 이 받는다. 오류가 있으면 validate 가 위치와 함께 출력하고 0 이 아닌 값으로 끝난다.
+          docker run --rm -v "$f:/etc/alloy/config.alloy:ro" "$image" validate /etc/alloy/config.alloy
+          echo "validate ok"

@@ -34,7 +34,7 @@ import { resolveDevLogTransport } from './config/dev-log-transport';
       ],
     }),
 
-    // 구조화 로깅 (Pino → JSON stdout → Promtail → Loki)
+    // 구조화 로깅 (Pino → JSON stdout → Alloy → Loki)
     // Worker는 HTTP 서버가 거의 없고 잡 처리 중심이라 autoLogging 비활성
     LoggerModule.forRoot({
       pinoHttp: {

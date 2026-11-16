@@ -249,6 +249,7 @@ docker images --format '{{.Repository}}:{{.Tag}} {{.ID}}' | grep 'rollback-pre-<
 - 바꾸지 않는 서비스의 태그는 생략해도 된다(worker 만 배포하면 worker 만).
 - 되돌리기는 `docker tag storige-<서비스>:rollback-pre-<이름> storige-<서비스>:latest` → `docker compose up -d --no-deps --no-build <서비스>`(api 는 nginx 재시작) → `[FLAGS-CHECK] <서비스> ok` 확인이다.
 - 롤백 태그는 다음 배포가 안정된 뒤 정리한다. 2026-10-29 기준 최근 3개 배포 단위의 태그만 남긴다.
+- 정지·재생성 명령은 바로 끝나지 않을 수 있다. worker 는 처리 중인 잡을 마칠 때까지 최대 300초(약 5분), api 는 처리 중인 요청을 마칠 때까지 최대 30초를 기다린다(compose `stop_grace_period`). 기다리는 동안 명령을 끊거나 `docker kill` 을 쓰지 않는다. 원격에서 실행할 때는 명령 제한 시간을 그보다 길게 잡는다. 처리 중인 잡이 없으면 몇 초 안에 끝난다(아래 「2026-11-13 운영 반영」).
 
 ### 1. 빌드
 
