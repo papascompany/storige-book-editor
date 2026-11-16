@@ -1092,6 +1092,8 @@ export const TemplateSetForm = () => {
                           템플릿 필터에 자동 연동된다. */}
                       <Form.Item label="판형 프리셋">
                         <FormatPresetSelect
+                          currentWidthMm={width}
+                          currentHeightMm={height}
                           onApply={({ trimW, trimH, bleedMm }) =>
                             form.setFieldsValue({ width: trimW, height: trimH, bleedMm })
                           }

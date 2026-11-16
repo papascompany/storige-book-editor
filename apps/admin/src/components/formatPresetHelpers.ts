@@ -100,6 +100,28 @@ export function orientationOf(widthMm: number, heightMm: number): Orientation {
   return widthMm > heightMm ? 'landscape' : 'portrait';
 }
 
+/**
+ * 현재 폼 치수에서 프리셋 방향 토글의 값을 정한다 — 가로(W>H)면 'landscape', 세로(W<H)면 'portrait'.
+ * 치수가 비었거나 0 이하이거나 정사각이면 정할 수 없으므로 null(토글을 그대로 둔다).
+ */
+export function presetOrientationFromSize(
+  widthMm: number | null | undefined,
+  heightMm: number | null | undefined,
+): PresetOrientation | null {
+  if (
+    typeof widthMm !== 'number' ||
+    typeof heightMm !== 'number' ||
+    !Number.isFinite(widthMm) ||
+    !Number.isFinite(heightMm) ||
+    widthMm <= 0 ||
+    heightMm <= 0
+  ) {
+    return null;
+  }
+  const orientation = orientationOf(widthMm, heightMm);
+  return orientation === 'square' ? null : orientation;
+}
+
 // ===== 방향 쌍 (orientation pair) — 2026-07-14 오너 확정 규칙 =====
 // 짝 성립 조건: 같은 재단 규격의 정확 W↔H 스왑(±0.01mm). 정사각·자기자신 불가.
 // 자기자신 제외는 id 비교 영역 — 치수만 다루는 이 모듈이 아닌 호출부 책임.

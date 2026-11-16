@@ -1,9 +1,9 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Radio, Select, Space } from 'antd';
 import { formatPresetsApi } from '../api/formatPresets';
 import type { FormatPreset } from '../api/formatPresets';
-import { formatSizeLabel, isSquare, orientTrim } from './formatPresetHelpers';
+import { formatSizeLabel, isSquare, orientTrim, presetOrientationFromSize } from './formatPresetHelpers';
 import type { PresetOrientation } from './formatPresetHelpers';
 
 /** '직접 입력(비규격)' sentinel — 프리셋 아님, 주입 없음. */
@@ -24,6 +24,12 @@ interface FormatPresetSelectProps {
   onApply: (payload: FormatPresetApplyPayload) => void;
   /** '직접 입력(비규격)' 선택 시 — 주입 없음(폼 값 유지). 보관 중인 프리셋 상태 해제용. */
   onCustom?: () => void;
+  /**
+   * 폼의 현재 재단 너비·높이(mm). 넘기면 방향 토글이 이 치수를 따라간다(가로형 폼에서 '가로형' 표시).
+   * 넘기지 않으면 토글은 '세로형'에서 시작하고 사용자가 바꾼 값만 따른다.
+   */
+  currentWidthMm?: number | null;
+  currentHeightMm?: number | null;
 }
 
 /**
@@ -31,10 +37,25 @@ interface FormatPresetSelectProps {
  *
  * - 정사각(W==H) 프리셋은 가로형 disabled(스왑 무의미).
  * - 기본 선택은 '직접 입력(비규격)' — 프리셋을 고르기 전에는 아무 값도 주입하지 않는다.
+ * - 현재 치수를 받으면 방향 토글이 그 치수의 방향을 따른다. 가로형 폼에서 프리셋을 고를 때
+ *   세로형 치수가 들어가 방향이 뒤집히는 일을 막는다. 치수가 없거나 정사각이면 토글을 바꾸지 않는다.
  */
-export const FormatPresetSelect = ({ onApply, onCustom }: FormatPresetSelectProps) => {
+export const FormatPresetSelect = ({
+  onApply,
+  onCustom,
+  currentWidthMm,
+  currentHeightMm,
+}: FormatPresetSelectProps) => {
   const [selectedId, setSelectedId] = useState<string>(CUSTOM_VALUE);
-  const [orientation, setOrientation] = useState<PresetOrientation>('portrait');
+  const sizeOrientation = presetOrientationFromSize(currentWidthMm, currentHeightMm);
+  const [orientation, setOrientation] = useState<PresetOrientation>(sizeOrientation ?? 'portrait');
+
+  // 폼 치수의 방향이 바뀌면(기존 세트 로드, 직접 입력) 토글을 맞춘다. 값 주입은 하지 않는다.
+  useEffect(() => {
+    if (sizeOrientation) {
+      setOrientation(sizeOrientation);
+    }
+  }, [sizeOrientation]);
 
   const { data: presets, isLoading } = useQuery({
     queryKey: ['format-presets'],

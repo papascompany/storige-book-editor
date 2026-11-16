@@ -8,6 +8,7 @@ import {
   isSquare,
   orientTrim,
   orientationOf,
+  presetOrientationFromSize,
   workSize,
 } from './formatPresetHelpers';
 
@@ -183,5 +184,24 @@ describe('orientationOf', () => {
 
   it('W==H → square (210×210)', () => {
     expect(orientationOf(210, 210)).toBe('square');
+  });
+});
+
+describe('presetOrientationFromSize', () => {
+  it('가로 치수는 landscape, 세로 치수는 portrait', () => {
+    expect(presetOrientationFromSize(297, 210)).toBe('landscape');
+    expect(presetOrientationFromSize(210, 297)).toBe('portrait');
+  });
+
+  it('정사각은 방향을 정하지 않는다', () => {
+    expect(presetOrientationFromSize(210, 210)).toBeNull();
+  });
+
+  it('치수가 비었거나 0 이하이거나 숫자가 아니면 정하지 않는다', () => {
+    expect(presetOrientationFromSize(undefined, 210)).toBeNull();
+    expect(presetOrientationFromSize(297, null)).toBeNull();
+    expect(presetOrientationFromSize(0, 210)).toBeNull();
+    expect(presetOrientationFromSize(297, -1)).toBeNull();
+    expect(presetOrientationFromSize(Number.NaN, 210)).toBeNull();
   });
 });
