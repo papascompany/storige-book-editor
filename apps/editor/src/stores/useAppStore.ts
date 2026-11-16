@@ -1516,7 +1516,7 @@ export const useAppStore = create<AppState & AppActions>()((set, get) => ({
   },
 
   _updateObjectsHandler: (e?: FabricEvent) => {
-    const { canvas, activeSelection, updateObjects } = get()
+    const { canvas, updateObjects } = get()
 
     // 캔버스 유효성 검사
     if (!canvas || canvas.disposed) return
@@ -1544,11 +1544,12 @@ export const useAppStore = create<AppState & AppActions>()((set, get) => ({
         // 히스토리 처리 중에는 업데이트 건너뛰기
         if (canvas?.historyProcessing) return
 
-        // 안전한 activeSelection 업데이트
-        if (e?.target && e.target.id && activeSelection?.[0]?.id === e.target.id) {
-          if (e.target) {
-            useAppStore.setState({ activeSelection: [e.target] })
-          }
+        // 안전한 activeSelection 업데이트 — 선택 값은 이 콜백이 도는 지금 시점의 것을 읽는다.
+        // 이벤트를 받은 시점의 값을 붙들면, 그 사이(100ms) 선택이 풀리거나 바뀐 뒤에 옛 선택을 되살린다
+        // (글상자 편집을 끝내며 빈 곳을 누를 때: object:modified → selection:cleared).
+        const currentSelection = useAppStore.getState().activeSelection
+        if (e?.target && e.target.id && currentSelection?.[0]?.id === e.target.id) {
+          useAppStore.setState({ activeSelection: [e.target] })
         }
 
         updateObjects()
