@@ -44,13 +44,13 @@ import {
   DragEndEvent,
 } from '@dnd-kit/core';
 import {
-  arrayMove,
   SortableContext,
   sortableKeyboardCoordinates,
   useSortable,
   verticalListSortingStrategy,
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
+import { createRowKeyFactory, moveRowByKey, removeRowByKey, toggleRequiredByKey } from './templateRows';
 import {
   TemplateSetType,
   TemplateRef,
@@ -236,12 +236,15 @@ const PrintGeometrySvg = ({ preview }: { preview: PrintGeometryPreview }) => {
 };
 
 // Sortable Template Item Component
+/** 목록의 한 행. rowKey 는 화면 전용(같은 템플릿을 여러 번 연결한 세트에서 행을 구분) — 저장하지 않는다. */
+type TemplateRow = TemplateRef & { template?: Template; rowKey: string };
+
 interface SortableTemplateItemProps {
-  item: TemplateRef & { template?: Template };
+  item: TemplateRow;
   index: number;
   dimAlignment?: DimAlignmentInfo;
-  onToggleRequired: (templateId: string) => void;
-  onRemove: (templateId: string) => void;
+  onToggleRequired: (rowKey: string) => void;
+  onRemove: (rowKey: string) => void;
 }
 
 const SortableTemplateItem = ({
@@ -258,7 +261,7 @@ const SortableTemplateItem = ({
     transform,
     transition,
     isDragging,
-  } = useSortable({ id: item.templateId });
+  } = useSortable({ id: item.rowKey });
 
   const style = {
     transform: CSS.Transform.toString(transform),
@@ -270,6 +273,7 @@ const SortableTemplateItem = ({
   return (
     <div
       ref={setNodeRef}
+      data-testid="template-row"
       style={{
         ...style,
         padding: '12px 16px',
@@ -329,7 +333,7 @@ const SortableTemplateItem = ({
         <Button
           type="link"
           size="small"
-          onClick={() => onToggleRequired(item.templateId)}
+          onClick={() => onToggleRequired(item.rowKey)}
         >
           {item.required ? '필수 해제' : '필수 설정'}
         </Button>
@@ -338,7 +342,7 @@ const SortableTemplateItem = ({
           danger
           size="small"
           icon={<DeleteOutlined />}
-          onClick={() => onRemove(item.templateId)}
+          onClick={() => onRemove(item.rowKey)}
         />
       </Space>
     </div>
@@ -350,7 +354,8 @@ export const TemplateSetForm = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const [form] = Form.useForm();
-  const [templates, setTemplates] = useState<(TemplateRef & { template?: Template })[]>([]);
+  const [templates, setTemplates] = useState<TemplateRow[]>([]);
+  const nextRowKey = useRef(createRowKeyFactory()).current;
   const [isTemplateModalOpen, setIsTemplateModalOpen] = useState(false);
   // 캘린더 프리셋 셀렉트(적용 버튼을 눌러야 폼 필드에 반영)
   const [calendarPresetKey, setCalendarPresetKey] = useState<string | undefined>(undefined);
@@ -509,11 +514,12 @@ export const TemplateSetForm = () => {
         const templateRefs = templateSet.templates.map((ref) => ({
           ...ref,
           template: allTemplates.find((t) => t.id === ref.templateId),
+          rowKey: nextRowKey(),
         }));
         setTemplates(templateRefs);
       }
     }
-  }, [templateSet, allTemplates, form]);
+  }, [templateSet, allTemplates, form, nextRowKey]);
 
   // IDML 가져오기 인계: 표지(spread)를 셋의 첫 템플릿(필수)으로 자동 추가 + 책모드/판형 자동 설정.
   // 남은 수동 작업(내지 추가 + 페이지수 범위)은 관리자가 처리한다.
@@ -530,11 +536,11 @@ export const TemplateSetForm = () => {
       height: spec?.coverHeightMm ?? seedTemplate.height,
       canAddPage: true,
     });
-    setTemplates([{ templateId: seedTemplate.id, required: true, template: seedTemplate }]);
+    setTemplates([{ templateId: seedTemplate.id, required: true, template: seedTemplate, rowKey: nextRowKey() }]);
     message.info(
       '가져온 표지가 셋에 추가되었습니다. 내지(page) 템플릿을 추가하고 페이지 수 범위를 설정한 뒤 저장하세요.'
     );
-  }, [id, seedTemplate, form]);
+  }, [id, seedTemplate, form, nextRowKey]);
 
   const handleSubmit = async (values: any) => {
     const editorMode = values.editorMode || EditorMode.SINGLE;
@@ -758,14 +764,15 @@ export const TemplateSetForm = () => {
         templateId: template.id,
         required: false,
         template,
+        rowKey: nextRowKey(),
       },
     ]);
     setIsTemplateModalOpen(false);
   };
 
-  const handleRemoveTemplate = (templateId: string) => {
-    const removedTemplate = templates.find((t) => t.templateId === templateId);
-    const remaining = templates.filter((t) => t.templateId !== templateId);
+  const handleRemoveTemplate = (rowKey: string) => {
+    const removedTemplate = templates.find((t) => t.rowKey === rowKey);
+    const remaining = removeRowByKey(templates, rowKey);
     setTemplates(remaining);
 
     // 스프레드 템플릿 제거 시 남은 스프레드가 없으면 단일모드로 복원
@@ -778,12 +785,8 @@ export const TemplateSetForm = () => {
     }
   };
 
-  const handleToggleRequired = (templateId: string) => {
-    setTemplates(
-      templates.map((t) =>
-        t.templateId === templateId ? { ...t, required: !t.required } : t
-      )
-    );
+  const handleToggleRequired = (rowKey: string) => {
+    setTemplates(toggleRequiredByKey(templates, rowKey));
   };
 
   // Handle drag end
@@ -791,11 +794,7 @@ export const TemplateSetForm = () => {
     const { active, over } = event;
 
     if (over && active.id !== over.id) {
-      setTemplates((items) => {
-        const oldIndex = items.findIndex((item) => item.templateId === active.id);
-        const newIndex = items.findIndex((item) => item.templateId === over.id);
-        return arrayMove(items, oldIndex, newIndex);
-      });
+      setTemplates((items) => moveRowByKey(items, String(active.id), String(over.id)));
     }
   };
 
@@ -1990,13 +1989,13 @@ export const TemplateSetForm = () => {
                           onDragEnd={handleDragEnd}
                         >
                           <SortableContext
-                            items={templates.map((t) => t.templateId)}
+                            items={templates.map((t) => t.rowKey)}
                             strategy={verticalListSortingStrategy}
                           >
                             <div style={{ border: '1px solid #f0f0f0', borderRadius: 8 }}>
                               {templates.map((item, index) => (
                                 <SortableTemplateItem
-                                  key={item.templateId}
+                                  key={item.rowKey}
                                   item={item}
                                   index={index}
                                   dimAlignment={dimAlignments.get(item.templateId)}
