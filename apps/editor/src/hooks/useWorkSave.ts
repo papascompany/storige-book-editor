@@ -1,7 +1,6 @@
 import { useCallback, useState, useMemo } from 'react'
 import { useAppStore } from '@/stores/useAppStore'
 import { useSettingsStore } from '@/stores/useSettingsStore'
-import { useAuthStore } from '@/stores/useAuthStore'
 import { useEditorStore } from '@/stores/useEditorStore'
 import { ServicePlugin, core } from '@storige/canvas-core'
 import { designsApi, editSessionsApi, filesApi, storageApi } from '@/api'
@@ -9,7 +8,6 @@ import { buildSpreadSnapshots } from '@/utils/buildSpreadSnapshots'
 import { resolveSpreadInnerPdfSizeMm, computeCoverOutputSizeMm } from '@/utils/photobookSpread'
 import { buildCoverPdfSizeOpt } from '@/utils/hardcoverWrap'
 import { runWithAutosaveSuspended } from '@/utils/autosaveSuspend'
-import type { SpreadSynthesisJobData } from '@storige/types'
 
 // Fabric.js 타입 (런타임에 로드됨)
  
@@ -86,7 +84,6 @@ export function useWorkSave(): UseWorkSaveReturn {
   const currentSettings = useSettingsStore((state) => state.currentSettings)
   const artwork = useSettingsStore((state) => state.artwork)
 
-  const me = useAuthStore((state) => state.me)
   const sessionId = useEditorStore((state) => state.sessionId)
   const session = useEditorStore((state) => state.session)
 
