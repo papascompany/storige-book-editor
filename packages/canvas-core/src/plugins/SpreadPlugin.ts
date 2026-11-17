@@ -107,6 +107,7 @@ class SpreadPlugin extends PluginBase {
 
   // 영역 클릭 포커싱 (PDF 핵심: 영역 클릭 → 해당 영역 포커싱 편집)
   private _boundHandleRegionClick: ((e: IEvent) => void) | null = null
+  private _boundRestoreGuides: (() => void) | null = null
   private _focusedRegionPosition: string | null = null
   private _focusOverlay: fabric.Rect | null = null
 
@@ -180,6 +181,11 @@ class SpreadPlugin extends PluginBase {
     this._canvas.on('object:moving', this._boundHandleObjectMoving)
     this._canvas.on('mouse:down', this._boundHandleRegionClick)
 
+    // 세션 복원(core.loadFromJSON)은 캔버스를 통째로 바꿔 화면 전용 가이드를 지운다.
+    // 복원 쪽이 내는 가이드 복원 이벤트에서 빠진 가이드를 다시 그린다.
+    this._boundRestoreGuides = this.restoreGuidesIfMissing.bind(this)
+    this._editor.on('restoreGuideElements', this._boundRestoreGuides)
+
     return super.mounted()
   }
 
@@ -197,6 +203,18 @@ class SpreadPlugin extends PluginBase {
     return super.afterLoad(...args)
   }
 
+  /**
+   * 레이아웃이 있는데 그려 둔 가이드·라벨이 캔버스에 없으면 다시 그린다.
+   * 가이드가 그대로 있으면 아무것도 하지 않는다.
+   */
+  private restoreGuidesIfMissing(): void {
+    if (!this.currentLayout && !this.currentInnerLayout) return
+    const onCanvas = new Set(this._canvas.getObjects())
+    const tracked: fabric.Object[] = [...this.guideLines, ...this.dimensionLabels]
+    if (tracked.length > 0 && tracked.every((obj) => onCanvas.has(obj))) return
+    this.init()
+  }
+
   async destroyed(): Promise<void> {
     // 이벤트 핸들러 제거
     if (this._boundHandleObjectModified) {
@@ -207,6 +225,10 @@ class SpreadPlugin extends PluginBase {
     }
     if (this._boundHandleRegionClick) {
       this._canvas.off('mouse:down', this._boundHandleRegionClick)
+    }
+    if (this._boundRestoreGuides) {
+      this._editor.off?.('restoreGuideElements', this._boundRestoreGuides)
+      this._boundRestoreGuides = null
     }
 
     // 가이드/라벨/포커스 오버레이 제거

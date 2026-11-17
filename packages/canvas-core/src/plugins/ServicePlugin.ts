@@ -6,6 +6,7 @@ import type { jsPDF } from 'jspdf'
 import FontPlugin from './FontPlugin'
 import { convertFabricObjectToSVGString, core, mmToPx, pxToMm } from '../utils'
 import { dlog } from '../utils/debugLog'
+import { stripSpreadGuideResidue } from '../utils/spreadGuideResidue'
 import { computePdfPageGeometry } from './pdfPageGeometry'
 
 /**
@@ -435,7 +436,12 @@ class ServicePlugin extends PluginBase {
       //   비-CORS 모드로 로드 → 캔버스 taint → 썸네일 자동저장/미리보기 toDataURL 이
       //   SecurityError. 로드 입력 단계에서 주입해 기존 템플릿을 재가져오기 없이 구제.
       //   dataURL/동일출처는 불변 — core.ensureImageCrossOrigin 참조.
-      loadInput = parsed && typeof parsed === 'object' ? core.ensureImageCrossOrigin(parsed) : parsed
+      // 예전 저장 데이터의 책등 가이드·치수 라벨 잔재 제거 — 가이드는 SpreadPlugin.afterLoad 가
+      // 다시 그린다(utils/spreadGuideResidue 참조).
+      loadInput =
+        parsed && typeof parsed === 'object'
+          ? core.ensureImageCrossOrigin(stripSpreadGuideResidue(parsed))
+          : parsed
     } catch {
       loadInput = jsonStr
     }

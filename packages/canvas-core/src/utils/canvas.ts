@@ -5,6 +5,7 @@ import { getImgSrc, getImgStr } from './utils'
 import { v4 as uuid } from 'uuid'
 import ImageProcessingPlugin from '../plugins/ImageProcessingPlugin'
 import { imageLoadFailure } from './imageLoad'
+import { stripSpreadGuideResidue } from './spreadGuideResidue'
 
 // ============================================================
 // 고수준 API 옵션 인터페이스
@@ -1155,7 +1156,8 @@ export namespace core {
     try {
       const parsed = typeof json === 'string' ? JSON.parse(json) : json
       if (parsed && typeof parsed === 'object') {
-        input = ensureImageCrossOrigin(parsed)
+        // 예전 저장 데이터의 책등 가이드·치수 라벨 잔재 제거(utils/spreadGuideResidue 참조)
+        input = ensureImageCrossOrigin(stripSpreadGuideResidue(parsed))
       }
     } catch {
       input = json
