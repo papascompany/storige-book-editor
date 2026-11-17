@@ -1,6 +1,6 @@
 import { apiClient } from './client';
 import { withTemplateObjectIds } from '@/utils/templateObjectIds';
-import type { CanvasData, TemplateType, TemplateSetType, TemplateRef, PaginatedResponse, SpreadConfig } from '@storige/types';
+import type { CanvasData, TemplateType, TemplateSetType, TemplateRef, SpreadConfig } from '@storige/types';
 
 export interface Template {
   id: string;
@@ -71,19 +71,6 @@ export interface Category {
 
 export const templatesApi = {
   /**
-   * Get all templates
-   */
-  getTemplates: async (params?: {
-    categoryId?: string;
-    search?: string;
-    page?: number;
-    limit?: number;
-  }) => {
-    const response = await apiClient.get<Template[]>('/templates', { params });
-    return response.data;
-  },
-
-  /**
    * Get template by ID
    */
   getTemplate: async (id: string) => {
@@ -129,22 +116,6 @@ export const templatesApi = {
   // ============================================================================
   // Template Sets
   // ============================================================================
-
-  /**
-   * Get template sets list
-   */
-  getTemplateSets: async (params?: {
-    type?: TemplateSetType;
-    width?: number;
-    height?: number;
-    categoryId?: string;
-    isActive?: boolean;
-    page?: number;
-    pageSize?: number;
-  }) => {
-    const response = await apiClient.get<PaginatedResponse<TemplateSet>>('/template-sets', { params });
-    return response.data;
-  },
 
   /**
    * Get template set by ID

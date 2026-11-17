@@ -72,13 +72,6 @@ export interface ReplaceTemplatePayload {
 }
 
 /**
- * 템플릿셋 교체 요청
- */
-export interface ReplaceTemplateSetPayload {
-  newTemplateSetId: string
-}
-
-/**
  * 세션 검증 결과 — GET /editor/sessions/:id/validate 응답 실물.
  *
  * ⚠️ 워커 PDF 검증 결과가 아니다. 이 엔드포인트는 API 의
@@ -361,26 +354,6 @@ export const sessionsApi = {
     }
     const response = await apiClient.put<EditSession>(
       `/editor/sessions/${id}/template`,
-      payload,
-      { headers }
-    )
-    return response.data
-  },
-
-  /**
-   * 템플릿셋 교체 (사용자 요소 보존)
-   */
-  replaceTemplateSet: async (
-    id: string,
-    payload: ReplaceTemplateSetPayload,
-    userId?: string
-  ): Promise<EditSession> => {
-    const headers: Record<string, string> = {}
-    if (userId) {
-      headers['X-User-Id'] = userId
-    }
-    const response = await apiClient.put<EditSession>(
-      `/editor/sessions/${id}/template-set`,
       payload,
       { headers }
     )
