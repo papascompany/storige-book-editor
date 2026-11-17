@@ -64,9 +64,6 @@ export interface UseWorkSaveReturn {
   }
   saveWork: (options?: SaveWorkOptions) => Promise<File | null>
   saveWorkForAdmin: () => Promise<void>
-  saveWorkToLocal: () => Promise<boolean>
-  loadWorkFromLocal: () => Promise<boolean>
-  loadWorkFromServer: (designId: string) => Promise<boolean>
   completeSpreadWork: () => Promise<CompleteSpreadWorkResult>
 }
 
@@ -85,12 +82,9 @@ export function useWorkSave(): UseWorkSaveReturn {
   const editor = useAppStore((state) => state.editor)
   const allCanvas = useAppStore((state) => state.allCanvas)
   const allEditors = useAppStore((state) => state.allEditors)
-  const updateObjects = useAppStore((state) => state.updateObjects)
 
   const currentSettings = useSettingsStore((state) => state.currentSettings)
   const artwork = useSettingsStore((state) => state.artwork)
-  const updateSettings = useSettingsStore((state) => state.updateSettings)
-  const updateArtworkStore = useSettingsStore((state) => state.updateArtwork)
 
   const me = useAuthStore((state) => state.me)
   const sessionId = useEditorStore((state) => state.sessionId)
@@ -439,126 +433,6 @@ export function useWorkSave(): UseWorkSaveReturn {
   }, [saving, prepareSaveData, uploadFiles, workId])
 
   /**
-   * 로컬 임시 저장
-   */
-  const saveWorkToLocal = useCallback(async (): Promise<boolean> => {
-    try {
-      const jsonDataArray = await getAllCanvasData()
-      const workState = {
-        ...currentWorkState,
-        canvases: jsonDataArray,
-        lastSaved: new Date().toISOString()
-      }
-
-      localStorage.setItem('tempWork', JSON.stringify(workState))
-      return true
-    } catch (error) {
-      console.error('로컬 저장 오류:', error)
-      return false
-    }
-  }, [getAllCanvasData, currentWorkState])
-
-  /**
-   * 로컬 임시 저장 불러오기
-   */
-  const loadWorkFromLocal = useCallback(async (): Promise<boolean> => {
-    try {
-      const tempWorkString = localStorage.getItem('tempWork')
-      if (!tempWorkString) {
-        return false
-      }
-
-      const tempWork = JSON.parse(tempWorkString)
-
-      if (tempWork.settings) {
-        updateSettings(tempWork.settings)
-      }
-
-      if (tempWork.name) {
-        updateArtworkStore({
-          name: tempWork.name,
-          sizeno: tempWork.sizeNo
-        })
-      }
-
-      if (tempWork.canvases && Array.isArray(tempWork.canvases)) {
-        for (let i = 0; i < tempWork.canvases.length; i++) {
-          if (i < allEditors.length) {
-            const plugin = allEditors[i].getPlugin('ServicePlugin') as ServicePlugin
-            if (plugin) {
-              await plugin.loadJSON(tempWork.canvases[i])
-            }
-          }
-        }
-
-        updateObjects()
-        return true
-      }
-
-      return false
-    } catch (error) {
-      console.error('로컬 저장 불러오기 오류:', error)
-      return false
-    }
-  }, [allEditors, updateSettings, updateArtworkStore, updateObjects])
-
-  /**
-   * 서버에서 디자인 불러오기
-   */
-  const loadWorkFromServer = useCallback(async (designId: string): Promise<boolean> => {
-    try {
-      console.log('서버에서 디자인 불러오는 중:', designId)
-
-      const result = await designsApi.getDesign(designId)
-
-      if (!result.success || !result.data) {
-        throw new Error(result.error?.message || '디자인을 찾을 수 없습니다')
-      }
-
-      const design = result.data
-      setWorkId(design.id)
-
-      // 메타데이터에서 설정 복원
-      if (design.metadata?.settings) {
-        updateSettings(design.metadata.settings as Record<string, unknown>)
-      }
-
-      // 작업 이름 복원
-      if (design.name) {
-        updateArtworkStore({
-          name: design.name,
-          sizeno: design.metadata?.sizeNo
-        })
-      }
-
-      // JSON 데이터 로드
-      if (design.mediaUrl) {
-        const response = await fetch(design.mediaUrl)
-        const canvasData = await response.json()
-
-        if (Array.isArray(canvasData)) {
-          for (let i = 0; i < canvasData.length; i++) {
-            if (i < allEditors.length) {
-              const plugin = allEditors[i].getPlugin('ServicePlugin') as ServicePlugin
-              if (plugin) {
-                await plugin.loadJSON(canvasData[i])
-              }
-            }
-          }
-
-          updateObjects()
-        }
-      }
-
-      console.log('디자인 로드 완료:', design.id)
-      return true
-    } catch (error) {
-      console.error('서버에서 디자인 불러오기 오류:', error)
-      return false
-    }
-  }, [allEditors, updateSettings, updateArtworkStore, updateObjects])
-
-  /**
    * 스프레드 모드 작업 완료 (PDF 생성 및 Worker Job 생성)
    *
    * 처리 순서:
@@ -816,9 +690,6 @@ export function useWorkSave(): UseWorkSaveReturn {
     currentWorkState,
     saveWork,
     saveWorkForAdmin,
-    saveWorkToLocal,
-    loadWorkFromLocal,
-    loadWorkFromServer,
     completeSpreadWork,
   }
 }
