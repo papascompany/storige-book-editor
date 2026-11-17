@@ -22,6 +22,7 @@
  */
 import type { ExternalPhoto, PhotoSortMode } from '@storige/types'
 import { sortPhotosForAutofill } from './photoAutofill'
+import { photoUsageCount } from './photoUsage'
 
 // ────────────────────────────────────────────────────────────────────────────
 // 타입 (느슨한 fabric 타입 — useImageStore 와 동일하게 any 경유)
@@ -323,6 +324,24 @@ export function mergeAutofillPhotoInputs(
     out.push(a)
   }
   return out
+}
+
+/**
+ * 자동편집 후보에서 이미 문서에 배치된 사진을 뺀다(순수).
+ *
+ * 사용 여부는 사용 횟수 맵(utils/photoUsage.buildPhotoUsageCountMap)으로 본다. 한 사진이 캔버스에는
+ * 다른 주소로 올라가 있을 수 있으므로(내 업로드를 직접 배치하면 data URL), 사진 url 별 다른 키를
+ * aliasKeys 로 함께 넘긴다.
+ */
+export function excludePlacedPhotos(
+  photos: ExternalPhoto[],
+  usage: Map<string, number>,
+  aliasKeys?: Map<string, Array<string | undefined>>,
+): { photos: ExternalPhoto[]; skipped: number } {
+  const kept = photos.filter(
+    (p) => photoUsageCount(usage, [p.url, ...(aliasKeys?.get(p.url) ?? [])]) === 0,
+  )
+  return { photos: kept, skipped: photos.length - kept.length }
 }
 
 export interface CollectedFrame {

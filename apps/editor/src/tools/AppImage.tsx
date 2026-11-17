@@ -9,7 +9,12 @@ import { Button } from '@/components/ui/button'
 import { ImageProcessingPlugin, SelectionType, core } from '@storige/canvas-core'
 import type { ExternalPhoto, PhotoSortMode } from '@storige/types'
 import { enrichPhotosWithExif } from '@/utils/photoAutofill'
-import { autofillPhotosIntoFrames, hasEmptyFrame, mergeAutofillPhotoInputs } from '@/utils/photoPlacement'
+import {
+  autofillPhotosIntoFrames,
+  excludePlacedPhotos,
+  hasEmptyFrame,
+  mergeAutofillPhotoInputs,
+} from '@/utils/photoPlacement'
 import { showToast } from '@/stores/useToastStore'
 import { applyAllPhotoPrint } from '@/utils/photoPrintRehydrateAll'
 import { checkPhotoPrintPhotoCount } from '@/utils/photoPrintUpload'
@@ -278,9 +283,27 @@ export default function AppImage() {
       const allCanvas = useAppStore.getState().allCanvas
       const canvases = allCanvas.length > 0 ? allCanvas : [canvas]
 
+      // 이미 문서에 배치된 사진은 후보에서 뺀다 — 다시 누르거나 손으로 넣은 뒤 눌러도 같은 사진이
+      // 두 번 들어가지 않는다. 사용 여부는 누른 시점의 캔버스로 다시 센다(패널 배지 집계는 지연 갱신).
+      // 내 업로드는 직접 배치하면 data URL 로 올라가므로 패널 이미지의 src 도 함께 본다.
+      const aliasKeys = new Map<string, Array<string | undefined>>()
+      for (const image of uploaded) {
+        const [src, storageUrl] = uploadedKeysOf(image)
+        if (storageUrl) aliasKeys.set(storageUrl, [src])
+      }
+      const { photos: candidates, skipped } = excludePlacedPhotos(
+        autofillPhotos,
+        buildPhotoUsageCountMap(canvases),
+        aliasKeys,
+      )
+      if (candidates.length === 0) {
+        showToast('모든 사진이 이미 배치되어 있습니다.', 'info')
+        return
+      }
+
       // EXIF 보강(date/location 정렬 정확도) — 호스트 제공 메타는 존중, 미파싱분만 URL 페치.
       // ('내 업로드'는 등록 시점에 원본 File 로 파싱 완료(exifParsed=true) → 여기서 재페치 없음)
-      const enriched = await enrichPhotosWithExif(autofillPhotos)
+      const enriched = await enrichPhotosWithExif(candidates)
 
       const fillImageIntoFrame = useImageStore.getState().fillImageIntoFrame
 
@@ -315,6 +338,7 @@ export default function AppImage() {
         let msg = `${result.filledCount}개 사진틀을 채웠습니다.`
         if (result.remainingFrames > 0) msg += ` 빈 틀 ${result.remainingFrames}개 남음.`
         if (result.remainingPhotos > 0) msg += ` 사진 ${result.remainingPhotos}장 미배치.`
+        if (skipped > 0) msg += ` 이미 넣은 사진 ${skipped}장 제외.`
         msg += failedNote
         showToast(msg, result.lowResWarnings.length > 0 || result.failedPhotos > 0 ? 'warning' : 'success')
       }
@@ -335,7 +359,7 @@ export default function AppImage() {
     } finally {
       setAutofilling(false)
     }
-  }, [canvas, autofilling, getPlugin, autofillPhotos, autofillMode, bumpUsage])
+  }, [canvas, autofilling, getPlugin, autofillPhotos, autofillMode, bumpUsage, uploaded, uploadedKeysOf])
 
   // Add uploaded image to canvas
   const addToCanvas = useCallback(async (image: unknown) => {

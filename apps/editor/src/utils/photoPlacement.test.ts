@@ -12,6 +12,7 @@ import {
   mergeAutofillPhotoInputs,
   autofillPhotosIntoFrames,
   type UploadedPhotoMeta,
+  excludePlacedPhotos,
 } from './photoPlacement'
 import type { ExternalPhoto, PhotoSortMode } from '@storige/types'
 
@@ -616,5 +617,34 @@ describe('autofillPhotosIntoFrames — 로드 실패 사진은 건너뛴다', ()
     })
     expect(result.filledCount).toBe(4)
     expect(result.failedPhotos).toBe(0)
+  })
+})
+
+describe('excludePlacedPhotos — 자동편집 후보에서 이미 배치된 사진 제외', () => {
+  const photos: ExternalPhoto[] = [
+    { url: 'https://cdn/a.jpg' },
+    { url: 'https://cdn/b.jpg' },
+    { url: 'https://cdn/c.jpg' },
+  ]
+
+  it('사용 횟수가 1 이상인 사진을 빼고 순서를 유지한다', () => {
+    const usage = new Map([['https://cdn/b.jpg', 2]])
+    const out = excludePlacedPhotos(photos, usage)
+    expect(out.photos.map((p) => p.url)).toEqual(['https://cdn/a.jpg', 'https://cdn/c.jpg'])
+    expect(out.skipped).toBe(1)
+  })
+
+  it('다른 주소(직접 배치한 data URL)로 올라간 사진도 별칭 키로 찾아 뺀다', () => {
+    const usage = new Map([['data:image/png;base64,AAA', 1]])
+    const alias = new Map([['https://cdn/c.jpg', ['data:image/png;base64,AAA', undefined]]])
+    const out = excludePlacedPhotos(photos, usage, alias)
+    expect(out.photos.map((p) => p.url)).toEqual(['https://cdn/a.jpg', 'https://cdn/b.jpg'])
+    expect(out.skipped).toBe(1)
+  })
+
+  it('배치된 사진이 없으면 그대로, 모두 배치됐으면 빈 목록', () => {
+    expect(excludePlacedPhotos(photos, new Map())).toEqual({ photos, skipped: 0 })
+    const all = new Map(photos.map((p) => [p.url, 1]))
+    expect(excludePlacedPhotos(photos, all)).toEqual({ photos: [], skipped: 3 })
   })
 })
