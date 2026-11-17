@@ -570,5 +570,51 @@ describe('autofillPhotosIntoFrames — 로드 실패 사진은 건너뛴다', ()
     expect(result.remainingFrames).toBe(0)
     const fill = canvases[0].getObjects().find((o: any) => o.parentLayerId === 'f1')
     expect(fill?.src).toBe('https://s/ok.jpg')
+    // 불러오지 못한 사진은 '미배치'(틀 부족)와 따로 센다
+    expect(result.failedPhotos).toBe(1)
+    expect(result.remainingPhotos).toBe(0)
+  })
+
+  it('틀에 넣다가 실패한 사진도 실패로 세고, 그 틀은 다음 사진으로 채운다', async () => {
+    const canvases = [liveCanvas([
+      { id: 'f1', extensionType: 'frame', width: 100, height: 100 },
+    ], { unit: 'mm', dpi: 150 })]
+    const photos = mergeAutofillPhotoInputs(
+      [
+        { url: 'https://s/a.jpg', name: 'a.jpg' },
+        { url: 'https://s/b.jpg', name: 'b.jpg' },
+      ],
+      [],
+    )
+    let calls = 0
+    const fillFrame = vi.fn(async (...args: Parameters<typeof fakeFillFrame>) => {
+      calls += 1
+      if (calls === 1) throw new Error('채움 실패')
+      return fakeFillFrame(...args)
+    })
+
+    const result = await autofillPhotosIntoFrames(canvases, photos, {
+      mode: 'filename',
+      fillFrame,
+      loadImage: fakeLoadImage,
+      imagePlugin: {},
+      aspectMatch: false,
+    })
+
+    expect(result.filledCount).toBe(1)
+    expect(result.failedPhotos).toBe(1)
+    expect(result.remainingFrames).toBe(0)
+    expect(result.remainingPhotos).toBe(0)
+  })
+
+  it('모든 사진이 정상이면 실패 0', async () => {
+    const result = await autofillPhotosIntoFrames(makeCanvases(), makePhotos(), {
+      mode: 'date',
+      fillFrame: fakeFillFrame,
+      loadImage: fakeLoadImage,
+      imagePlugin: {},
+    })
+    expect(result.filledCount).toBe(4)
+    expect(result.failedPhotos).toBe(0)
   })
 })

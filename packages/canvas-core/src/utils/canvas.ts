@@ -486,9 +486,12 @@ export namespace core {
 
       fabric.Image.fromURL(
         url,
-        (img: fabric.Image) => {
-          if (!img) {
-            reject(new Error('이미지 로드 실패'))
+        (img: fabric.Image, isError?: boolean) => {
+          // fabric 은 로드 실패에도 빈 fabric.Image(0×0)와 isError=true 로 콜백한다.
+          // 걸러 내지 않으면 보이지 않는 0×0 객체가 캔버스에 추가돼 그대로 저장된다.
+          const failure = imageLoadFailure(img, isError, url)
+          if (failure) {
+            reject(failure)
             return
           }
 

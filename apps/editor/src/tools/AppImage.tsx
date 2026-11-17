@@ -248,6 +248,7 @@ export default function AppImage() {
       }
     } catch (error) {
       console.error('[AppImage] 공유방 사진 추가 실패:', photo.url, error)
+      showToast('사진을 불러오지 못했습니다. 잠시 후 다시 시도해 주세요.', 'error')
     } finally {
       setAddingUrl(null)
     }
@@ -302,13 +303,20 @@ export default function AppImage() {
       bumpUsage()
       canvas.requestRenderAll()
 
+      // 불러오지 못했거나 틀에 넣지 못한 사진 — 틀이 모자라 남은 사진(미배치)과 따로 알린다.
+      const failedNote = result.failedPhotos > 0 ? ` 사진 ${result.failedPhotos}장은 불러오지 못했습니다.` : ''
       if (result.filledCount === 0) {
-        showToast('채울 빈 사진틀이 없습니다.', 'info')
+        if (result.failedPhotos > 0) {
+          showToast(`사진 ${result.failedPhotos}장을 불러오지 못해 사진틀을 채우지 못했습니다.`, 'warning')
+        } else {
+          showToast('채울 빈 사진틀이 없습니다.', 'info')
+        }
       } else {
         let msg = `${result.filledCount}개 사진틀을 채웠습니다.`
         if (result.remainingFrames > 0) msg += ` 빈 틀 ${result.remainingFrames}개 남음.`
         if (result.remainingPhotos > 0) msg += ` 사진 ${result.remainingPhotos}장 미배치.`
-        showToast(msg, result.lowResWarnings.length > 0 ? 'warning' : 'success')
+        msg += failedNote
+        showToast(msg, result.lowResWarnings.length > 0 || result.failedPhotos > 0 ? 'warning' : 'success')
       }
 
       // 저해상도 경고 — 임계 미만 사진이 있으면 별도 경고 토스트.
@@ -374,6 +382,7 @@ export default function AppImage() {
     } catch (error) {
       console.error('이미지 추가 중 오류:', error)
       canvas.onHistory()
+      showToast('이미지를 추가하지 못했습니다. 잠시 후 다시 시도해 주세요.', 'error')
     }
   }, [canvas, isCoarsePointer, tapMenu])
 

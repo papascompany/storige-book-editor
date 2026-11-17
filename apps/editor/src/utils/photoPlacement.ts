@@ -80,6 +80,8 @@ export interface AutofillResult {
   remainingFrames: number
   /** 배치되지 못한 사진 수(프레임 부족) */
   remainingPhotos: number
+  /** 불러오지 못했거나 틀에 넣다가 실패해 건너뛴 사진 수 — 틀 부족(remainingPhotos)과 따로 센다 */
+  failedPhotos: number
   /** 저해상도 경고 목록 */
   lowResWarnings: LowResWarning[]
 }
@@ -397,6 +399,7 @@ export async function autofillPhotosIntoFrames(
 
   const lowResWarnings: LowResWarning[] = []
   let filledCount = 0
+  let failedPhotos = 0
 
   // 남은 빈 프레임 풀(채울 때마다 제거). 페이지 순서 보존.
   const framePool = [...emptyFrames]
@@ -410,6 +413,7 @@ export async function autofillPhotosIntoFrames(
     try {
       img = await opts.loadImage(photo.url)
     } catch {
+      failedPhotos++
       continue
     }
     const imgAspect = imageAspect(img)
@@ -449,6 +453,7 @@ export async function autofillPhotosIntoFrames(
     } catch {
       // 채움 실패 → 이 프레임은 풀에서 빼지 않고 다음 사진에 다시 시도하지 않도록 photoIdx 만 진행.
       // (target 을 풀에 남겨도 다음 루프에서 같은 사진 재로드는 없으므로 무한루프 없음)
+      failedPhotos++
       continue
     }
 
@@ -460,6 +465,7 @@ export async function autofillPhotosIntoFrames(
     filledCount,
     remainingFrames: framePool.length,
     remainingPhotos: Math.max(0, sorted.length - photoIdx),
+    failedPhotos,
     lowResWarnings,
   }
 }

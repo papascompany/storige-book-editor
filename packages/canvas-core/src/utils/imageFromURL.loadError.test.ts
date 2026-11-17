@@ -96,3 +96,36 @@ describe('summarizeImageUrl', () => {
     expect(summarizeImageUrl(undefined)).toBe('(빈 URL)')
   })
 })
+
+// addImageFromURL 은 로드한 이미지를 캔버스에 바로 추가한다. 실패를 걸러 내지 않으면 0×0 객체가
+// 캔버스에 들어가 보이지 않는 채로 저장된다.
+describe('core.addImageFromURL — 로드 실패 시 캔버스에 추가하지 않는다', () => {
+  const makeCanvas = () => {
+    const canvas = new fabric.StaticCanvas(null, { width: 100, height: 100, renderOnAddRemove: false })
+    ;(canvas as unknown as { setActiveObject: () => unknown }).setActiveObject = () => canvas
+    ;(canvas as unknown as { requestRenderAll: () => unknown }).requestRenderAll = () => canvas
+    return canvas as unknown as fabric.Canvas
+  }
+
+  it('isError=true 콜백이면 reject 하고 객체를 추가하지 않는다', async () => {
+    stubFromURLFailure(true)
+    const canvas = makeCanvas()
+    await expect(core.addImageFromURL(canvas, SIGNED_URL)).rejects.toThrow('이미지 로드 실패')
+    expect(canvas.getObjects()).toHaveLength(0)
+  })
+
+  it('isError 없이 0×0 결과가 와도 reject 하고 객체를 추가하지 않는다', async () => {
+    stubFromURLFailure(undefined)
+    const canvas = makeCanvas()
+    await expect(core.addImageFromURL(canvas, SIGNED_URL)).rejects.toThrow('이미지 로드 실패')
+    expect(canvas.getObjects()).toHaveLength(0)
+  })
+
+  it('정상 로드(1×1 PNG)는 캔버스에 1개 추가하고 옵션을 반영한다', async () => {
+    const canvas = makeCanvas()
+    const img = await core.addImageFromURL(canvas, PNG_1X1, { centerInWorkspace: false, left: 7 })
+    expect(canvas.getObjects()).toEqual([img])
+    expect(img.width).toBe(1)
+    expect(img.left).toBe(7)
+  })
+})
