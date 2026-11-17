@@ -1,6 +1,7 @@
-import { memo, useState, useEffect, useCallback } from 'react'
+import { memo, useState, useEffect, useCallback, useId } from 'react'
 import { FolderOpen, X, Loader as CircleNotch, FileText, Clock, Trash2 as Trash, AlertCircle as WarningCircle } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { useEscapeToClose } from '@/hooks/useEscapeToClose'
 import { editSessionsApi, type EditSessionResponse } from '@/api'
 
 interface WorkspaceModalProps {
@@ -22,6 +23,8 @@ export const WorkspaceModal = memo(function WorkspaceModal({
   const [error, setError] = useState<string | null>(null)
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [isDeleting, setIsDeleting] = useState<string | null>(null)
+  const titleId = useId()
+  useEscapeToClose(isOpen, onClose)
 
   // 세션 목록 로드
   const loadSessions = useCallback(async () => {
@@ -129,20 +132,27 @@ export const WorkspaceModal = memo(function WorkspaceModal({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-      <div className="bg-white rounded-lg shadow-xl max-w-2xl w-full mx-4 overflow-hidden max-h-[80vh] flex flex-col">
+      <div
+        className="bg-white rounded-lg shadow-xl max-w-2xl w-full mx-4 overflow-hidden max-h-[80vh] flex flex-col"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={titleId}
+      >
         {/* 헤더 */}
         <div className="flex items-center justify-between px-6 py-4 border-b flex-shrink-0">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center">
               <FolderOpen className="w-5 h-5 text-blue-600" />
             </div>
-            <h3 className="text-lg font-semibold text-gray-900">
+            <h3 id={titleId} className="text-lg font-semibold text-gray-900">
               저장된 작업 불러오기
             </h3>
           </div>
           <button
+            type="button"
             onClick={onClose}
             className="p-1 hover:bg-gray-100 rounded transition-colors"
+            aria-label="닫기"
           >
             <X className="w-5 h-5 text-gray-400" />
           </button>
@@ -239,7 +249,9 @@ export const WorkspaceModal = memo(function WorkspaceModal({
         {/* 버튼 */}
         <div className="px-6 py-4 bg-gray-50 border-t flex justify-end gap-2 flex-shrink-0">
           <button
+            type="button"
             onClick={onClose}
+            autoFocus
             className="px-4 py-2 rounded-lg text-gray-600 hover:bg-gray-100 transition-colors"
           >
             취소

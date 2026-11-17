@@ -718,8 +718,11 @@ export function ContentPdfAttachModal({
           background: 'white', padding: 24, borderRadius: 8, minWidth: 480, maxWidth: 640, maxHeight: '80vh', overflowY: 'auto',
         }}
         onClick={(e) => e.stopPropagation()}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="content-pdf-attach-title"
       >
-        <h2 style={{ margin: 0, marginBottom: 16 }}>내지 PDF 첨부</h2>
+        <h2 id="content-pdf-attach-title" style={{ margin: 0, marginBottom: 16 }}>내지 PDF 첨부</h2>
 
         {guideRendering && (
           <div style={{ background: '#e3f2fd', padding: 12, borderRadius: 4, marginBottom: 12, color: '#1565c0', fontSize: 14 }}>

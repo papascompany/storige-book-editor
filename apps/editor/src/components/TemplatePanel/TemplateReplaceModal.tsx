@@ -1,6 +1,7 @@
-import { memo, useState, useCallback } from 'react'
+import { memo, useId } from 'react'
 import { X, AlertTriangle as Warning, RefreshCw as ArrowsClockwise } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { useEscapeToClose } from '@/hooks/useEscapeToClose'
 
 type ReplaceMode = 'template' | 'templateSet'
 
@@ -23,6 +24,10 @@ export const TemplateReplaceModal = memo(function TemplateReplaceModal({
   onCancel,
   isReplacing = false,
 }: TemplateReplaceModalProps) {
+  const titleId = useId()
+  // 교체가 진행 중일 때는 Esc 로 닫지 않는다(닫기·취소 버튼도 그동안 비활성).
+  useEscapeToClose(isOpen && !isReplacing, onCancel)
+
   if (!isOpen) return null
 
   const itemName = mode === 'template' ? templateName : templateSetName
@@ -30,21 +35,28 @@ export const TemplateReplaceModal = memo(function TemplateReplaceModal({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-      <div className="bg-white rounded-lg shadow-xl max-w-md w-full mx-4 overflow-hidden">
+      <div
+        className="bg-white rounded-lg shadow-xl max-w-md w-full mx-4 overflow-hidden"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={titleId}
+      >
         {/* 헤더 */}
         <div className="flex items-center justify-between px-6 py-4 border-b">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center">
               <ArrowsClockwise className="w-5 h-5 text-blue-600" />
             </div>
-            <h3 className="text-lg font-semibold text-gray-900">
+            <h3 id={titleId} className="text-lg font-semibold text-gray-900">
               {itemType} 교체
             </h3>
           </div>
           <button
+            type="button"
             onClick={onCancel}
             disabled={isReplacing}
             className="p-1 hover:bg-gray-100 rounded transition-colors"
+            aria-label="닫기"
           >
             <X className="w-5 h-5 text-gray-400" />
           </button>
@@ -86,8 +98,10 @@ export const TemplateReplaceModal = memo(function TemplateReplaceModal({
         {/* 버튼 */}
         <div className="px-6 py-4 bg-gray-50 border-t flex justify-end gap-2">
           <button
+            type="button"
             onClick={onCancel}
             disabled={isReplacing}
+            autoFocus
             className={cn(
               'px-4 py-2 rounded-lg transition-colors',
               'text-gray-600 hover:bg-gray-100',
@@ -97,6 +111,7 @@ export const TemplateReplaceModal = memo(function TemplateReplaceModal({
             취소
           </button>
           <button
+            type="button"
             onClick={onConfirm}
             disabled={isReplacing}
             className={cn(
