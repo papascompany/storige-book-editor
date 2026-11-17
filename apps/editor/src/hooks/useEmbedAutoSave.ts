@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef } from 'react'
+import { useCallback, useEffect, useMemo, useRef } from 'react'
 import { debounce } from 'lodash-es'
 import { useAppStore } from '@/stores/useAppStore'
 import { useSaveStore } from '@/stores/useSaveStore'
@@ -74,6 +74,10 @@ export function useEmbedAutoSave(config: AutoSaveConfig) {
   // suspend 해제 후 지연 재시도가 stale closure 를 잡지 않도록 최신 함수 참조 유지
   const saveToServerRef = useRef<(() => Promise<boolean>) | null>(null)
   const saveToLocalRef = useRef<(() => void) | null>(null)
+  /** 지연 저장이 실행 시점의 세션 id 를 읽기 위한 참조(렌더마다 갱신) */
+  const sessionIdRef = useRef<string | null>(sessionId)
+  /** 저장 성공 처리에서 지연 저장을 다시 거는 데 쓴다(선언 순서상 ref 로 연결) */
+  const debouncedSaveRef = useRef<(() => void) | null>(null)
   // 덮어쓰기 가드: 서버에 마지막으로 반영된 canvasData 배열 길이.
   // 세션 로드 응답(currentSession.canvasData)으로 1회 시드 → 이후 저장 성공 시 갱신.
   const lastServerCanvasLenRef = useRef<number | null>(null)
@@ -394,6 +398,8 @@ export function useEmbedAutoSave(config: AutoSaveConfig) {
     }
 
     isSavingRef.current = true
+    // 저장 요청이 가는 동안 온 편집을 가려내기 위한 기준 — markDirty 가 lastModifiedAt 을 새로 쓴다.
+    const modifiedAtStart = useSaveStore.getState().lastModifiedAt
     setSaving()
 
     try {
@@ -441,8 +447,15 @@ export function useEmbedAutoSave(config: AutoSaveConfig) {
       // 덮어쓰기 가드 기준선 갱신 + 삭제 관찰 플래그 소비.
       if (nextLen !== null) lastServerCanvasLenRef.current = nextLen
       pageDeleteObservedRef.current = false
-      // 서버에 반영된 편집은 더 이상 언마운트 백업 사유가 아니다.
-      userEditedRef.current = false
+      if (useSaveStore.getState().lastModifiedAt !== modifiedAtStart && !completedAwaitingInputRef.current) {
+        // 요청이 가는 동안 편집이 더 있었다 — 방금 보낸 본문에는 없으므로 저장됨으로 두지 않고 다시 건다.
+        // (언마운트 백업 사유 userEditedRef 도 그대로 둔다.) 편집 완료 직후(사용자 입력 전)에는 다시 걸지 않는다.
+        markDirty()
+        debouncedSaveRef.current?.()
+      } else {
+        // 서버에 반영된 편집은 더 이상 언마운트 백업 사유가 아니다.
+        userEditedRef.current = false
+      }
 
       onSessionUpdate?.(updatedSession)
 
@@ -483,6 +496,7 @@ export function useEmbedAutoSave(config: AutoSaveConfig) {
     saveToLocal,
     deleteLocalBackup,
     markClean,
+    markDirty,
     onSessionUpdate,
     onError,
   ])
@@ -490,19 +504,27 @@ export function useEmbedAutoSave(config: AutoSaveConfig) {
   // 지연 재시도용 최신 참조 동기화 (렌더마다 갱신 — ref 라 재렌더 유발 없음)
   saveToServerRef.current = saveToServer
   saveToLocalRef.current = saveToLocal
+  sessionIdRef.current = sessionId
 
   /**
    * Debounced 저장 (캔버스 변경 시 호출)
+   *
+   * 함수는 훅 수명 동안 하나만 둔다. 저장 조건(isDirty·isOnline·sessionId)은 예약 시점이 아니라
+   * 실행 시점에 스토어·ref 에서 읽는다. 종전에는 isDirty 등에 묶여 다시 만들어져, 깨끗한 상태의
+   * 첫 편집이 예약한 저장이 (isDirty 변화 → 재렌더 → effect cleanup 으로) 취소됐다 — 편집 1회는
+   * 두 번째 편집이나 주기 저장이 올 때까지 서버에 저장되지 않았다.
    */
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  const debouncedSave = useCallback(
-    debounce(() => {
-      if (isDirty && isOnline && sessionId) {
-        saveToServer()
-      }
-    }, 2000),
-    [isDirty, isOnline, sessionId, saveToServer]
+  const debouncedSave = useMemo(
+    () =>
+      debounce(() => {
+        const { isDirty: dirtyNow, isOnline: onlineNow } = useSaveStore.getState()
+        if (dirtyNow && onlineNow && sessionIdRef.current) {
+          void saveToServerRef.current?.()
+        }
+      }, 2000),
+    [],
   )
+  debouncedSaveRef.current = debouncedSave
 
   /**
    * 즉시 저장
@@ -539,11 +561,11 @@ export function useEmbedAutoSave(config: AutoSaveConfig) {
     canvas.on('object:removed', handleChange)
     canvas.on('object:modified', handleChange)
 
+    // 예약된 저장은 여기서 취소하지 않는다 — 활성 캔버스가 바뀌어도(쪽 이동) 저장은 전체 캔버스를 모아 보낸다.
     return () => {
       canvas.off('object:added', handleChange)
       canvas.off('object:removed', handleChange)
       canvas.off('object:modified', handleChange)
-      debouncedSave.cancel()
     }
   }, [canvas, markDirty, debouncedSave])
 
@@ -656,9 +678,16 @@ export function useEmbedAutoSave(config: AutoSaveConfig) {
    * collectCanvasData() 사용: 멀티페이지(allCanvas 2+)면 전체 페이지 배열을 직렬화 —
    * canvas.toJSON(현재 페이지 1장)만 백업하면 내지 N페이지가 유실된다.
    */
+  // 예약된 저장 취소는 실제 언마운트 때만 한다. 아래 백업 effect 는 isDirty 등이 바뀔 때마다 cleanup 이 돌아,
+  // 거기서 취소하면 방금 예약한 저장이 사라진다.
   useEffect(() => {
     return () => {
       debouncedSave.cancel()
+    }
+  }, [debouncedSave])
+
+  useEffect(() => {
+    return () => {
       // 자동저장 보류 중(스킨 적용·PDF 생성 창)의 캔버스는 중간 상태일 수 있어 백업하지 않는다
       if (isAutosaveSuspended()) return
 
@@ -685,7 +714,7 @@ export function useEmbedAutoSave(config: AutoSaveConfig) {
         }
       }
     }
-  }, [isDirty, sessionId, canvas, debouncedSave, collectCanvasData])
+  }, [isDirty, sessionId, canvas, collectCanvasData])
 
   /**
    * 초기화 시 로컬 백업 확인 (상태 플래그만 — 자동 복원 금지).
