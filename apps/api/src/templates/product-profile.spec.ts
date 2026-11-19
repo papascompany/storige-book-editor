@@ -573,7 +573,7 @@ describe('validateProductProfile — 연달력 yearPolicy (T3a, v1.26)', () => {
       coverCanvases: 1,
       canvasesPerMonth: 2,
       epilogueCanvases: 1,
-      allowedRange: { from: '2026-01', to: '2027-12' },
+      allowedRange: { from: '2027-01', to: '2027-12' },
       weekStart: 0,
       show: { holidays: true, lunar: true, solarTerms: true },
       dataVersion: 'kr-2025-2035-v1',
@@ -589,7 +589,7 @@ describe('validateProductProfile — 연달력 yearPolicy (T3a, v1.26)', () => {
       sheet: { faces: 2, canvasLayout: 'canvas-pair', binding: 'top-ring', pairing: 'offset-next', backRotation: 0, duplexFlip: 'short-edge' },
       calendar: {
         monthCount: 12, coverCanvases: 1, canvasesPerMonth: 2, epilogueCanvases: 1,
-        allowedRange: { from: '2026-01', to: '2027-12' }, weekStart: 0,
+        allowedRange: { from: '2027-01', to: '2027-12' }, weekStart: 0,
         show: { holidays: true, lunar: true, solarTerms: true }, dataVersion: 'kr-2025-2035-v1',
       },
       output: { mode: 'single-pdf' },

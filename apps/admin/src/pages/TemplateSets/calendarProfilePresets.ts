@@ -79,7 +79,7 @@ function calendarProfile(editorType: string, layout: CalendarLayout, yearPolicy?
       coverCanvases: 1,
       canvasesPerMonth,
       epilogueCanvases: 1,
-      allowedRange: { from: '2026-01', to: '2027-12' },
+      allowedRange: { from: '2027-01', to: '2027-12' },
       weekStart: 0,
       show: { holidays: true, lunar: true, solarTerms: true },
       dataVersion: 'kr-2025-2035-v1',
