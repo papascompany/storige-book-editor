@@ -155,11 +155,8 @@ describe('makeCalendarLabelResolver', () => {
 describe('resolveProfilePdfRequestSize — 단일모드 PDF 요청 치수', () => {
   const tpl = { width: 265, height: 190 }
   const profile = { kind: 'calendar' } as unknown as import('@storige/types').ProductProfile
-  it('프로파일 세트는 호스트 size 가 와도 템플릿셋 판형(호스트 기본 규격이 달라도 쪽 크기 불변)', () => {
-    expect(resolveProfilePdfRequestSize({ width: 210, height: 297 }, profile, tpl)).toEqual(tpl)
-    expect(resolveProfilePdfRequestSize({ width: 190, height: 265 }, profile, tpl)).toEqual(tpl)
-  })
-  it('프로파일 NULL 세트는 호스트 size 그대로', () => {
+  it('호스트 size 가 있으면 그대로(프로파일 유무 무관 — 원본 보존 계약)', () => {
+    expect(resolveProfilePdfRequestSize({ width: 190, height: 265 }, profile, tpl)).toEqual({ width: 190, height: 265 })
     expect(resolveProfilePdfRequestSize({ width: 100, height: 100 }, null, tpl)).toEqual({ width: 100, height: 100 })
   })
   it('호스트 size 없음 + 프로파일 세트 → 템플릿셋 판형(A4 폴백 대신 상품 판형)', () => {
@@ -169,9 +166,8 @@ describe('resolveProfilePdfRequestSize — 단일모드 PDF 요청 치수', () =
     expect(resolveProfilePdfRequestSize(undefined, null, tpl)).toBeUndefined()
     expect(resolveProfilePdfRequestSize(null, undefined, tpl)).toBeUndefined()
   })
-  it('프로파일 세트라도 템플릿셋 판형을 모르면 호스트 size, 그것도 없으면 undefined', () => {
+  it('프로파일 세트라도 템플릿셋 판형이 없으면 undefined', () => {
     expect(resolveProfilePdfRequestSize(undefined, profile, null)).toBeUndefined()
-    expect(resolveProfilePdfRequestSize({ width: 210, height: 297 }, profile, null)).toEqual({ width: 210, height: 297 })
   })
 })
 
