@@ -1,10 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import {
-  isAutosaveSuspended,
-  deferUntilAutosaveResumed,
-  runWithAutosaveSuspended,
-  __resetAutosaveSuspendForTest,
-} from './autosaveSuspend'
+import { isAutosaveSuspended, deferUntilAutosaveResumed, runWithAutosaveSuspended, __resetAutosaveSuspendForTest, holdAutosave } from './autosaveSuspend'
 
 /**
  * PDF 생성 중 autosave suspend 회귀 테스트.
@@ -97,5 +92,42 @@ describe('autosaveSuspend', () => {
       deferUntilAutosaveResumed('b', good)
     })
     expect(good).toHaveBeenCalledTimes(1)
+  })
+})
+
+describe('holdAutosave — 함수로 감쌀 수 없는 긴 구간 보류', () => {
+  it('release 를 부를 때까지 보류되고, 지연 등록분은 release 때 1회 실행된다', () => {
+    const calls: string[] = []
+    const release = holdAutosave()
+    expect(isAutosaveSuspended()).toBe(true)
+    deferUntilAutosaveResumed('k', () => calls.push('a'))
+    deferUntilAutosaveResumed('k', () => calls.push('b'))
+    expect(calls).toEqual([])
+    release()
+    expect(isAutosaveSuspended()).toBe(false)
+    expect(calls).toEqual(['b'])
+  })
+
+  it('release 를 여러 번 불러도 한 번만 동작한다', () => {
+    const release = holdAutosave()
+    release()
+    release()
+    expect(isAutosaveSuspended()).toBe(false)
+    const again = holdAutosave()
+    expect(isAutosaveSuspended()).toBe(true)
+    again()
+    expect(isAutosaveSuspended()).toBe(false)
+  })
+
+  it('보류 안에서 PDF 생성 창(runWithAutosaveSuspended)이 끝나도 지연분은 나가지 않는다 — 바깥 release 때 나간다', async () => {
+    const calls: string[] = []
+    const release = holdAutosave()
+    await runWithAutosaveSuspended(async () => {
+      deferUntilAutosaveResumed('save', () => calls.push('save'))
+    })
+    expect(isAutosaveSuspended()).toBe(true)
+    expect(calls).toEqual([])
+    release()
+    expect(calls).toEqual(['save'])
   })
 })

@@ -28,7 +28,7 @@ import { normalizeRestoredFonts } from './utils/fontRestore'
 import { applyObjectPermissions, applyCoverMaterialLock } from './utils/objectPermissions'
 import { trackRequiredEdits, collectUneditedRequiredForCustomer } from './utils/requiredEditGate'
 import { getPageStepBlockMessage } from './utils/pageStepGuard'
-import { isAutosaveSuspended, runWithAutosaveSuspended } from './utils/autosaveSuspend'
+import { holdAutosave, isAutosaveSuspended, runWithAutosaveSuspended } from './utils/autosaveSuspend'
 import { useAuthStore } from './stores/useAuthStore'
 import { useSettingsStore } from './stores/useSettingsStore'
 import { useEditorStore } from './stores/useEditorStore'
@@ -2727,6 +2727,8 @@ function EmbeddedEditor({
     setIsLoading(true)
     setFinishProgress({ stage: 'save' })
     finishLeaveGuard.arm()
+    // PDF 생성~완료 구간의 자동저장 보류 해제 함수(holdAutosave). 보류 전에는 no-op.
+    let releaseFinishAutosave: () => void = () => {}
     try {
       setLoadingMessage('작업을 저장하는 중...')
 
@@ -2793,6 +2795,10 @@ function EmbeddedEditor({
       // PDF 생성·업로드가 실패하면 세션을 완료하지 않는다 — 실패를 모아 두었다가 아래에서 던진다
       // (인쇄 파일 없는 완료가 호스트로 나가지 않게 한다).
       let pdfFailure: unknown = null
+      // PDF 생성부터 완료 처리까지 자동저장을 보류한다 — 생성 직후에 나가는 지연 자동저장이
+      // "파일 연결" PATCH 와 겹쳐 파일 id 를 되돌리지 않게 한다. 완료 뒤(markCompleted)에 풀면
+      // 지연분은 완료 가드에 걸려 버려지고, 실패하면 finally 에서 풀려 그때 저장된다.
+      releaseFinishAutosave = holdAutosave()
       try {
         setLoadingMessage('PDF를 생성하는 중...')
         setFinishProgress({ stage: 'generate' })
@@ -3072,6 +3078,7 @@ function EmbeddedEditor({
       // 완료 뒤 사용자 입력 전의 캔버스 이벤트(PDF 생성 뒤 복원·재배치)가 자동저장(status:'editing')으로
       // complete 를 되돌리지 않도록 대기 저장 취소 + 가드(useEmbedAutoSave.markCompleted).
       markCompleted()
+      releaseFinishAutosave()
       setCurrentSession(completedSession)
 
       // 이 경로(헤더 '편집완료' = 라이브 임베드 실완료 경로)에도 실측
@@ -3148,6 +3155,8 @@ function EmbeddedEditor({
       setIsLoading(false)
       setFinishProgress(null)
       finishLeaveGuard.disarm()
+      // 실패·조기 반환으로 여기 왔을 때 보류를 푼다(성공 경로는 이미 풀었고 다시 불러도 무해)
+      releaseFinishAutosave()
     }
   }, [canvas, editor, sessionId, currentSession, options, mode, orderSeqno, onComplete, onError, parentOrigin, markClean, deleteLocalBackup, markServerSynced, markCompleted, finishLeaveGuard])
 

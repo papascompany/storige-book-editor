@@ -43,18 +43,39 @@ export async function runWithAutosaveSuspended<T>(fn: () => Promise<T> | T): Pro
   try {
     return await fn()
   } finally {
-    depth--
-    if (depth === 0 && pending.size > 0) {
-      const fns = Array.from(pending.values())
-      pending.clear()
-      for (const f of fns) {
-        try {
-          f()
-        } catch (e) {
-          console.error('[autosaveSuspend] 지연 자동저장 실행 실패:', e)
-        }
+    releaseOne()
+  }
+}
+
+/** suspend 한 단계를 풀고, 최외곽이 풀리면 지연 등록분을 1회씩 flush 한다. */
+function releaseOne(): void {
+  depth--
+  if (depth === 0 && pending.size > 0) {
+    const fns = Array.from(pending.values())
+    pending.clear()
+    for (const f of fns) {
+      try {
+        f()
+      } catch (e) {
+        console.error('[autosaveSuspend] 지연 자동저장 실행 실패:', e)
       }
     }
+  }
+}
+
+/**
+ * 함수 하나로 감쌀 수 없는 긴 구간(편집완료: PDF 생성 → 업로드 → 세션에 파일 연결 → 완료)을 suspend 한다.
+ * 돌려받은 release 를 부르면 풀린다(여러 번 불러도 한 번만 동작).
+ * PDF 생성 창만 suspend 하면 지연 자동저장이 생성 직후에 나가, 바로 뒤의 "파일 연결" 요청과 겹친다 —
+ * 서버가 세션을 읽어 통째로 저장하므로 늦게 저장된 자동저장이 파일 연결을 되돌릴 수 있다.
+ */
+export function holdAutosave(): () => void {
+  depth++
+  let released = false
+  return () => {
+    if (released) return
+    released = true
+    releaseOne()
   }
 }
 

@@ -10,6 +10,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, act } from '@testing-library/react'
 import { SAVE_FAILURE_MESSAGES } from './utils/embedFailurePolicy'
+import { deferUntilAutosaveResumed, isAutosaveSuspended } from './utils/autosaveSuspend'
 import type { ProductProfile } from '@storige/types'
 import type { FinishOutcome } from './utils/finishOutcome'
 
@@ -323,6 +324,40 @@ describe('EmbeddedEditor — editor.complete product (캘린더)', () => {
     expect(events.filter((e) => e.event === 'editor.error').map((e) => e.payload)).toEqual([
       { code: 'SAVE_FAILED', message: SAVE_FAILURE_MESSAGES.complete.other, fatal: false },
     ])
+  })
+
+  it('PDF 생성 중 미뤄진 자동저장은 완료 처리 뒤에야 풀린다(파일 연결 요청과 겹치지 않음)', async () => {
+    seedCanvases(26)
+    wireCalendarProfile()
+    const order: string[] = []
+    saveMultiPagePDFAsBlob.mockImplementationOnce(async () => {
+      deferUntilAutosaveResumed('test.autosave', () => order.push('deferred-autosave'))
+      return null
+    })
+    api.complete.mockImplementationOnce(async () => {
+      order.push(`complete(suspended=${isAutosaveSuspended()})`)
+      return COMPLETED_SESSION
+    })
+    renderEmbed({ sessionId: 'sess-1' })
+
+    expect(await finish()).toBe('completed')
+    expect(order).toEqual(['complete(suspended=true)', 'deferred-autosave'])
+    expect(isAutosaveSuspended()).toBe(false)
+  })
+
+  it('PDF 생성이 실패해도 자동저장 보류는 풀린다', async () => {
+    seedCanvases(26)
+    wireCalendarProfile()
+    saveMultiPagePDFAsBlob.mockRejectedValueOnce(new Error('gen failed'))
+    renderEmbed({ sessionId: 'sess-1' })
+    await act(async () => {
+      try {
+        await captured.onFinish!()
+      } catch {
+        /* 실패는 다른 테스트가 확인 */
+      }
+    })
+    expect(isAutosaveSuspended()).toBe(false)
   })
 
   it('NULL 프로파일(legacy) 편집완료: product 키 없음, payload 키 집합 종전과 동일, update payload { canvasData } 그대로', async () => {
