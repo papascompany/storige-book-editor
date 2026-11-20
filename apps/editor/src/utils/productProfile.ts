@@ -123,18 +123,19 @@ export function makePhotoLabelResolver(
 }
 
 /**
- * 단일모드 완료 PDF 의 요청 치수(mm). 호스트가 size 를 보냈으면 그대로(종전 계약 — 원본 보존),
- * 보내지 않았고 상품 프로파일 세트면 템플릿셋 판형을 요청값으로 쓴다(A4 폴백 대신 상품 판형).
- * 프로파일 NULL 세트는 undefined → resolveSingleModePdfSizeMm 의 종전 A4 폴백 그대로.
+ * 단일모드 완료 PDF 의 요청 치수(mm).
+ * 상품 프로파일 세트는 템플릿셋 판형이 곧 인쇄물 크기라, 호스트가 size 를 보내도 템플릿셋 판형을 쓴다
+ * (호스트 상품의 기본 규격이 템플릿과 다른 값으로 넘어와도 쪽 크기가 바뀌지 않는다).
+ * 프로파일 NULL 세트는 호스트 size 그대로, 미전달이면 undefined → resolveSingleModePdfSizeMm 의 A4 폴백.
+ * 프로파일 세트인데 템플릿셋 판형을 모르면 호스트 size 로 내려간다.
  */
 export function resolveProfilePdfRequestSize(
   requested: { width: number; height: number } | null | undefined,
   profile: ProductProfile | null | undefined,
   templateSetSize: { width: number; height: number } | null | undefined,
 ): { width: number; height: number } | undefined {
-  if (requested) return requested
   if (profile && templateSetSize) return templateSetSize
-  return undefined
+  return requested ?? undefined
 }
 
 /**

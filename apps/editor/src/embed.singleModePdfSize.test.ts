@@ -13,6 +13,8 @@
 import { describe, it, expect } from 'vitest'
 import { resolveSingleModePdfSizeMm } from './embed'
 import { detectOrientationMismatch } from './utils/orientationGuard'
+import { resolveProfilePdfRequestSize } from './utils/productProfile'
+import type { ProductProfile } from '@storige/types'
 
 describe('resolveSingleModePdfSizeMm (단일모드 PDF 방향 정합)', () => {
   it('스왑 관계 → 정규화: 전달값이 templateSet 판형의 정확한 W↔H 스왑이면 templateSet 방향으로 스왑', () => {
@@ -115,5 +117,25 @@ describe('resolveSingleModePdfSizeMm (단일모드 PDF 방향 정합)', () => {
       expect(normalized.swapped).toBe(true)
       expect(detectOrientationMismatch(requested, template)).not.toBeNull()
     }
+  })
+})
+
+describe('프로파일 세트의 완료 PDF 치수 — 호스트 size 와 무관하게 템플릿셋 판형', () => {
+  const profile = { kind: 'calendar' } as unknown as ProductProfile
+  const template = { width: 210, height: 150 }
+  const sizeFor = (requested: { width: number; height: number } | undefined, p: ProductProfile | null) =>
+    resolveSingleModePdfSizeMm(resolveProfilePdfRequestSize(requested, p, template), template)
+
+  it('호스트가 상품 기본 규격(210×297)을 보내도 템플릿셋 판형(210×150)으로 만든다', () => {
+    expect(sizeFor({ width: 210, height: 297 }, profile)).toEqual({ width: 210, height: 150, swapped: false })
+  })
+  it('호스트가 W↔H 스왑(150×210)을 보내도 템플릿셋 판형 그대로(스왑 정규화 불필요)', () => {
+    expect(sizeFor({ width: 150, height: 210 }, profile)).toEqual({ width: 210, height: 150, swapped: false })
+  })
+  it('size 미전달도 템플릿셋 판형', () => {
+    expect(sizeFor(undefined, profile)).toEqual({ width: 210, height: 150, swapped: false })
+  })
+  it('프로파일 NULL 세트는 종전 그대로 — 호스트 size 로 만든다', () => {
+    expect(sizeFor({ width: 210, height: 297 }, null)).toEqual({ width: 210, height: 297, swapped: false })
   })
 })

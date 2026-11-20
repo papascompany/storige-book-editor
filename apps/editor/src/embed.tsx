@@ -2975,8 +2975,8 @@ function EmbeddedEditor({
             // 페이지 치수 — 전달값이 templateSet 판형과 정확히 W↔H 스왑이면
             // templateSet 방향으로 정규화(PDF 생성 로컬 치수만 — 세션 metadata·editor.complete
             // payload 의 size 는 전달값 원본 보존). 일치/무관 불일치/정사각/size 미전달은 현행 그대로.
-            // 캘린더: 프로파일 세트는 템플릿셋 판형이 상품 정답이다 — 호스트가 size 를
-            // 보내지 않으면 A4 폴백 대신 템플릿셋 판형으로 생성한다(프로파일 NULL 세트는 종전 그대로 A4 폴백).
+            // 프로파일 세트(캘린더 등)는 템플릿셋 판형이 인쇄물 크기다 — 호스트가 보낸 size 와 무관하게
+            // 템플릿셋 판형으로 생성한다. 프로파일 NULL 세트는 종전 그대로(호스트 size, 미전달이면 A4 폴백).
             const singlePdfSize = resolveSingleModePdfSizeMm(
               resolveProfilePdfRequestSize(options?.size, useSettingsStore.getState().productProfile, templateSetSizeRef.current),
               templateSetSizeRef.current,
