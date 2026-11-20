@@ -10,7 +10,7 @@ import {
   forwardRef,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { DeepPartial, Repository } from 'typeorm';
 import { randomUUID } from 'crypto';
 import {
   EditSessionEntity,
@@ -1039,6 +1039,9 @@ export class EditSessionsService {
       }
     }
 
+    // 이 요청이 바꾸는 열만 모은다(아래 save 참조).
+    const patch: Partial<EditSessionEntity> = {};
+
     // 캔버스 데이터 업데이트
     if (dto.canvasData !== undefined) {
       // 덮어쓰기 직전 스냅샷 — 실패해도 저장은 계속(로깅만)
@@ -1049,6 +1052,7 @@ export class EditSessionsService {
         this.logger.warn(`[versions] snapshot 실패 (무시) session=${id}: ${(e as Error)?.message}`);
       }
       session.canvasData = dto.canvasData;
+      patch.canvasData = session.canvasData;
     }
 
     // 메타데이터 병합 — 서버 소유 키(launch·revision·production·productProfile)는 클라이언트 값 무시(mergeSessionMetadata)
@@ -1058,13 +1062,16 @@ export class EditSessionsService {
       session.metadata =
         (await this.stampProductProfileSnapshot(session.metadata, session.templateSetId, `update ${id}`)) ??
         session.metadata;
+      patch.metadata = session.metadata;
     }
 
     // 상태 업데이트
     if (dto.status !== undefined) {
       session.status = dto.status;
+      patch.status = session.status;
       if (dto.status === SessionStatus.COMPLETE) {
         session.completedAt = new Date();
+        patch.completedAt = session.completedAt;
       }
     }
 
@@ -1072,35 +1079,48 @@ export class EditSessionsService {
     // ManyToOne relation을 통해 set해야 실제 cover_file_id/content_file_id 칼럼이 갱신됨.
     if (dto.coverFileId !== undefined) {
       session.coverFile = dto.coverFileId ? ({ id: dto.coverFileId } as any) : null;
+      patch.coverFile = session.coverFile;
     }
     if (dto.contentFileId !== undefined) {
       session.contentFile = dto.contentFileId ? ({ id: dto.contentFileId } as any) : null;
+      patch.contentFile = session.contentFile;
     }
 
     // ── 고객 첨부 내지 PDF 필드 ──
     if (dto.contentPdfFileId !== undefined) {
       session.contentPdfFileId = dto.contentPdfFileId;
+      patch.contentPdfFileId = session.contentPdfFileId;
       // PDF 를 비우면 검증 결과도 클리어 (재첨부 시 새 검증 결과로 덮어씀)
       if (dto.contentPdfFileId === null) {
         session.contentPdfPageCount = null;
         session.contentPdfValidationResult = null;
+        patch.contentPdfPageCount = null;
+        patch.contentPdfValidationResult = null;
       }
     }
     if (dto.contentPdfPageCount !== undefined) {
       session.contentPdfPageCount = dto.contentPdfPageCount;
+      patch.contentPdfPageCount = session.contentPdfPageCount;
     }
     if (dto.contentPdfValidationResult !== undefined) {
       session.contentPdfValidationResult = dto.contentPdfValidationResult;
+      patch.contentPdfValidationResult = session.contentPdfValidationResult;
     }
     // 첨부 모드(replace|underlay). PDF 제거 시 모드도 클리어.
     if (dto.contentPdfMode !== undefined) {
       session.contentPdfMode = dto.contentPdfMode;
+      patch.contentPdfMode = session.contentPdfMode;
     }
     if (dto.contentPdfFileId === null) {
       session.contentPdfMode = null;
+      patch.contentPdfMode = null;
     }
 
-    const updated = await this.sessionRepository.save(session);
+    // 요청이 건드린 열만 저장한다. 읽어 둔 엔티티를 통째로 저장하면, 거의 동시에 처리된 다른 수정이
+    // 먼저 반영한 열(예: 파일 연결)을 이 요청이 읽을 때의 옛 값으로 되돌린다.
+    const saved = await this.sessionRepository.save({ id: session.id, ...patch } as DeepPartial<EditSessionEntity>);
+    if (saved?.updatedAt) session.updatedAt = saved.updatedAt;
+    const updated = session;
     this.logger.log(`Updated edit session ${id}${isGuest ? ' (guest)' : ''}`);
 
     return updated;

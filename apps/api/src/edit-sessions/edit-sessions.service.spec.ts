@@ -2097,6 +2097,28 @@ describe('EditSessionsService', () => {
       expect(shrink.nextPageCount).toBe(8);
     });
 
+    it('update 는 요청이 바꾼 열만 저장한다 — 읽어 둔 파일 연결 값을 다시 쓰지 않는다', async () => {
+      // 자동저장(canvasData)이 읽을 때는 파일 연결이 비어 있었다(그 사이 다른 요청이 연결했다고 가정)
+      mockSessionRepository.findOne.mockResolvedValue(
+        mkSession([{ a: 1 }], { coverFile: null, contentFile: null } as any),
+      );
+      await service.update('sess-1', { canvasData: [{ a: 2 }] } as any, 7);
+      const saved = mockSessionRepository.save.mock.calls[mockSessionRepository.save.mock.calls.length - 1][0];
+      expect(saved).toEqual({ id: 'sess-1', canvasData: [{ a: 2 }] });
+      expect('coverFile' in saved).toBe(false);
+      expect('contentFile' in saved).toBe(false);
+      expect('status' in saved).toBe(false);
+    });
+
+    it('update(coverFileId) 는 파일 연결 열만 저장하고, 응답 세션에는 요청 값이 반영된다', async () => {
+      mockSessionRepository.findOne.mockResolvedValue(mkSession([{ a: 1 }], { coverFile: null } as any));
+      const updated = await service.update('sess-1', { coverFileId: 'file-1' } as any, 7);
+      const saved = mockSessionRepository.save.mock.calls[mockSessionRepository.save.mock.calls.length - 1][0];
+      expect(saved).toEqual({ id: 'sess-1', coverFile: { id: 'file-1' } });
+      expect(updated.coverFile).toEqual({ id: 'file-1' });
+      expect(updated.canvasData).toEqual([{ a: 1 }]);
+    });
+
     it('스냅샷 저장 실패는 세션 저장을 막지 않는다', async () => {
       mockSessionRepository.findOne.mockResolvedValue(mkSession([{ a: 1 }]));
       mockVersionRepository.save.mockRejectedValueOnce(new Error('no table'));
