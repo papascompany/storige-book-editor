@@ -9,6 +9,7 @@
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, act } from '@testing-library/react'
+import { SAVE_FAILURE_MESSAGES } from './utils/embedFailurePolicy'
 import type { ProductProfile } from '@storige/types'
 import type { FinishOutcome } from './utils/finishOutcome'
 
@@ -296,6 +297,32 @@ describe('EmbeddedEditor — editor.complete product (캘린더)', () => {
     expect(pdfArgs[5]).toBe(300)
     expect(typeof pdfArgs[6]).toBe('function')
     expect(pdfArgs[7]).toEqual({ omitUnusedFonts: true, excludeWorkspaceFromExport: true, neutralizeTransparentFills: true })
+  })
+
+  it('PDF 생성이 실패하면 세션을 완료하지 않는다: complete 미호출, editor.complete 없음, editor.error SAVE_FAILED, 원래 오류로 거부', async () => {
+    seedCanvases(26)
+    wireCalendarProfile()
+    const thrown = new Error('WATCHDOG_TIMEOUT_780000ms:single-gen')
+    saveMultiPagePDFAsBlob.mockRejectedValueOnce(thrown)
+    renderEmbed({ sessionId: 'sess-1' })
+
+    let rejected: unknown = null
+    await act(async () => {
+      try {
+        await captured.onFinish!()
+      } catch (e) {
+        rejected = e
+      }
+    })
+    expect(rejected).toBe(thrown)
+    // 편집 내용 저장은 PDF 앞 단계라 그대로 수행된다
+    expect(api.update).toHaveBeenCalled()
+    expect(api.complete).not.toHaveBeenCalled()
+    const events = parentPost.mock.calls.map((c) => c[0] as { event?: string; payload?: unknown })
+    expect(events.filter((e) => e.event === 'editor.complete')).toHaveLength(0)
+    expect(events.filter((e) => e.event === 'editor.error').map((e) => e.payload)).toEqual([
+      { code: 'SAVE_FAILED', message: SAVE_FAILURE_MESSAGES.complete.other, fatal: false },
+    ])
   })
 
   it('NULL 프로파일(legacy) 편집완료: product 키 없음, payload 키 집합 종전과 동일, update payload { canvasData } 그대로', async () => {

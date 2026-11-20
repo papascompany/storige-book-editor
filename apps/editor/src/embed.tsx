@@ -2790,6 +2790,9 @@ function EmbeddedEditor({
       if (Array.isArray(canvasData)) markServerSynced(canvasData.length)
 
       // Generate PDF
+      // PDF 생성·업로드가 실패하면 세션을 완료하지 않는다 — 실패를 모아 두었다가 아래에서 던진다
+      // (인쇄 파일 없는 완료가 호스트로 나가지 않게 한다).
+      let pdfFailure: unknown = null
       try {
         setLoadingMessage('PDF를 생성하는 중...')
         setFinishProgress({ stage: 'generate' })
@@ -2888,6 +2891,7 @@ function EmbeddedEditor({
                 console.error('[EmbeddedEditor] Spread COVER PDF 실패:', (coverErr as Error)?.name, (coverErr as Error)?.message, (coverErr as Error)?.stack)
                 try { Sentry.captureException(coverErr, { tags: { finishPhase: 'spread-cover' } } as any) } catch { /* ignore */ }
                 await finishMark('spread:cover:gen:FAILED', { name: (coverErr as Error)?.name, message: (coverErr as Error)?.message })
+                pdfFailure = pdfFailure ?? coverErr
               }
             }
 
@@ -2897,7 +2901,7 @@ function EmbeddedEditor({
               await finishMark('spread:content:gen:start', { pages: innerCanvases.length, w: innerW, h: innerH })
               // 다페이지 내지: 워치독을 페이지수 비례로(고정 180s 는 24p 에서 타임아웃이 난다)
               // + 페이지 진행 메시지(사용자 인지 + 행 지점 진단).
-              const contentWatchdogMs = Math.max(180000, innerCanvases.length * 15000)
+              const contentWatchdogMs = Math.max(180000, innerCanvases.length * 30000)
               const contentBlob = await withWatchdog(
                 runWithAutosaveSuspended(() => coverPlugin.saveMultiPagePDFAsBlob(
                   innerCanvases as any, innerEditors, `content-${currentSessionId}`,
@@ -2922,6 +2926,7 @@ function EmbeddedEditor({
               console.error('[EmbeddedEditor] Spread CONTENT PDF 실패:', (contentErr as Error)?.name, (contentErr as Error)?.message, (contentErr as Error)?.stack)
               try { Sentry.captureException(contentErr, { tags: { finishPhase: 'spread-content' } } as any) } catch { /* ignore */ }
               await finishMark('spread:content:gen:FAILED', { name: (contentErr as Error)?.name, message: (contentErr as Error)?.message })
+              pdfFailure = pdfFailure ?? contentErr
             }
 
             if (coverFileId || contentFileId) {
@@ -3013,7 +3018,7 @@ function EmbeddedEditor({
                 (page, total) => setFinishProgress({ stage: 'generate', current: page, total }),
                 profilePdfExportOptions,
               )),
-              Math.max(120000, 15000 * pdfSel.canvases.length), 'single-gen',
+              Math.max(120000, 30000 * pdfSel.canvases.length), 'single-gen',
             )
             await finishMark('single:gen:done', { bytes: pdfBlob?.size })
             if (pdfBlob) {
@@ -3048,7 +3053,14 @@ function EmbeddedEditor({
       } catch (pdfErr) {
         console.error('[EmbeddedEditor] PDF generation/upload failed:', describeError(pdfErr))
         try { Sentry.captureException(pdfErr, { tags: { finishPhase: 'pdf-outer' } } as any) } catch { /* ignore */ }
-        // Continue without PDF - we still want to complete the session
+        pdfFailure = pdfFailure ?? pdfErr
+      }
+
+      // PDF 실패 = 완료 실패. 편집 내용은 위에서 이미 저장됐으므로 고객은 다시 편집완료를 누르면 된다.
+      // 아래 catch 가 editor.error SAVE_FAILED(고정 문구)를 보내고 원래 오류로 거부한다.
+      if (pdfFailure) {
+        await finishMark('pdf:FAILED:abort-complete')
+        throw pdfFailure
       }
 
       // Mark session as completed
