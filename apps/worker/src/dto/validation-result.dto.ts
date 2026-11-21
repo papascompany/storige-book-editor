@@ -351,6 +351,11 @@ export interface ValidationOptions {
      */
     postProcessColorRule?: 'any' | 'spot-only';
     /**
+     * 2026-11-21(additive): API 서버 전유 스탬프. 'cmyk' = 입력이 편집 완료 CMYK 변환본(색 처리 cmyk 세트) →
+     * 일반 인쇄 파일의 CMYK 감지 경고(CMYK_STRUCTURE_DETECTED)를 내지 않는다. 미제공 = 종전.
+     */
+    expectedColorMode?: 'cmyk';
+    /**
      * 2026-11-04(additive): 입력 파일 출처. `'editor'` = 편집기 산출 PDF(API 가 파일 metadata
      * `generatedBy:'editor'` 로 스탬프). 이 값일 때만 PDF 표준 14폰트(Helvetica·Courier·Times 각 4종,
      * Symbol, ZapfDingbats — 편집기 PDF 라이브러리가 모든 문서에 넣는 미임베드 기본 폰트)를
@@ -419,6 +424,13 @@ export interface CmykStructureResult {
   suspectedCmyk: boolean;
   /** 감지된 시그니처 목록 */
   signatures: string[];
+  /**
+   * 2026-11-21(정보성): 문서에 CMYK 출력 의도(/OutputIntents + 4채널 프로파일)가 있으면 true, 없으면 키 없음.
+   * suspectedCmyk·signatures 에는 섞지 않는다(그 밖의 판정 불변). 서버가 CMYK 변환본에만 싣는
+   * orderOptions.expectedColorMode 'cmyk' 와 함께일 때만 metadata.colorMode 를 'CMYK' 로 기록하는 근거로 쓴다
+   * (변환본은 색이 압축 내용 스트림의 CMYK 연산자로만 표현돼 문자열 시그니처가 없다).
+   */
+  cmykOutputIntent?: true;
 }
 
 /**

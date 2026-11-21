@@ -75,6 +75,8 @@ const LATIN1 = new TextDecoder('latin1');
 export interface CmykSignatureResult {
   hasCmykSignature: boolean;
   signatures: string[];
+  /** 2026-11-21(정보성) — detectCmykStructure 와 동일: CMYK 출력 의도가 있으면 true, 없으면 키 없음 */
+  cmykOutputIntent?: true;
   suspectedCmyk: boolean;
 }
 
@@ -212,6 +214,8 @@ interface ScanAccumulator {
   cmykHasCmykImage: boolean; // /ColorSpace /DeviceCMYK
   cmykHasSeparation: boolean;
   cmykHasDeviceN: boolean;
+  /** 2026-11-21(정보성): /OutputIntents 존재 — N4 와 AND 로 cmykOutputIntent */
+  cmykHasOutputIntents: boolean;
 }
 
 function createAccumulator(): ScanAccumulator {
@@ -232,6 +236,7 @@ function createAccumulator(): ScanAccumulator {
     cmykHasCmykImage: false,
     cmykHasSeparation: false,
     cmykHasDeviceN: false,
+    cmykHasOutputIntents: false,
   };
 }
 
@@ -480,6 +485,9 @@ function scanCmykSignatures(chunk: string, acc: ScanAccumulator): void {
   if (!acc.cmykHasDeviceN && chunk.includes('/DeviceN')) {
     acc.cmykHasDeviceN = true;
   }
+  if (!acc.cmykHasOutputIntents && chunk.includes('/OutputIntents')) {
+    acc.cmykHasOutputIntents = true;
+  }
 }
 
 // ============================================================
@@ -640,7 +648,8 @@ function finalizeCmyk(acc: ScanAccumulator): CmykSignatureResult {
     (s) => s === 'DeviceCMYK' || s === 'CMYK_ICC_Profile' || s === 'CMYK_Image',
   );
 
-  return { hasCmykSignature, signatures, suspectedCmyk };
+  const cmykOutputIntent = acc.cmykHasOutputIntents && acc.cmykHasN4;
+  return { hasCmykSignature, signatures, suspectedCmyk, ...(cmykOutputIntent ? { cmykOutputIntent: true as const } : {}) };
 }
 
 // ============================================================

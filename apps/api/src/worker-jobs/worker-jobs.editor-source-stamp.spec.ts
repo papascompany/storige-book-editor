@@ -138,4 +138,35 @@ describe("WorkerJobsService — 검증 잡 orderOptions.source:'editor' 스탬�
     expect(createdOrderOptions().source).toBe('editor');
     expect(queuedOrderOptions().source).toBe('editor');
   });
+
+  describe("2026-11-21 — CMYK 변환본(generatedBy 'worker-cmyk') 스탬프", () => {
+    const cmykPdf = {
+      id: 'file-cmyk',
+      filePath: '/app/storage/converted/converted_x.pdf',
+      metadata: { generatedBy: 'worker-cmyk', sourceFileId: 'file-editor' },
+    };
+
+    it("변환본 → source:'editor' + expectedColorMode:'cmyk' (DB·큐 둘 다)", async () => {
+      filesService.findById.mockResolvedValueOnce({ ...cmykPdf });
+      await service.createValidationJob({ fileId: cmykPdf.id, fileType: 'cover', orderOptions: { ...baseOrderOptions } } as any);
+      expect(createdOrderOptions()).toMatchObject({ source: 'editor', expectedColorMode: 'cmyk' });
+      expect(queuedOrderOptions()).toMatchObject({ source: 'editor', expectedColorMode: 'cmyk' });
+    });
+
+    it('편집기 원본 파일 → expectedColorMode 키 없음(종전)', async () => {
+      await service.createValidationJob({ fileId: editorPdf.id, fileType: 'content', orderOptions: { ...baseOrderOptions } } as any);
+      expect('expectedColorMode' in createdOrderOptions()).toBe(false);
+    });
+
+    it('호출자가 보낸 expectedColorMode 는 소독된다(고객 업로드 파일)', async () => {
+      filesService.findById.mockResolvedValueOnce({ ...uploadedPdf });
+      await service.createValidationJob({
+        fileId: uploadedPdf.id,
+        fileType: 'content',
+        orderOptions: { ...baseOrderOptions, expectedColorMode: 'cmyk' },
+      } as any);
+      expect('expectedColorMode' in createdOrderOptions()).toBe(false);
+      expect('expectedColorMode' in queuedOrderOptions()).toBe(false);
+    });
+  });
 });

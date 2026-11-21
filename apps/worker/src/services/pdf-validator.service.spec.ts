@@ -529,6 +529,47 @@ describe('PdfValidatorService', () => {
         ).toBeDefined();
       });
 
+      it("일반 인쇄 파일 + CMYK + expectedColorMode 'cmyk'(CMYK 변환본, 2026-11-21) → 경고 0, colorMode 는 CMYK", async () => {
+        spyCmyk();
+        const result = await service.validate('./content.pdf', {
+          ...defaultOptions,
+          orderOptions: { ...defaultOptions.orderOptions, pages: 1, binding: 'spring', expectedColorMode: 'cmyk' } as any,
+        });
+        expect(
+          result.warnings.find((w) => w.code === WarningCode.CMYK_STRUCTURE_DETECTED),
+        ).toBeUndefined();
+        expect(result.metadata.colorMode).toBe('CMYK');
+      });
+
+      it("expectedColorMode 'cmyk' + CMYK 출력 의도(압축 스트림만 CMYK) → metadata.colorMode 'CMYK', 경고 0", async () => {
+        jest.spyOn(service, 'detectColorMode').mockResolvedValue({
+          colorMode: 'RGB',
+          confidence: 'medium',
+          cmykStructure: { hasCmykSignature: false, suspectedCmyk: false, signatures: [], cmykOutputIntent: true },
+          warnings: [],
+        } as any);
+        const result = await service.validate('./content.pdf', {
+          ...defaultOptions,
+          orderOptions: { ...defaultOptions.orderOptions, pages: 1, binding: 'spring', expectedColorMode: 'cmyk' } as any,
+        });
+        expect(result.metadata.colorMode).toBe('CMYK');
+        expect(result.warnings.find((w) => w.code === WarningCode.CMYK_STRUCTURE_DETECTED)).toBeUndefined();
+      });
+
+      it('스탬프 없으면 CMYK 출력 의도가 있어도 판정 그대로(RGB) — 고객 업로드 무접촉', async () => {
+        jest.spyOn(service, 'detectColorMode').mockResolvedValue({
+          colorMode: 'RGB',
+          confidence: 'medium',
+          cmykStructure: { hasCmykSignature: false, suspectedCmyk: false, signatures: [], cmykOutputIntent: true },
+          warnings: [],
+        } as any);
+        const result = await service.validate('./content.pdf', {
+          ...defaultOptions,
+          orderOptions: { ...defaultOptions.orderOptions, pages: 1, binding: 'spring' },
+        });
+        expect(result.metadata.colorMode).toBe('RGB');
+      });
+
       it('validate() 는 detectColorMode 에 orderOptions.postProcessColorRule 을 전달한다', async () => {
         const spy = spyCmyk();
         await service.validate('./pp.pdf', postProcessOptions({ postProcessColorRule: 'spot-only' }));

@@ -154,6 +154,9 @@ services:
       #   앞뒤 공백 없음)일 때만 해제(종전 기본 3mm). 호스트 metadata.bleed 가 있으면 그 값이 우선한다.
       #   롤백 = .env 에 VALIDATION_BLEED_FROM_TEMPLATE_SET=off → api 재생성 → nginx 재시작. [FLAGS] 줄 끝 키로 확인한다.
       - VALIDATION_BLEED_FROM_TEMPLATE_SET=${VALIDATION_BLEED_FROM_TEMPLATE_SET:-on}
+      # 2026-11-21 색 처리 'cmyk' 세트의 편집 완료 시 CMYK 변환(기본 OFF). 켜면 완료가 변환을 기다리고, 실패하면 완료하지 않는다.
+      #   롤백 = .env 에 COMPLETE_CMYK_CONVERT=false → api 재생성 → nginx 재시작. [FLAGS] 줄 끝 키로 확인한다.
+      - COMPLETE_CMYK_CONVERT=${COMPLETE_CMYK_CONVERT:-false}
       # 기동 시 플래그 기대값 대조(api·worker 공통 형식, production 에서만). [FLAGS] api 줄과 같은
       #   `KEY=true|false` 토큰을 공백·쉼표로 나열한 프로필이다. .env 에서는 FLAGS_EXPECTED_API='…' 처럼
       #   작은따옴표로 감싼다. 결과는 기동 로그 `[FLAGS-CHECK] api ok|mismatch|missing|invalid` 한 줄(부팅은 막지 않음).
