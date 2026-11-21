@@ -161,6 +161,8 @@ export class FilesService {
       mimeType?: string;
       /** 업로더가 보낸 원본 파일명 보존 — 미지정 시 디스크 파일명 */
       originalName?: string;
+      /** 썸네일 URL 승계(같은 그림의 변환본 — 예: CMYK 변환) — 미지정 시 null */
+      thumbnailUrl?: string | null;
     } = {},
   ): Promise<FileEntity> {
     if (!outputFileUrl) {
@@ -206,7 +208,7 @@ export class FilesService {
       originalName: opts.originalName ?? fileName,
       filePath: resolvedPath,
       fileUrl: normalizedUrl,
-      thumbnailUrl: null,
+      thumbnailUrl: opts.thumbnailUrl ?? null,
       fileSize,
       mimeType: opts.mimeType ?? 'application/pdf',
       fileType: opts.fileType ?? FileType.CONTENT,

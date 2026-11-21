@@ -42,6 +42,11 @@ interface ConversionJobData {
     padToMultiple?: number;
     /** attach-page-pad 잡의 주문 재단·도련(공유 계약 키). 변환 서비스가 검증해 읽는다. */
     contentTrim?: unknown;
+    /**
+     * 'cmyk' 이면 다른 변환 없이 인쇄용 CMYK(+ICC OutputIntent)로만 바꾼다 — 색 처리 'cmyk' 세트의 편집 완료.
+     * 변환에 실패하면 잡이 FAILED 가 되고, API 는 그 세션을 완료하지 않는다.
+     */
+    colorConvert?: 'cmyk';
   };
 }
 
@@ -71,12 +76,15 @@ export class ConversionProcessor {
       const outputPath = path.join(outputDir, outputFilename);
 
       // Convert PDF (service는 /storage/converted/... 형식의 상대 URL 반환)
-      const result = await this.converterService.convert(
-        job.data.fileUrl,
-        job.data.convertOptions,
-        outputPath,
-        job.data.jobId,
-      );
+      const result =
+        job.data.convertOptions?.colorConvert === 'cmyk'
+          ? await this.converterService.convertToCmyk(job.data.fileUrl, outputPath)
+          : await this.converterService.convert(
+              job.data.fileUrl,
+              job.data.convertOptions,
+              outputPath,
+              job.data.jobId,
+            );
 
       // Update job status to COMPLETED — top-level outputFileUrl과 result 내부 URL 모두 일관성 유지
       await this.updateJobStatus(job.data.jobId, 'COMPLETED', {

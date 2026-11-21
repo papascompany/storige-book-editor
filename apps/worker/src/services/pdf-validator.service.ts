@@ -484,6 +484,16 @@ export class PdfValidatorService {
   ): void {
     // 12. 색상 모드 결과 처리
     metadata.colorMode = colorModeResult.colorMode;
+    // 2026-11-21: CMYK 변환본(서버 스탬프 expectedColorMode 'cmyk')은 색이 압축 스트림의 CMYK 연산자로만
+    // 표현돼 문자열 시그니처가 없어 위 판정이 RGB 가 된다 — 변환이 넣은 CMYK 출력 의도가 있으면 CMYK 로 기록.
+    // 스탬프 없는 파일(고객 업로드 등)은 무접촉.
+    if (
+      options.orderOptions?.expectedColorMode === 'cmyk' &&
+      colorModeResult.colorMode !== 'CMYK' &&
+      colorModeResult.cmykStructure?.cmykOutputIntent === true
+    ) {
+      metadata.colorMode = 'CMYK';
+    }
 
     // 후가공 파일 + CMYK 사용 = 에러 (별색만 허용)
     // 2026-10-17(낱장 분류 검증): 이 오류는 orderOptions.postProcessColorRule==='spot-only' 일 때만 발행.
@@ -501,8 +511,9 @@ export class PdfValidatorService {
           autoFixable: false,
         });
       }
-    } else if (colorModeResult.colorMode === 'CMYK') {
-      // 일반 인쇄 파일의 CMYK는 경고만
+    } else if (colorModeResult.colorMode === 'CMYK' && options.orderOptions?.expectedColorMode !== 'cmyk') {
+      // 일반 인쇄 파일의 CMYK는 경고만 — 단 CMYK 변환본(orderOptions.expectedColorMode 'cmyk', 2026-11-21)은
+      // CMYK 가 의도된 출력이라 경고하지 않는다(metadata.colorMode 는 그대로 'CMYK').
       warnings.push({
         code: WarningCode.CMYK_STRUCTURE_DETECTED,
         message: 'CMYK 색상 모드가 감지되었습니다. 인쇄 품질을 위해 확인해주세요.',
@@ -2408,6 +2419,8 @@ export class PdfValidatorService {
       (s) =>
         s === 'DeviceCMYK' || s === 'CMYK_ICC_Profile' || s === 'CMYK_Image',
     );
+    // 2026-11-21(정보성): CMYK 출력 의도 — signatures/suspectedCmyk 에 섞지 않는다.
+    const cmykOutputIntent = pdfString.includes('/OutputIntents') && pdfString.includes('/N 4');
 
     this.logger.debug(
       `CMYK structure detection: signatures=${signatures.join(', ')}, suspected=${suspectedCmyk}`,
@@ -2417,6 +2430,7 @@ export class PdfValidatorService {
       hasCmykSignature,
       suspectedCmyk,
       signatures,
+      ...(cmykOutputIntent ? { cmykOutputIntent: true as const } : {}),
     };
   }
 

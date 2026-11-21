@@ -118,6 +118,12 @@ export class CreateValidationJobDto {
      */
     postProcessColorRule?: 'any' | 'spot-only';
     /**
+     * 2026-11-21 ADDITIVE(서버 전유 스탬프 — 호출자 값은 소독): 입력 파일이 편집 완료 CMYK 변환본(파일 metadata
+     * `generatedBy:'worker-cmyk'`)이면 서버가 `'cmyk'` 를 싣는다. 워커는 이 값이 있을 때만 일반 인쇄 파일의
+     * CMYK 감지 경고(CMYK_STRUCTURE_DETECTED)를 내지 않는다. 그 밖 = 키 없음 = 종전 동작.
+     */
+    expectedColorMode?: 'cmyk';
+    /**
      * 2026-11-04 ADDITIVE(서버 전유 스탬프 — 호출자 값은 소독): 입력 파일이 편집기 산출물(파일 metadata
      * `generatedBy:'editor'`)이면 서버가 `'editor'` 를 싣는다. 워커는 이 값이 있을 때만 PDF 표준 14폰트의
      * 미임베드를 FONT_NOT_EMBEDDED 경고에서 제외한다(`metadata.ignoredStandardFonts` 에 기록). 고객 업로드·

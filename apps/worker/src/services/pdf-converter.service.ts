@@ -24,6 +24,7 @@ import {
   TrimCropContext,
 } from '../utils/trimbox-normalize';
 import { downloadToTempFile } from '../utils/stream-download';
+import { convertPdfToCmykStrict } from '../utils/print-normalize';
 import { assertSafeDownloadUrl } from '../utils/url-safety';
 import {
   extractPdfMetadataQpdf,
@@ -666,6 +667,33 @@ export class PdfConverterService {
     this.logger.warn(
       'Used pdf-lib fallback for bleed - Ghostscript provides better results',
     );
+  }
+
+  /**
+   * 편집기 산출 PDF 를 인쇄용 CMYK(+ICC OutputIntent)로 변환해 outputPath 에 쓴다.
+   * 쪽 크기·쪽수는 바꾸지 않는다. 실패는 throw(잡 FAILED) — 호출부(완료 처리)가 이 결과 없이 완료하지 않는다.
+   */
+  async convertToCmyk(
+    fileUrl: string,
+    outputPath: string,
+  ): Promise<{ success: true; outputFileUrl: string; colorConverted: 'cmyk'; finalPageCount: number; outputSize: number }> {
+    const pdfBytes = await this.downloadFile(fileUrl);
+    await fs.writeFile(outputPath, pdfBytes);
+    try {
+      const { size } = await convertPdfToCmykStrict(outputPath);
+      const pageCount = (await PDFDocument.load(await fs.readFile(outputPath), { ignoreEncryption: true })).getPageCount();
+      this.logger.log(`CMYK 변환 완료: ${path.basename(outputPath)} (${size}B, ${pageCount}쪽)`);
+      return {
+        success: true,
+        outputFileUrl: this.toStorageUrl(outputPath),
+        colorConverted: 'cmyk',
+        finalPageCount: pageCount,
+        outputSize: size,
+      };
+    } catch (err) {
+      await this.safeDelete(outputPath);
+      throw err;
+    }
   }
 
   /**

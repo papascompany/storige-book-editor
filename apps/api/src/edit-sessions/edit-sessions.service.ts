@@ -62,6 +62,7 @@ import { deriveSheetValidationRules, resolveSessionProductProfile } from './shee
 import { SheetMapError, buildSheetMap } from './sheet-map';
 import { applyPhotoItemsToSheets, readSessionPhotoItems } from './photo-items';
 import {
+  isCompleteCmykConvertOn,
   isEditorContentPageRulesOn,
   isEditorSheetValidationRulesOn,
   isEditorSpreadValidationMappingOn,
@@ -1754,6 +1755,9 @@ export class EditSessionsService {
       session.metadata = { ...(session.metadata ?? {}), spreadValidation: validation };
     }
 
+    // 색 처리 'cmyk' 세트: 편집기 PDF 를 CMYK 로 변환해 세션 파일을 결과로 바꾼다(실패 = throw, 완료 안 함).
+    const cmykConverted = await this.convertSessionPdfsToCmykIfRequired(session);
+
     if (op) {
       await this.recordOperatorAction(op, session.id, 'session.complete', {
         statusFrom: session.status ?? null,
@@ -1771,7 +1775,10 @@ export class EditSessionsService {
       (await this.stampProductProfileSnapshot(session.metadata, session.templateSetId, `complete ${id}`)) ??
       session.metadata;
 
-    const completed = await this.sessionRepository.save(session);
+    const saved = await this.sessionRepository.save(session);
+    // CMYK 변환으로 파일을 바꿨으면 다시 읽는다 — coverFileId/contentFileId(@RelationId)와 coverFile 관계(썸네일)가
+    // 새 파일을 가리켜야 검증 잡·완료 응답(editor.complete files)이 변환본을 쓴다.
+    const completed = cmykConverted ? await this.findById(id) : saved;
     this.logger.log(`Completed edit session ${id}${isGuest ? ' (guest)' : ''}`);
 
     // 스프레드 모드는 자동 검증 잡 발행을 스킵.
@@ -1797,6 +1804,57 @@ export class EditSessionsService {
     await this.createInnerPdfImpositionJob(completed);
 
     return completed;
+  }
+
+  /**
+   * 색 처리 'cmyk' 세트의 편집 완료 CMYK 변환 (2026-11-21, 오너 결정: 캘린더 출력은 CMYK).
+   *
+   * 게이트: COMPLETE_CMYK_CONVERT 켜짐 + 세션 템플릿셋 colorMode === 'cmyk'. 그 밖은 no-op(false).
+   * 대상: 세션의 편집기 산출 PDF(coverFileId·contentFileId 중 있는 것). 이미 변환본(metadata.generatedBy
+   * 'worker-cmyk')이면 그 파일은 건너뛴다. 표지·내지는 병렬로 변환한다.
+   * 성공: 메모리 엔티티의 coverFile/contentFile 을 결과 파일로 바꾸고 metadata.colorConversion 에 원본·결과·잡을
+   * 기록한다(저장은 호출부 complete 가 한다). 원본 파일은 지우지 않는다.
+   * 실패: WorkerJobsService 가 422 COLOR_CONVERSION_FAILED 로 throw → 세션은 완료되지 않는다(편집 내용은 이미
+   * 저장돼 있어 다시 편집완료하면 된다).
+   * @returns 파일을 바꿨으면 true
+   */
+  private async convertSessionPdfsToCmykIfRequired(session: EditSessionEntity): Promise<boolean> {
+    if (!isCompleteCmykConvertOn()) return false;
+    if (!session.templateSetId) return false;
+    let colorMode: string | undefined;
+    try {
+      colorMode = (await this.templateSetsService.findOne(session.templateSetId))?.colorMode;
+    } catch (e) {
+      if (e instanceof NotFoundException) return false;
+      throw e;
+    }
+    if (colorMode !== 'cmyk') return false;
+
+    const targets: Array<{ role: 'cover' | 'content'; fileId: string; file: FileEntity | null }> = [];
+    if (session.coverFileId) targets.push({ role: 'cover', fileId: session.coverFileId, file: session.coverFile });
+    if (session.contentFileId) targets.push({ role: 'content', fileId: session.contentFileId, file: session.contentFile });
+    const pending = targets.filter((t) => (t.file?.metadata as Record<string, unknown> | null | undefined)?.generatedBy !== 'worker-cmyk');
+    if (pending.length === 0) return false;
+
+    const results = await Promise.all(
+      pending.map(async (t) => {
+        const out = await this.workerJobsService.convertFileToCmykForCompletion(t.fileId, {
+          editSessionId: session.id,
+          role: t.role,
+        });
+        return { role: t.role, sourceFileId: t.fileId, fileId: out.fileId, jobId: out.jobId };
+      }),
+    );
+
+    const record: Record<string, unknown> = { mode: 'cmyk', at: new Date().toISOString() };
+    for (const r of results) {
+      const ref = { id: r.fileId } as FileEntity;
+      if (r.role === 'cover') session.coverFile = ref;
+      else session.contentFile = ref;
+      record[r.role] = { sourceFileId: r.sourceFileId, fileId: r.fileId, jobId: r.jobId };
+    }
+    session.metadata = { ...(session.metadata ?? {}), colorConversion: record };
+    return true;
   }
 
   /**

@@ -1047,6 +1047,8 @@ curl -X POST "https://api.papascompany.co.kr/api/auth/shop-session" \
 >
 > **완료 PDF 생성·업로드 실패 (2026-11-20 편집기 보정):** 회원 편집완료에서 완료 PDF 를 만들지 못하거나 올리지 못하면 편집기는 세션을 완료하지 않고 `editor.error`(`SAVE_FAILED`, `fatal:false`)를 보냅니다 — `editor.complete` 는 오지 않고 세션은 편집 중 상태로 남으며, 편집 내용은 저장돼 있어 고객이 편집완료를 다시 누를 수 있습니다. 그 전에는 같은 상황에서 `files` 의 두 id 가 모두 없는 `editor.complete` 가 왔습니다. 호스트의 `files` 판정(아래 3.2 주의)은 그대로 유지하세요. 생성 제한 시간은 캔버스당 30초(종전 15초)입니다.
 >
+> **색 처리 CMYK 세트의 완료 파일 (2026-11-21 추가, 운영 스위치 `COMPLETE_CMYK_CONVERT` — 켜는 시각은 별도 통지):** 템플릿셋 색 처리가 `cmyk` 인 세트는 편집완료 때 서버가 편집기 PDF 를 인쇄용 CMYK(ICC 출력 의도 포함)로 변환한 뒤 완료합니다. `editor.complete` 의 `files` id 는 변환된 파일이고(쪽 크기·쪽수·썸네일은 같음, 원본 RGB 파일은 서버에 남음), 완료 검증 결과의 `metadata.colorMode` 는 `CMYK` 이며 CMYK 감지 경고(`CMYK_STRUCTURE_DETECTED`)는 붙지 않습니다. 변환에 실패하면 세션을 완료하지 않고 `editor.error`(`SAVE_FAILED`, `fatal:false`)를 보냅니다 — 위 PDF 생성 실패와 같은 처리입니다. 변환은 보통 몇 초 걸려 편집완료가 그만큼 늦어집니다. 호스트가 바꿀 것은 없습니다.
+
 > **초기화 실패와 `SAVE_FAILED` 의 `message` 는 고객에게 그대로 보여 줄 수 있는 고정 한국어 문구입니다**(서버 원문·식별자를 담지 않습니다. 레거시 `storige:error` 의 `message` 도 같은 문구). 문구는 바뀔 수 있으니 처리 분기는 `code` 로 하세요.
 > - 편집기 안 '불러오기'로 저장된 작업을 다시 열다 실패할 때 보내는 `INVALID_DATA`(`fatal:false`)의 `message` 도 고정 문구('작업을 불러오는데 실패했습니다.')입니다. 레거시 `storige:error` 도 같은 문구입니다(2026-10-03).
 > - `templateSetId` 없이 `sessionId` 만으로 연 재오픈이 실패해 편집기가 멈추면, 화면에도 보낸 `message` 와 같은 고정 문구가 표시됩니다(3.1·3.3). 세션 조회가 인증 만료(401)로 멈춘 화면의 문구는 `AUTH_EXPIRED` 의 `message` 와 같습니다(2026-10-03).

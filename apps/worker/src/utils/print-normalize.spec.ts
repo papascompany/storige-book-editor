@@ -4,6 +4,7 @@ import {
   buildPdfxDefPs,
   maybeNormalizeForPrint,
   isPrintNormalizeEnabled,
+  convertPdfToCmykStrict,
 } from './print-normalize';
 
 jest.mock('./ghostscript', () => ({
@@ -161,5 +162,65 @@ describe('maybeNormalizeForPrint — 운영 안전 계약', () => {
     expect(runGhostscript).toHaveBeenCalledTimes(1);
     const dest = mockedFs.copyFile.mock.calls[0][1];
     expect(dest).toBe('/x/merged.pdf');
+  });
+});
+
+describe('convertPdfToCmykStrict — 색 처리 cmyk 세트의 편집 완료(실패 = throw)', () => {
+  it('PRINT_NORMALIZE 가 꺼져 있어도 변환한다(세트 요구가 우선)', async () => {
+    process.env.PRINT_ICC_PROFILE_PATH = '/icc/jc.icc';
+    mockedFs.access.mockResolvedValueOnce(undefined);
+    mockedFs.writeFile.mockResolvedValueOnce(undefined);
+    mockedFs.stat.mockResolvedValueOnce({ size: 900 } as any);
+    mockedFs.copyFile.mockResolvedValueOnce(undefined);
+
+    await expect(convertPdfToCmykStrict('/x/cover.pdf')).resolves.toEqual({ size: 900 });
+    expect(runGhostscript).toHaveBeenCalledTimes(1);
+    const args: string[] = runGhostscript.mock.calls[0][0];
+    expect(args).toContain('-sColorConversionStrategy=CMYK');
+    expect(args).toContain('-sOutputICCProfile=/icc/jc.icc');
+    expect(mockedFs.copyFile.mock.calls[0][1]).toBe('/x/cover.pdf');
+  });
+
+  it('대형 파일 상한(PRINT_NORMALIZE_MAX_BYTES)을 적용하지 않는다', async () => {
+    process.env.PRINT_ICC_PROFILE_PATH = '/icc/jc.icc';
+    process.env.PRINT_NORMALIZE_MAX_BYTES = '10';
+    mockedFs.access.mockResolvedValueOnce(undefined);
+    mockedFs.writeFile.mockResolvedValueOnce(undefined);
+    mockedFs.stat.mockResolvedValueOnce({ size: 5000 } as any);
+    mockedFs.copyFile.mockResolvedValueOnce(undefined);
+
+    await expect(convertPdfToCmykStrict('/x/cover.pdf')).resolves.toEqual({ size: 5000 });
+  });
+
+  it('ICC 미설정이면 throw — GS 무접촉', async () => {
+    await expect(convertPdfToCmykStrict('/x/cover.pdf')).rejects.toThrow('PRINT_ICC_PROFILE_PATH');
+    expect(runGhostscript).not.toHaveBeenCalled();
+  });
+
+  it('ICC 파일이 없으면 throw', async () => {
+    process.env.PRINT_ICC_PROFILE_PATH = '/icc/missing.icc';
+    mockedFs.access.mockRejectedValueOnce(new Error('ENOENT'));
+    await expect(convertPdfToCmykStrict('/x/cover.pdf')).rejects.toThrow('ICC 프로파일 부재');
+    expect(runGhostscript).not.toHaveBeenCalled();
+  });
+
+  it('GS 실패면 throw 하고 원본은 교체하지 않는다', async () => {
+    process.env.PRINT_ICC_PROFILE_PATH = '/icc/jc.icc';
+    mockedFs.access.mockResolvedValueOnce(undefined);
+    mockedFs.writeFile.mockResolvedValueOnce(undefined);
+    runGhostscript.mockRejectedValueOnce(new Error('gs boom'));
+
+    await expect(convertPdfToCmykStrict('/x/cover.pdf')).rejects.toThrow('gs boom');
+    expect(mockedFs.copyFile).not.toHaveBeenCalled();
+  });
+
+  it('산출이 0바이트면 throw', async () => {
+    process.env.PRINT_ICC_PROFILE_PATH = '/icc/jc.icc';
+    mockedFs.access.mockResolvedValueOnce(undefined);
+    mockedFs.writeFile.mockResolvedValueOnce(undefined);
+    mockedFs.stat.mockResolvedValueOnce({ size: 0 } as any);
+
+    await expect(convertPdfToCmykStrict('/x/cover.pdf')).rejects.toThrow('empty');
+    expect(mockedFs.copyFile).not.toHaveBeenCalled();
   });
 });

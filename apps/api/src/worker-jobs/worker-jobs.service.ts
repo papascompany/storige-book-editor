@@ -859,11 +859,14 @@ export class WorkerJobsService implements OnModuleInit {
     let fileUrl = createValidationJobDto.fileUrl;
     let fileId = createValidationJobDto.fileId;
     let editorGeneratedFile = false;
+    let cmykConvertedFile = false;
 
     if (fileId) {
       const file = await this.filesService.findById(fileId);
       fileUrl = this.toWorkerInputUrl(file); // s3 백엔드면 api://<id> 마커, local 은 filePath
-      editorGeneratedFile = file?.metadata?.generatedBy === 'editor';
+      // 편집 완료 CMYK 변환본(2026-11-21, generatedBy 'worker-cmyk')은 편집기 산출 PDF 의 색만 바꾼 파일이다.
+      cmykConvertedFile = file?.metadata?.generatedBy === 'worker-cmyk';
+      editorGeneratedFile = file?.metadata?.generatedBy === 'editor' || cmykConvertedFile;
     }
 
     // site default 머지 (호출자 명시값 보존)
@@ -879,6 +882,11 @@ export class WorkerJobsService implements OnModuleInit {
     // 기본 폰트)를 FONT_NOT_EMBEDDED 경고에서 제외한다. 그 밖의 검증 동작에는 쓰이지 않는다.
     delete orderOptions.source;
     if (editorGeneratedFile) orderOptions.source = 'editor';
+    // 2026-11-21 ADDITIVE: CMYK 변환본 표식 `expectedColorMode:'cmyk'` — 서버 전유 스탬프(호출자 값은 소독).
+    // 워커는 이 값이 있을 때만 일반 인쇄 파일의 CMYK 감지 경고(CMYK_STRUCTURE_DETECTED)를 내지 않는다
+    // (색 처리 'cmyk' 세트는 CMYK 가 의도된 출력). 그 밖의 검증 동작에는 쓰이지 않는다.
+    delete orderOptions.expectedColorMode;
+    if (cmykConvertedFile) orderOptions.expectedColorMode = 'cmyk';
 
     // 표지 잡은 서버가 spine 을 재계산해 덮어씀(fail-closed).
     await this.injectServerSpine(createValidationJobDto.fileType, orderOptions);
@@ -1054,6 +1062,101 @@ export class WorkerJobsService implements OnModuleInit {
     });
 
     return savedJob;
+  }
+
+  /**
+   * 편집 완료용 CMYK 변환 (2026-11-21) — 원본 파일을 워커로 CMYK(+ICC OutputIntent) 변환하고, 끝날 때까지
+   * 기다렸다가 결과를 새 File 로 등록해 그 id 를 돌려준다. 원본 파일은 그대로 둔다(되돌리기 가능).
+   *
+   * - 잡: CONVERT + convertOptions.colorConvert='cmyk', options.purpose='cmyk-convert'. edit_session_id 는 비워
+   *   세션 검증 상태 추적·완료 판정에 섞이지 않게 한다(세션 id 는 options 에만 둔다).
+   * - 결과 File: 원본의 주문·회원·사이트·파일 유형·썸네일을 승계(같은 그림이라 썸네일 재사용).
+   * - 실패(잡 FAILED·시간 초과·결과 없음·등록 실패)는 422 COLOR_CONVERSION_FAILED 로 throw.
+   *   편집기 API 클라이언트는 422 를 자동 재시도하지 않는다.
+   */
+  async convertFileToCmykForCompletion(
+    sourceFileId: string,
+    ctx: { editSessionId: string; role: 'cover' | 'content'; timeoutMs?: number; pollMs?: number },
+  ): Promise<{ fileId: string; jobId: string }> {
+    const timeoutMs = ctx.timeoutMs ?? 20_000;
+    const pollMs = ctx.pollMs ?? 300;
+    const fail = (reason: string, jobId?: string): never => {
+      this.logger.warn(
+        `[cmyk-convert] session ${ctx.editSessionId} ${ctx.role} 파일 ${sourceFileId} 변환 실패: ${reason}${jobId ? ` (job ${jobId})` : ''}`,
+      );
+      throw new UnprocessableEntityException({
+        code: 'COLOR_CONVERSION_FAILED',
+        message: '인쇄용 색상(CMYK) 변환에 실패했습니다. 잠시 후 다시 시도해주세요.',
+      });
+    };
+
+    const source = await this.filesService.findById(sourceFileId);
+    const fileUrl = this.toWorkerInputUrl(source);
+    const job = this.workerJobRepository.create({
+      jobType: WorkerJobType.CONVERT,
+      status: WorkerJobStatus.PENDING,
+      editSessionId: null,
+      fileId: sourceFileId,
+      inputFileUrl: fileUrl,
+      siteId: source.siteId ?? null,
+      options: {
+        colorConvert: 'cmyk',
+        purpose: 'cmyk-convert',
+        editSessionId: ctx.editSessionId,
+        role: ctx.role,
+        sourceFileId,
+      },
+    });
+    const saved = await this.saveNewJob(job, 'convert');
+    await this.conversionQueue.add('convert-pdf', {
+      jobId: saved.id,
+      fileId: sourceFileId,
+      fileUrl,
+      convertOptions: { colorConvert: 'cmyk' },
+    });
+
+    const deadline = Date.now() + timeoutMs;
+    let current: WorkerJob | null = null;
+    for (;;) {
+      current = await this.workerJobRepository.findOne({ where: { id: saved.id } });
+      if (current?.status === WorkerJobStatus.COMPLETED || current?.status === WorkerJobStatus.FAILED) break;
+      if (Date.now() >= deadline) fail(`${timeoutMs}ms 안에 끝나지 않음`, saved.id);
+      await new Promise((resolve) => setTimeout(resolve, pollMs));
+    }
+    if (current?.status !== WorkerJobStatus.COMPLETED) {
+      fail(`잡 ${current?.status ?? 'unknown'}: ${current?.errorMessage ?? ''}`, saved.id);
+    }
+    const outputFileUrl: string | undefined =
+      current?.outputFileUrl || current?.result?.outputFileUrl || current?.result?.result?.outputFileUrl;
+    if (!outputFileUrl) fail('결과 경로 없음', saved.id);
+
+    let registeredId: string;
+    try {
+      const registered = await this.filesService.registerExternalFile(outputFileUrl as string, {
+        fileType: source.fileType,
+        orderSeqno: (source.orderSeqno as number) ?? null,
+        memberSeqno: (source.memberSeqno as number) ?? null,
+        siteId: source.siteId ?? null,
+        thumbnailUrl: source.thumbnailUrl ?? null,
+        originalName: source.originalName,
+        metadata: {
+          generatedBy: 'worker-cmyk',
+          colorMode: 'CMYK',
+          editSessionId: ctx.editSessionId,
+          role: ctx.role,
+          sourceFileId,
+          workerJobId: saved.id,
+        },
+      });
+      registeredId = registered.id;
+    } catch (e) {
+      return fail(`결과 등록 실패: ${(e as Error).message}`, saved.id);
+    }
+    await this.recordJobOutputFileId(current as WorkerJob, registeredId, 'cmyk-convert').catch(() => undefined);
+    this.logger.log(
+      `[cmyk-convert] session ${ctx.editSessionId} ${ctx.role}: ${sourceFileId} → ${registeredId} (job ${saved.id})`,
+    );
+    return { fileId: registeredId, jobId: saved.id };
   }
 
   /**

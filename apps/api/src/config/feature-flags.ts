@@ -70,6 +70,8 @@ export const API_FEATURE_FLAG_KEYS = [
   'SHEET_MAP_OUTPUT_ENABLED',
   // 2026-10-25(완료 검증 기본 도련 = 재단선 세트 도련) 킬스위치 — 줄 끝에 붙는다(운영 FLAGS_EXPECTED_API 프로필에도 추가).
   'VALIDATION_BLEED_FROM_TEMPLATE_SET',
+  // 2026-11-21(색 처리 cmyk 세트 완료 시 CMYK 변환) — 기본 OFF. 줄 끝에 붙는다(운영 FLAGS_EXPECTED_API 프로필에도 추가).
+  'COMPLETE_CMYK_CONVERT',
 ] as const;
 
 export type ApiFeatureFlagKey = (typeof API_FEATURE_FLAG_KEYS)[number];
@@ -110,6 +112,8 @@ export interface ApiFeatureFlagInputs {
   sheetMapOutputEnabledRaw: unknown;
   /** process.env.VALIDATION_BLEED_FROM_TEMPLATE_SET — edit-sessions.service 와 같은 소스·같은 술어(2026-10-25) */
   validationBleedFromTemplateSetRaw: unknown;
+  /** process.env.COMPLETE_CMYK_CONVERT — edit-sessions.service 와 같은 소스·같은 술어(isFlagOn, 2026-11-21) */
+  completeCmykConvertRaw: unknown;
 }
 
 export function buildApiFeatureFlagSnapshot(i: ApiFeatureFlagInputs): ApiFeatureFlagSnapshot {
@@ -147,6 +151,8 @@ export function buildApiFeatureFlagSnapshot(i: ApiFeatureFlagInputs): ApiFeature
     VALIDATION_BLEED_FROM_TEMPLATE_SET: isValidationBleedFromTemplateSetOnRaw(
       i.validationBleedFromTemplateSetRaw,
     ),
+    // edit-sessions.service: isCompleteCmykConvertOn() = isFlagOn(process.env.COMPLETE_CMYK_CONVERT)
+    COMPLETE_CMYK_CONVERT: isFlagOn(i.completeCmykConvertRaw),
     // worker-jobs.controller partnerView: isPartnerJobViewOn(configService.get('PARTNER_JOB_VIEW'))
     PARTNER_JOB_VIEW: isPartnerJobViewOn(i.partnerJobViewRaw),
   };
@@ -188,6 +194,7 @@ export function collectApiFeatureFlagInputs(
     partnerSessionLaunchEnabledRaw: env.PARTNER_SESSION_LAUNCH_ENABLED,
     sheetMapOutputEnabledRaw: env.SHEET_MAP_OUTPUT_ENABLED,
     validationBleedFromTemplateSetRaw: env.VALIDATION_BLEED_FROM_TEMPLATE_SET,
+    completeCmykConvertRaw: env.COMPLETE_CMYK_CONVERT,
   };
 }
 
@@ -457,4 +464,14 @@ export function formatFlagExpectationLine(
       return `[FLAGS-CHECK] ${service} ${parts.join(' ')}`;
     }
   }
+}
+
+/**
+ * COMPLETE_CMYK_CONVERT 진리값 술어(2026-11-21) — 기본 OFF(isFlagOn: 'true'·'1').
+ * 켜지면 색 처리 'cmyk' 템플릿셋의 편집 완료가 편집기 PDF 를 워커로 CMYK 변환해 세션 파일을 그 결과로 바꾼 뒤
+ * 완료한다(변환 실패 = 완료 안 함). 꺼져 있으면 종전 그대로(색 처리 설정은 저장만).
+ * 롤백 = .env 에 COMPLETE_CMYK_CONVERT=false → api 재생성 → nginx 재시작. [FLAGS] api 줄 끝 키로 확인한다.
+ */
+export function isCompleteCmykConvertOn(env: NodeJS.ProcessEnv = process.env): boolean {
+  return isFlagOn(env.COMPLETE_CMYK_CONVERT);
 }

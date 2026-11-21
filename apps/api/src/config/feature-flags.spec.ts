@@ -54,6 +54,7 @@ const BASE_INPUTS: ApiFeatureFlagInputs = {
   partnerSessionLaunchEnabledRaw: undefined,
   sheetMapOutputEnabledRaw: undefined,
   validationBleedFromTemplateSetRaw: undefined,
+  completeCmykConvertRaw: undefined,
 };
 
 describe('api feature-flags', () => {
@@ -105,6 +106,7 @@ describe('api feature-flags', () => {
         PARTNER_SESSION_LAUNCH_ENABLED: true,
         SHEET_MAP_OUTPUT_ENABLED: true,
         VALIDATION_BLEED_FROM_TEMPLATE_SET: true,
+        COMPLETE_CMYK_CONVERT: false,
       });
     });
 
@@ -579,6 +581,7 @@ describe('api feature-flags', () => {
       partnerSessionLaunchEnabledRaw: process.env.PARTNER_SESSION_LAUNCH_ENABLED,
       sheetMapOutputEnabledRaw: process.env.SHEET_MAP_OUTPUT_ENABLED,
       validationBleedFromTemplateSetRaw: process.env.VALIDATION_BLEED_FROM_TEMPLATE_SET,
+      completeCmykConvertRaw: process.env.COMPLETE_CMYK_CONVERT,
     });
 
     const getterOf = (config: ConfigService): ApiConfigGetter => (key, defaultValue) =>
@@ -646,14 +649,14 @@ describe('api 기대값 프로필 대조 — [FLAGS-CHECK]', () => {
     expect(lineOf(PROFILE)).toBe(`[FLAGS-CHECK] api ok n=${API_FEATURE_FLAG_KEYS.length}`);
     // 2026-10-17: EDITOR_SHEET_VALIDATION_RULES 추가로 14 → 15, 2026-10-18: PARTNER_SESSION_LAUNCH_ENABLED 추가로 15 → 16,
     // 2026-10-18 P2-c: SHEET_MAP_OUTPUT_ENABLED 추가로 16 → 17,
-    // 2026-10-25: VALIDATION_BLEED_FROM_TEMPLATE_SET 추가로 17 → 18
-    expect(API_FEATURE_FLAG_KEYS.length).toBe(18);
+    // 2026-10-25: VALIDATION_BLEED_FROM_TEMPLATE_SET 추가로 17 → 18, 2026-11-21: COMPLETE_CMYK_CONVERT 추가로 18 → 19
+    expect(API_FEATURE_FLAG_KEYS.length).toBe(19);
   });
 
   it('쉼표·여러 공백·줄바꿈 구분도 같다', () => {
     const tokens = PROFILE.split(' ');
-    expect(lineOf(tokens.join(','))).toMatch(/ ok n=18$/);
-    expect(lineOf(`  ${tokens.join(' ,\n  ')}  `)).toMatch(/ ok n=18$/);
+    expect(lineOf(tokens.join(','))).toMatch(/ ok n=19$/);
+    expect(lineOf(`  ${tokens.join(' ,\n  ')}  `)).toMatch(/ ok n=19$/);
   });
 
   it('값이 다른 키는 mismatch 에 유효값·기대값으로 나온다(KEYS 순서)', () => {

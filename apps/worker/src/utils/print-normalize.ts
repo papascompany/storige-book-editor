@@ -168,6 +168,28 @@ export async function maybeNormalizeForPrint(
     return { applied: false, reason: 'gs_failed' };
   }
 
+  try {
+    const { size } = await normalizeToCmykInPlace(localPath, iccPath);
+    logger.log(
+      `print-normalize 적용: ${path.basename(localPath)} (${size}B, flatten=${printNormalizeFlatten()})`,
+    );
+    return { applied: true };
+  } catch (err: any) {
+    logger.warn(
+      `print-normalize 실패 — 원본 유지(fail-open): ${err?.message ?? err}`,
+    );
+    return { applied: false, reason: 'gs_failed' };
+  }
+}
+
+/**
+ * GS 로 RGB/Gray→CMYK(+ICC OutputIntent) 변환 후 localPath 를 원자적으로 교체한다.
+ * 실패하면 throw 하고 원본은 그대로 둔다(호출부가 fail-open/fail-closed 를 정한다).
+ */
+async function normalizeToCmykInPlace(
+  localPath: string,
+  iccPath: string,
+): Promise<{ size: number }> {
   const tag = `${Date.now()}_${Math.random().toString(36).slice(2)}`;
   const tmpOut = path.join(os.tmpdir(), `norm_${tag}.pdf`);
   const tmpDef = path.join(os.tmpdir(), `pdfx_${tag}.ps`);
@@ -184,23 +206,30 @@ export async function maybeNormalizeForPrint(
       GS_PDFWRITE_TIMEOUT_MS,
     );
 
-    // 산출 무결성 최소 확인: 0바이트/부재 시 실패 처리(fail-open)
+    // 산출 무결성 최소 확인: 0바이트/부재 시 실패
     const outStat = await fs.stat(tmpOut);
     if (outStat.size === 0) throw new Error('normalized output is empty');
 
     // 원자적 교체 — 실패 시 원본 그대로
     await fs.copyFile(tmpOut, localPath);
-    logger.log(
-      `print-normalize 적용: ${path.basename(localPath)} (${outStat.size}B, flatten=${opts.flatten})`,
-    );
-    return { applied: true };
-  } catch (err: any) {
-    logger.warn(
-      `print-normalize 실패 — 원본 유지(fail-open): ${err?.message ?? err}`,
-    );
-    return { applied: false, reason: 'gs_failed' };
+    return { size: outStat.size };
   } finally {
     await fs.unlink(tmpOut).catch(() => {});
     await fs.unlink(tmpDef).catch(() => {});
   }
+}
+
+/**
+ * 세트가 CMYK 출력을 요구할 때 쓰는 **엄격** 변환 — PRINT_NORMALIZE 게이트·크기 상한과 무관하게
+ * 변환하고, ICC 미설정·부재·GS 실패는 모두 throw 한다(호출부는 이 결과 없이 완료하지 않는다).
+ */
+export async function convertPdfToCmykStrict(localPath: string): Promise<{ size: number }> {
+  const iccPath = printIccProfilePath();
+  if (!iccPath) throw new Error('CMYK 변환 불가: PRINT_ICC_PROFILE_PATH 미설정');
+  try {
+    await fs.access(iccPath);
+  } catch {
+    throw new Error(`CMYK 변환 불가: ICC 프로파일 부재 (${iccPath})`);
+  }
+  return normalizeToCmykInPlace(localPath, iccPath);
 }
