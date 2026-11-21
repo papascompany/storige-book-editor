@@ -28,7 +28,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { fabric } from 'fabric'
 import { applyCurveToText } from '../utils/curveText'
-import { convertSvgTextToPath } from './svgTextToPath'
+import { convertSvgTextToPath, __resetParsedFontCacheForTest } from './svgTextToPath'
 
 // ---------------------------------------------------------------------------
 // opentype.js 목 — getPath 호출 인자를 기록하고, 좌표를 pathData 에 그대로 새겨
@@ -93,6 +93,7 @@ async function makeCurvedTextSvg(): Promise<string> {
 
 beforeEach(() => {
   otState.base = null
+  __resetParsedFontCacheForTest()
 })
 
 describe('전제 고정 — fabric 5.x text-on-path 의 SVG 방출 형태', () => {

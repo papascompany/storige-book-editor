@@ -19,6 +19,27 @@ export interface ConvertSvgTextToPathResult {
  */
 export type OpenTypeFontResolver = (fontFamily: string) => any | null;
 
+/**
+ * 파싱한 글꼴 캐시 — 같은 버퍼는 한 번만 opentype.parse 한다.
+ * PDF 생성은 텍스트 객체마다 이 함수를 부르고, FontPlugin 은 글꼴별로 같은 ArrayBuffer 를 넘긴다.
+ * 큰 한글 글꼴은 파싱 한 번에 0.1초 안팎이라, 글자 객체가 수백 개인 면에서는 재파싱이 생성 시간의 대부분이었다.
+ */
+let parsedFontCache = new WeakMap<ArrayBuffer, any>();
+
+async function parseFontCached(ttfBuffer: ArrayBuffer): Promise<any> {
+  const cached = parsedFontCache.get(ttfBuffer);
+  if (cached) return cached;
+  const opentype = await import('opentype.js');
+  const font = opentype.parse(ttfBuffer);
+  parsedFontCache.set(ttfBuffer, font);
+  return font;
+}
+
+/** 테스트 전용 — 파싱 캐시 초기화 */
+export function __resetParsedFontCacheForTest(): void {
+  parsedFontCache = new WeakMap<ArrayBuffer, any>();
+}
+
 interface TextStyle {
   fontSize: number;
   fontWeight: number;
@@ -41,10 +62,8 @@ export async function convertSvgTextToPath(
   svgString: string,
   fontResolver?: OpenTypeFontResolver
 ): Promise<ConvertSvgTextToPathResult> {
-  const opentype = await import('opentype.js');
-
-  // Parse TTF buffer to get font
-  const font = opentype.parse(ttfBuffer);
+  // Parse TTF buffer to get font (같은 버퍼는 캐시 재사용)
+  const font = await parseFontCached(ttfBuffer);
 
   /**
    * tspan/text 의 font-family 에 맞는 opentype.Font 를 고른다.
