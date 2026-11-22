@@ -166,6 +166,38 @@ describe('maybeNormalizeForPrint — 운영 안전 계약', () => {
 });
 
 describe('convertPdfToCmykStrict — 색 처리 cmyk 세트의 편집 완료(실패 = throw)', () => {
+  it('PDF/X 모드를 쓰지 않는다 — -dPDFX·GTS_PDFXVersion 없음, ICC OutputIntent 는 유지, 평탄화 env 무시', async () => {
+    process.env.PRINT_ICC_PROFILE_PATH = '/icc/jc.icc';
+    process.env.PRINT_NORMALIZE_FLATTEN = 'true';
+    mockedFs.access.mockResolvedValueOnce(undefined);
+    mockedFs.writeFile.mockResolvedValueOnce(undefined);
+    mockedFs.stat.mockResolvedValueOnce({ size: 900 } as any);
+    mockedFs.copyFile.mockResolvedValueOnce(undefined);
+
+    await convertPdfToCmykStrict('/x/cover.pdf');
+    const args: string[] = runGhostscript.mock.calls[0][0];
+    expect(args).not.toContain('-dPDFX');
+    expect(args).toContain('-dCompatibilityLevel=1.4');
+    const def = String(mockedFs.writeFile.mock.calls[0][1]);
+    expect(def).not.toContain('GTS_PDFXVersion');
+    expect(def).toContain('/OutputIntents');
+    expect(def).toContain('/DestOutputProfile');
+  });
+
+  it('합성 정규화(maybeNormalizeForPrint)는 종전처럼 PDF/X 모드', async () => {
+    process.env.PRINT_NORMALIZE = 'true';
+    process.env.PRINT_ICC_PROFILE_PATH = '/icc/jc.icc';
+    mockedFs.access.mockResolvedValueOnce(undefined);
+    mockedFs.stat.mockResolvedValueOnce({ size: 1024 } as any).mockResolvedValueOnce({ size: 900 } as any);
+    mockedFs.writeFile.mockResolvedValueOnce(undefined);
+    mockedFs.copyFile.mockResolvedValueOnce(undefined);
+
+    await maybeNormalizeForPrint('/x/merged.pdf');
+    const args: string[] = runGhostscript.mock.calls[0][0];
+    expect(args).toContain('-dPDFX');
+    expect(String(mockedFs.writeFile.mock.calls[0][1])).toContain('GTS_PDFXVersion');
+  });
+
   it('PRINT_NORMALIZE 가 꺼져 있어도 변환한다(세트 요구가 우선)', async () => {
     process.env.PRINT_ICC_PROFILE_PATH = '/icc/jc.icc';
     mockedFs.access.mockResolvedValueOnce(undefined);

@@ -38,6 +38,13 @@ export interface NormalizeOptions {
   outputConditionIdentifier?: string;
   /** OutputIntent 사람용 조건명 */
   outputCondition?: string;
+  /**
+   * PDF/X 모드(-dPDFX + GTS_PDFXVersion 표식) — 기본 true(합성 정규화 종전 동작).
+   * false 면 ICC OutputIntent 만 붙이고 PDF/X 표식·-dPDFX 를 쓰지 않는다. 편집 완료 CMYK 변환이 쓴다:
+   * -dPDFX 는 투명도(알파 사진)가 있는 페이지를 통째로 한 장의 이미지로 평탄화해(5MB 표지 실측 41초,
+   * 글자·벡터까지 이미지화) 편집기 산출물에 맞지 않는다. false 면 같은 파일 2초, 이미지 해상도·마스크 유지.
+   */
+  pdfx?: boolean;
 }
 
 /** env 게이트 — 호출 시점 판독(테스트 용이·재기동 없이 compose 반영). */
@@ -70,7 +77,7 @@ export function buildPdfxDefPs(opts: NormalizeOptions): string {
     '%!',
     '% R5 print-normalize PDFX definition (generated at runtime — repo 에 ICC 없음)',
     `/ICCProfile (${esc(opts.iccPath)}) def`,
-    '[ /GTS_PDFXVersion (PDF/X-3:2002) /DOCINFO pdfmark',
+    ...(opts.pdfx === false ? [] : ['[ /GTS_PDFXVersion (PDF/X-3:2002) /DOCINFO pdfmark']),
     '[ /_objdef {icc_PDFX} /type /stream /OBJ pdfmark',
     '[ {icc_PDFX} << /N 4 >> /PUT pdfmark',
     '[ {icc_PDFX} ICCProfile (r) file /PUT pdfmark',
@@ -120,8 +127,8 @@ export function buildNormalizeArgs(
     '-sColorConversionStrategy=CMYK',
     '-sProcessColorModel=DeviceCMYK',
     `-sOutputICCProfile=${opts.iccPath}`,
-    // PDF/X 마킹(OutputIntent 는 pdfxDef 의 pdfmark 가 수행)
-    '-dPDFX',
+    // PDF/X 마킹(OutputIntent 는 pdfxDef 의 pdfmark 가 수행) — pdfx:false 면 생략(투명도 평탄화 방지)
+    ...(opts.pdfx === false ? [] : ['-dPDFX']),
     `-sOutputFile=${outputPath}`,
     pdfxDefPath,
     inputPath,
@@ -189,6 +196,7 @@ export async function maybeNormalizeForPrint(
 async function normalizeToCmykInPlace(
   localPath: string,
   iccPath: string,
+  mode: { pdfx: boolean; flatten: boolean } = { pdfx: true, flatten: printNormalizeFlatten() },
 ): Promise<{ size: number }> {
   const tag = `${Date.now()}_${Math.random().toString(36).slice(2)}`;
   const tmpOut = path.join(os.tmpdir(), `norm_${tag}.pdf`);
@@ -196,7 +204,8 @@ async function normalizeToCmykInPlace(
   try {
     const opts: NormalizeOptions = {
       iccPath,
-      flatten: printNormalizeFlatten(),
+      flatten: mode.flatten,
+      pdfx: mode.pdfx,
       outputConditionIdentifier: process.env.PRINT_ICC_IDENTIFIER || undefined,
       outputCondition: process.env.PRINT_ICC_CONDITION || undefined,
     };
@@ -231,5 +240,6 @@ export async function convertPdfToCmykStrict(localPath: string): Promise<{ size:
   } catch {
     throw new Error(`CMYK 변환 불가: ICC 프로파일 부재 (${iccPath})`);
   }
-  return normalizeToCmykInPlace(localPath, iccPath);
+  // PDF/X 모드·평탄화 없이(투명도·벡터 보존) — NormalizeOptions.pdfx 주석 참조.
+  return normalizeToCmykInPlace(localPath, iccPath, { pdfx: false, flatten: false });
 }
