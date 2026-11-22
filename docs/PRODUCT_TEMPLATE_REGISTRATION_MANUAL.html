@@ -136,7 +136,12 @@
       <tr><td><code>coverEditable</code></td><td>표지 편집 가능 여부</td><td><span class="tag t-warn">false</span>=레더커버/화보집(미리보기 이미지만)</td></tr>
       <tr><td><code>endpaperConfig</code></td><td>앞/뒤 면지 수(0~6) + 각 편집가능 토글</td><td>면지 상품용</td></tr>
       <tr><td>도구 메뉴 화이트리스트</td><td>이 템플릿셋에서 고객에게 노출할 편집 도구</td><td>EDITOR.md §7</td></tr>
+      <tr><td>색 처리 방식 <code>colorMode</code></td><td><b>RGB 유지</b> = 편집기 PDF 색 그대로 완료 · <b>CMYK 변환</b> = 편집 완료 때 서버가 완료 PDF를 인쇄용 CMYK(ICC Japan Color 2001 Coated)로 변환</td><td><span class="tag t-new">2026-11-22</span> 인쇄 상품은 CMYK 변환 권장(캘린더 전부 CMYK). 완료가 수 초 늦어지고, 변환 실패 시 완료되지 않음</td></tr>
     </table>
+    <div class="note">
+      <b>색 처리 방식 (2026-11-22 적용)</b> — 템플릿셋 편집 화면 「PDF 출력」 구역의 <b>색 처리 방식</b>을 <b>CMYK 변환 (인쇄용)</b>으로 두면, 고객이 편집완료를 누를 때 서버가 완료 PDF를 CMYK로 바꾼 파일로 완료합니다(쪽 크기·쪽수는 같고, 원본 RGB 파일은 서버에 남습니다). 검증 결과의 색상 모드는 <code>CMYK</code>로 표시되고 CMYK 감지 경고는 붙지 않습니다.
+      변환에 실패하면 고객 화면에 저장 실패 안내가 뜨고 완료되지 않습니다 — 편집 내용은 저장돼 있어 다시 편집완료를 누르면 됩니다. 운영 스위치(<code>COMPLETE_CMYK_CONVERT</code>)를 끄면 모든 세트가 종전(RGB 그대로)으로 돌아갑니다.
+    </div>
     <div class="card">
       <h3>템플릿셋 구성 예시</h3>
       <div class="flow">
@@ -222,6 +227,7 @@
       <tr><td>객체 잠금/삭제불가 + 관리자 토글</td><td><span class="tag t-ok">완료</span></td><td>관리자가 잠근 객체를 고객이 못 건드림</td></tr>
       <tr><td>곡선/원형 텍스트 PDF 보존</td><td><span class="tag t-ok">완료</span></td><td>원형 배지 텍스트가 PDF에서도 유지</td></tr>
       <tr><td>내지 PDF 첨부 underlay 모드</td><td><span class="tag t-warn">API 토대</span></td><td>편집기 자동 페이지 로딩·워커 합성은 후속</td></tr>
+      <tr><td>색 처리 방식 CMYK 변환 실제 적용 (2026-11-22)</td><td><span class="tag t-ok">완료·배포</span></td><td>CMYK 변환 세트는 완료 PDF가 인쇄용 CMYK — 캘린더 7종·스프링/기본 책자</td></tr>
       <tr><td>사진틀 프레임내 편집 / 면지 캔버스 / WYSIWYG 미세조정</td><td><span class="tag t-warn">계획</span></td><td>실시각 QA 후 진행 (갭 문서 참조)</td></tr>
     </table>
     <div class="note">

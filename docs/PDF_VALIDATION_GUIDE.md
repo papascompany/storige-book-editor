@@ -49,7 +49,7 @@
 | 10b | 사철 중앙부 객체 | 🟡경고 | `CENTER_OBJECT_CHECK` | 중앙 걸침 객체 확인 필요 | 내지(saddle) | ✕ |
 | 11 | 혼합/펼침면 감지 | 🟡경고 | `MIXED_PDF` | 표지+내지 다른 규격/스프레드 감지 | 전체 | ✕ |
 | 12 | CMYK(후가공) | 🔴에러 | `POST_PROCESS_CMYK` | 후가공 파일에 CMYK — **`orderOptions.postProcessColorRule='spot-only'` 일 때만**(2026-10-17 v1.21, 미전송·`'any'` = 오류·경고 없음) | 후가공 | ✕ |
-| 12b | CMYK(일반) | 🟡경고 | `CMYK_STRUCTURE_DETECTED` | 일반 파일 CMYK 감지 | 전체 | ✕ |
+| 12b | CMYK(일반) | 🟡경고 | `CMYK_STRUCTURE_DETECTED` | 일반 파일 CMYK 감지 — 서버 스탬프 `orderOptions.expectedColorMode='cmyk'`(편집 완료 CMYK 변환본, 2026-11-22) 잡은 경고 없음 | 전체 | ✕ |
 | 13 | 별색(Spot) | ⚪정보 | (코드 없음) | 감지 → metadata만 | 전체 | — |
 | 14 | 투명도 | 🟡경고 | `TRANSPARENCY_DETECTED` | 투명 효과 포함 | 전체 | ✕ |
 | 14b | 오버프린트 | 🟡경고 | `OVERPRINT_DETECTED` | 오버프린트 설정 포함 | 전체 | ✕ |
@@ -86,6 +86,7 @@
     "productKind": "sheet",                       // ✅ (선택, 2026-10-17 v1.21) 'sheet' = 슬롯 무관 정확 쪽수 검사(§낱장 분류 검증). 'book'·미전송 = 종전
     "pageStep": 2,                                // ✅ (선택) 낱장 증감 단위 — productKind='sheet' 에서 >1 이면 배수 검사. 1 이하·미전송 = 배수 검사 없음
     "postProcessColorRule": "any",                // ✅ (선택) 'spot-only' 일 때만 후가공 파일 CMYK 를 POST_PROCESS_CMYK 오류로. 미전송·'any' = 오류 없음
+    // "expectedColorMode": "cmyk"                 // ⛔ 서버 전유(2026-11-22, v1.33) — 편집 완료 CMYK 변환본에만 서버가 싣는다. 호출자가 보내면 버린다
     "coverSpine": "none"                          // ✅ (선택, v1.22 보강) cover 슬롯 책등 없음 → validateSpine 생략·단일 판형 검사(§프로파일 세트(캘린더) 검증). 미전송·그 외 값 = 종전
   },
   "callbackUrl": "..."
@@ -719,6 +720,15 @@ editSize = { templateSet.width + bleedMm*2, templateSet.height + bleedMm*2 }
    - 실제 잉크 사용량 분석
    - CMY > 0.001 이면 CMYK 사용으로 판정
 
+### 편집 완료 CMYK 변환본 (2026-11-22, CONTRACT_FREEZE v1.33)
+
+- 템플릿셋 색 처리 `cmyk` 세트는 편집 완료 때 서버가 편집기 PDF 를 CMYK(ICC OutputIntent)로 변환해 그 파일을 검증한다(스위치 `COMPLETE_CMYK_CONVERT`, 절차는 DEPLOYMENT 2026-11-22 절).
+- 서버는 이 파일(metadata `generatedBy:'worker-cmyk'`)의 검증 잡에만 `orderOptions.expectedColorMode='cmyk'` 와 `source='editor'` 를 싣는다. 호출자가 보낸 `expectedColorMode` 는 버린다.
+- 워커는 `expectedColorMode='cmyk'` 일 때:
+  - 일반 인쇄 파일의 `CMYK_STRUCTURE_DETECTED` 경고를 내지 않는다(CMYK 가 의도된 출력).
+  - 변환본은 색이 압축 내용 스트림의 CMYK 연산자로만 표현돼 1차 문자열 감지에 걸리지 않는다. 그래서 문서에 CMYK 출력 의도(`/OutputIntents` + 4채널 프로파일)가 있으면 `metadata.colorMode='CMYK'` 로 기록한다. 이 출력 의도는 정보성 필드(`cmykStructure.cmykOutputIntent`)로만 모으며 `signatures`·`suspectedCmyk` 판정에는 섞지 않는다.
+- 스탬프가 없는 파일(고객 업로드 등)의 판정은 바뀌지 않는다. 같은 형태(압축 스트림만 CMYK)의 고객 CMYK 파일은 종전처럼 `RGB` 로 보일 수 있다(알려진 한계).
+
 ### 후가공 파일 색상 규칙
 
 > **2026-10-17 변경(v1.21, 운영 반영)**: 아래 표의 CMYK 불허(`POST_PROCESS_CMYK`)는 `orderOptions.postProcessColorRule='spot-only'` 를 지정한 잡에만 적용된다. 미전송·`'any'`(기본) 면 후가공 파일의 CMYK 는 오류도 경고도 내지 않는다 — 후가공 파일은 고객 업로드·관리자 작업 파일이며 선·라운드·면적·투명 객체가 정상 입력이다(§낱장 분류 검증).
@@ -929,6 +939,7 @@ docker exec storige-worker-1 gs -q -dNODISPLAY -c "(Hello) print quit"
 | 2026-10-19 | 이 문서: 위 항목 반영 — §낱장 분류 검증·§프로파일 세트(캘린더) 검증·§합성 잡 절 신설, 한눈에 표(4b·12·15b·조건부 실행)·validate 입력 계약·표지 책등 절·에러/경고 코드 표·후가공 색상 규칙 갱신 | — |
 | 2026-10-20 | 사진인화(photo-print) 세트 검증 — cover 슬롯 `productKind 'sheet'`·`coverSpine 'none'`·`pages` 세션 쪽수·chemical `pageStep` 없음/digital 2(v1.21·v1.22 규칙 그대로, 워커 무변경), 검증 잡 `orderOptions.bleed` 기본값 `resolveDefaultBleedMm`(재단선 없는 프로파일 세트 0 — chemical 완료 PDF `BLEED_MISSING` 오탐 제거, D9) — CONTRACT_FREEZE v1.25. 로컬 실측(2026-10-19, 수정 전) chemical 3쪽 `isValid true`·errors 0·경고 `BLEED_MISSING` 1 → 수정 후 digital ① 재실측 `warnings: []`·chemical 은 기대 0(미재실측) | **미반영**(브랜치 `p1-calendar-2026-10-17`, 미커밋·master 미병합; 운영 샘플 세트 등록은 오너 보류) |
 | 2026-10-20 | 이 문서: §사진인화(photo-print) 세트 검증 절 신설 + 변경 이력 | — |
+| 2026-11-22 | 편집 완료 CMYK 변환본 검증 — 서버 스탬프 `orderOptions.expectedColorMode='cmyk'`(ADDITIVE, v1.33) 잡은 `CMYK_STRUCTURE_DETECTED` 생략·CMYK 출력 의도로 `colorMode='CMYK'` 기록. 이 문서: §색상 모드 감지에 절 추가, 한눈에 표 12b·요청 예시 보강 | 2026-11-22 (worker·api, 스위치 `COMPLETE_CMYK_CONVERT`) |
 
 ---
 

@@ -9,6 +9,8 @@
 > 🔄 **갱신**: 2026-10-12 — 「업데이트 및 배포」에 Wave 8(2026-10-06·07)과 2026-10-08 운영 정비 절 추가, `EDITOR_CONTENT_PAGE_RULES` compose 매핑·비상 차단 절차, 「로그 검색」에 Loki API 로 건수 세기.
 >
 > 🔄 **갱신**: 2026-10-14 — 「배포 후 점검」 키 나열·「잡 생성 확인 · 잡 산출물 세션 조회 플래그」 compose 매핑 나열에 `PARTNER_JOB_VIEW` 추가, 「Vercel 배포 파이프라인(ignoreCommand) 주의」를 빌드 생략 판정 스크립트(`scripts/vercel-ignore-build.mjs`) 기준으로 갱신, API env 예시의 업로드 크기 상한 줄을 코드 상수 기준으로 정리.
+>
+> 🔄 **갱신**: 2026-11-22 — 「업데이트 및 배포」에 색 처리 CMYK 세트의 편집 완료 CMYK 변환(스위치 `COMPLETE_CMYK_CONVERT`, ICC 전제, 반영·롤백 절차) 절 추가.
 
 > ### ⚠️ 스키마 마이그레이션 (synchronize=false → 수동, API 재배포 **전** 실행)
 > 프로덕션은 TypeORM `synchronize=false` 이므로 엔티티 변경 시 `apps/api/migrations/*.sql` 을 수동 실행 후 API 재배포한다(순서 중요 — 신규 코드가 컬럼/테이블 존재를 전제).
@@ -393,6 +395,10 @@ JWT_EXPIRES_IN=7d  # (미매핑, 코드 기본값)
 # Storage
 STORAGE_PATH=/app/storage
 # 업로드 크기 상한은 env 가 아니라 코드 상수다(storage 업로드 50MB = `STORAGE_UPLOAD_MAX_BYTES`, files 업로드 100MB = `FILE_UPLOAD_MAX_BYTES` — 경로별 multer 상한과 같음). STORAGE_MAX_FILE_SIZE 는 읽지 않는다.
+
+# 색 처리 'cmyk' 세트의 편집 완료 CMYK 변환 (2026-11-22, 기본 false). 켜면 완료가 worker 변환을 기다리고 실패 시 완료하지 않는다.
+# worker 의 PRINT_ICC_PROFILE_PATH(ICC 파일)가 전제. 절차·롤백은 「2026-11-22 운영 반영 — 색 처리 CMYK…」 절.
+COMPLETE_CMYK_CONVERT=false
 
 # 저장계층 백엔드 (2026-06-15). 기본 local. R2 사용 시 admin [저장소 설정] 권장(DB>env 우선).
 #   STORAGE_DRIVER=s3
@@ -2169,6 +2175,47 @@ npx vitest run src/calendar src/plugins/CalendarPlugin.test.ts   # 데이터·co
 2. 보관한 설정을 제자리에 둔다: `mkdir -p docker/promtail && cp ~/backups/promtail-rollback-20261114/promtail-config.yml docker/promtail/`.
 3. `docker compose -f ~/backups/promtail-rollback-20261114/docker-compose.yml --project-directory ~/storige up -d --no-deps promtail`(이미지 `grafana/promtail:3.6.11` 은 서버에 남아 있다).
 4. Promtail 도 위치를 새로 잡으므로 되돌릴 때 최근 구간이 한 번 더 중복될 수 있다.
+
+### 2026-11-22 운영 반영 — 색 처리 CMYK 세트의 편집 완료 파일 CMYK 변환 (api·worker, CONTRACT v1.33)
+
+> master `b84b797e` → `6077a889`(PR #63) → `7889b839`(PR #64), fast-forward. api·worker 이미지 교체, editor·admin 무변경. 스위치 `COMPLETE_CMYK_CONVERT`(api, 기본 `false`)를 켠 시각부터 동작한다.
+
+**배경**
+- 템플릿셋 「색 처리」(`template_sets.color_mode`)는 저장만 되고 출력에 반영되지 않았다. `cmyk` 세트도 편집기 RGB PDF 가 그대로 완료 파일이었다.
+
+**동작(스위치 켜짐)**
+- 편집 완료(`PATCH /edit-sessions/:id/complete`) 때 세트가 `cmyk` 이면 api 가 표지·내지 PDF 마다 worker `pdf-conversion` 큐에 `convert-pdf`(`convertOptions.colorConvert:'cmyk'`, 잡 `options.purpose:'cmyk-convert'`, `edit_session_id` 비움) 잡을 넣고 최대 20초 기다린다.
+- worker 는 Ghostscript 로 CMYK 변환(ICC = `PRINT_ICC_PROFILE_PATH`, OutputIntent 부착, **PDF/X 모드·투명도 평탄화 없음**)해 `/storage/converted/` 에 쓴다.
+- api 는 결과를 새 파일(로컬 저장소, 원본의 주문·회원·사이트·파일 유형·썸네일 승계, metadata `generatedBy:'worker-cmyk'`)로 등록하고 세션 파일 id 를 바꾼 뒤 완료한다. 원본 RGB 파일은 남고, 세션 `metadata.colorConversion` 에 원본·결과·잡 id 가 기록된다.
+- 변환 실패(잡 실패·20초 초과·등록 실패) → `422 COLOR_CONVERSION_FAILED`, 세션 미완료(편집기는 `editor.error SAVE_FAILED`).
+- 변환본 검증 잡에는 서버 스탬프 `orderOptions.expectedColorMode:'cmyk'`(+ `source:'editor'`) — CMYK 감지 경고 없음, `metadata.colorMode:'CMYK'`.
+- 스위치 꺼짐 또는 `rgb` 세트 = 종전 그대로. 합성 정규화(`PRINT_NORMALIZE`, worker)와는 별개다.
+
+**전제**
+- worker 컨테이너에 ICC 파일이 있고 `PRINT_ICC_PROFILE_PATH` 가 그 경로를 가리킬 것(운영: `storage/icc/` 의 Japan Color 2001 Coated). 없으면 변환이 실패해 cmyk 세트의 완료가 모두 막힌다 — 켜기 전에 확인한다.
+  ```bash
+  docker exec storige-worker sh -c 'test -f "$PRINT_ICC_PROFILE_PATH" && echo icc-ok'
+  ```
+
+**반영 순서(VPS, `deploy@<VPS_HOST>`, `~/storige`)**
+1. 큐 3종(`pdf-validation`·`pdf-conversion`·`pdf-synthesis`) active·wait 0 확인 → `docker tag storige-{api,worker}:latest storige-{api,worker}:rollback-pre-<track>-<YYYYMMDD>`.
+2. `git merge --ff-only <sha>` → `docker compose build api worker` → `docker compose up -d --no-deps api worker` → 내부 health → `docker compose restart nginx`(api 재생성 뒤 필수).
+3. 스위치 끈 채로 배포하면 `[FLAGS-CHECK] api mismatch COMPLETE_CMYK_CONVERT=false(unlisted)` 가 남는다(부팅 무영향). 켤 때 `.env` 를 백업하고 `FLAGS_EXPECTED_API` 끝에 ` COMPLETE_CMYK_CONVERT=true`, 별도 줄 `COMPLETE_CMYK_CONVERT=true` 를 넣은 뒤 `docker compose up -d --no-deps api` → `docker compose restart nginx` → `[FLAGS-CHECK] api ok n=19`.
+4. 대상 세트의 `color_mode` 를 `cmyk` 로(관리자 화면 또는 DB). 바꾸기 전 값을 백업해 둔다.
+
+**확인**
+- 대상 세트로 편집완료 1건: 세션 `complete`, 표지 파일 metadata `generatedBy:'worker-cmyk'`, 검증 잡 `isValid`·경고 0·`metadata.colorMode:'CMYK'`·쪽 크기 종전과 같음, `download/external` 200.
+- api 로그 `[cmyk-convert] session … cover: <원본> → <결과> (job …)`, 오류 레벨 0.
+
+**알아둘 것**
+- 처음 구현은 `-dPDFX` 를 써서, 투명도가 있는 사진 페이지를 통째로 한 장의 이미지로 평탄화했다(사진 든 표지에서 수십 초, 글자까지 이미지화). PR #64 에서 제거 — 편집 완료 변환은 PDF/X 모드를 쓰지 않는다.
+- 기존 검증기는 압축 스트림 안에만 CMYK 연산자가 있는 파일을 RGB 로 판정한다. 변환본은 스탬프 + OutputIntent 로 CMYK 를 기록하지만, 고객이 직접 올린 같은 형태의 CMYK 파일은 종전처럼 RGB 로 보일 수 있다.
+- 결과 파일은 로컬 저장소(`/storage/converted/`)에 있다(원본은 R2 일 수 있음). 보존 정책 대상이다.
+
+**롤백**
+1. `.env` 의 `COMPLETE_CMYK_CONVERT=false` → `docker compose up -d --no-deps api` → `docker compose restart nginx`. 이후 완료는 종전(RGB). 이미 변환된 세션 파일은 그대로다.
+2. 코드까지 되돌릴 때: `docker tag storige-{api,worker}:rollback-pre-<track>-<YYYYMMDD> storige-{api,worker}:latest` → `docker compose up -d --no-deps api worker` → nginx 재시작.
+3. 세트 `color_mode` 는 그대로 두어도 무해하다(스위치 꺼짐이면 쓰이지 않음). 되돌리려면 백업한 값으로 UPDATE.
 
 ### 1. 컨테이너가 시작되지 않음
 

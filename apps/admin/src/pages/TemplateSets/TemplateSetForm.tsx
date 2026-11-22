@@ -1554,7 +1554,7 @@ export const TemplateSetForm = () => {
                     <Form.Item
                       name="colorMode"
                       label="색 처리 방식"
-                      extra="RGB 유지=화면 색 그대로 출력(현재 기본). CMYK 변환=출력 PDF를 인쇄용 CMYK로 변환(색 정확도). ※ 워커의 실제 색변환 적용은 인쇄 출력 영향이라 스테이징 검증 후 라이브 — 현재는 설정 저장까지."
+                      extra="RGB 유지=편집기가 만든 PDF 색 그대로 완료(기본). CMYK 변환=편집 완료 때 서버가 완료 PDF를 인쇄용 CMYK(ICC Japan Color 2001 Coated)로 변환해 그 파일로 완료합니다 — 완료가 몇 초 늦어지고, 변환에 실패하면 고객 화면에 저장 실패 안내가 뜨며 완료되지 않습니다(다시 누르면 재시도). 2026-11-22 부터 적용."
                     >
                       <Select
                         options={[
