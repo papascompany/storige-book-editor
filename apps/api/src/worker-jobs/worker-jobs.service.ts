@@ -1078,7 +1078,8 @@ export class WorkerJobsService implements OnModuleInit {
     sourceFileId: string,
     ctx: { editSessionId: string; role: 'cover' | 'content'; timeoutMs?: number; pollMs?: number },
   ): Promise<{ fileId: string; jobId: string }> {
-    const timeoutMs = ctx.timeoutMs ?? 20_000;
+    // 50초: 이미지가 많은 표지는 변환이 수 초~십수 초 걸린다. 편집기 완료 요청 timeout(90초)·nginx(300초)보다 짧게.
+    const timeoutMs = ctx.timeoutMs ?? 50_000;
     const pollMs = ctx.pollMs ?? 300;
     const fail = (reason: string, jobId?: string): never => {
       this.logger.warn(

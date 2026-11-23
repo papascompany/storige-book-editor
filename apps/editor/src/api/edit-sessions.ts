@@ -10,6 +10,9 @@ const MEMBER_CREATE_CONFIG: RetryableRequestConfig = { __retryStatuses: [429] }
 /** 회원 세션 생성이 408·5xx 로 실패한 뒤 주문 목록 조회로도 세션을 찾지 못했을 때 다시 보내기 전 대기(ms) */
 export const MEMBER_CREATE_RESEND_DELAY_MS = 1000
 
+/** 편집 완료 요청 timeout — 서버의 CMYK 변환 대기(최대 50초)보다 넉넉하게. */
+export const COMPLETE_TIMEOUT_MS = 90_000
+
 /** 주문 목록 조회로 복구를 시도할 회원 세션 생성 실패 — 408·5xx 응답 */
 function isRecoverableCreateFailure(err: unknown): boolean {
   if (!axios.isAxiosError(err)) return false
@@ -222,9 +225,15 @@ export const editSessionsApi = {
 
   /**
    * 편집 세션 완료 처리
+   *
+   * timeout 90초: 색 처리 CMYK 세트는 서버가 완료 안에서 PDF 를 CMYK 로 변환하고 기다린다(서버 대기 한도 50초).
+   * 기본 30초면 이미지가 많은 표지에서 서버가 아직 변환 중인데 편집기가 먼저 포기한다.
+   * timeout 은 자동 재시도 대상이 아니라 완료가 두 번 가지 않는다.
    */
   complete: async (id: string): Promise<EditSessionResponse> => {
-    const response = await apiClient.patch<EditSessionResponse>(`/edit-sessions/${id}/complete`, {})
+    const response = await apiClient.patch<EditSessionResponse>(`/edit-sessions/${id}/complete`, {}, {
+      timeout: COMPLETE_TIMEOUT_MS,
+    })
     return response.data
   },
 

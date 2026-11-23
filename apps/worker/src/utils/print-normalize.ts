@@ -3,6 +3,7 @@ import * as os from 'os';
 import * as path from 'path';
 import { Logger } from '@nestjs/common';
 import { runGhostscript, GS_PDFWRITE_TIMEOUT_MS } from './ghostscript';
+import { preconvertRgbImagesToCmyk } from './cmyk-image-preconvert';
 
 const logger = new Logger('PrintNormalize');
 
@@ -239,6 +240,19 @@ export async function convertPdfToCmykStrict(localPath: string): Promise<{ size:
     await fs.access(iccPath);
   } catch {
     throw new Error(`CMYK 변환 불가: ICC 프로파일 부재 (${iccPath})`);
+  }
+  // 이미지 선변환: GS 의 화소 단위 ICC 변환이 느려(1,860만 화소 표지 17초) RGB 이미지만 sharp 로 먼저 CMYK 로 바꾼다.
+  // 실패해도 GS 가 종전처럼 전부 변환하므로 결과는 같다(느릴 뿐) — warn 만 남기고 계속한다.
+  try {
+    const started = Date.now();
+    const pre = await preconvertRgbImagesToCmyk(localPath, iccPath);
+    if (pre.converted > 0 || pre.skipped > 0) {
+      logger.log(
+        `CMYK 이미지 선변환: ${pre.converted}개(${pre.pixels}화소) 변환, ${pre.skipped}개 GS 처리 — ${Date.now() - started}ms`,
+      );
+    }
+  } catch (err: any) {
+    logger.warn(`CMYK 이미지 선변환 실패 — GS 가 전부 변환: ${err?.message ?? err}`);
   }
   // PDF/X 모드·평탄화 없이(투명도·벡터 보존) — NormalizeOptions.pdfx 주석 참조.
   return normalizeToCmykInPlace(localPath, iccPath, { pdfx: false, flatten: false });

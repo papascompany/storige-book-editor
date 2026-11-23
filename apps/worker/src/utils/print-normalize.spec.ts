@@ -12,9 +12,13 @@ jest.mock('./ghostscript', () => ({
   GS_PDFWRITE_TIMEOUT_MS: 60_000,
 }));
 jest.mock('fs/promises');
+jest.mock('./cmyk-image-preconvert', () => ({
+  preconvertRgbImagesToCmyk: jest.fn().mockResolvedValue({ converted: 0, skipped: 0, pixels: 0 }),
+}));
 
 const mockedFs = fs as jest.Mocked<typeof fs>;
 const { runGhostscript } = require('./ghostscript');
+const { preconvertRgbImagesToCmyk } = require('./cmyk-image-preconvert');
 
 /**
  * 인쇄 산출 정규화 — 운영 안전 계약 잠금.
@@ -224,9 +228,37 @@ describe('convertPdfToCmykStrict — 색 처리 cmyk 세트의 편집 완료(실
     await expect(convertPdfToCmykStrict('/x/cover.pdf')).resolves.toEqual({ size: 5000 });
   });
 
+  it('GS 전에 RGB 이미지를 같은 ICC 로 선변환한다', async () => {
+    process.env.PRINT_ICC_PROFILE_PATH = '/icc/jc.icc';
+    mockedFs.access.mockResolvedValueOnce(undefined);
+    mockedFs.writeFile.mockResolvedValueOnce(undefined);
+    mockedFs.stat.mockResolvedValueOnce({ size: 900 } as any);
+    mockedFs.copyFile.mockResolvedValueOnce(undefined);
+    preconvertRgbImagesToCmyk.mockResolvedValueOnce({ converted: 3, skipped: 0, pixels: 18_600_000 });
+
+    await expect(convertPdfToCmykStrict('/x/cover.pdf')).resolves.toEqual({ size: 900 });
+    expect(preconvertRgbImagesToCmyk).toHaveBeenCalledWith('/x/cover.pdf', '/icc/jc.icc');
+    expect(preconvertRgbImagesToCmyk.mock.invocationCallOrder[0]).toBeLessThan(
+      runGhostscript.mock.invocationCallOrder[0],
+    );
+  });
+
+  it('선변환이 실패해도 GS 변환은 그대로 진행한다', async () => {
+    process.env.PRINT_ICC_PROFILE_PATH = '/icc/jc.icc';
+    mockedFs.access.mockResolvedValueOnce(undefined);
+    mockedFs.writeFile.mockResolvedValueOnce(undefined);
+    mockedFs.stat.mockResolvedValueOnce({ size: 900 } as any);
+    mockedFs.copyFile.mockResolvedValueOnce(undefined);
+    preconvertRgbImagesToCmyk.mockRejectedValueOnce(new Error('sharp boom'));
+
+    await expect(convertPdfToCmykStrict('/x/cover.pdf')).resolves.toEqual({ size: 900 });
+    expect(runGhostscript).toHaveBeenCalledTimes(1);
+  });
+
   it('ICC 미설정이면 throw — GS 무접촉', async () => {
     await expect(convertPdfToCmykStrict('/x/cover.pdf')).rejects.toThrow('PRINT_ICC_PROFILE_PATH');
     expect(runGhostscript).not.toHaveBeenCalled();
+    expect(preconvertRgbImagesToCmyk).not.toHaveBeenCalled();
   });
 
   it('ICC 파일이 없으면 throw', async () => {

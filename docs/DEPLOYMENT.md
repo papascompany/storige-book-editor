@@ -2184,10 +2184,11 @@ npx vitest run src/calendar src/plugins/CalendarPlugin.test.ts   # 데이터·co
 - 템플릿셋 「색 처리」(`template_sets.color_mode`)는 저장만 되고 출력에 반영되지 않았다. `cmyk` 세트도 편집기 RGB PDF 가 그대로 완료 파일이었다.
 
 **동작(스위치 켜짐)**
-- 편집 완료(`PATCH /edit-sessions/:id/complete`) 때 세트가 `cmyk` 이면 api 가 표지·내지 PDF 마다 worker `pdf-conversion` 큐에 `convert-pdf`(`convertOptions.colorConvert:'cmyk'`, 잡 `options.purpose:'cmyk-convert'`, `edit_session_id` 비움) 잡을 넣고 최대 20초 기다린다.
+- 편집 완료(`PATCH /edit-sessions/:id/complete`) 때 세트가 `cmyk` 이면 api 가 표지·내지 PDF 마다 worker `pdf-conversion` 큐에 `convert-pdf`(`convertOptions.colorConvert:'cmyk'`, 잡 `options.purpose:'cmyk-convert'`, `edit_session_id` 비움) 잡을 넣고 최대 50초 기다린다(2026-11-23 20초에서 상향 — 편집기의 완료 요청 timeout 도 90초로 늘림).
 - worker 는 Ghostscript 로 CMYK 변환(ICC = `PRINT_ICC_PROFILE_PATH`, OutputIntent 부착, **PDF/X 모드·투명도 평탄화 없음**)해 `/storage/converted/` 에 쓴다.
+- (2026-11-23) Ghostscript 는 RGB 이미지를 화소 단위로 ICC 변환해 300dpi 이미지가 많은 표지에서 느리다. 그래서 worker 는 GS 전에 `DeviceRGB` 8bit 이미지(Flate·PNG 예측자·JPEG)만 sharp 로 같은 ICC 의 `DeviceCMYK` 로 먼저 바꾼다(`utils/cmyk-image-preconvert.ts`). GS 는 이미 CMYK 인 이미지를 다시 변환하지 않는다. 선변환이 실패하거나 다룰 수 없는 이미지는 GS 가 종전대로 변환한다. 로그: `CMYK 이미지 선변환: N개(…화소) 변환, M개 GS 처리 — …ms`.
 - api 는 결과를 새 파일(로컬 저장소, 원본의 주문·회원·사이트·파일 유형·썸네일 승계, metadata `generatedBy:'worker-cmyk'`)로 등록하고 세션 파일 id 를 바꾼 뒤 완료한다. 원본 RGB 파일은 남고, 세션 `metadata.colorConversion` 에 원본·결과·잡 id 가 기록된다.
-- 변환 실패(잡 실패·20초 초과·등록 실패) → `422 COLOR_CONVERSION_FAILED`, 세션 미완료(편집기는 `editor.error SAVE_FAILED`).
+- 변환 실패(잡 실패·50초 초과·등록 실패) → `422 COLOR_CONVERSION_FAILED`, 세션 미완료(편집기는 `editor.error SAVE_FAILED`).
 - 변환본 검증 잡에는 서버 스탬프 `orderOptions.expectedColorMode:'cmyk'`(+ `source:'editor'`) — CMYK 감지 경고 없음, `metadata.colorMode:'CMYK'`.
 - 스위치 꺼짐 또는 `rgb` 세트 = 종전 그대로. 합성 정규화(`PRINT_NORMALIZE`, worker)와는 별개다.
 
