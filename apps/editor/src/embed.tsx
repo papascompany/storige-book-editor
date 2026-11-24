@@ -28,6 +28,7 @@ import { normalizeRestoredFonts } from './utils/fontRestore'
 import { applyObjectPermissions, applyCoverMaterialLock } from './utils/objectPermissions'
 import { trackRequiredEdits, collectUneditedRequiredForCustomer } from './utils/requiredEditGate'
 import { getPageStepBlockMessage } from './utils/pageStepGuard'
+import { getPhotoPrintEmptyBlockMessage } from './utils/photoPrintCompleteGuard'
 import { holdAutosave, isAutosaveSuspended, runWithAutosaveSuspended } from './utils/autosaveSuspend'
 import { useAuthStore } from './stores/useAuthStore'
 import { useSettingsStore } from './stores/useSettingsStore'
@@ -2533,7 +2534,8 @@ function EmbeddedEditor({
         // 내지 페이지 수가 증감 단위(pageStep) 배수가 아니면 완료 차단 — 저장·complete·
         // editor.complete 모두 미수행, editor.error(INVALID_DATA) + reject. pageStep 미설정 셋 무영향.
         {
-          const pageStepBlock = getPageStepBlockMessage()
+          // 사진인화 빈 사진틀도 같은 방식으로 차단(빈 칸 = 흰 인화지 출력·매수 포함)
+          const pageStepBlock = getPageStepBlockMessage() ?? getPhotoPrintEmptyBlockMessage()
           if (pageStepBlock) {
             const errPayload = { code: 'INVALID_DATA' as const, message: pageStepBlock, fatal: false }
             onError?.(errPayload)

@@ -1,8 +1,13 @@
-import { useMemo } from 'react'
+import { useCallback, useMemo } from 'react'
 import { useAppStore } from '@/stores/useAppStore'
 import { useSettingsStore } from '@/stores/useSettingsStore'
-import { useImageStore } from '@/stores/useImageStore'
-import { SelectionType, ImageProcessingPlugin } from '@storige/canvas-core'
+import { useImageStore, checkMobileFileSize, currentPhotoPrintPhotoCount } from '@/stores/useImageStore'
+import { SelectionType, ImageProcessingPlugin, core, selectFiles } from '@storige/canvas-core'
+import { autofillPhotosIntoFrames } from '@/utils/photoPlacement'
+import { checkPhotoPrintUploadLimit } from '@/utils/photoPrintUpload'
+import { applyAllPhotoPrint } from '@/utils/photoPrintRehydrateAll'
+import { photoPrintBatchMessage, runPhotoPrintBatchUpload } from '@/utils/photoPrintBatchUpload'
+import { showToast } from '@/stores/useToastStore'
 import type { EditorMenuKey } from '@storige/types'
 import {
   Upload,
@@ -102,6 +107,50 @@ export default function ToolBar({ horizontal = false }: ToolBarProps) {
   const upload = useImageStore((state) => state.upload)
   const uploadSimple = useImageStore((state) => state.uploadSimple)
 
+  // 사진인화 툴바 업로드 — 진행 중 재진입은 store 의 uploading 플래그로 막는다
+  const uploadPhotoPrintBatch = useCallback(async () => {
+    const imagePlugin = getPlugin<ImageProcessingPlugin>('ImageProcessingPlugin')
+    if (!imagePlugin) {
+      showToast('이미지 처리 플러그인을 찾을 수 없습니다.', 'error')
+      return
+    }
+    const store = useImageStore.getState()
+    if (store.uploading) return
+    useImageStore.setState({ uploading: true })
+    try {
+      const result = await runPhotoPrintBatchUpload({
+        selectFiles: async () => Array.from((await selectFiles({ accept: 'image/*', multiple: true })) ?? []),
+        checkLimit: (files) => checkPhotoPrintUploadLimit(files, currentPhotoPrintPhotoCount()),
+        checkFile: (file) => checkMobileFileSize(file),
+        register: (file) => useImageStore.getState().registerUploadedPhoto(file),
+        autofill: async (photos) => {
+          const allCanvas = useAppStore.getState().allCanvas
+          const canvases = allCanvas.length > 0 ? allCanvas : canvas ? [canvas] : []
+          const fillImageIntoFrame = useImageStore.getState().fillImageIntoFrame
+          const r = await autofillPhotosIntoFrames(canvases, photos, {
+            mode: 'date',
+            // 사진인화 틀은 모두 같은 판형 — 페이지 순서 그대로 채운다
+            aspectMatch: false,
+            fillFrame: (cv, fore, frame, plugin) => fillImageIntoFrame(cv, fore, frame, plugin as ImageProcessingPlugin),
+            loadImage: (url) => core.imageFromURL(url, { crossOrigin: 'anonymous' }),
+            imagePlugin,
+          })
+          if (r.filledCount > 0) await applyAllPhotoPrint()
+          return r
+        },
+      })
+      if (!result) return
+      canvas?.requestRenderAll()
+      const { text, level } = photoPrintBatchMessage(result)
+      showToast(text, level, 5000)
+    } catch (error) {
+      console.error('[ToolBar] 사진인화 업로드 실패:', error)
+      showToast('사진을 올리지 못했습니다. 잠시 후 다시 시도해 주세요.', 'error')
+    } finally {
+      useImageStore.setState({ uploading: false })
+    }
+  }, [canvas, getPlugin])
+
   // Build menu list based on editMode and appMenu settings
   const menus = useMemo(() => {
     const uploadMenu: AppMenu = {
@@ -112,6 +161,12 @@ export default function ToolBar({ horizontal = false }: ToolBarProps) {
         if (!ready || !canvas) return
 
         try {
+          // 사진인화 세트: 여러 장 선택 → storage 등록 → 빈 사진틀을 페이지 순서대로 채움
+          // (낱개 이미지로 올리면 틀과 이어지지 않아 sourcePhotoId 가 비고 cover 맞춤도 안 된다)
+          if (isPhotoPrintProduct) {
+            await uploadPhotoPrintBatch()
+            return
+          }
           if (ENABLE_IMAGE_PROCESSING) {
             // 이미지 처리 기능이 활성화된 경우 ImageProcessingPlugin 사용
             const imagePlugin = getPlugin<ImageProcessingPlugin>('ImageProcessingPlugin')
@@ -167,8 +222,13 @@ export default function ToolBar({ horizontal = false }: ToolBarProps) {
     // 업로드 메뉴는 빌드 플래그 + 화이트리스트 모두 통과해야 노출.
     const showUpload = ENABLE_UPLOAD_MENU && (editMode || isAllowed('UPLOAD'))
 
-    return [...(showUpload ? [uploadMenu] : []), ...availableMenus]
-  }, [editMode, enabledMenus, isCalendarProduct, isPhotoPrintProduct, ready, canvas, getPlugin, upload, uploadSimple, coverMaterialLocked, isCoverPage, isSpreadProduct])
+    // 사진인화 세트: 주 작업 패널(PHOTO_PRINT)을 맨 앞으로 — 메뉴 맨 끝이라 좁은 창에서 화면 밖으로 밀렸다
+    const orderedMenus = isPhotoPrintProduct && !editMode
+      ? [...availableMenus.filter((m) => m.type === 'PHOTO_PRINT'), ...availableMenus.filter((m) => m.type !== 'PHOTO_PRINT')]
+      : availableMenus
+
+    return [...(showUpload ? [uploadMenu] : []), ...orderedMenus]
+  }, [editMode, enabledMenus, isCalendarProduct, isPhotoPrintProduct, ready, canvas, getPlugin, upload, uploadSimple, uploadPhotoPrintBatch, coverMaterialLocked, isCoverPage, isSpreadProduct])
 
   const handleMenuClick = (menu: AppMenu) => {
     if (menu.onTap) {
@@ -195,7 +255,7 @@ export default function ToolBar({ horizontal = false }: ToolBarProps) {
           <button
             key={menu.type}
             className={cn(
-              'menu-item relative flex flex-col items-center justify-center gap-0.5 rounded-xl transition-colors',
+              'menu-item relative flex flex-col items-center justify-center gap-0.5 rounded-xl transition-colors shrink-0',
               // 터치 디바이스(pointer:coarse) 에서는 Apple HIG 44pt / Material 48dp 충족
               horizontal
                 ? 'h-11 w-11 min-w-[44px] [@media(pointer:coarse)]:h-12 [@media(pointer:coarse)]:w-12 [@media(pointer:coarse)]:min-w-[48px]'
