@@ -7,6 +7,7 @@ import FontPlugin from './FontPlugin'
 import { convertFabricObjectToSVGString, core, mmToPx, pxToMm } from '../utils'
 import { dlog } from '../utils/debugLog'
 import { stripSpreadGuideResidue } from '../utils/spreadGuideResidue'
+import { removeObjectsWithUpdate } from '../utils/groupRemove'
 import { computePdfPageGeometry } from './pdfPageGeometry'
 
 /**
@@ -2409,14 +2410,11 @@ class ServicePlugin extends PluginBase {
         }
       }
 
-      // 텍스트들을 그룹에서 제거하고 벡터화
+      // 텍스트들을 그룹에서 한 번에 제거(절대 좌표로 변환)한 뒤 벡터화
+      removeObjectsWithUpdate(group, textsToVectorize)
+
       for (const obj of textsToVectorize) {
-        console.log(`  ↳ 텍스트 벡터화 및 그룹에서 제거: "${(obj as any).text}"`)
-
-        // 그룹에서 제거 (removeWithUpdate가 자동으로 절대 좌표로 변환)
-        group.removeWithUpdate(obj)
-
-        console.log(`  ↳ 절대 좌표로 변환됨: left=${obj.left}, top=${obj.top}, scaleX=${obj.scaleX}, scaleY=${obj.scaleY}`)
+        console.log(`  ↳ 텍스트 벡터화: "${(obj as any).text}" left=${obj.left}, top=${obj.top}, scaleX=${obj.scaleX}, scaleY=${obj.scaleY}`)
 
         // 벡터화
         const vectorizedObj = await this._convertTextToSvg(obj)
