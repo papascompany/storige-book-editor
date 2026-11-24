@@ -100,7 +100,7 @@ describe('photoPrintBatchMessage', () => {
   it('틀 부족·실패·용량 초과는 warning', () => {
     const m = photoPrintBatchMessage({ ...base, selected: 5, filled: 2, unplaced: 1, uploadFailed: 1, skipped: 1 })
     expect(m.level).toBe('warning')
-    expect(m.text).toContain("1장은 '내 업로드'에 남았습니다")
+    expect(m.text).toContain('1장이 남았습니다')
     expect(m.text).toContain('1장은 올리지 못했습니다')
     expect(m.text).toContain('1장은 용량이 커서')
   })

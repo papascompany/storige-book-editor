@@ -82,7 +82,7 @@ export async function runPhotoPrintBatchUpload(deps: PhotoPrintBatchDeps): Promi
 export function photoPrintBatchMessage(r: PhotoPrintBatchResult): { text: string; level: 'success' | 'warning' | 'info' } {
   const parts: string[] = []
   if (r.filled > 0) parts.push(`사진 ${r.filled}장을 넣었습니다.`)
-  if (r.unplaced > 0) parts.push(`빈 칸이 모자라 ${r.unplaced}장은 '내 업로드'에 남았습니다.`)
+  if (r.unplaced > 0) parts.push(`빈 칸이 모자라 ${r.unplaced}장이 남았습니다. 페이지를 추가한 뒤 '이미지' 메뉴의 '사진 자동편집'으로 넣을 수 있습니다.`)
   const failed = r.uploadFailed + r.fillFailed
   if (failed > 0) parts.push(`${failed}장은 올리지 못했습니다. 잠시 후 다시 시도해 주세요.`)
   if (r.skipped > 0) parts.push(`${r.skipped}장은 용량이 커서 건너뛰었습니다.`)

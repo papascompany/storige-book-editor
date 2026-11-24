@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Upload as UploadSimple, Wand2 } from 'lucide-react'
 import { useAppStore } from '@/stores/useAppStore'
+import { useSettingsStore } from '@/stores/useSettingsStore'
 import { useImageStore, useUploaded, useUploadedPhotoMeta } from '@/stores/useImageStore'
 import { useExternalPhotosStore } from '@/stores/useExternalPhotosStore'
 import { buildPhotoUsageCountMap, photoUsageCount } from '@/utils/photoUsage'
@@ -79,7 +80,8 @@ export default function AppImage() {
   // 캔버스 객체 추가/삭제·undo/redo 시 사용 횟수 재집계 트리거.
   // (외부주입·내 업로드 공통, allCanvas 선택자 구독으로
   //  늦게 뜨는 페이지 재구독, history:undo/redo 직접 구독, 300ms debounce)
-  const hasUploads = uploaded.length > 0
+  // 사진인화 툴바 업로드는 캔버스 객체 없이 메타(storage URL)만 남긴다 — 메타도 업로드로 센다
+  const hasUploads = uploaded.length > 0 || uploadedPhotoMeta.length > 0
   const recountTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   useEffect(() => {
     if (!hasExternal && !hasUploads) return
@@ -165,6 +167,13 @@ export default function AppImage() {
         ? externalPhotos.filter((p) => photoUsageCount(usageCountMap, [p.url]) === 0)
         : externalPhotos,
     [externalPhotos, unusedOnly, usageCountMap],
+  )
+
+  // 사진인화: 아직 어느 칸에도 넣지 않은 내 업로드 사진(틀이 모자라 남은 사진) — 패널에서 보이게 한다
+  const isPhotoPrintProduct = useSettingsStore((state) => state.productProfile?.kind === 'photo-print')
+  const unplacedUploads = useMemo(
+    () => (isPhotoPrintProduct ? uploadedPhotoMeta.filter((m) => photoUsageCount(usageCountMap, [m.url]) === 0) : []),
+    [isPhotoPrintProduct, uploadedPhotoMeta, usageCountMap],
   )
 
   // '내 업로드' 필터 — 업로드 객체의 dataURL(src) + storage URL 합산 키.
@@ -468,6 +477,29 @@ export default function AppImage() {
             <Wand2 className="h-3.5 w-3.5 mr-1.5" />
             {autofilling ? '자동편집 중...' : '사진 자동편집'}
           </Button>
+        </div>
+      )}
+
+      {unplacedUploads.length > 0 && (
+        <div className="px-4 pt-3 pb-1" data-testid="photo-print-unplaced">
+          <p className="text-xs text-editor-text-muted mb-2">
+            아직 넣지 않은 사진 {unplacedUploads.length}장 —{' '}
+            {emptyFrameExists ? "'사진 자동편집'을 누르면 빈 칸에 넣습니다." : "페이지를 추가한 뒤 '사진 자동편집'을 누르세요."}
+          </p>
+          <div className="grid grid-cols-4 gap-1.5">
+            {unplacedUploads.slice(0, 12).map((m) => (
+              <img
+                key={m.url}
+                src={m.url}
+                alt={m.name ?? ''}
+                loading="lazy"
+                className="aspect-square w-full object-cover rounded border border-editor-border"
+              />
+            ))}
+          </div>
+          {unplacedUploads.length > 12 && (
+            <p className="text-xs text-editor-text-muted mt-1">외 {unplacedUploads.length - 12}장</p>
+          )}
         </div>
       )}
 
