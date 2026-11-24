@@ -8,6 +8,8 @@ import {
   findEmptyPhotoPrintSlots,
   getPhotoPrintCompleteBlockMessage,
   photoPrintCopiesTotal,
+  photoPrintReducibleCopies,
+  totalCopiesFixHint,
   totalCopiesMismatchMessage,
 } from './photoPrintCompleteGuard'
 
@@ -112,8 +114,9 @@ describe('주문 총 매수(orderOptions.totalCopies, v1.35)', () => {
 
   it('합계가 많으면 줄이라는 메시지', () => {
     setup([3, 3, 4, 2], 10)
-    expect(getPhotoPrintCompleteBlockMessage()).toBe(totalCopiesMismatchMessage(12, 10))
-    expect(totalCopiesMismatchMessage(12, 10)).toContain('2매를 줄여')
+    // 줄일 수 있는 매수 = (3-1)+(3-1)+(4-1)+(2-1) = 8 ≥ 2 → 매수 안내
+    expect(getPhotoPrintCompleteBlockMessage()).toBe(totalCopiesMismatchMessage(12, 10, 8))
+    expect(getPhotoPrintCompleteBlockMessage()).toContain('사진별 매수에서 2매를 줄여')
   })
 
   it('합계가 적으면 더하라는 메시지', () => {
@@ -126,6 +129,23 @@ describe('주문 총 매수(orderOptions.totalCopies, v1.35)', () => {
     expect(getPhotoPrintCompleteBlockMessage()).toBeNull()
     setup([1, 1], 0)
     expect(getPhotoPrintCompleteBlockMessage()).toBeNull()
+  })
+
+  it('모든 사진이 최소 매수면 사진(페이지) 삭제를 안내한다', () => {
+    setup([1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1], 10)
+    expect(getPhotoPrintCompleteBlockMessage()).toContain('사진(페이지)을 지워 2매를 줄여')
+  })
+
+  it('totalCopiesFixHint: 많음(매수로 가능/일부/불가)·적음', () => {
+    expect(totalCopiesFixHint(12, 10, 5)).toBe('사진별 매수에서 2매를 줄여 주세요')
+    expect(totalCopiesFixHint(12, 10, 1)).toBe('사진(페이지)을 지우거나 매수를 줄여 2매를 맞춰 주세요')
+    expect(totalCopiesFixHint(12, 10, 0)).toBe('사진(페이지)을 지워 2매를 줄여 주세요')
+    expect(totalCopiesFixHint(7, 10, 0)).toBe('3매를 더해 주세요')
+  })
+
+  it('photoPrintReducibleCopies', () => {
+    expect(photoPrintReducibleCopies([{ copies: 3 }, { copies: 1 }], 1)).toBe(2)
+    expect(photoPrintReducibleCopies([{ copies: 1 }], 1)).toBe(0)
   })
 
   it('빈 칸이 매수보다 먼저 판정된다', () => {

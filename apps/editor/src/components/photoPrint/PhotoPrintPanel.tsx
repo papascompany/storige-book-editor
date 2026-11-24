@@ -8,7 +8,7 @@ import { useSettingsStore } from '@/stores/useSettingsStore'
 import { usePhotoPrintStore, type PhotoItemOptionPatch } from '@/stores/usePhotoPrintStore'
 import { applyPhotoPrintItem, resolvePhotoItemIndexForCanvas } from '@/utils/photoPrintRehydrate'
 import { applyAllPhotoPrint } from '@/utils/photoPrintRehydrateAll'
-import { photoPrintCopiesTotal } from '@/utils/photoPrintCompleteGuard'
+import { photoPrintCopiesTotal, photoPrintReducibleCopies, totalCopiesFixHint } from '@/utils/photoPrintCompleteGuard'
 
 /**
  * PhotoPrintPanel — 좌측 메뉴 `PHOTO_PRINT`(사진인화) 패널 (CalendarPanel 과 같은 구조)
@@ -78,7 +78,7 @@ export default function PhotoPrintPanel() {
     <div className="w-full h-full flex flex-col overflow-y-auto">
       <div className="px-4 pt-4 pb-3 flex flex-col gap-4">
         <h2 className="text-sm font-semibold text-editor-text">사진인화</h2>
-        {orderTotalCopies !== null && <TotalCopiesBadge items={items} ordered={orderTotalCopies} />}
+        {orderTotalCopies !== null && <TotalCopiesBadge items={items} ordered={orderTotalCopies} minCopies={profile.copies.min} />}
         <ApplyAllSection items={items} currentItemIndex={currentItemIndex} />
         <ItemListSection profile={profile} items={items} currentItemIndex={currentItemIndex} />
       </div>
@@ -89,7 +89,7 @@ export default function PhotoPrintPanel() {
 // ─── 주문 총 매수 ──────────────────────────────────────────────────────────
 
 /** 런처 orderOptions.totalCopies 가 있을 때만 — 합계가 다르면 완료가 막힌다(photoPrintCompleteGuard) */
-function TotalCopiesBadge({ items, ordered }: { items: PhotoItem[]; ordered: number }) {
+function TotalCopiesBadge({ items, ordered, minCopies }: { items: PhotoItem[]; ordered: number; minCopies: number }) {
   const total = photoPrintCopiesTotal(items)
   const ok = total === ordered
   return (
@@ -102,7 +102,7 @@ function TotalCopiesBadge({ items, ordered }: { items: PhotoItem[]; ordered: num
       )}
     >
       합계 {total}매 / 주문 {ordered}매
-      {!ok && (total > ordered ? ` — ${total - ordered}매를 줄여 주세요` : ` — ${ordered - total}매를 더해 주세요`)}
+      {!ok && ` — ${totalCopiesFixHint(total, ordered, photoPrintReducibleCopies(items, minCopies))}`}
     </p>
   )
 }

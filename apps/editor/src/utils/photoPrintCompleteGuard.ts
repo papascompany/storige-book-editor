@@ -47,9 +47,26 @@ export function photoPrintCopiesTotal(items: ReadonlyArray<Pick<PhotoItem, 'copi
   return items.reduce((sum, it) => sum + (Number.isFinite(it.copies) ? it.copies : 0), 0)
 }
 
-export function totalCopiesMismatchMessage(total: number, ordered: number): string {
-  const diff = total > ordered ? `${total - ordered}매를 줄여` : `${ordered - total}매를 더해`
-  return `주문 매수는 ${ordered}매인데 지금 합계는 ${total}매입니다. 사진별 매수에서 ${diff} ${ordered}매로 맞춘 뒤 완료해 주세요.`
+/** 사진을 지우지 않고 매수만으로 줄일 수 있는 양 = Σ(copies − copies.min) */
+export function photoPrintReducibleCopies(items: ReadonlyArray<Pick<PhotoItem, 'copies'>>, minCopies: number): number {
+  const min = Number.isFinite(minCopies) && minCopies > 0 ? minCopies : 1
+  return items.reduce((sum, it) => sum + Math.max(0, (Number.isFinite(it.copies) ? it.copies : 0) - min), 0)
+}
+
+/**
+ * 합계와 주문 매수가 다를 때 고객이 할 일(짧은 안내 — 패널 배지·토스트 공용).
+ * 많을 때 매수만으로 못 줄이면(모든 사진이 최소 매수 등) 사진(페이지) 삭제를 안내한다.
+ */
+export function totalCopiesFixHint(total: number, ordered: number, reducible: number): string {
+  if (total < ordered) return `${ordered - total}매를 더해 주세요`
+  const excess = total - ordered
+  if (reducible >= excess) return `사진별 매수에서 ${excess}매를 줄여 주세요`
+  if (reducible <= 0) return `사진(페이지)을 지워 ${excess}매를 줄여 주세요`
+  return `사진(페이지)을 지우거나 매수를 줄여 ${excess}매를 맞춰 주세요`
+}
+
+export function totalCopiesMismatchMessage(total: number, ordered: number, reducible: number): string {
+  return `주문 매수는 ${ordered}매인데 지금 합계는 ${total}매입니다. ${totalCopiesFixHint(total, ordered, reducible)}. 맞춘 뒤 완료할 수 있습니다.`
 }
 
 /**
@@ -66,6 +83,9 @@ export function getPhotoPrintCompleteBlockMessage(): string | null {
   if (slots.length > 0) return emptyPhotoPrintSlotsMessage(slots)
   const ordered = usePhotoPrintStore.getState().orderTotalCopies
   if (ordered === null) return null
-  const total = photoPrintCopiesTotal(syncPhotoPrintItemsWithCanvases())
-  return total === ordered ? null : totalCopiesMismatchMessage(total, ordered)
+  const items = syncPhotoPrintItemsWithCanvases()
+  const total = photoPrintCopiesTotal(items)
+  if (total === ordered) return null
+  const minCopies = usePhotoPrintStore.getState().profile?.copies.min ?? 1
+  return totalCopiesMismatchMessage(total, ordered, photoPrintReducibleCopies(items, minCopies))
 }
