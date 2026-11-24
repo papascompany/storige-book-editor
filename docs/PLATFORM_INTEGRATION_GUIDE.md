@@ -1693,7 +1693,7 @@ curl -X POST https://api.papascompany.co.kr/api/v1/sessions/launch \
 | `orderSeqno` | — | 정수 ≥ 1. 있으면 세션·`embed.orderSeqno`·deliverables 에 echo-back |
 | `mode` | — | `both`(기본)·`cover`·`content`. `template`·`spread` 는 `400` |
 | `callbackUrl` | — | `https` 공개 호스트만 — `https` 가 아니면 `400 ERR_VALIDATION_FAILED`, 사설·링크로컬·루프백 호스트면 `422 ERR_WEBHOOK_URL_FORBIDDEN`. 세션 `callbackUrl` 로 기록 |
-| `orderOptions` | — | 자유형 객체 → 세션 `metadata.orderOptions` |
+| `orderOptions` | — | 자유형 객체 → 세션 `metadata.orderOptions`. 사진인화 세트는 `totalCopies`(주문 총 매수, 1 이상 정수 또는 정수형 문자열)를 읽습니다 — 아래 「사진인화 세트의 `items` 입력」 v1.35 |
 | `items`·`externalPhotos` | — | 각 500 항목 이하(초과 `400`), 서버는 형식 검증 없이 `metadata.items`·`metadata.externalPhotos` 에 기록만 합니다. **`items` 는 사진인화 세트에서 편집기가 읽는 `PhotoItemInput[]`(v1.25 — 아래 「사진인화 세트의 `items` 입력」)**이고 그 밖의 세트에서는 쓰이지 않습니다. `externalPhotos` 는 아직 기록만(자동 채움 없음) |
 | `calendar` | — | `{startYm:'YYYY-MM'}`(또는 `{startYear, startMonth}`) → 서버가 `metadata.calendar {startYear, startMonth, anniversaries:[]}` 로 풀어 기록하고 편집기가 그 시작 연월로 엽니다(캘린더 프로파일 세트). 형식이 맞지 않는 `startYm` 은 변환하지 않고 그대로 기록되며 편집기가 쓰지 않습니다 |
 
@@ -1720,6 +1720,7 @@ curl -X POST https://api.papascompany.co.kr/api/v1/sessions/launch \
 > - `copies` 는 **1 이상 정수 또는 정수형 문자열(`"3"`)** 만 숫자로 받고, 그 밖의 값(0·소수·`"abc"`·누락)은 오류 없이 프로파일 하한 `copies.min` 으로, 범위 밖은 `[copies.min, copies.max]` 로 클램프됩니다. 어휘(`border`·`fit`·`finish`)가 프로파일 허용 목록 밖이면 첫 허용값, 플래그는 `true` 일 때만 켜지고 프로파일이 끈 옵션은 항상 `false` 입니다. `sizeCode` 는 P2 에서 프로파일 `sizes[0].code` 로 고정되어 보낸 값을 쓰지 않고, `sourcePhotoId` 는 편집기가 채움·교체 시점에 업로드 파일 id 로 덮어쓰거나(식별자가 없으면 키 제거) 하며, 아직 사진을 채우지 않은 항목에는 보낸 값이 남을 수 있습니다.
 > - 서버는 기록만 하고(형식 검증 없음, 500 항목 초과만 `400`), **편집기가 신규 세션(저장 캔버스 없음) 진입 시 항목 수 × 사진당 캔버스 수(chemical 1 / digital 2)로 캔버스를 증설**해(프로파일 `pages.max` 이내 — 초과분은 시드하지 않음) 항목 옵션을 시드한 뒤, 정제한 완전형 `PhotoItem[]` 로 `metadata.items` 를 덮어씁니다. 재오픈(저장본 있음)은 저장본 캔버스 수가 우선이라 항목 수로 캔버스를 늘리지 않습니다. 고객은 편집기 패널에서 매수·옵션을 바꾸고 사진 단위로 페이지를 추가·삭제할 수 있으므로, **최종 수량의 권위는 `editor.complete.items`·deliverables `items`** 입니다.
 > - **빈 칸 완료 차단 (v1.34, 2026-11-24):** 사진이 없는 사진틀이 남아 있으면 편집기가 완료하지 않습니다. 편집완료 버튼은 경고를 띄우고 멈추고, 프로그래매틱 `complete()` 는 `editor.error {code:'INVALID_DATA'}` 를 보내고 reject 합니다(pageStep 위반과 같은 경로). 고객은 사진을 넣거나 빈 칸(페이지)을 지운 뒤 다시 완료합니다. 그래서 정상 완료된 세션에는 빈 칸이 없습니다.
+> - **주문 총 매수 `orderOptions.totalCopies` (v1.35, 2026-11-24):** 런처가 보내면 편집기 사진인화 패널에 「합계 N매 / 주문 M매」가 보이고, 사진별 `copies` 합계가 M 과 다르면 완료하지 않습니다(빈 칸 차단 다음 순서, 같은 `INVALID_DATA` 경로). 보통 `items` 를 `{copies:1}` × M 으로 함께 보냅니다. 보내지 않으면 매수 검사를 하지 않습니다. 책자의 `quantity`(부수)와 섞이지 않도록 사진인화는 `quantity` 를 읽지 않습니다. 재방문(shop-session)은 첫 launch 때 기록된 값을 그대로 씁니다.
 > - **여러 장 업로드 (2026-11-24):** 사진인화 세트의 툴바 업로드는 여러 장을 받아 빈 사진틀을 페이지 순서대로 채웁니다(템플릿에 사진틀이 있어야 합니다 — 편집기는 사진틀을 자동으로 만들지 않습니다). 칸이 모자라 남은 사진은 이미지 패널에 보이고, 페이지를 추가한 뒤 '사진 자동편집'으로 넣습니다.
 > - 서버는 읽을 때마다 템플릿셋 프로파일로 다시 정제합니다(상한 = min(세션 캔버스 수 기준 사진 수, `upload.maxPhotos`)) — `metadata.items` 를 `PATCH` 로 직접 고쳐도 deliverables·시트 맵에 그대로 실리지 않습니다.
 

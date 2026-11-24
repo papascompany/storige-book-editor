@@ -41,6 +41,11 @@ export interface PhotoPrintStoreState {
   mapping: PhotoPrintMapping | null
   /** 정제된 항목 목록(캔버스 수와 동기화 전에는 비어 있을 수 있다) */
   items: PhotoItem[]
+  /**
+   * 주문 총 매수 — 런처 `orderOptions.totalCopies`(1 이상 정수). null = 제약 없음.
+   * 값이 있으면 항목 copies 합계가 이 값과 같아야 완료할 수 있다(photoPrintCompleteGuard).
+   */
+  orderTotalCopies: number | null
 
   /** 프로파일로 초기화(항목은 빈 배열 — 캔버스 수 확정 뒤 syncWithCanvasCount 가 채운다). photo-print 가 아니면 reset */
   setFromProfile: (profile: ProductProfile | null | undefined) => void
@@ -66,7 +71,18 @@ export interface PhotoPrintStoreState {
   setItemMeta: (index: number, patch: PhotoItemMetaPatch) => void
   /** 모든 항목에 같은 옵션 적용 */
   applyAll: (patch: PhotoItemOptionPatch) => void
+  /** 주문 총 매수 설정(1 이상 정수가 아니면 null) */
+  setOrderTotalCopies: (value: unknown) => void
   reset: () => void
+}
+
+/**
+ * 주문 총 매수 판독 — 1 이상 정수 또는 정수형 문자열("10")만 받는다(그 밖은 null = 제약 없음).
+ * copies 입력 규칙(PLATFORM_INTEGRATION_GUIDE §3.7.3)과 같은 관대함.
+ */
+export function parseOrderTotalCopies(value: unknown): number | null {
+  const n = typeof value === 'string' && /^\s*\d+\s*$/.test(value) ? Number(value) : value
+  return typeof n === 'number' && Number.isInteger(n) && n >= 1 ? n : null
 }
 
 function normalize(items: ReadonlyArray<Partial<PhotoItem>>, profile: PhotoPrintProfile): PhotoItem[] {
@@ -81,14 +97,15 @@ export const usePhotoPrintStore = create<PhotoPrintStoreState>((set, get) => ({
   profile: null,
   mapping: null,
   items: [],
+  orderTotalCopies: null,
 
   setFromProfile: (profile) => {
     const photo = profile?.kind === 'photo-print' ? profile.photoPrint : undefined
     if (!profile || !photo) {
-      set({ profile: null, mapping: null, items: [] })
+      set({ profile: null, mapping: null, items: [], orderTotalCopies: null })
       return
     }
-    set({ profile: photo, mapping: { sheet: profile.sheet, photoPrint: photo }, items: [] })
+    set({ profile: photo, mapping: { sheet: profile.sheet, photoPrint: photo }, items: [], orderTotalCopies: null })
   },
 
   restore: (input) => {
@@ -155,5 +172,7 @@ export const usePhotoPrintStore = create<PhotoPrintStoreState>((set, get) => ({
     set({ items: normalize(items.map((it) => ({ ...it, ...patch })), profile) })
   },
 
-  reset: () => set({ profile: null, mapping: null, items: [] }),
+  setOrderTotalCopies: (value) => set({ orderTotalCopies: parseOrderTotalCopies(value) }),
+
+  reset: () => set({ profile: null, mapping: null, items: [], orderTotalCopies: null }),
 }))

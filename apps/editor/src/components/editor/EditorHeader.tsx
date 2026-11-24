@@ -51,7 +51,7 @@ import type { SpreadRegionPosition } from '@storige/types'
 import { runWithAutosaveSuspended } from '@/utils/autosaveSuspend'
 import { confirmRequiredEditsBeforeComplete } from '@/utils/requiredEditGate'
 import { getPageStepBlockMessage } from '@/utils/pageStepGuard'
-import { getPhotoPrintEmptyBlockMessage } from '@/utils/photoPrintCompleteGuard'
+import { getPhotoPrintCompleteBlockMessage } from '@/utils/photoPrintCompleteGuard'
 import RequiredEditConfirmModal from './RequiredEditConfirmModal'
 import { describeError } from '@/utils/safeErrorLog'
 import { saveFailureMessage } from '@/utils/embedFailurePolicy'
@@ -431,7 +431,7 @@ export default function EditorHeader({
     }
 
     // 사진인화: 사진이 없는 칸이 남으면 완료 차단(빈 칸은 흰 인화지로 출력되고 매수에 들어간다)
-    const photoPrintEmptyBlock = getPhotoPrintEmptyBlockMessage()
+    const photoPrintEmptyBlock = getPhotoPrintCompleteBlockMessage()
     if (photoPrintEmptyBlock) {
       showToast(photoPrintEmptyBlock, 'warning', 6000)
       return

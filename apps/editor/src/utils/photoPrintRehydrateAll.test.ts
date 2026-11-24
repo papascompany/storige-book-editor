@@ -119,6 +119,16 @@ describe('restorePhotoPrintSessionItems', () => {
     expect(items[1]).toMatchObject({ index: 1, canvasIndex: 2, fit: 'image-full', grayscale: true, copies: 5 })
   })
 
+  it('orderOptions.totalCopies 를 주문 총 매수로 기록한다(items 유무와 무관, 잘못된 값은 null)', () => {
+    wire(photoProfile, 4)
+    restorePhotoPrintSessionItems({ orderOptions: { totalCopies: '10', quantity: 1 }, items: [{ copies: 1 }] })
+    expect(usePhotoPrintStore.getState().orderTotalCopies).toBe(10)
+    restorePhotoPrintSessionItems({ orderOptions: { quantity: 10 } })
+    expect(usePhotoPrintStore.getState().orderTotalCopies).toBeNull()
+    restorePhotoPrintSessionItems({ orderOptions: { totalCopies: 0 } })
+    expect(usePhotoPrintStore.getState().orderTotalCopies).toBeNull()
+  })
+
   it('NULL/캘린더 세트·items 없음·객체 아님 → false, 스토어 불변', () => {
     wire(null, 2)
     expect(restorePhotoPrintSessionItems({ items: [{ copies: 2 }] })).toBe(false)

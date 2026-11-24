@@ -57,6 +57,9 @@ export function restorePhotoPrintSessionItems(metadata: unknown): boolean {
   const profile = useSettingsStore.getState().productProfile
   if (!isPhotoPrintProfile(profile)) return false
   if (!isRecord(metadata)) return false
+  // 주문 총 매수(런처 orderOptions.totalCopies) — 항목 복원 여부와 무관하게 기록한다
+  const orderOptions = isRecord(metadata.orderOptions) ? metadata.orderOptions : {}
+  usePhotoPrintStore.getState().setOrderTotalCopies(orderOptions.totalCopies)
   return usePhotoPrintStore.getState().restore(metadata.items)
 }
 
