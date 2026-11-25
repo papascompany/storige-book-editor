@@ -99,6 +99,7 @@ describe('StaffEditDataService', () => {
 
   const sessionRepo = {
     createQueryBuilder: jest.fn(() => makeQb()),
+    update: jest.fn(async () => ({ affected: 1 })),
     manager: {
       createQueryBuilder: jest.fn(() => {
         const q: Record<string, jest.Mock> = {};
@@ -337,6 +338,42 @@ describe('StaffEditDataService', () => {
   });
 
   // ───────────────────────── 권한 ─────────────────────────
+  // ───────────────────────── 관리자 삭제 48시간 복구창 ─────────────────────────
+  describe('삭제 복구창(48시간)', () => {
+    it('삭제하면 삭제 뒤 purge_after = 지금 + 48시간을 남기고 응답에 돌려준다', async () => {
+      const before = Date.now();
+      const r = await service.remove(admin, S_A);
+      expect(editSessions.delete).toHaveBeenCalledTimes(1);
+      expect(sessionRepo.update).toHaveBeenCalledTimes(1);
+      const [crit, patch] = sessionRepo.update.mock.calls[0] as unknown as [{ id: string }, { purgeAfter: Date }];
+      expect(crit).toEqual({ id: S_A });
+      const at = patch.purgeAfter.getTime();
+      expect(at).toBeGreaterThanOrEqual(before + 48 * 3600_000);
+      expect(at).toBeLessThanOrEqual(Date.now() + 48 * 3600_000);
+      expect(r).toEqual({ success: true, sessionId: S_A, purgeAfter: patch.purgeAfter.toISOString() });
+      expect(editSessions.delete.mock.invocationCallOrder[0]).toBeLessThan(sessionRepo.update.mock.invocationCallOrder[0]);
+    });
+
+    it('삭제가 실패하면 purge_after 를 남기지 않는다', async () => {
+      editSessions.delete.mockRejectedValueOnce(new Error('db down'));
+      await expect(service.remove(admin, S_A)).rejects.toThrow('db down');
+      expect(sessionRepo.update).not.toHaveBeenCalled();
+    });
+
+    it('선택 삭제: 중복 id 는 한 번만, 실패한 건은 code 와 함께 돌려주고 나머지는 지운다', async () => {
+      const r = await service.bulkRemove(siteAdmin, [S_A, S_DEL, S_A, S_B]);
+      expect(r.deleted).toBe(1);
+      expect(r.failed).toBe(2);
+      expect(r.results.map((x) => x.sessionId)).toEqual([S_A, S_DEL, S_B]);
+      expect(r.results[0]).toMatchObject({ success: true });
+      expect(typeof r.results[0].purgeAfter).toBe('string');
+      expect(r.results[1]).toMatchObject({ success: false, code: 'SESSION_DELETED' });
+      expect(r.results[2]).toMatchObject({ success: false });
+      expect(r.results[2].code).toEqual(expect.any(String));
+      expect(editSessions.delete).toHaveBeenCalledTimes(1);
+    });
+  });
+
   describe('SITE_MANAGER 권한', () => {
     beforeEach(() => {
       userSiteRows[SITE_USER] = [{ siteId: SITE_A, role: 'SITE_MANAGER' }];

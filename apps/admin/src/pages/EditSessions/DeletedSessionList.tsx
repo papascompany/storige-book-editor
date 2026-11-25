@@ -20,10 +20,17 @@ import { editDataApi, type StaffSessionItem } from '../../api/edit-data';
 import { useAuthStore } from '../../stores/authStore';
 import { isGlobalAdmin } from '../../utils/permissions';
 import {
+  RESTORE_WINDOW_CLOSED_TIP,
   canRestoreItem,
+  deletedBy,
   describeApiError,
+  formatKstDateTime,
+  formatRemaining,
   isOrderLinked,
+  isRestoreWindowOpen,
   orderMetaSummary,
+  parseApiError,
+  restoreWindow,
   retentionLabel,
   retentionTagColor,
 } from './editDataHelpers';
@@ -48,6 +55,8 @@ function parseSeqno(value: string): number | undefined {
  *
  * 고객 삭제·관리자 삭제 모두 soft delete 라 보관기간 안이면 [복구] 한 번으로 고객 보관함/불러오기에 재노출된다.
  * 복구는 삭제 권한(canDelete, 서버 판정)이 있고 편집데이터 보관기간이 지나지 않은 세션만 가능하다.
+ * 관리자 삭제분(purgeAfter 있음)은 삭제 후 48시간까지만 복구할 수 있고 그 뒤 서버가 영구 삭제한다.
+ * 고객 삭제분(purgeAfter = null)은 복구 기한이 없다.
  */
 export const DeletedSessionList = () => {
   const queryClient = useQueryClient();
@@ -97,6 +106,10 @@ export const DeletedSessionList = () => {
     },
     onError: (err: unknown) => {
       message.error(describeApiError(err, '복구에 실패했습니다.'));
+      // 복구 기한이 서버에서 이미 지났으면 목록을 다시 읽어 행 상태(영구 삭제 예정)를 맞춘다
+      if (parseApiError(err).code === 'RESTORE_WINDOW_CLOSED') {
+        queryClient.invalidateQueries({ queryKey: ['edit-data-sessions'] });
+      }
     },
   });
 
@@ -191,6 +204,41 @@ export const DeletedSessionList = () => {
       ),
     },
     {
+      title: '삭제 주체',
+      key: 'deletedBy',
+      width: 100,
+      render: (_, r) =>
+        deletedBy(r) === 'staff' ? (
+          <Tag color="volcano">관리자 삭제</Tag>
+        ) : (
+          <Tag>고객 삭제</Tag>
+        ),
+    },
+    {
+      title: '복구 기한',
+      key: 'purgeAfter',
+      width: 170,
+      render: (_, r) => {
+        const win = restoreWindow(r, now);
+        if (win.kind === 'none') return <Text type="secondary">기한 없음</Text>;
+        if (win.kind === 'closed') {
+          return (
+            <Tooltip title={`기한: ${formatKstDateTime(win.purgeAt)} (KST)`}>
+              <Text type="secondary">영구 삭제 예정</Text>
+            </Tooltip>
+          );
+        }
+        return (
+          <Space direction="vertical" size={0}>
+            <Text type="warning">{formatRemaining(win.remainingMs)}</Text>
+            <Text type="secondary" style={{ fontSize: 12 }}>
+              {formatKstDateTime(win.purgeAt)} (KST)
+            </Text>
+          </Space>
+        );
+      },
+    },
+    {
       title: '최초편집',
       dataIndex: 'createdAt',
       key: 'createdAt',
@@ -220,7 +268,7 @@ export const DeletedSessionList = () => {
       fixed: 'right',
       render: (_, r) => (
         <Space size={4} wrap>
-          {canRestoreItem(r) ? (
+          {canRestoreItem(r, now) ? (
             <Popconfirm
               title="이 세션을 복구할까요?"
               description="복구 즉시 고객 보관함/불러오기 목록에 다시 표시됩니다."
@@ -236,6 +284,15 @@ export const DeletedSessionList = () => {
                 복구
               </Button>
             </Popconfirm>
+          ) : r.canDelete && !isRestoreWindowOpen(r, now) ? (
+            <Tooltip title={RESTORE_WINDOW_CLOSED_TIP}>
+              {/* 비활성 버튼은 마우스 이벤트를 받지 않으므로 span 으로 감싸 툴팁을 띄운다 */}
+              <span style={{ display: 'inline-block', cursor: 'not-allowed' }}>
+                <Button size="small" icon={<UndoOutlined />} disabled style={{ pointerEvents: 'none' }}>
+                  복구
+                </Button>
+              </span>
+            </Tooltip>
           ) : (
             <Tooltip
               title={
@@ -302,8 +359,9 @@ export const DeletedSessionList = () => {
       </Space>
       <Text type="secondary" style={{ display: 'block', marginBottom: 12, fontSize: 12 }}>
         고객 또는 관리자가 삭제한 편집 세션이 누적 표시됩니다. 편집데이터 보관기간 안이면 [복구] 시 고객
-        계정의 보관함·불러오기 목록에 즉시 재노출됩니다. (게스트 작업은 24시간 후 영구 삭제되어 복구할 수
-        없습니다.)
+        계정의 보관함·불러오기 목록에 즉시 재노출됩니다. 관리자가 삭제한 세션은 48시간 동안만 복구할 수
+        있고, 그 뒤에는 파일까지 영구 삭제됩니다. 고객이 삭제한 세션은 복구 기한이 없습니다. (게스트 작업은
+        24시간 후 영구 삭제되어 복구할 수 없습니다.)
       </Text>
       {isError && (
         <Alert
@@ -318,7 +376,7 @@ export const DeletedSessionList = () => {
         columns={columns}
         dataSource={data?.items ?? []}
         loading={isLoading}
-        scroll={{ x: 1730 }}
+        scroll={{ x: 2000 }}
         pagination={{
           current: page,
           pageSize,

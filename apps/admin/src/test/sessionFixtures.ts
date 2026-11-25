@@ -25,6 +25,7 @@ export function makeSessionItem(overrides: Partial<StaffSessionItem> = {}): Staf
     retention: { days: null, until: null, state: 'unset', anchor: 'createdAt' },
     staffEditedAfterComplete: false,
     canDelete: true,
+    purgeAfter: null,
     ...overrides,
   };
 }

@@ -24,8 +24,10 @@ import type { Response } from 'express';
 import { StaffEditDataController } from './staff-edit-data.controller';
 import { StaffEditDataService } from './staff-edit-data.service';
 import { StaffEditDataModule } from './staff-edit-data.module';
+import { StaffDeletePurgeService } from './staff-delete-purge.service';
 import {
   ListStaffSessionsQueryDto,
+  StaffBulkDeleteDto,
   StaffEditorSessionDto,
   StaffSessionFileKind,
   StaffSynthesizeDto,
@@ -52,6 +54,7 @@ const ROUTES: Array<[Handler, RequestMethod, string]> = [
   ['listGrants', RequestMethod.GET, 'sessions/:id/grants'],
   ['revokeGrant', RequestMethod.POST, 'grants/:grantId/revoke'],
   ['complete', RequestMethod.POST, 'sessions/:id/complete'],
+  ['bulkRemove', RequestMethod.POST, 'sessions/bulk-delete'],
   ['remove', RequestMethod.DELETE, 'sessions/:id'],
   ['restore', RequestMethod.POST, 'sessions/:id/restore'],
   ['synthesize', RequestMethod.POST, 'sessions/:id/synthesize'],
@@ -165,6 +168,15 @@ describe('DTO 화이트리스트(전역 ValidationPipe 구성)', () => {
     await expect(pipe.transform({ allowDelete: true, ttlSeconds: 3600 }, { type: 'body', metatype: StaffEditorSessionDto })).resolves.toBeDefined();
   });
 
+  it('선택 삭제: UUID 1~100개만, 그 외 키 거부', async () => {
+    const T = { type: 'body' as const, metatype: StaffBulkDeleteDto };
+    await expect(pipe.transform({ sessionIds: [ID] }, T)).resolves.toEqual({ sessionIds: [ID] });
+    await expect(pipe.transform({ sessionIds: [] }, T)).rejects.toBeInstanceOf(BadRequestException);
+    await expect(pipe.transform({ sessionIds: ['not-a-uuid'] }, T)).rejects.toBeInstanceOf(BadRequestException);
+    await expect(pipe.transform({ sessionIds: Array.from({ length: 101 }, () => ID) }, T)).rejects.toBeInstanceOf(BadRequestException);
+    await expect(pipe.transform({ sessionIds: [ID], siteId: ID }, T)).rejects.toBeInstanceOf(BadRequestException);
+  });
+
   it('목록 쿼리: 숫자 변환 + limit 상한 100 + 필터 enum', async () => {
     const q = (await pipe.transform(
       { page: '2', limit: '50', retention: 'expired', deleted: 'only', orderSeqno: '12' },
@@ -187,6 +199,7 @@ describe('서비스 위임 · 모듈 배선', () => {
       listGrants: jest.fn(),
       revokeGrant: jest.fn(),
       complete: jest.fn(),
+      bulkRemove: jest.fn(),
       remove: jest.fn(),
       restore: jest.fn(),
       synthesize: jest.fn(),
@@ -204,6 +217,7 @@ describe('서비스 위임 · 모듈 배선', () => {
     await c.listGrants(ID, user);
     await c.revokeGrant(ID, user);
     await c.complete(ID, user);
+    await c.bulkRemove({ sessionIds: [ID] }, user);
     await c.remove(ID, user);
     await c.restore(ID, user);
     await c.synthesize(ID, {}, user);
@@ -212,6 +226,7 @@ describe('서비스 위임 · 모듈 배선', () => {
     expect(svc.streamJobOutput).toHaveBeenCalledWith(user, ID, res);
     expect(svc.streamSessionFile).toHaveBeenCalledWith(user, ID, 'cover', res);
     expect(svc.synthesize).toHaveBeenCalledWith(user, ID, {});
+    expect(svc.bulkRemove).toHaveBeenCalledWith(user, [ID]);
     for (const fn of Object.values(svc)) expect(fn).toHaveBeenCalledTimes(1);
   });
 
@@ -219,6 +234,6 @@ describe('서비스 위임 · 모듈 배선', () => {
     const imports = (Reflect.getMetadata('imports', StaffEditDataModule) ?? []) as unknown[];
     for (const m of [EditSessionsModule, WorkerJobsModule, FilesModule, AuthModule]) expect(imports).toContain(m);
     expect(Reflect.getMetadata('controllers', StaffEditDataModule)).toEqual([StaffEditDataController]);
-    expect(Reflect.getMetadata('providers', StaffEditDataModule)).toEqual([StaffEditDataService]);
+    expect(Reflect.getMetadata('providers', StaffEditDataModule)).toEqual([StaffEditDataService, StaffDeletePurgeService]);
   });
 });

@@ -32,6 +32,8 @@ export interface EditSessionResponse {
   siteId?: string | null;
   // 삭제 리스트 (2026-06-11) — GET /edit-sessions/deleted 응답 전용
   deletedAt?: string | null;
+  /** 관리자 삭제분의 영구 삭제 예정 시각(ISO). 고객 삭제는 null(기한 없음) */
+  purgeAfter?: string | null;
   templateSetName?: string | null;
   thumbnailUrl?: string | null;
 }

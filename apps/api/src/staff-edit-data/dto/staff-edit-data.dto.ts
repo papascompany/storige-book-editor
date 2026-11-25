@@ -1,6 +1,9 @@
-import { ApiPropertyOptional } from '@nestjs/swagger';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
 import {
+  ArrayMaxSize,
+  ArrayMinSize,
+  IsArray,
   IsBoolean,
   IsIn,
   IsInt,
@@ -13,6 +16,7 @@ import {
   MaxLength,
   Min,
 } from 'class-validator';
+import { STAFF_BULK_DELETE_MAX } from '../staff-delete-window';
 
 /**
  * 관리자 편집데이터 관리 DTO (2026-09-29, ADDITIVE) — /api/admin/edit-data.
@@ -201,6 +205,8 @@ export interface StaffSessionItem {
   updatedAt: string | null;
   completedAt: string | null;
   deletedAt: string | null;
+  /** 관리자 삭제분의 영구 삭제 시각(이 전까지 복구 가능). 활성·고객 삭제분은 null */
+  purgeAfter: string | null;
   retention: StaffRetentionView;
   staffEditedAfterComplete: boolean;
   canDelete: boolean;
@@ -246,4 +252,14 @@ export interface StaffRetentionReportRow {
   expiredDeleted: number;
   unset: number;
   purge: 'disabled';
+}
+
+/** POST /sessions/bulk-delete — 관리자 선택 삭제(1~100건, 48시간 복구창) */
+export class StaffBulkDeleteDto {
+  @ApiProperty({ type: [String], description: `삭제할 세션 id(UUID) 1~${STAFF_BULK_DELETE_MAX}개` })
+  @IsArray()
+  @ArrayMinSize(1)
+  @ArrayMaxSize(STAFF_BULK_DELETE_MAX)
+  @IsUUID('all', { each: true })
+  sessionIds!: string[];
 }

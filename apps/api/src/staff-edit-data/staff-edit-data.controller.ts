@@ -26,6 +26,7 @@ import {
   StaffEditorSessionDto,
   StaffRetentionReportQueryDto,
   StaffSessionFileKind,
+  StaffBulkDeleteDto,
   StaffSynthesizeDto,
 } from './dto/staff-edit-data.dto';
 
@@ -109,8 +110,15 @@ export class StaffEditDataController {
     return this.service.complete(user, id);
   }
 
+  @Post('sessions/bulk-delete')
+  @HttpCode(200)
+  @ApiOperation({ summary: '선택 삭제(1~100건) — 48시간 동안 삭제 리스트에서 복구 가능, 그 뒤 영구 삭제' })
+  bulkRemove(@Body() dto: StaffBulkDeleteDto, @CurrentUser() user: unknown) {
+    return this.service.bulkRemove(user, dto.sessionIds);
+  }
+
   @Delete('sessions/:id')
-  @ApiOperation({ summary: '삭제(소프트 삭제, 보관기간 만료 후에도 가능)' })
+  @ApiOperation({ summary: '삭제(48시간 동안 삭제 리스트에서 복구 가능, 그 뒤 영구 삭제)' })
   remove(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() user: unknown) {
     return this.service.remove(user, id);
   }

@@ -1,6 +1,7 @@
 import {
   ConflictException,
   ForbiddenException,
+  HttpException,
   Injectable,
   Logger,
   NotFoundException,
@@ -31,6 +32,7 @@ import {
   isStaffEditAfterCompletion,
 } from '../auth/partner-operator/partner-operator-audit.writer';
 import type { PartnerOperatorAuditDetail } from '../auth/entities/partner-operator-audit-log.entity';
+import { staffPurgeAfter } from './staff-delete-window';
 import { applySiteScope } from '../common/helpers/tenant-scope.helper';
 import {
   EditRetentionCutoff,
@@ -86,6 +88,7 @@ export interface StaffSessionRow {
   updatedAt: Date | null;
   completedAt: Date | null;
   deletedAt: Date | null;
+  purgeAfter: Date | null;
 }
 
 type RawSessionRow = { [K in keyof StaffSessionRow]?: unknown };
@@ -101,6 +104,22 @@ export interface StaffActionResult {
   sessionId: string;
   status?: string;
   completedAt?: string | null;
+  /** 삭제 응답 전용 — 이 시각까지 '삭제 리스트'에서 복구할 수 있다 */
+  purgeAfter?: string | null;
+}
+
+export interface StaffBulkDeleteItemResult {
+  sessionId: string;
+  success: boolean;
+  purgeAfter?: string | null;
+  code?: string;
+  message?: string;
+}
+
+export interface StaffBulkDeleteResult {
+  deleted: number;
+  failed: number;
+  results: StaffBulkDeleteItemResult[];
 }
 
 export interface StaffSynthesizeResult {
@@ -192,7 +211,23 @@ function normalizeSessionRow(raw: RawSessionRow): StaffSessionRow {
     updatedAt: toDate(raw.updatedAt),
     completedAt: toDate(raw.completedAt),
     deletedAt: toDate(raw.deletedAt),
+    purgeAfter: toDate(raw.purgeAfter),
   };
+}
+
+/** 예외 → { code, message } (선택 삭제 결과용, 내부 상세는 담지 않는다) */
+function errorCodeOf(err: unknown): { code: string; message: string } {
+  if (err instanceof HttpException) {
+    const body = err.getResponse();
+    if (body && typeof body === 'object') {
+      const rec = body as Record<string, unknown>;
+      const code = typeof rec.code === 'string' ? rec.code : `HTTP_${err.getStatus()}`;
+      const message = typeof rec.message === 'string' ? rec.message : err.message;
+      return { code, message };
+    }
+    return { code: `HTTP_${err.getStatus()}`, message: err.message };
+  }
+  return { code: 'INTERNAL_ERROR', message: '삭제 중 오류가 발생했습니다.' };
 }
 
 /** 보관기간 SQL 조각(목록 필터) — 사이트별 OR cutoff, sites 조인 없음 */
@@ -274,7 +309,8 @@ export class StaffEditDataService {
       .addSelect('s.createdAt', 'createdAt')
       .addSelect('s.updatedAt', 'updatedAt')
       .addSelect('s.completedAt', 'completedAt')
-      .addSelect('s.deletedAt', 'deletedAt');
+      .addSelect('s.deletedAt', 'deletedAt')
+      .addSelect('s.purgeAfter', 'purgeAfter');
   }
 
   /** 세션 1건(삭제 포함) — 없으면 null */
@@ -459,6 +495,7 @@ export class StaffEditDataService {
       updatedAt: toIso(session.updatedAt),
       completedAt: toIso(session.completedAt),
       deletedAt: toIso(session.deletedAt),
+      purgeAfter: toIso(session.purgeAfter),
       retention,
       staffEditedAfterComplete,
       canDelete: canDeleteFor(actor, session.siteId),
@@ -760,7 +797,26 @@ export class StaffEditDataService {
       role: actor.role,
       staff: this.staffContext(actor, session.siteId),
     });
-    return { success: true, sessionId: session.id };
+    // 관리자 삭제만 48시간 복구창 — 지나면 StaffDeletePurgeService 가 영구 삭제한다.
+    const purgeAfter = staffPurgeAfter(new Date());
+    await this.sessionRepository.update({ id: session.id }, { purgeAfter });
+    return { success: true, sessionId: session.id, purgeAfter: purgeAfter.toISOString() };
+  }
+
+  /** 선택 삭제 — 세션마다 remove 와 같은 권한·감사·복구창 규칙. 한 건 실패가 나머지를 막지 않는다. */
+  async bulkRemove(user: unknown, sessionIds: string[]): Promise<StaffBulkDeleteResult> {
+    const ids = Array.from(new Set(sessionIds));
+    const results: StaffBulkDeleteItemResult[] = [];
+    for (const id of ids) {
+      try {
+        const r = await this.remove(user, id);
+        results.push({ sessionId: id, success: true, purgeAfter: r.purgeAfter ?? null });
+      } catch (err) {
+        results.push({ sessionId: id, success: false, ...errorCodeOf(err) });
+      }
+    }
+    const deleted = results.filter((r) => r.success).length;
+    return { deleted, failed: results.length - deleted, results };
   }
 
   // ───────────────────────────── 10. 복구 ─────────────────────────────

@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   Table,
@@ -12,6 +12,7 @@ import {
   Tooltip,
   Select,
   Alert,
+  Modal,
 } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import {
@@ -36,15 +37,20 @@ import {
 import { useAuthStore } from '../../stores/authStore';
 import { isGlobalAdmin } from '../../utils/permissions';
 import {
+  BULK_DELETE_MAX,
+  STAFF_DELETE_WINDOW_NOTICE,
   buildEditorUrl,
+  bulkDeleteFeedback,
   canCompleteItem,
   canDeleteItem,
   canOpenEditor,
+  canSelectForDelete,
   canSynthesize,
   describeApiError,
   isEditAllowed,
   isOrderLinked,
   orderLinkedAfterActionMessage,
+  orderMetaSummary,
   type OrderLinkedAction,
   retentionLabel,
   retentionTagColor,
@@ -116,6 +122,8 @@ export const EditSessionList = () => {
   const [downloadingKey, setDownloadingKey] = useState<string | null>(null);
   // 파트너 주문 연결 세션(주문번호 있음)의 편집기 열기·완료·삭제·합성은 확인 창을 거친다.
   const [orderConfirm, setOrderConfirm] = useState<OrderLinkedTarget | null>(null);
+  // 선택 삭제 — 현재 페이지 기준. 필터·페이지가 바뀌면 초기화한다.
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const { copyingId: copyingNoticeId, copyNotice } = usePartnerNoticeCopy();
   // 확인 창을 거쳐 시작한 작업(작업·세션 id 별) — 성공하면 사후 통지를 안내한다.
   // 호출별 mutate 콜백은 마지막 호출만 받으므로 mutation 수준 onSuccess 에서 이 표를 본다.
@@ -164,6 +172,17 @@ export const EditSessionList = () => {
         limit: pageSize,
       }),
   });
+
+  // 필터·페이지가 바뀌면 다른 목록의 선택이 남지 않게 비운다
+  useEffect(() => {
+    setSelectedIds([]);
+  }, [effectiveSiteId, memberSeqno, orderSeqno, statusFilter, retentionFilter, page, pageSize]);
+
+  const items = data?.items ?? [];
+  // 지금 목록에 보이고 삭제 가능한 선택만 센다(단건 삭제 등으로 사라진 id 제외)
+  const selectedRecords = items.filter(
+    (item) => selectedIds.includes(item.id) && canSelectForDelete(item),
+  );
 
   const invalidateLists = (): void => {
     queryClient.invalidateQueries({ queryKey: ['edit-data-sessions'] });
@@ -214,7 +233,7 @@ export const EditSessionList = () => {
   const deleteMutation = useMutation({
     mutationFn: (sessionId: string) => editDataApi.remove(sessionId),
     onSuccess: (_res, sessionId) => {
-      message.success('편집 세션을 삭제했습니다. [삭제 리스트]에서 확인할 수 있습니다.');
+      message.success('편집 세션을 삭제했습니다. 48시간 동안 [삭제 리스트]에서 복구할 수 있습니다.');
       invalidateLists();
       settleNotice('delete', sessionId, true);
     },
@@ -223,6 +242,47 @@ export const EditSessionList = () => {
       message.error(describeApiError(err, '삭제에 실패했습니다.'));
     },
   });
+
+  const bulkDeleteMutation = useMutation({
+    mutationFn: (sessionIds: string[]) => editDataApi.bulkDelete(sessionIds),
+    onSuccess: (result) => {
+      const feedback = bulkDeleteFeedback(result);
+      message[feedback.level](feedback.text, feedback.level === 'success' ? 5 : 10);
+      invalidateLists();
+      setSelectedIds([]);
+    },
+    onError: (err: unknown) => {
+      message.error(describeApiError(err, '선택 삭제에 실패했습니다.'));
+    },
+  });
+
+  const confirmBulkDelete = (): void => {
+    const targets = selectedRecords;
+    if (targets.length === 0 || targets.length > BULK_DELETE_MAX) return;
+    const linkedCount = targets.filter((item) => isOrderLinked(item)).length;
+    Modal.confirm({
+      title: `선택한 편집 세션 ${targets.length}건을 삭제할까요?`,
+      content: (
+        <Space direction="vertical" size={8}>
+          {linkedCount > 0 && (
+            <Alert
+              type="warning"
+              showIcon
+              message={`주문번호가 붙은 세션 ${linkedCount}건이 포함되어 있습니다.`}
+              description="삭제하면 해당 세션 재편집·합성이 불가합니다. 세션 id를 넣어 파트너에 미리 알리고, 삭제 뒤 [삭제 리스트]의 [통지 정보 복사]로 통지하세요."
+            />
+          )}
+          <Text>{STAFF_DELETE_WINDOW_NOTICE}</Text>
+        </Space>
+      ),
+      okText: '삭제',
+      okButtonProps: { danger: true },
+      cancelText: '취소',
+      onOk: () => {
+        bulkDeleteMutation.mutate(targets.map((item) => item.id));
+      },
+    });
+  };
 
   // 표지/내지 입력 파일 — 세션 컬럼 기준 스코프 검사 라우트(/admin/edit-data/sessions/:id/files/:kind)
   const handleDownloadFile = async (record: StaffSessionItem, kind: SessionFileKind): Promise<void> => {
@@ -284,6 +344,25 @@ export const EditSessionList = () => {
           )}
         </Space>
       ),
+    },
+    {
+      title: '상품',
+      key: 'product',
+      width: 200,
+      ellipsis: true,
+      render: (_, record) => {
+        const summary = orderMetaSummary(record.orderMeta);
+        const label = summary !== '-' ? summary : record.templateSetName || '-';
+        const tip =
+          summary !== '-' && record.templateSetName
+            ? `${summary} (템플릿셋: ${record.templateSetName})`
+            : label;
+        return (
+          <Tooltip title={tip}>
+            <Text style={{ fontSize: 12 }}>{label}</Text>
+          </Tooltip>
+        );
+      },
     },
     {
       title: '회원',
@@ -461,7 +540,7 @@ export const EditSessionList = () => {
             {canDeleteItem(record) && (
               <Popconfirm
                 title="편집 세션을 삭제할까요?"
-                description="삭제하면 고객·파트너 화면에서 사라지고 해당 세션 재편집·합성이 불가합니다. 보관기간 안에는 [삭제 리스트]에서 복구할 수 있습니다."
+                description={`삭제하면 고객·파트너 화면에서 사라지고 해당 세션 재편집·합성이 불가합니다. ${STAFF_DELETE_WINDOW_NOTICE}`}
                 onConfirm={() => deleteMutation.mutate(record.id)}
                 okText="삭제"
                 okButtonProps={{ danger: true }}
@@ -555,6 +634,23 @@ export const EditSessionList = () => {
           style={{ width: 150 }}
           allowClear
         />
+        <Tooltip
+          title={
+            selectedRecords.length > BULK_DELETE_MAX
+              ? `한 번에 ${BULK_DELETE_MAX}건까지 삭제할 수 있습니다`
+              : undefined
+          }
+        >
+          <Button
+            danger
+            icon={<DeleteOutlined />}
+            disabled={selectedRecords.length === 0 || selectedRecords.length > BULK_DELETE_MAX}
+            loading={bulkDeleteMutation.isPending}
+            onClick={confirmBulkDelete}
+          >
+            선택 삭제 ({selectedRecords.length})
+          </Button>
+        </Tooltip>
       </Space>
 
       {isError && (
@@ -570,10 +666,15 @@ export const EditSessionList = () => {
 
       <Table<StaffSessionItem>
         columns={columns}
-        dataSource={data?.items ?? []}
+        dataSource={items}
         rowKey="id"
         loading={isLoading}
-        scroll={{ x: 1600 }}
+        scroll={{ x: 1850 }}
+        rowSelection={{
+          selectedRowKeys: selectedRecords.map((item) => item.id),
+          onChange: (keys) => setSelectedIds(keys.map(String)),
+          getCheckboxProps: (record) => ({ disabled: !canSelectForDelete(record) }),
+        }}
         pagination={{
           current: page,
           pageSize,

@@ -1,12 +1,15 @@
 // 관리자 편집데이터 관리 — 순수 헬퍼 (2026-09-29). DOM·스토어 접근 없음(단위테스트 대상).
 import type {
   ApiErrorCode,
+  BulkDeleteResponse,
   RetentionInfo,
   StaffOrderMeta,
   StaffSessionItem,
 } from '../../api/edit-data';
 
 const DAY_MS = 86_400_000;
+const HOUR_MS = 3_600_000;
+const MINUTE_MS = 60_000;
 
 type RetentionCarrier = Pick<StaffSessionItem, 'retention'>;
 type SessionGateFields = Pick<StaffSessionItem, 'retention' | 'siteId' | 'deletedAt'>;
@@ -81,11 +84,105 @@ export function canDeleteItem(item: Pick<StaffSessionItem, 'canDelete' | 'delete
   return item.canDelete === true && !item.deletedAt;
 }
 
-/** 복구 — canDelete + 삭제된 세션 + 보관기간 안 */
+// ---------------------------------------------------------------------------
+// 관리자 삭제 48시간 복구창
+// 관리자가 지운 세션은 purgeAfter(삭제 후 48시간)까지만 복구할 수 있고, 그 뒤 서버가 파일까지 영구 삭제한다.
+// 고객이 지운 세션은 purgeAfter = null 이라 기한 없이 복구할 수 있다.
+// ---------------------------------------------------------------------------
+
+type PurgeCarrier = { purgeAfter?: string | null };
+
+/** 선택 삭제 한 번에 보낼 수 있는 최대 건수(서버 상한) */
+export const BULK_DELETE_MAX = 100;
+
+/** 관리자 삭제 안내 — 확인 창·완료 안내 공용 */
+export const STAFF_DELETE_WINDOW_NOTICE =
+  "삭제한 세션은 48시간 동안 '삭제 리스트'에서 복구할 수 있고, 그 뒤에는 파일까지 영구 삭제됩니다.";
+
+/** 복구 기한이 지난 행의 복구 버튼 안내 */
+export const RESTORE_WINDOW_CLOSED_TIP = '복구 기한(48시간)이 지났습니다';
+
+/** 선택 삭제 체크박스 — 단건 삭제와 같은 조건(서버 canDelete + 아직 삭제 안 됨) */
+export function canSelectForDelete(item: Pick<StaffSessionItem, 'canDelete' | 'deletedAt'>): boolean {
+  return canDeleteItem(item);
+}
+
+export type DeletedBy = 'staff' | 'customer';
+
+/** 삭제 주체 — purgeAfter 가 있으면 관리자 삭제, 없으면 고객 삭제 */
+export function deletedBy(item: PurgeCarrier): DeletedBy {
+  return item.purgeAfter ? 'staff' : 'customer';
+}
+
+export type RestoreWindow =
+  | { kind: 'none' }
+  | { kind: 'open'; purgeAt: Date; remainingMs: number }
+  | { kind: 'closed'; purgeAt: Date };
+
+/**
+ * 복구창 상태. purgeAfter 없음(또는 해석 불가) → 'none'(기한 없음),
+ * 남은 시간 > 0 → 'open', 그 외 → 'closed'(영구 삭제 예정).
+ */
+export function restoreWindow(item: PurgeCarrier, now: Date): RestoreWindow {
+  const purgeAt = parseDate(item.purgeAfter);
+  if (!purgeAt) return { kind: 'none' };
+  const remainingMs = purgeAt.getTime() - now.getTime();
+  return remainingMs > 0 ? { kind: 'open', purgeAt, remainingMs } : { kind: 'closed', purgeAt };
+}
+
+/** 복구 기한 안인가(기한 없음 포함) */
+export function isRestoreWindowOpen(item: PurgeCarrier, now: Date): boolean {
+  return restoreWindow(item, now).kind !== 'closed';
+}
+
+/** 남은 시간 표기 — 1시간 이상 'n시간 남음'(내림), 1시간 미만 'n분 남음'(내림, 최소 1분) */
+export function formatRemaining(ms: number): string {
+  if (ms >= HOUR_MS) return `${Math.floor(ms / HOUR_MS)}시간 남음`;
+  return `${Math.max(1, Math.floor(ms / MINUTE_MS))}분 남음`;
+}
+
+/** 한국 시간(KST, UTC+9) 'YYYY-MM-DD HH:mm' — 브라우저 시간대와 무관 */
+export function formatKstDateTime(date: Date): string {
+  const k = new Date(date.getTime() + 9 * HOUR_MS);
+  return `${k.getUTCFullYear()}-${pad2(k.getUTCMonth() + 1)}-${pad2(k.getUTCDate())} ${pad2(
+    k.getUTCHours(),
+  )}:${pad2(k.getUTCMinutes())}`;
+}
+
+/** 복구 — canDelete + 삭제된 세션 + 보관기간 안 + (관리자 삭제면) 48시간 복구 기한 안 */
 export function canRestoreItem(
-  item: Pick<StaffSessionItem, 'canDelete' | 'deletedAt' | 'retention'>,
+  item: Pick<StaffSessionItem, 'canDelete' | 'deletedAt' | 'retention'> & PurgeCarrier,
+  now: Date = new Date(),
 ): boolean {
-  return item.canDelete === true && !!item.deletedAt && isEditAllowed(item);
+  return (
+    item.canDelete === true &&
+    !!item.deletedAt &&
+    isEditAllowed(item) &&
+    isRestoreWindowOpen(item, now)
+  );
+}
+
+export interface BulkDeleteFeedback {
+  level: 'success' | 'warning' | 'error';
+  text: string;
+}
+
+/** 선택 삭제 결과 안내 — 성공 n건·실패 m건, 실패가 있으면 첫 실패 사유를 붙인다 */
+export function bulkDeleteFeedback(result: BulkDeleteResponse): BulkDeleteFeedback {
+  if (result.failed === 0) {
+    return {
+      level: 'success',
+      text: `${result.deleted}건을 삭제했습니다. 48시간 동안 [삭제 리스트]에서 복구할 수 있습니다.`,
+    };
+  }
+  const firstFailure = (result.results ?? []).find((r) => !r.success);
+  const reason = firstFailure
+    ? errorMessage(firstFailure.code) ?? firstFailure.message ?? null
+    : null;
+  return {
+    level: result.deleted > 0 ? 'warning' : 'error',
+    text: `삭제 성공 ${result.deleted}건, 실패 ${result.failed}건${reason ? ` — ${reason}` : ''}`,
+  };
 }
 
 /**
@@ -126,6 +223,7 @@ export const ERROR_MESSAGES: Record<ApiErrorCode, string> = {
   TENANT_FORBIDDEN: '이 사이트의 데이터에 접근할 권한이 없습니다',
   FILE_NOT_FOUND: '파일을 찾을 수 없습니다',
   STREAM_ERROR: '파일을 내려받는 중 오류가 발생했습니다. 다시 시도하세요',
+  RESTORE_WINDOW_CLOSED: '복구 기한(48시간)이 지나 복구할 수 없습니다',
 };
 
 /** 목록 라우트 404 = 새 API 미배포(배포 창) */
@@ -263,7 +361,7 @@ const ORDER_LINKED_ACTIONS: Record<
   delete: {
     title: '파트너 주문에 연결된 세션을 삭제할까요?',
     effect:
-      '삭제하면 저장된 세션 id로 여는 재편집과 세션 기반 합성이 "세션을 찾을 수 없음"(404)이 됩니다. 파트너가 주문번호로 편집기를 열면 빈 새 세션이 만들어질 수 있습니다. 보관기간 안에는 [삭제 리스트]에서 복구할 수 있고, 통지 정보도 [삭제 리스트]에서 복사합니다.',
+      '삭제하면 저장된 세션 id로 여는 재편집과 세션 기반 합성이 "세션을 찾을 수 없음"(404)이 됩니다. 파트너가 주문번호로 편집기를 열면 빈 새 세션이 만들어질 수 있습니다. 48시간 동안 [삭제 리스트]에서 복구할 수 있고 그 뒤에는 파일까지 영구 삭제됩니다. 통지 정보도 [삭제 리스트]에서 복사합니다.',
     okText: '삭제',
     danger: true,
   },

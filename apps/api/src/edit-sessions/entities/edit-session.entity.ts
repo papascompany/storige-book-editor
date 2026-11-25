@@ -153,6 +153,15 @@ export class EditSessionEntity {
   @Column({ name: 'guest_expires_at', type: 'timestamp', nullable: true })
   guestExpiresAt: Date | null;
 
+  /**
+   * 관리자 삭제 영구 삭제 시각 (2026-11-25). 관리자(편집데이터관리)가 지울 때만 deleted_at + 48h 로 채운다.
+   * 이 시각 전까지는 '삭제 리스트'에서 복구할 수 있고, 지나면 StaffDeletePurgeService 가 파일·행을 영구 삭제한다.
+   * NULL = 고객 삭제 또는 활성 — 기한 없이 보관(자동 삭제 대상 아님). 복구하면 NULL 로 되돌린다.
+   */
+  @Index('idx_edit_sessions_purge_after')
+  @Column({ name: 'purge_after', type: 'timestamp', nullable: true })
+  purgeAfter: Date | null;
+
   @CreateDateColumn({ name: 'created_at' })
   createdAt: Date;
 

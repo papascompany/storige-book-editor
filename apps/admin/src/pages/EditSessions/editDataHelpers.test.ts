@@ -3,17 +3,26 @@ import { readFileSync } from 'node:fs';
 import { describe, it, expect } from 'vitest';
 import type { ApiErrorCode, RetentionInfo, StaffSessionItem } from '../../api/edit-data';
 import {
+  BULK_DELETE_MAX,
   ERROR_MESSAGES,
   LIST_UNAVAILABLE_MESSAGE,
+  STAFF_DELETE_WINDOW_NOTICE,
   buildEditorUrl,
+  bulkDeleteFeedback,
   canCompleteItem,
   canDeleteItem,
   canOpenEditor,
   canRestoreItem,
+  canSelectForDelete,
   canSynthesize,
+  deletedBy,
   describeApiError,
   errorMessage,
+  formatKstDateTime,
+  formatRemaining,
   formatYmd,
+  isRestoreWindowOpen,
+  restoreWindow,
   buildPartnerNoticeText,
   isEditAllowed,
   isOrderLinked,
@@ -59,6 +68,7 @@ function item(overrides: Partial<StaffSessionItem> = {}): StaffSessionItem {
     retention: retention('active', new Date(NOW.getTime() + 10 * DAY)),
     staffEditedAfterComplete: false,
     canDelete: true,
+    purgeAfter: null,
     ...overrides,
   };
 }
@@ -149,6 +159,117 @@ describe('작업 가능 판정', () => {
     expect(canRestoreItem(item({ deletedAt, retention: expired }))).toBe(false);
     expect(canRestoreItem(item({ deletedAt: null }))).toBe(false);
   });
+
+  it('canRestoreItem — 관리자 삭제는 48시간 복구 기한 안에서만, 고객 삭제는 기한 없음', () => {
+    const deletedAt = NOW.toISOString();
+    const purgeLater = new Date(NOW.getTime() + 1).toISOString();
+    const purgeNow = NOW.toISOString();
+    expect(canRestoreItem(item({ deletedAt, purgeAfter: purgeLater }), NOW)).toBe(true);
+    expect(canRestoreItem(item({ deletedAt, purgeAfter: purgeNow }), NOW)).toBe(false);
+    expect(canRestoreItem(item({ deletedAt, purgeAfter: null }), NOW)).toBe(true);
+    // 기한 안이어도 보관기간 만료·권한 없음이면 막는다
+    expect(canRestoreItem(item({ deletedAt, purgeAfter: purgeLater, retention: expired }), NOW)).toBe(false);
+    expect(canRestoreItem(item({ deletedAt, purgeAfter: purgeLater, canDelete: false }), NOW)).toBe(false);
+  });
+
+  it('canSelectForDelete — 삭제 가능하고 아직 삭제 안 된 행만 선택할 수 있다', () => {
+    expect(canSelectForDelete(item())).toBe(true);
+    expect(canSelectForDelete(item({ retention: expired }))).toBe(true);
+    expect(canSelectForDelete(item({ canDelete: false }))).toBe(false);
+    expect(canSelectForDelete(item({ deletedAt: NOW.toISOString() }))).toBe(false);
+  });
+});
+
+describe('관리자 삭제 48시간 복구창', () => {
+  const HOUR = 3_600_000;
+  const MINUTE = 60_000;
+  const at = (ms: number): string => new Date(NOW.getTime() + ms).toISOString();
+
+  it('deletedBy — purgeAfter 가 있으면 관리자 삭제, null·없음이면 고객 삭제', () => {
+    expect(deletedBy({ purgeAfter: at(HOUR) })).toBe('staff');
+    expect(deletedBy({ purgeAfter: at(-HOUR) })).toBe('staff');
+    expect(deletedBy({ purgeAfter: null })).toBe('customer');
+    expect(deletedBy({})).toBe('customer');
+  });
+
+  it('restoreWindow — 없음/남음/지남, 정확히 기한 시각은 지남으로 본다', () => {
+    expect(restoreWindow({ purgeAfter: null }, NOW)).toEqual({ kind: 'none' });
+    expect(restoreWindow({ purgeAfter: 'not-a-date' }, NOW)).toEqual({ kind: 'none' });
+    const open = restoreWindow({ purgeAfter: at(31 * HOUR) }, NOW);
+    expect(open.kind).toBe('open');
+    if (open.kind === 'open') expect(open.remainingMs).toBe(31 * HOUR);
+    expect(restoreWindow({ purgeAfter: at(0) }, NOW).kind).toBe('closed');
+    expect(restoreWindow({ purgeAfter: at(-1) }, NOW).kind).toBe('closed');
+  });
+
+  it('isRestoreWindowOpen — 기한 없음·남음은 true, 지남은 false', () => {
+    expect(isRestoreWindowOpen({ purgeAfter: null }, NOW)).toBe(true);
+    expect(isRestoreWindowOpen({ purgeAfter: at(1) }, NOW)).toBe(true);
+    expect(isRestoreWindowOpen({ purgeAfter: at(0) }, NOW)).toBe(false);
+  });
+
+  it('formatRemaining — 1시간 이상은 시간(내림), 미만은 분(내림, 최소 1분)', () => {
+    expect(formatRemaining(48 * HOUR)).toBe('48시간 남음');
+    expect(formatRemaining(31 * HOUR + 59 * MINUTE)).toBe('31시간 남음');
+    expect(formatRemaining(HOUR)).toBe('1시간 남음');
+    expect(formatRemaining(HOUR - 1)).toBe('59분 남음');
+    expect(formatRemaining(5 * MINUTE)).toBe('5분 남음');
+    expect(formatRemaining(30_000)).toBe('1분 남음');
+  });
+
+  it('formatKstDateTime — 브라우저 시간대와 무관하게 UTC+9 로 표기', () => {
+    expect(formatKstDateTime(new Date('2026-11-25T15:30:00.000Z'))).toBe('2026-11-26 00:30');
+    expect(formatKstDateTime(new Date('2026-01-01T00:05:00.000Z'))).toBe('2026-01-01 09:05');
+  });
+
+  it('선택 삭제 상한·안내 문구', () => {
+    expect(BULK_DELETE_MAX).toBe(100);
+    expect(STAFF_DELETE_WINDOW_NOTICE).toBe(
+      "삭제한 세션은 48시간 동안 '삭제 리스트'에서 복구할 수 있고, 그 뒤에는 파일까지 영구 삭제됩니다.",
+    );
+  });
+
+  it('bulkDeleteFeedback — 전부 성공', () => {
+    const fb = bulkDeleteFeedback({
+      deleted: 2,
+      failed: 0,
+      results: [
+        { sessionId: 'a', success: true, purgeAfter: at(48 * HOUR) },
+        { sessionId: 'b', success: true, purgeAfter: at(48 * HOUR) },
+      ],
+    });
+    expect(fb.level).toBe('success');
+    expect(fb.text).toContain('2건을 삭제했습니다');
+  });
+
+  it('bulkDeleteFeedback — 일부 실패면 경고와 첫 실패 사유(계약 코드는 문구로 매핑)', () => {
+    const fb = bulkDeleteFeedback({
+      deleted: 1,
+      failed: 2,
+      results: [
+        { sessionId: 'a', success: true },
+        { sessionId: 'b', success: false, code: 'STAFF_DELETE_NOT_ALLOWED', message: 'forbidden' },
+        { sessionId: 'c', success: false, message: '두 번째 실패' },
+      ],
+    });
+    expect(fb).toEqual({ level: 'warning', text: '삭제 성공 1건, 실패 2건 — 삭제 권한이 없습니다' });
+  });
+
+  it('bulkDeleteFeedback — 전부 실패면 오류, 모르는 코드는 서버 message 를 쓴다', () => {
+    const fb = bulkDeleteFeedback({
+      deleted: 0,
+      failed: 1,
+      results: [{ sessionId: 'a', success: false, code: 'UNKNOWN', message: '이미 삭제된 세션입니다' }],
+    });
+    expect(fb).toEqual({ level: 'error', text: '삭제 성공 0건, 실패 1건 — 이미 삭제된 세션입니다' });
+  });
+
+  it('RESTORE_WINDOW_CLOSED 오류는 복구 기한 문구로 안내한다', () => {
+    const err = { response: { status: 409, data: { code: 'RESTORE_WINDOW_CLOSED', message: 'x' } } };
+    expect(describeApiError(err, '복구에 실패했습니다.')).toBe(
+      '복구 기한(48시간)이 지나 복구할 수 없습니다',
+    );
+  });
 });
 
 describe('buildEditorUrl', () => {
@@ -232,6 +353,7 @@ describe('errorMessage', () => {
       'TENANT_FORBIDDEN',
       'FILE_NOT_FOUND',
       'STREAM_ERROR',
+      'RESTORE_WINDOW_CLOSED',
     ];
     for (const code of allCodes) {
       expect(errorMessage(code), code).toBeTruthy();

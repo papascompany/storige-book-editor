@@ -430,12 +430,15 @@ CREATE TABLE IF NOT EXISTS file_edit_sessions (
   created_at        TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   updated_at        TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   deleted_at        TIMESTAMP NULL,
+  -- 관리자 삭제 복구 기한 (2026-11-25) — 삭제+48h, NULL=기한 없음(고객 삭제·활성)
+  purge_after       TIMESTAMP NULL,
   FOREIGN KEY (cover_file_id)   REFERENCES files(id)         ON DELETE SET NULL,
   FOREIGN KEY (content_file_id) REFERENCES files(id)         ON DELETE SET NULL,
   INDEX idx_fes_order (order_seqno),
   INDEX idx_fes_member (member_seqno),
   INDEX idx_fes_status (status),
-  INDEX idx_fes_worker_status (worker_status)
+  INDEX idx_fes_worker_status (worker_status),
+  INDEX idx_edit_sessions_purge_after (purge_after)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- ---------------------------------------------------------------------

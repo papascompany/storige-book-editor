@@ -13,7 +13,9 @@ import {
 } from '../../test/renderWithAntd';
 import { act, fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi, type MockInstance } from 'vitest';
+import { Modal, type ModalFuncProps } from 'antd';
 import type {
+  BulkDeleteResponse,
   EditorSessionResponse,
   StaffSessionItem,
   StaffSessionListResponse,
@@ -27,6 +29,7 @@ const mocks = vi.hoisted(() => ({
   openEditorSession: vi.fn(),
   complete: vi.fn(),
   remove: vi.fn(),
+  bulkDelete: vi.fn(),
   downloadSessionFile: vi.fn(),
   saveDownloadedFile: vi.fn(),
   listSites: vi.fn(),
@@ -38,6 +41,7 @@ vi.mock('../../api/edit-data', () => ({
     openEditorSession: mocks.openEditorSession,
     complete: mocks.complete,
     remove: mocks.remove,
+    bulkDelete: mocks.bulkDelete,
     downloadSessionFile: mocks.downloadSessionFile,
   },
   saveDownloadedFile: mocks.saveDownloadedFile,
@@ -338,5 +342,139 @@ describe('EditSessionList — 주문 연결이 아닌 세션', () => {
     expect(within(popover).getByText('편집 세션을 삭제할까요?')).toBeTruthy();
     expect(mocks.remove).not.toHaveBeenCalled();
     expect(openDialog()).toBeNull();
+  });
+});
+
+describe('EditSessionList — 선택 삭제', () => {
+  let confirmCalls: ModalFuncProps[];
+
+  beforeEach(() => {
+    confirmCalls = [];
+    vi.spyOn(Modal, 'confirm').mockImplementation((config: ModalFuncProps) => {
+      confirmCalls.push(config);
+      return { destroy: vi.fn(), update: vi.fn() };
+    });
+  });
+
+  function rowCheckbox(id: string): HTMLInputElement {
+    const checkbox = row(id).querySelector<HTMLInputElement>('input[type="checkbox"]');
+    if (!checkbox) throw new Error(`행 ${id} 체크박스가 없습니다`);
+    return checkbox;
+  }
+
+  function bulkButton(): HTMLButtonElement {
+    const button = screen.getByText(/^선택 삭제 \(\d+\)$/).closest('button');
+    if (!button) throw new Error('선택 삭제 버튼이 없습니다');
+    return button;
+  }
+
+  it('상품 열에 주문 상품·사이즈를 보여 주고, 없으면 템플릿셋 이름을 보여 준다', async () => {
+    const withMeta = makeSessionItem({
+      id: 'sess-meta',
+      memberId: 'member-meta',
+      orderMeta: { productName: '무선 책자', size: 'A5' },
+      templateSetName: '책자 템플릿',
+    });
+    const templateOnly = makeSessionItem({
+      id: 'sess-template',
+      memberId: 'member-template',
+      templateSetName: '명함 템플릿',
+    });
+    mocks.listSessions.mockResolvedValue(page([withMeta, templateOnly]));
+    await renderList('member-meta');
+    expect(within(row('sess-meta')).queryByText('무선 책자 · A5')).not.toBeNull();
+    expect(within(row('sess-template')).queryByText('명함 템플릿')).not.toBeNull();
+  });
+
+  it('선택이 없으면 버튼이 비활성이고, 삭제할 수 없는 행은 체크박스가 비활성이다', async () => {
+    const locked = makeSessionItem({ id: 'sess-locked', memberId: 'member-locked', canDelete: false });
+    mocks.listSessions.mockResolvedValue(page([linked, locked]));
+    await renderList();
+    expect(bulkButton().disabled).toBe(true);
+    expect(screen.getByText('선택 삭제 (0)')).toBeTruthy();
+    expect(rowCheckbox('sess-locked').disabled).toBe(true);
+    expect(rowCheckbox('sess-linked').disabled).toBe(false);
+  });
+
+  it('선택 삭제는 확인 창을 거쳐 선택한 id 로 bulkDelete 를 호출하고 결과를 알린다', async () => {
+    const result: BulkDeleteResponse = {
+      deleted: 2,
+      failed: 0,
+      results: [
+        { sessionId: 'sess-linked', success: true, purgeAfter: '2026-10-05T00:00:00.000Z' },
+        { sessionId: 'sess-plain', success: true, purgeAfter: '2026-10-05T00:00:00.000Z' },
+      ],
+    };
+    mocks.bulkDelete.mockResolvedValue(result);
+    await renderList();
+
+    fireEvent.click(rowCheckbox('sess-linked'));
+    fireEvent.click(rowCheckbox('sess-plain'));
+    await waitFor(() => expect(bulkButton().disabled).toBe(false));
+    expect(screen.getByText('선택 삭제 (2)')).toBeTruthy();
+
+    fireEvent.click(bulkButton());
+    expect(confirmCalls).toHaveLength(1);
+    const config = confirmCalls[0];
+    expect(String(config.title)).toContain('2건');
+    expect(mocks.bulkDelete).not.toHaveBeenCalled();
+
+    // 확인 창 본문 — 주문번호가 붙은 건수 경고와 48시간 복구 안내
+    renderWithAntd(<>{config.content}</>);
+    expect(screen.getByText('주문번호가 붙은 세션 1건이 포함되어 있습니다.')).toBeTruthy();
+    expect(
+      screen.getByText(
+        "삭제한 세션은 48시간 동안 '삭제 리스트'에서 복구할 수 있고, 그 뒤에는 파일까지 영구 삭제됩니다.",
+      ),
+    ).toBeTruthy();
+
+    await act(async () => {
+      await config.onOk?.();
+    });
+    await waitFor(() => expect(mocks.bulkDelete).toHaveBeenCalledTimes(1));
+    expect(mocks.bulkDelete).toHaveBeenCalledWith(['sess-linked', 'sess-plain']);
+    await waitFor(() =>
+      expect(feedback.success).toHaveBeenCalledWith(
+        '2건을 삭제했습니다. 48시간 동안 [삭제 리스트]에서 복구할 수 있습니다.',
+        5,
+      ),
+    );
+    await waitFor(() => expect(screen.getByText('선택 삭제 (0)')).toBeTruthy());
+  });
+
+  it('일부 실패하면 성공·실패 건수와 첫 실패 사유를 경고로 알린다', async () => {
+    mocks.bulkDelete.mockResolvedValue({
+      deleted: 1,
+      failed: 1,
+      results: [
+        { sessionId: 'sess-linked', success: true },
+        { sessionId: 'sess-plain', success: false, code: 'STAFF_DELETE_NOT_ALLOWED' },
+      ],
+    } satisfies BulkDeleteResponse);
+    await renderList();
+    fireEvent.click(rowCheckbox('sess-linked'));
+    fireEvent.click(rowCheckbox('sess-plain'));
+    await waitFor(() => expect(bulkButton().disabled).toBe(false));
+    fireEvent.click(bulkButton());
+    await act(async () => {
+      await confirmCalls[0].onOk?.();
+    });
+    await waitFor(() =>
+      expect(feedback.warning).toHaveBeenCalledWith(
+        '삭제 성공 1건, 실패 1건 — 삭제 권한이 없습니다',
+        10,
+      ),
+    );
+  });
+
+  it('단건 삭제 확인에도 48시간 복구 안내가 있다', async () => {
+    await renderList();
+    fireEvent.click(buttonByText(row('sess-plain'), '삭제'));
+    const popover = await waitFor(() => {
+      const el = openPopover();
+      if (!el) throw new Error('Popconfirm 이 열리지 않았습니다');
+      return el;
+    });
+    expect(popover.textContent).toContain("48시간 동안 '삭제 리스트'에서 복구할 수 있고");
   });
 });

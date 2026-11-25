@@ -57,6 +57,7 @@ import type { PartnerOperatorGrant } from '../auth/partner-operator/partner-oper
 import type { PartnerOperatorAuditDetail } from '../auth/entities/partner-operator-audit-log.entity';
 import { computeEditRetention, editRetentionExpired } from '../staff-edit-data/edit-retention';
 import { staffAuditUnavailable, staffDeleteNotAllowed } from '../staff-edit-data/staff-actor';
+import { restoreWindowClosed } from '../staff-edit-data/staff-delete-window';
 import { resolveSessionPageCount } from './session-page-count';
 import { deriveSheetValidationRules, resolveSessionProductProfile } from './sheet-validation-rules';
 import { SheetMapError, buildSheetMap } from './sheet-map';
@@ -1605,6 +1606,7 @@ export class EditSessionsService {
           s.templateSetId ? (nameMap.get(s.templateSetId) ?? null) : null,
         );
         dto.deletedAt = s.deletedAt; // 삭제요청시간 — 삭제 리스트 전용 노출
+        dto.purgeAfter = s.purgeAfter ?? null; // 관리자 삭제 복구 기한(고객 삭제는 null)
         return dto;
       }),
       total,
@@ -1634,8 +1636,16 @@ export class EditSessionsService {
     }
 
     if (session.deletedAt) {
+      // 관리자 삭제분은 48시간 복구창 — 기한이 지났으면 영구 삭제 대상이라 복구하지 않는다(고객 삭제분은 기한 없음).
+      if (session.purgeAfter && new Date(session.purgeAfter).getTime() <= Date.now()) {
+        throw restoreWindowClosed(session.purgeAfter);
+      }
       await this.sessionRepository.restore(id);
+      if (session.purgeAfter) {
+        await this.sessionRepository.update({ id }, { purgeAfter: null });
+      }
       session.deletedAt = null;
+      session.purgeAfter = null;
       this.logger.log(`Restored edit session ${id} (admin)`);
     }
 

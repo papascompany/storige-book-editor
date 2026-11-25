@@ -62,6 +62,34 @@ export interface StaffSessionItem {
   staffEditedAfterComplete: boolean;
   /** 현재 관리자·이 세션 사이트 기준 삭제/복구 가능 여부(서버 판정) */
   canDelete: boolean;
+  /**
+   * 관리자 삭제분의 영구 삭제 예정 시각(ISO, 삭제 후 48시간). 이 시각이 지나면 복구할 수 없다.
+   * 고객이 지운 세션·삭제 안 된 세션은 null(기한 없음). 구 API 응답에는 키가 없을 수 있다.
+   */
+  purgeAfter: string | null;
+}
+
+/** DELETE /sessions/:id 응답 */
+export interface StaffActionResult {
+  success: boolean;
+  /** 관리자 삭제의 영구 삭제 예정 시각(ISO) */
+  purgeAfter?: string | null;
+}
+
+/** POST /sessions/bulk-delete 항목별 결과 */
+export interface BulkDeleteResultItem {
+  sessionId: string;
+  success: boolean;
+  purgeAfter?: string | null;
+  code?: string;
+  message?: string;
+}
+
+/** POST /sessions/bulk-delete 응답 */
+export interface BulkDeleteResponse {
+  deleted: number;
+  failed: number;
+  results: BulkDeleteResultItem[];
 }
 
 export type SessionDeletedFilter = 'exclude' | 'only' | 'include';
@@ -203,7 +231,8 @@ export type ApiErrorCode =
   | 'FILE_NOT_ON_DISK'
   | 'TENANT_FORBIDDEN'
   | 'FILE_NOT_FOUND'
-  | 'STREAM_ERROR';
+  | 'STREAM_ERROR'
+  | 'RESTORE_WINDOW_CLOSED';
 
 // ---------------------------------------------------------------------------
 // 내부 유틸
@@ -281,7 +310,7 @@ export function saveDownloadedFile(file: DownloadedFile, fallbackName: string): 
 }
 
 // ---------------------------------------------------------------------------
-// 13개 라우트
+// 14개 라우트 (9-1 선택 삭제 포함)
 // ---------------------------------------------------------------------------
 
 export const editDataApi = {
@@ -358,12 +387,23 @@ export const editDataApi = {
     await axiosInstance.post(`${BASE}/sessions/${encodeURIComponent(sessionId)}/complete`);
   },
 
-  /** 9. DELETE /sessions/:id — 소프트 삭제(보관기간 만료 후에도 허용) */
-  async remove(sessionId: string): Promise<void> {
-    await axiosInstance.delete(`${BASE}/sessions/${encodeURIComponent(sessionId)}`);
+  /** 9. DELETE /sessions/:id — 소프트 삭제(보관기간 만료 후에도 허용). 48시간 뒤 서버가 영구 삭제 */
+  async remove(sessionId: string): Promise<StaffActionResult> {
+    const r = await axiosInstance.delete<StaffActionResult>(
+      `${BASE}/sessions/${encodeURIComponent(sessionId)}`,
+    );
+    return r.data;
   },
 
-  /** 10. POST /sessions/:id/restore (멱등) */
+  /** 9-1. POST /sessions/bulk-delete — 선택 삭제(1~100건). 건별 성공·실패를 돌려준다 */
+  async bulkDelete(sessionIds: string[]): Promise<BulkDeleteResponse> {
+    const r = await axiosInstance.post<BulkDeleteResponse>(`${BASE}/sessions/bulk-delete`, {
+      sessionIds,
+    });
+    return r.data;
+  },
+
+  /** 10. POST /sessions/:id/restore (멱등). 관리자 삭제 48시간이 지나면 409 RESTORE_WINDOW_CLOSED */
   async restore(sessionId: string): Promise<void> {
     await axiosInstance.post(`${BASE}/sessions/${encodeURIComponent(sessionId)}/restore`);
   },

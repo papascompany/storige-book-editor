@@ -101,6 +101,10 @@ export class EditSessionResponseDto {
   // ── admin '삭제 리스트' (2026-06-11) — GET /edit-sessions/deleted 전용 ──
   @ApiPropertyOptional({ description: '삭제요청시간 (soft delete 시각) — 삭제 리스트 응답에서만 채워짐' })
   deletedAt?: Date | null;
+
+  /** 관리자 삭제분의 영구 삭제 시각(이 전까지 복구 가능). 고객 삭제분은 null — 삭제 리스트 전용 노출 */
+  @ApiPropertyOptional({ description: '관리자 삭제 영구 삭제 시각(복구 기한)', nullable: true })
+  purgeAfter?: Date | null;
 }
 
 export class EditSessionListResponseDto {

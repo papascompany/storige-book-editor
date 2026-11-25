@@ -5,12 +5,14 @@ import { EditSessionVersionEntity } from '../edit-sessions/entities/edit-session
 import { Site } from '../sites/entities/site.entity';
 import { UserSiteRole } from '../auth/entities/user-site-role.entity';
 import { WorkerJob } from '../worker-jobs/entities/worker-job.entity';
+import { FileEntity } from '../files/entities/file.entity';
 import { EditSessionsModule } from '../edit-sessions/edit-sessions.module';
 import { WorkerJobsModule } from '../worker-jobs/worker-jobs.module';
 import { FilesModule } from '../files/files.module';
 import { AuthModule } from '../auth/auth.module';
 import { StaffEditDataController } from './staff-edit-data.controller';
 import { StaffEditDataService } from './staff-edit-data.service';
+import { StaffDeletePurgeService } from './staff-delete-purge.service';
 
 /**
  * Storige 관리자 편집데이터 관리 (2026-09-29, ADDITIVE) — /api/admin/edit-data.
@@ -19,13 +21,13 @@ import { StaffEditDataService } from './staff-edit-data.service';
  */
 @Module({
   imports: [
-    TypeOrmModule.forFeature([EditSessionEntity, EditSessionVersionEntity, Site, UserSiteRole, WorkerJob]),
+    TypeOrmModule.forFeature([EditSessionEntity, EditSessionVersionEntity, Site, UserSiteRole, WorkerJob, FileEntity]),
     EditSessionsModule,
     WorkerJobsModule,
     FilesModule,
     AuthModule,
   ],
   controllers: [StaffEditDataController],
-  providers: [StaffEditDataService],
+  providers: [StaffEditDataService, StaffDeletePurgeService],
 })
 export class StaffEditDataModule {}
