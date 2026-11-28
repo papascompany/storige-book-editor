@@ -1754,13 +1754,14 @@ curl https://api.papascompany.co.kr/api/v1/sessions/<session-uuid>/deliverables 
 | `orderSeqno` | launch 값(없으면 0) |
 | `product` | 템플릿셋 `productProfile`(없으면 세션 스냅샷) 요약 — `editor.complete` 의 `product` 와 같은 키 + `duplexFlip`·`backRotation`. 프로파일 없는 세트는 `null` |
 | `calendar` | `{startYm:'YYYY-MM', dataVersion}`(세션 캘린더 메타가 있을 때) 또는 `null` |
-| `files[].role` | `single` = 편집기 산출 단일 PDF(`auth:'api-key'`, `url` = `/api/files/<fileId>/download/external`, `pageCount`) · `thumbnail`(`auth:'api-key'`, `/api/files/<fileId>/thumbnail`) · `sheet` = 합성 잡 산출 세트 파일(`auth:'signed'`, `jobId`·`sheetIndex`(0-base)·`expiresAt`). 합성 잡이 1파일(`pages`)을 산출하면 그 파일은 `role:'single'`+`auth:'signed'` 입니다. `cover`·`content`·`face` 는 예약(현재 발행 안 함). `url` 은 API origin 에 붙이는 상대 경로입니다 |
+| `files[].role` | `single` = 편집기 산출 단일 PDF(`auth:'api-key'`, `url` = `/api/files/<fileId>/download/external`, `pageCount`) · `thumbnail`(`auth:'api-key'`, `/api/files/<fileId>/thumbnail`) · `sheet` = 합성 잡 산출 세트 파일(`auth:'signed'`, `jobId`·`sheetIndex`(0-base)·`expiresAt`). 합성 잡이 1파일(`pages`)을 산출하면 그 파일은 `role:'single'`+`auth:'signed'` 입니다. **v1.36:** `photo` = 사진인화 인화형 세트의 사진별 JPEG(`auth:'signed'`, `jobId`·`photoIndex`(0-base)·`copies`·`label`·`filename`·`expiresAt`, 사진 수만큼 — 3.7.5a). `cover`·`content`·`face` 는 예약(현재 발행 안 함). `url` 은 API origin 에 붙이는 상대 경로입니다 |
 | `files[].auth` | `api-key`: 같은 사이트 editor 키(`X-API-Key`)로 GET — **v1 전용 발급 키(1.2(C))로는 열리지 않습니다**(후속) · `signed`: 서명 URL **300초** — 만료되면 이 라우트를 다시 불러 새 URL 을 받습니다 |
 | `sheets?` | 최신 합성 잡이 시트 맵(`sheet-map`) 잡일 때만 — 3.7.5 |
-| `files[].copies?`·`label?` | 시트 맵 잡의 `sheet` 파일에만(해당 시트 `SheetSpec` 값이 있을 때). **사진인화 세트(v1.25)의 원천은 세션 `metadata.items`** — 시트 앞면 페이지가 항목 `canvasIndex` 와 같은 시트에 `copies` = 그 항목의 매수, `label` = `'사진 N'`(N = 항목 순번+1)을 넣습니다(후가공 시트 제외, 시트 맵 발행·재합성 시점의 서버 정제본 기준) |
+| `files[].photoIndex?`·`filename?` | **v1.36** — `role:'photo'` 파일에만. `photoIndex` = 사진 순번(0-base, `items[].index` 와 같은 번호), `filename` = `photo_<NNN>_<sizeCode>_x<copies>.jpg` |
+| `files[].copies?`·`label?` | `role:'photo'`(v1.36): 그 사진의 인화 매수·`'사진 N'`. 그 밖에는 시트 맵 잡의 `sheet` 파일에만(해당 시트 `SheetSpec` 값이 있을 때). **사진인화 세트(v1.25)의 원천은 세션 `metadata.items`** — 시트 앞면 페이지가 항목 `canvasIndex` 와 같은 시트에 `copies` = 그 항목의 매수, `label` = `'사진 N'`(N = 항목 순번+1)을 넣습니다(후가공 시트 제외, 시트 맵 발행·재합성 시점의 서버 정제본 기준) |
 | `production?` | 제작 단계 메모(`metadata.production`, 있을 때만). v1.25 부터 시트 맵 산출 실패 기록 `production.sheetMap {error, message, at}` 도 여기 보입니다 |
 | `items?` | **사진인화 세트만(v1.25)** — `product.kind 'photo-print'` 인(검증된 템플릿셋 프로파일) 세션의 `metadata.items` 를 서버가 프로파일로 정제한 `PhotoItem[]`(항목 형식·`lowRes` 의미는 3.2 사진인화 단락과 같음. 상한 = min(세션 캔버스 수 기준 사진 수, `upload.maxPhotos`)). 런처가 보낸 `items` 가 그대로 echo 되지 않습니다. 그 밖의 세트·프로파일 무효는 키 없음(`product` 와 같은 판정 — 무효면 `product` 는 `null`, `items` 는 키 없음) |
-| `errorCode?`·`errorDetail?` | **v1.25** — `status:'failed'` 가 편집 완료·재합성 때의 시트 맵 산출 실패(`metadata.production.sheetMap`)에서 온 경우에만. `errorCode` = 매핑 오류 코드(예: digital 세트 홀수 캔버스 `PAGE_COUNT_MISMATCH`) 또는 잡 생성 실패 `SHEET_MAP_JOB_FAILED`, `errorDetail` = 서버가 기록한 메시지. 그 기록보다 뒤에 만들어진 합성 잡이 있으면 잡 상태가 우선이라 키가 없고, 합성 잡 `FAILED` 로 인한 `failed` 에도 키가 없습니다(그 잡의 실패 사유는 종전처럼 `synthesis.failed` 본문·잡 조회로) |
+| `errorCode?`·`errorDetail?` | **v1.25** — `status:'failed'` 가 편집 완료·재합성 때의 시트 맵 산출 실패(`metadata.production.sheetMap`)에서 온 경우에만. `errorCode` = 매핑 오류 코드(예: digital 세트 홀수 캔버스 `PAGE_COUNT_MISMATCH`) 또는 잡 생성 실패 `SHEET_MAP_JOB_FAILED`(v1.36 인화형 사진 JPEG 잡 생성 실패는 `PHOTO_JPEG_JOB_FAILED`), `errorDetail` = 서버가 기록한 메시지. 그 기록보다 뒤에 만들어진 합성 잡이 있으면 잡 상태가 우선이라 키가 없고, 합성 잡 `FAILED` 로 인한 `failed` 에도 키가 없습니다(그 잡의 실패 사유는 종전처럼 `synthesis.failed` 본문·잡 조회로) |
 
 - 타 사이트·타 env·런처로 만들지 않은 세션·없는 세션은 모두 `404 ERR_NOT_FOUND` 입니다(존재 은닉).
 - 서명 URL 을 DB 에 저장하지 마세요 — 저장할 값은 `sessionId`·`revision`·`fileId`·`jobId` 입니다.
@@ -1769,6 +1770,22 @@ curl https://api.papascompany.co.kr/api/v1/sessions/<session-uuid>/deliverables 
 
 상품 프로파일 `output.mode` 가 `sheet-map` 인 세트는 편집 완료 때 서버가 프로파일로 시트 앞/뒤 매핑(`SheetSpec[]` — `index`(0-base)·`front {page, rotate?}`·`back {page, rotate?} | null`(단면)·`sizeMm?`·`copies?`·`label?`·`role?:'post-process'`)을 만들어 `duplex-split` 대신 worker `sheet-map` 합성 잡을 발행합니다(운영 킬스위치 `SHEET_MAP_OUTPUT_ENABLED=off` 면 종전 `duplex-split` 분기). 산출은 프로파일 `output.sheetFiles` 에 따라 다릅니다 — `per-sheet`(기본): 시트마다 PDF 1개(1~2쪽, 뒷면 없는 시트는 1쪽) → deliverables `files[]` 에 `role:'sheet'`·`sheetIndex` = 시트 `index`·`auth:'signed'` 로 시트 수만큼; `merged-duplex`: 앞·뒤 교대 1파일(뒷면 없는 시트에는 빈 면 삽입, 양면 정렬 유지) → `role:'single'`·`auth:'signed'` 1건. `role:'post-process'` 시트는 항상 별도 세트 파일입니다. 뒷면 회전은 `SheetFaceRef.rotate`(운영 기본 0). deliverables 에는 발행 시 저장한 `sheets` 와 `files[].copies`/`label` 이 함께 실리고, 3.7.6 `synthesize` 는 이 세트도 재합성합니다. 매핑을 만들 수 없는 상품 구성(쪽수 불일치 등)은 `422 ERR_OUTPUT_MODE_UNSUPPORTED`, 워커 입력 오류는 기존 코드 `INVALID_OUTPUT_OPTIONS`·`PAGE_COUNT_MISMATCH` 입니다. 웹훅 본문(`outputFiles`)·`OutputFile.type` 값·기존 합성 mode 5종(split·duplex-split·spread·compose-mixed·merge)은 바뀌지 않습니다. 로컬 실측(2026-10-19): 탁상 베이직 26쪽 → 13시트 `per-sheet` 13파일(각 2쪽) → 재합성 `merged-duplex` 26쪽 1파일. 운영 템플릿셋에는 아직 sheet-map 프로파일 세트가 없습니다. **v1.25(2026-10-19~20, 2026-10-21 운영 반영) 보강:** 사진인화 세트(`kind 'photo-print'` 이고 프로파일 `output.mode 'sheet-map'` 인 digital 구성)도 같은 경로로 발행되며 시트 `copies`/`label` 의 원천은 세션 `metadata.items` 입니다(3.7.4). 편집 완료 때의 자동 발행이 실패하면(매핑 불가·잡 생성 실패) 세션 완료는 유지되고 서버가 `metadata.production.sheetMap {error, message, at}` 에 기록해 deliverables 가 `status:'failed'` + `errorCode`/`errorDetail` 로 노출합니다(종전 브랜치 구현은 로그만 남기고 `complete`·시트 없음으로 보였음). 다음 발행(재완료·3.7.6 재합성)이 성공하면 그 기록을 지웁니다.
 
+
+#### 3.7.5a 사진인화 인화형 세트의 사진별 JPEG — CONTRACT v1.36 (2026-11-28 추가, 운영 반영 전)
+
+인화소(미니랩)는 PDF 가 아니라 사진별 JPEG 를 받습니다. 그래서 프로파일이 `kind 'photo-print'` + `photoPrint.process 'chemical'` 인 세트는 편집 완료 때 서버가 worker `photo-jpeg` 합성 잡을 자동 발행합니다(request_id `photo-jpeg-r<revision>`). 워커는 편집기 단일 PDF 의 각 쪽(= 사진 1장, 인화형 세트는 도련 0 이라 쪽 크기 = 인화 크기)을 JPEG 로 래스터합니다.
+
+| 항목 | 값 |
+|---|---|
+| 형식 | JPEG, sRGB ICC 내장, 크로마 4:4:4, 해상도 메타(dpi) |
+| 해상도·품질 | 기본 300dpi·품질 95 (운영 설정 `PHOTO_JPEG_DPI` 150~600, `PHOTO_JPEG_QUALITY` 70~100). 예: 인스탁스 미니 54×86mm → 638×1016px, 4x6(102×152mm) → 1205×1795px |
+| 파일 이름 | `photo_<NNN>_<sizeCode>_x<copies>.jpg` — NNN 은 1부터(사진이 1000장 이상이면 자릿수 증가), `sizeCode` 는 `sizes[0].code` 의 영숫자·하이픈. 이름순 정렬 = 사진 순서 |
+| 매수 | 세션 `metadata.items[k].copies`(사진 k), 항목이 없으면 프로파일 `copies.min` |
+| deliverables | 편집기 원본 `role:'single'`(api-key) + 사진마다 `role:'photo'`(`auth:'signed'`·`photoIndex`·`copies`·`label`·`filename`). 잡 진행 중에는 `status:'synthesizing'`, 끝나면 `ready` |
+| 웹훅 | `synthesis.completed` 의 `outputFiles[]` 에 `type:'photo'`·`photoIndex`·`url`, 본문 `revision` 포함 |
+| 실패 | 잡 생성 실패는 완료를 막지 않고 `status:'failed'` + `errorCode:'PHOTO_JPEG_JOB_FAILED'`. 워커 실패는 잡 `FAILED`(`synthesis.failed`) |
+
+호스트(판매자 콘솔 등)는 `role:'photo'` 파일을 `filename` 그대로 내려받아 인화소에 넘기면 됩니다. 서명 URL 은 300초라 내려받기 직전에 deliverables 를 다시 부르세요. 3.7.6 `synthesize` 는 아직 이 세트를 재합성하지 않습니다(`422 ERR_OUTPUT_MODE_UNSUPPORTED`) — 다시 만들려면 편집을 재완료합니다(새 회차). 운영 스위치 `PHOTO_JPEG_OUTPUT_ENABLED=off` 면 종전처럼 편집기 단일 PDF 만 남습니다. digital(인쇄형, sheet-map) 사진인화 세트는 3.7.5 그대로입니다.
 #### 3.7.6 (선택) 재합성 — `POST /api/v1/sessions/:id/synthesize`
 
 ```bash
