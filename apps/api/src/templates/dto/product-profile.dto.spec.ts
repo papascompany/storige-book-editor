@@ -169,6 +169,25 @@ describe('ProductProfileDto (P1 캘린더 프로파일 파이프)', () => {
       expect(JSON.parse(JSON.stringify(out.productProfile))).toEqual(photoDigitalFixedBackProfile);
     });
 
+    it('(v1.37) sizes[0].printAreaMm → Create 통과·값 보존 / 재단 상자 밖 → 400 (types 문구)', async () => {
+      const instax = {
+        ...photoChemProfile,
+        photoPrint: {
+          ...photoPrintBlock,
+          sizes: [{ code: 'instax-mini', widthMm: 54, heightMm: 86, minDpi: 250, printAreaMm: { left: 4, top: 4, width: 46, height: 62 } }],
+        },
+      };
+      const out = await pipe.transform({ ...base, productProfile: instax }, { type: 'body', metatype: CreateTemplateSetDto });
+      expect(JSON.parse(JSON.stringify(out.productProfile))).toEqual(instax);
+
+      const outside = {
+        ...instax,
+        photoPrint: { ...instax.photoPrint, sizes: [{ ...instax.photoPrint.sizes[0], printAreaMm: { left: 10, top: 4, width: 46, height: 62 } }] },
+      };
+      const messages = await expect400({ ...base, productProfile: outside });
+      expect(messages.join('\n')).toContain('printAreaMm');
+    });
+
     it("kind 'photo-print' 인데 photoPrint 블록 없음 → 400 (types 문구)", async () => {
       const messages = await expect400({ ...base, productProfile: { ...deskLargeProfile, kind: 'photo-print' } });
       expect(messages.join('\n')).toContain("kind='photo-print' 는 photoPrint 프로파일이 필요합니다");

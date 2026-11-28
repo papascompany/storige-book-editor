@@ -54,4 +54,35 @@ async function makePdf(file: string): Promise<void> {
     // 임시 PNG 정리
     await expect(fs.stat(tmp)).rejects.toThrow();
   });
+
+  it('(v1.37) cropMm — 인스탁스 사진 창 46×62mm(4,4) 만 잘라 낸다', async () => {
+    // 1쪽: 흰 바탕 + 사진 창(4,4,46×62mm)만 초록 — PDF 좌표는 왼쪽 아래 원점
+    const doc = await PDFDocument.create();
+    const page = doc.addPage([54 * MM, 86 * MM]);
+    page.drawRectangle({ x: 0, y: 0, width: 54 * MM, height: 86 * MM, color: rgb(1, 1, 1) });
+    page.drawRectangle({ x: 4 * MM, y: (86 - 4 - 62) * MM, width: 46 * MM, height: 62 * MM, color: rgb(0, 0.6, 0) });
+    const input = path.join(dir, 'instax.pdf');
+    await fs.writeFile(input, await doc.save());
+
+    const out = path.join(dir, 'photo_001_instax-mini_x1.jpg');
+    const r = await renderPdfPageToJpeg({
+      inputPath: input,
+      page: 1,
+      dpi: 300,
+      quality: 95,
+      tempPngPath: path.join(dir, 'crop.png'),
+      outputPath: out,
+      cropMm: { left: 4, top: 4, width: 46, height: 62 },
+      pageSizeMm: { width: 54, height: 86 },
+    });
+    // 46mm·62mm @300dpi = 543 × 732 px (반올림 ±1)
+    expect(Math.abs(r.width - 543)).toBeLessThanOrEqual(1);
+    expect(Math.abs(r.height - 732)).toBeLessThanOrEqual(1);
+    // 모서리까지 초록(흰 테두리 없음)
+    for (const [x, y] of [[2, 2], [r.width - 3, 2], [2, r.height - 3], [r.width - 3, r.height - 3]]) {
+      const { data } = await sharp(out).extract({ left: x, top: y, width: 1, height: 1 }).raw().toBuffer({ resolveWithObject: true });
+      expect(data[1]).toBeGreaterThan(110);
+      expect(data[0]).toBeLessThan(60);
+    }
+  });
 });

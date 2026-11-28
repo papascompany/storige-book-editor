@@ -62,5 +62,12 @@ export function assertPhotoJpegJobInput(
       throw invalidOptions('photo-jpeg: 파일 이름 중복', { position: i, filename: photo.filename });
     }
     names.add(photo.filename);
+    if (photo.cropMm !== undefined) {
+      const c = photo.cropMm;
+      const fin = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v);
+      if (!c || !fin(c.left) || !fin(c.top) || !fin(c.width) || !fin(c.height) || c.left < 0 || c.top < 0 || c.width <= 0 || c.height <= 0) {
+        throw invalidOptions('photo-jpeg: cropMm 이 올바르지 않습니다', { position: i });
+      }
+    }
   });
 }

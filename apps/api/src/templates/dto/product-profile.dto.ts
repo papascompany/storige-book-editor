@@ -371,6 +371,27 @@ export class CalendarProfileDto implements CalendarProfile {
 
 // ─── 사진인화 ────────────────────────────────────────────────────────────────
 
+/** (v1.37) 인화 영역 — 재단 상자 왼쪽 위 기준 mm. 경계·크기 검증은 validateProductProfile 이 한다. */
+export class PhotoPrintAreaDto {
+  @ApiProperty({ example: 4, description: '왼쪽(mm, ≥0)' })
+  @IsNumber()
+  @Min(0)
+  left: number;
+
+  @ApiProperty({ example: 4, description: '위(mm, ≥0)' })
+  @IsNumber()
+  @Min(0)
+  top: number;
+
+  @ApiProperty({ example: 46, description: '가로(mm, >0)' })
+  @IsNumber()
+  width: number;
+
+  @ApiProperty({ example: 62, description: '세로(mm, >0)' })
+  @IsNumber()
+  height: number;
+}
+
 export class PhotoPrintSizeDto implements PhotoPrintSize {
   @ApiProperty({ example: '4x6', description: "사이즈 코드(호스트·매니페스트 식별용). 영숫자·'_'·'-' 1~32자" })
   @IsString()
@@ -389,6 +410,15 @@ export class PhotoPrintSizeDto implements PhotoPrintSize {
   @IsInt()
   @Min(1)
   minDpi: number;
+
+  @ApiPropertyOptional({
+    type: () => PhotoPrintAreaDto,
+    description: '(v1.37) 인화 영역(재단 상자 기준 mm). 있으면 인화형 사진별 JPEG 는 이 영역만 잘라 낸다(예: 인스탁스 미니 사진 창)',
+  })
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => PhotoPrintAreaDto)
+  printAreaMm?: PhotoPrintAreaDto;
 }
 
 export class PhotoPrintOptionsPolicyDto implements PhotoPrintOptionsPolicy {
