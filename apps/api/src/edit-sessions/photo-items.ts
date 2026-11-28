@@ -124,6 +124,9 @@ export function buildPhotoJpegSpecs(
   const photoPrint = profile!.photoPrint!;
   const minCopies = Math.max(1, Number.isInteger(photoPrint.copies?.min) ? photoPrint.copies.min : 1);
   const sizeCode = safeNamePart(photoPrint.sizes?.[0]?.code ?? 'photo');
+  // v1.37: 인화 영역이 있으면 그 영역만 잘라 낸다(검증된 프로파일 값 그대로)
+  const area = photoPrint.sizes?.[0]?.printAreaMm;
+  const cropMm = area ? { left: area.left, top: area.top, width: area.width, height: area.height } : undefined;
   const width = Math.max(3, String(pageCount).length);
   const byCanvas = new Map<number, PhotoItem>();
   for (const item of items) {
@@ -140,6 +143,7 @@ export function buildPhotoJpegSpecs(
       copies,
       label: formatPhotoSheetLabel({ index: page }),
       filename: `photo_${seq}_${sizeCode}_x${copies}.jpg`,
+      ...(cropMm ? { cropMm } : {}),
     });
   }
   return specs;

@@ -1772,7 +1772,7 @@ curl https://api.papascompany.co.kr/api/v1/sessions/<session-uuid>/deliverables 
 상품 프로파일 `output.mode` 가 `sheet-map` 인 세트는 편집 완료 때 서버가 프로파일로 시트 앞/뒤 매핑(`SheetSpec[]` — `index`(0-base)·`front {page, rotate?}`·`back {page, rotate?} | null`(단면)·`sizeMm?`·`copies?`·`label?`·`role?:'post-process'`)을 만들어 `duplex-split` 대신 worker `sheet-map` 합성 잡을 발행합니다(운영 킬스위치 `SHEET_MAP_OUTPUT_ENABLED=off` 면 종전 `duplex-split` 분기). 산출은 프로파일 `output.sheetFiles` 에 따라 다릅니다 — `per-sheet`(기본): 시트마다 PDF 1개(1~2쪽, 뒷면 없는 시트는 1쪽) → deliverables `files[]` 에 `role:'sheet'`·`sheetIndex` = 시트 `index`·`auth:'signed'` 로 시트 수만큼; `merged-duplex`: 앞·뒤 교대 1파일(뒷면 없는 시트에는 빈 면 삽입, 양면 정렬 유지) → `role:'single'`·`auth:'signed'` 1건. `role:'post-process'` 시트는 항상 별도 세트 파일입니다. 뒷면 회전은 `SheetFaceRef.rotate`(운영 기본 0). deliverables 에는 발행 시 저장한 `sheets` 와 `files[].copies`/`label` 이 함께 실리고, 3.7.6 `synthesize` 는 이 세트도 재합성합니다. 매핑을 만들 수 없는 상품 구성(쪽수 불일치 등)은 `422 ERR_OUTPUT_MODE_UNSUPPORTED`, 워커 입력 오류는 기존 코드 `INVALID_OUTPUT_OPTIONS`·`PAGE_COUNT_MISMATCH` 입니다. 웹훅 본문(`outputFiles`)·`OutputFile.type` 값·기존 합성 mode 5종(split·duplex-split·spread·compose-mixed·merge)은 바뀌지 않습니다. 로컬 실측(2026-10-19): 탁상 베이직 26쪽 → 13시트 `per-sheet` 13파일(각 2쪽) → 재합성 `merged-duplex` 26쪽 1파일. 운영 템플릿셋에는 아직 sheet-map 프로파일 세트가 없습니다. **v1.25(2026-10-19~20, 2026-10-21 운영 반영) 보강:** 사진인화 세트(`kind 'photo-print'` 이고 프로파일 `output.mode 'sheet-map'` 인 digital 구성)도 같은 경로로 발행되며 시트 `copies`/`label` 의 원천은 세션 `metadata.items` 입니다(3.7.4). 편집 완료 때의 자동 발행이 실패하면(매핑 불가·잡 생성 실패) 세션 완료는 유지되고 서버가 `metadata.production.sheetMap {error, message, at}` 에 기록해 deliverables 가 `status:'failed'` + `errorCode`/`errorDetail` 로 노출합니다(종전 브랜치 구현은 로그만 남기고 `complete`·시트 없음으로 보였음). 다음 발행(재완료·3.7.6 재합성)이 성공하면 그 기록을 지웁니다.
 
 
-#### 3.7.5a 사진인화 인화형 세트의 사진별 JPEG — CONTRACT v1.36 (2026-11-28 추가, 운영 반영 전)
+#### 3.7.5a 사진인화 인화형 세트의 사진별 JPEG — CONTRACT v1.36 (2026-11-28 추가, 2026-11-28 19:04 KST 운영 반영)
 
 인화소(미니랩)는 PDF 가 아니라 사진별 JPEG 를 받습니다. 그래서 프로파일이 `kind 'photo-print'` + `photoPrint.process 'chemical'` 인 세트는 편집 완료 때 서버가 worker `photo-jpeg` 합성 잡을 자동 발행합니다(request_id `photo-jpeg-r<revision>`). 워커는 편집기 단일 PDF 의 각 쪽(= 사진 1장, 인화형 세트는 도련 0 이라 쪽 크기 = 인화 크기)을 JPEG 로 래스터합니다.
 
@@ -1782,6 +1782,7 @@ curl https://api.papascompany.co.kr/api/v1/sessions/<session-uuid>/deliverables 
 | 해상도·품질 | 기본 300dpi·품질 95 (운영 설정 `PHOTO_JPEG_DPI` 150~600, `PHOTO_JPEG_QUALITY` 70~100). 예: 인스탁스 미니 54×86mm → 638×1016px, 4x6(102×152mm) → 1205×1795px |
 | 파일 이름 | `photo_<NNN>_<sizeCode>_x<copies>.jpg` — NNN 은 1부터(사진이 1000장 이상이면 자릿수 증가), `sizeCode` 는 `sizes[0].code` 의 영숫자·하이픈. 이름순 정렬 = 사진 순서 |
 | 매수 | 세션 `metadata.items[k].copies`(사진 k), 항목이 없으면 프로파일 `copies.min` |
+| 인화 영역(v1.37) | 프로파일 `photoPrint.sizes[0].printAreaMm {left, top, width, height}`(재단 상자 기준 mm)가 있으면 JPEG 는 그 영역만입니다. 인스탁스 미니: 편집 화면은 필름 54×86mm 전체(흰 여백 포함)를 보여 주고, JPEG 는 사진 창 46×62mm(위·좌 4mm) = 300dpi 543×732px |
 | deliverables | 편집기 원본 `role:'single'`(api-key) + 사진마다 `role:'photo'`(`auth:'signed'`·`photoIndex`·`copies`·`label`·`filename`). 잡 진행 중에는 `status:'synthesizing'`, 끝나면 `ready` |
 | 웹훅 | `synthesis.completed` 의 `outputFiles[]` 에 `type:'photo'`·`photoIndex`·`url`, 본문 `revision` 포함 |
 | 실패 | 잡 생성 실패는 완료를 막지 않고 `status:'failed'` + `errorCode:'PHOTO_JPEG_JOB_FAILED'`. 워커 실패는 잡 `FAILED`(`synthesis.failed`) |

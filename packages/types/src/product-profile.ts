@@ -238,6 +238,20 @@ export interface PhotoPrintSize {
   heightMm: number;
   /** 저해상 경고 기준(ImageDpiWarningPlugin) — 미달 시 items[].lowRes=true, 완료 차단 없음 */
   minDpi: number;
+  /**
+   * (선택, 계약 v1.37) 인화 영역 — 재단 상자(widthMm×heightMm) 왼쪽 위 기준 mm.
+   * 있으면 인화형 사진별 JPEG 는 이 영역만 잘라 낸다(예: 인스탁스 미니 필름 54×86 의 사진 창 4,4,46×62 —
+   * 흰 테두리는 필름에 이미 있어 인화하지 않는다). 템플릿 사진틀은 이 영역과 같은 위치에 둔다. 없으면 쪽 전체.
+   */
+  printAreaMm?: PhotoPrintArea;
+}
+
+/** 재단 상자 기준 직사각형(mm) */
+export interface PhotoPrintArea {
+  left: number;
+  top: number;
+  width: number;
+  height: number;
 }
 
 /** 옵션 허용 어휘. 배열은 비어 있지 않아야 하며 첫 원소가 세션 기본값이다. */
@@ -903,6 +917,26 @@ function validatePhotoPrintBlock(
         errors.push(`photoPrint.sizes[${i}].widthMm/heightMm 는 0보다 큰 숫자여야 합니다`);
       }
       if (!isInt(size.minDpi, 1)) errors.push(`photoPrint.sizes[${i}].minDpi 는 1 이상 정수여야 합니다`);
+      if (size.printAreaMm !== undefined) {
+        const a = size.printAreaMm;
+        const ok =
+          isRecord(a) &&
+          isFiniteNumber(a.left, 0) &&
+          isFiniteNumber(a.top, 0) &&
+          isFiniteNumber(a.width) &&
+          a.width > 0 &&
+          isFiniteNumber(a.height) &&
+          a.height > 0 &&
+          isFiniteNumber(size.widthMm) &&
+          isFiniteNumber(size.heightMm) &&
+          a.left + a.width <= size.widthMm + 1e-6 &&
+          a.top + a.height <= size.heightMm + 1e-6;
+        if (!ok) {
+          errors.push(
+            `photoPrint.sizes[${i}].printAreaMm 는 {left,top ≥0, width,height >0} 이고 재단 상자(widthMm×heightMm) 안이어야 합니다`,
+          );
+        }
+      }
     });
   }
 

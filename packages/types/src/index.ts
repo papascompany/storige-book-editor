@@ -1256,6 +1256,11 @@ export interface PhotoJpegSpec {
   label: string;
   /** 산출 파일 이름 — [A-Za-z0-9._-] 만, `.jpg` 로 끝남 */
   filename: string;
+  /**
+   * (선택, v1.37) 잘라 낼 인화 영역 — 쪽(재단 상자) 왼쪽 위 기준 mm(= 프로파일 sizes[0].printAreaMm).
+   * 없으면 쪽 전체를 JPEG 로 낸다.
+   */
+  cropMm?: { left: number; top: number; width: number; height: number };
 }
 
 export interface PhotoJpegSynthesisJobData {

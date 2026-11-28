@@ -233,6 +233,22 @@ describe('buildPhotoJpegSpecs — 인화형 사진별 JPEG 명세(v1.36)', () =>
     expect(specs[999].filename).toBe('photo_1000_Instax-Mini-54_x2.jpg');
   });
 
+  it('(v1.37) sizes[0].printAreaMm 이 있으면 모든 명세에 cropMm 을 싣는다', () => {
+    const instax = {
+      ...chemical,
+      photoPrint: {
+        ...chemical.photoPrint!,
+        sizes: [{ code: 'instax-mini', widthMm: 54, heightMm: 86, minDpi: 250, printAreaMm: { left: 4, top: 4, width: 46, height: 62 } }],
+      },
+    } as ProductProfile;
+    const specs = buildPhotoJpegSpecs(instax, [], 2);
+    expect(specs.map((x) => x.cropMm)).toEqual([
+      { left: 4, top: 4, width: 46, height: 62 },
+      { left: 4, top: 4, width: 46, height: 62 },
+    ]);
+    expect(buildPhotoJpegSpecs(chemical, [], 1)[0]).not.toHaveProperty('cropMm');
+  });
+
   it('digital 세트·쪽 수 0 → []', () => {
     expect(buildPhotoJpegSpecs(photoDigitalProfile, [], 4)).toEqual([]);
     expect(buildPhotoJpegSpecs(chemical, [], 0)).toEqual([]);

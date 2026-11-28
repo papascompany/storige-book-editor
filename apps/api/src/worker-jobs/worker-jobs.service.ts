@@ -4634,6 +4634,13 @@ export function assertPhotoJpegCoversPages(photos: PhotoJpegSpec[], totalPages: 
       fail(`photo-jpeg: ${i}번째 항목의 파일 이름이 규칙에 맞지 않습니다.`);
     }
     if (names.has(p.filename)) fail(`photo-jpeg: 파일 이름 중복(${p.filename})`);
+    if (p.cropMm !== undefined) {
+      const c = p.cropMm;
+      const fin = (v: unknown, min: number): boolean => typeof v === 'number' && Number.isFinite(v) && v >= min;
+      if (!c || !fin(c.left, 0) || !fin(c.top, 0) || !fin(c.width, 0) || !fin(c.height, 0) || c.width <= 0 || c.height <= 0) {
+        fail(`photo-jpeg: ${i}번째 항목의 cropMm 이 올바르지 않습니다.`);
+      }
+    }
     names.add(p.filename);
   });
 }

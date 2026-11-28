@@ -1936,6 +1936,15 @@ export class SynthesisProcessor {
           quality,
           tempPngPath: path.join(jobTempDir, `photo_${photo.index}.png`),
           outputPath: outPath,
+          // v1.37: 인화 영역만 잘라 내기 — 쪽 크기는 qpdf 메타(pt → mm)
+          ...(photo.cropMm
+            ? {
+                cropMm: photo.cropMm,
+                pageSizeMm: meta.pages[photo.page]
+                  ? { width: (meta.pages[photo.page].widthPt * 25.4) / 72, height: (meta.pages[photo.page].heightPt * 25.4) / 72 }
+                  : undefined,
+              }
+            : {}),
         });
         if (rendered.bytes <= 0) {
           throw new DomainError(ErrorCodes.EMPTY_OUTPUT_FILE, 'photo-jpeg 빈 산출 파일', { photoIndex: photo.index });
