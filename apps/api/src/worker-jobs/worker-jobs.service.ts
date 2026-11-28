@@ -33,6 +33,8 @@ import {
   CutoutJobData,
   type SheetMapSynthesisJobData,
   type SheetSpec,
+  type PhotoJpegSpec,
+  type PhotoJpegSynthesisJobData,
 } from '@storige/types';
 import {
   CreateValidationJobDto,
@@ -3172,6 +3174,110 @@ export class WorkerJobsService implements OnModuleInit {
   }
 
   /**
+   * 사진인화 인화형 사진별 JPEG 잡 생성(worker mode 'photo-jpeg', 계약 v1.36).
+   * 멱등·편집기 산출물·세션 일치 검증은 createSheetMapJob 과 같다. photos 는 세션 쪽수(0..n-1)를 순서대로 정확히 1회씩 덮어야 한다.
+   */
+  async createPhotoJpegJob(dto: {
+    sessionId: string;
+    pdfFileId: string;
+    photos: PhotoJpegSpec[];
+    dpi: number;
+    quality: number;
+    requestId: string;
+    callbackUrl?: string;
+    priority?: 'high' | 'normal' | 'low';
+    siteId?: string | null;
+    revision?: number;
+  }): Promise<WorkerJob> {
+    const existingJob = await this.workerJobRepository.findOne({
+      where: { sessionId: dto.sessionId, pdfFileId: dto.pdfFileId, requestId: dto.requestId },
+    });
+    if (existingJob) {
+      this.logger.log(
+        `Idempotent hit: returning existing photo-jpeg job ${existingJob.id} for requestId=${dto.requestId}`,
+      );
+      return existingJob;
+    }
+
+    const session = await this.editSessionRepository.findOne({ where: { id: dto.sessionId } });
+    if (!session) {
+      throw new NotFoundException({ code: 'SESSION_NOT_FOUND', message: 'EditSession을 찾을 수 없습니다.' });
+    }
+
+    const file = await this.filesService.findById(dto.pdfFileId);
+    if (!file) {
+      throw new NotFoundException({ code: 'FILE_NOT_FOUND', message: '파일을 찾을 수 없습니다.' });
+    }
+    if (file.metadata?.generatedBy !== 'editor') {
+      throw new BadRequestException({ code: 'PDF_NOT_FROM_EDITOR', message: '편집기에서 생성된 PDF만 지원합니다.' });
+    }
+    if (file.metadata?.editSessionId !== dto.sessionId) {
+      throw new BadRequestException({ code: 'SESSION_FILE_MISMATCH', message: '세션과 파일이 일치하지 않습니다.' });
+    }
+
+    const totalExpectedPages = resolveSessionPageCount(session);
+    if (totalExpectedPages === 0) {
+      throw new UnprocessableEntityException({ code: 'EMPTY_SESSION_PAGES', message: '세션에 페이지가 없습니다.' });
+    }
+    assertPhotoJpegCoversPages(dto.photos, totalExpectedPages);
+
+    const job = this.workerJobRepository.create({
+      jobType: WorkerJobType.SYNTHESIZE,
+      status: WorkerJobStatus.PENDING,
+      editSessionId: dto.sessionId,
+      sessionId: dto.sessionId,
+      pdfFileId: dto.pdfFileId,
+      requestId: dto.requestId,
+      siteId: dto.siteId ?? null,
+      options: {
+        mode: 'photo-jpeg',
+        totalExpectedPages,
+        photos: dto.photos,
+        dpi: dto.dpi,
+        quality: dto.quality,
+        callbackUrl: dto.callbackUrl,
+        ...(typeof dto.revision === 'number' ? { revision: dto.revision } : {}),
+      },
+    });
+
+    let savedJob: WorkerJob;
+    try {
+      savedJob = await this.saveNewJob(job, 'photo-jpeg');
+    } catch (error: unknown) {
+      if (this.isUniqueViolation(error)) {
+        const existing = await this.workerJobRepository.findOne({
+          where: { sessionId: dto.sessionId, pdfFileId: dto.pdfFileId, requestId: dto.requestId },
+        });
+        if (existing) {
+          this.logger.log(`Race condition resolved: returning existing photo-jpeg job ${existing.id}`);
+          return existing;
+        }
+      }
+      throw error;
+    }
+
+    const priority = dto.priority === 'high' ? 1 : dto.priority === 'low' ? 10 : 5;
+    const payload: PhotoJpegSynthesisJobData = {
+      jobId: savedJob.id,
+      mode: 'photo-jpeg',
+      sessionId: dto.sessionId,
+      pdfFileId: dto.pdfFileId,
+      totalExpectedPages,
+      photos: dto.photos,
+      dpi: dto.dpi,
+      quality: dto.quality,
+      callbackUrl: dto.callbackUrl,
+    };
+    await this.synthesisQueue.add('synthesize-pdf', payload, { priority, ...SYNTHESIS_QUEUE_RETRY_OPTS });
+
+    this.logger.log(
+      `Photo-jpeg job created: ${savedJob.id}, sessionId=${dto.sessionId}, photos=${dto.photos.length}, ` +
+        `dpi=${dto.dpi}, quality=${dto.quality}, priority=${dto.priority || 'normal'}`,
+    );
+    return savedJob;
+  }
+
+  /**
    * 스프레드 합성 작업 생성
    * - spreadPdfFileId: 스프레드 PDF (1페이지)
    * - contentPdfFileIds: 내지 PDF들 (순서대로 병합)
@@ -4505,4 +4611,29 @@ export class WorkerJobsService implements OnModuleInit {
 
     return stats;
   }
+}
+
+/** photo-jpeg 산출 파일 이름 규칙 — 영숫자·점·밑줄·하이픈, `.jpg` 끝(경로 조각 금지) */
+const PHOTO_JPEG_FILENAME_RE = /^[A-Za-z0-9][A-Za-z0-9._-]{0,120}\.jpg$/;
+
+/**
+ * photo-jpeg 명세 검증(계약 v1.36) — index·page 가 0..n-1 순서와 같고, copies ≥1 정수, 파일 이름이 규칙에 맞고 서로 다를 것.
+ * 어긋나면 422 PHOTO_JPEG_SPEC_INVALID.
+ */
+export function assertPhotoJpegCoversPages(photos: PhotoJpegSpec[], totalPages: number): void {
+  const fail = (message: string): never => {
+    throw new UnprocessableEntityException({ code: 'PHOTO_JPEG_SPEC_INVALID', message });
+  };
+  if (!Array.isArray(photos) || photos.length === 0) fail('photo-jpeg: photos 가 비어 있습니다.');
+  if (photos.length !== totalPages) fail(`photo-jpeg: 사진 ${photos.length}장 ≠ 세션 ${totalPages}쪽`);
+  const names = new Set<string>();
+  photos.forEach((p, i) => {
+    if (p.index !== i || p.page !== i) fail(`photo-jpeg: ${i}번째 항목의 index/page 가 순서와 다릅니다.`);
+    if (!Number.isInteger(p.copies) || p.copies < 1) fail(`photo-jpeg: ${i}번째 항목의 copies 가 1 이상 정수가 아닙니다.`);
+    if (typeof p.filename !== 'string' || !PHOTO_JPEG_FILENAME_RE.test(p.filename)) {
+      fail(`photo-jpeg: ${i}번째 항목의 파일 이름이 규칙에 맞지 않습니다.`);
+    }
+    if (names.has(p.filename)) fail(`photo-jpeg: 파일 이름 중복(${p.filename})`);
+    names.add(p.filename);
+  });
 }

@@ -361,7 +361,8 @@ export const TERMINAL_DELIVERABLE_STATUSES: readonly SessionDeliverableStatus[] 
 ];
 
 /** `files[].role` — 템플릿셋 프로파일·pdfOutputMode 에 따라 조합이 달라진다 */
-export type DeliverableFileRole = 'single' | 'cover' | 'content' | 'sheet' | 'face' | 'thumbnail';
+/** 'photo'(additive, v1.36) = 사진인화 인화형 세트의 사진별 JPEG — 인화소 입고 파일 */
+export type DeliverableFileRole = 'single' | 'cover' | 'content' | 'sheet' | 'face' | 'thumbnail' | 'photo';
 
 /**
  * `files[].url` 접근 방식.
@@ -384,7 +385,14 @@ export interface DeliverableFile {
   pageCount?: number;
   /** role 'sheet'·'face' — 0-base 낱장 순번 */
   sheetIndex?: number;
+  /** role 'sheet'(sheet-map) — 시트 매수 / role 'photo' — 그 사진의 인화 매수 */
   copies?: number;
+  /** role 'sheet'(sheet-map)·'photo' — 라벨('사진 N' 등) */
+  label?: string;
+  /** (v1.36) role 'photo' — 사진 순번(0-base, items[].index 와 같은 번호) */
+  photoIndex?: number;
+  /** (v1.36) role 'photo' — 파일 이름 `photo_<NNN>_<sizeCode>_x<copies>.jpg` */
+  filename?: string;
   /** ISO 8601 */
   generatedAt?: string;
   /** 서명 URL 만료 시각(auth 'signed' 파일) */

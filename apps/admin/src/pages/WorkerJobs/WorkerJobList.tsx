@@ -55,6 +55,7 @@ const outputFileTypeLabels: Record<OutputFile['type'], string> = {
   content: '내지',
   pages: '페이지',
   set: '세트',
+  photo: '사진 JPEG',
 };
 
 /**

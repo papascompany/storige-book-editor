@@ -20,7 +20,8 @@ export type PartnerSessionDeliverableStatus =
   | 'ready'
   | 'failed';
 
-export type PartnerSessionFileRole = 'single' | 'thumbnail' | 'sheet';
+/** 'photo'(additive, v1.36) = 사진인화 인화형 세트의 사진별 JPEG(photo-jpeg 잡) */
+export type PartnerSessionFileRole = 'single' | 'thumbnail' | 'sheet' | 'photo';
 
 /** 파일 회수 인증 — 'api-key': 파트너 키(X-API-Key) 필요, 'signed': URL 자체 서명(TTL 안에서 무인증) */
 export type PartnerSessionFileAuth = 'api-key' | 'signed';
@@ -37,10 +38,14 @@ export interface PartnerSessionFileView {
   /** role='sheet' — 세트 순번(0-base, 편집기 페이지 순서). sheet-map 잡은 SheetSpec.index 와 같다 */
   sheetIndex?: number;
   pageCount?: number;
-  /** (additive) role='sheet' + sheet-map 잡만 — 해당 시트 SheetSpec.copies(명시된 경우) */
+  /** (additive) role='sheet' + sheet-map 잡: SheetSpec.copies(명시된 경우) / role='photo': 그 사진의 인화 매수 */
   copies?: number;
-  /** (additive) role='sheet' + sheet-map 잡만 — 해당 시트 SheetSpec.label(명시된 경우) */
+  /** (additive) role='sheet' + sheet-map 잡: SheetSpec.label(명시된 경우) / role='photo': '사진 N' */
   label?: string;
+  /** (additive, v1.36) role='photo' — 사진 순번(0-base, items[].index 와 같은 번호) */
+  photoIndex?: number;
+  /** (additive, v1.36) role='photo' — 산출 파일 이름(`photo_<NNN>_<sizeCode>_x<copies>.jpg`) */
+  filename?: string;
   /** ISO 8601 */
   generatedAt?: string;
   /** signed 만 — 서명 만료(ISO 8601) */

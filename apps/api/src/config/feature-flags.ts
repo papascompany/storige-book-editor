@@ -72,6 +72,8 @@ export const API_FEATURE_FLAG_KEYS = [
   'VALIDATION_BLEED_FROM_TEMPLATE_SET',
   // 2026-11-21(색 처리 cmyk 세트 완료 시 CMYK 변환) — 기본 OFF. 줄 끝에 붙는다(운영 FLAGS_EXPECTED_API 프로필에도 추가).
   'COMPLETE_CMYK_CONVERT',
+  // 2026-11-28(사진인화 인화형 사진별 JPEG 출력, 계약 v1.36) 킬스위치 — 기본 ON. 줄 끝에 붙는다(운영 FLAGS_EXPECTED_API 프로필에도 추가).
+  'PHOTO_JPEG_OUTPUT_ENABLED',
 ] as const;
 
 export type ApiFeatureFlagKey = (typeof API_FEATURE_FLAG_KEYS)[number];
@@ -114,6 +116,8 @@ export interface ApiFeatureFlagInputs {
   validationBleedFromTemplateSetRaw: unknown;
   /** process.env.COMPLETE_CMYK_CONVERT — edit-sessions.service 와 같은 소스·같은 술어(isFlagOn, 2026-11-21) */
   completeCmykConvertRaw: unknown;
+  /** process.env.PHOTO_JPEG_OUTPUT_ENABLED — edit-sessions.service 와 같은 소스·같은 술어(2026-11-28) */
+  photoJpegOutputEnabledRaw: unknown;
 }
 
 export function buildApiFeatureFlagSnapshot(i: ApiFeatureFlagInputs): ApiFeatureFlagSnapshot {
@@ -153,6 +157,8 @@ export function buildApiFeatureFlagSnapshot(i: ApiFeatureFlagInputs): ApiFeature
     ),
     // edit-sessions.service: isCompleteCmykConvertOn() = isFlagOn(process.env.COMPLETE_CMYK_CONVERT)
     COMPLETE_CMYK_CONVERT: isFlagOn(i.completeCmykConvertRaw),
+    // edit-sessions.service: isPhotoJpegOutputEnabled() = isPhotoJpegOutputEnabledRaw(process.env.PHOTO_JPEG_OUTPUT_ENABLED)
+    PHOTO_JPEG_OUTPUT_ENABLED: isPhotoJpegOutputEnabledRaw(i.photoJpegOutputEnabledRaw),
     // worker-jobs.controller partnerView: isPartnerJobViewOn(configService.get('PARTNER_JOB_VIEW'))
     PARTNER_JOB_VIEW: isPartnerJobViewOn(i.partnerJobViewRaw),
   };
@@ -195,6 +201,7 @@ export function collectApiFeatureFlagInputs(
     sheetMapOutputEnabledRaw: env.SHEET_MAP_OUTPUT_ENABLED,
     validationBleedFromTemplateSetRaw: env.VALIDATION_BLEED_FROM_TEMPLATE_SET,
     completeCmykConvertRaw: env.COMPLETE_CMYK_CONVERT,
+    photoJpegOutputEnabledRaw: env.PHOTO_JPEG_OUTPUT_ENABLED,
   };
 }
 
@@ -474,4 +481,20 @@ export function formatFlagExpectationLine(
  */
 export function isCompleteCmykConvertOn(env: NodeJS.ProcessEnv = process.env): boolean {
   return isFlagOn(env.COMPLETE_CMYK_CONVERT);
+}
+
+/**
+ * PHOTO_JPEG_OUTPUT_ENABLED 진리값 술어(2026-11-28, 계약 v1.36) — 기본 ON. 정확히 'off'(대소문자·공백 무시)일 때만 OFF.
+ */
+export function isPhotoJpegOutputEnabledRaw(raw: unknown): boolean {
+  return String(raw ?? '').trim().toLowerCase() !== 'off';
+}
+
+/**
+ * 편집 완료 시 사진인화 인화형(chemical) 세션에 워커 photo-jpeg 잡(사진별 JPEG)을 발행하는가. 기본 true.
+ * off 면 종전처럼 편집기 산출 단일 PDF 만 남는다(deliverables files 에 role 'photo' 없음).
+ * 롤백 = .env 에 PHOTO_JPEG_OUTPUT_ENABLED=off → api 재생성 → nginx 재시작. [FLAGS] api 줄 끝 키로 확인한다.
+ */
+export function isPhotoJpegOutputEnabled(env: NodeJS.ProcessEnv = process.env): boolean {
+  return isPhotoJpegOutputEnabledRaw(env.PHOTO_JPEG_OUTPUT_ENABLED);
 }

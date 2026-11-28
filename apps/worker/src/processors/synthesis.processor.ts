@@ -44,6 +44,9 @@ import {
 } from '../utils/pdf-merge-qpdf';
 // 합성 mode 'sheet-map' 입력 검증(다운로드 전·비재시도).
 import { assertSheetMapJobInput, sheetFaces } from './sheet-map-input';
+// 합성 mode 'photo-jpeg'(사진인화 인화형 사진별 JPEG, 계약 v1.36) 입력 검증·렌더.
+import { assertPhotoJpegJobInput } from './photo-jpeg-input';
+import { renderPdfPageToJpeg } from '../utils/photo-jpeg-render';
 // pdf-lib(OFF) 분리본의 미참조 XObject 정리 — jsPDF 가 전체 이미지를 매 페이지 리소스에 올려
 // copyPages 분리본이 원본 크기였다. qpdf(ON) 경로는 --pages 기본값이 이미 정리한다.
 import { compactPdfDocument } from '../utils/pdf-prune-xobjects';
@@ -62,6 +65,7 @@ import {
   SplitSynthesisJobData,
   DuplexSplitSynthesisJobData,
   SheetMapSynthesisJobData,
+  PhotoJpegSynthesisJobData,
   SpreadSynthesisJobData,
   PageTypes,
   SplitResult,
@@ -70,7 +74,7 @@ import {
 
 interface SynthesisJobData {
   jobId: string; // domain ID (worker_jobs.id)
-  mode?: 'split' | 'duplex-split' | 'spread' | 'compose-mixed' | 'sheet-map'; // ★ 모드 분기 기준 (2026-06-09: duplex-split 추가, 2026-10-18: sheet-map 추가)
+  mode?: 'split' | 'duplex-split' | 'spread' | 'compose-mixed' | 'sheet-map' | 'photo-jpeg'; // ★ (2026-11-28: photo-jpeg 추가) 모드 분기 기준 (2026-06-09: duplex-split 추가, 2026-10-18: sheet-map 추가)
   coverUrl?: string;
   contentUrl?: string;
   spineWidth?: number;
@@ -200,6 +204,10 @@ export class SynthesisProcessor {
     if (mode === 'sheet-map') {
       // 시트 맵(앞/뒤 면 참조·뒷면 회전) 기반 시트별/양면 합본 산출
       return this.handleSheetMapSynthesis(job as Job<SheetMapSynthesisJobData>);
+    }
+    if (mode === 'photo-jpeg') {
+      // 사진인화 인화형: 편집기 PDF 각 페이지 → 사진별 sRGB JPEG(인화소 입고용)
+      return this.handlePhotoJpegSynthesis(job as Job<PhotoJpegSynthesisJobData>);
     }
     if (mode === 'spread') {
       return this.handleSpreadSynthesis(job as Job<SpreadSynthesisJobData>);
@@ -1846,6 +1854,147 @@ export class SynthesisProcessor {
    *
    * 공통 머신(상태 전이·temp·파일 조회·ON/OFF 다운로드·페이지 수 검증·실패 정리)은 duplex-split 과 동일.
    */
+  // ============================================================
+  // Photo-jpeg Synthesis (사진인화 인화형: PDF 페이지 → 사진별 JPEG) - 2026-11-28, 계약 v1.36
+  // ============================================================
+
+  /**
+   * Photo-jpeg 처리 (편집기 산출 단일 PDF + api 가 계산한 PhotoJpegSpec[] → outputs/<jobId>/<filename>.jpg …).
+   * 인화소(미니랩)는 PDF 가 아니라 사진별 JPEG 를 받는다. 매수는 파일 이름(_x<copies>)·deliverables files[].copies 로 간다.
+   * 공통 머신(상태 전이·temp·파일 조회 이중 검증·페이지 수 검증·실패 정리)은 sheet-map 과 같다.
+   * - outputFiles: type 'photo'(photoIndex) 사진당 1파일, outputFileUrl = 첫 사진.
+   * - result.photoJpeg = { dpi, quality, photos } echo(매니페스트·잡 result 전용).
+   */
+  private async handlePhotoJpegSynthesis(job: Job<PhotoJpegSynthesisJobData>) {
+    const { jobId, sessionId, pdfFileId, totalExpectedPages, photos, dpi, quality } = job.data;
+    const queueJobId = job.id;
+    const jobTempDir = path.join(this.storagePath, `temp_${jobId}`);
+    let dlCleanup: (() => Promise<void>) | null = null;
+
+    this.logger.log(
+      `Processing photo-jpeg synthesis job ${jobId} (queue: ${queueJobId}), ` +
+        `expectedPages=${totalExpectedPages}, photos=${Array.isArray(photos) ? photos.length : '-'}, dpi=${dpi}, quality=${quality}`,
+    );
+
+    try {
+      await this.updateJobStatusWithRetry(jobId, { status: 'PROCESSING' });
+      await fs.rm(jobTempDir, { recursive: true, force: true });
+      await fs.mkdir(jobTempDir, { recursive: true });
+
+      // 1. 입력 검증 — 다운로드 전, 비재시도
+      assertPhotoJpegJobInput({ photos, dpi, quality, totalExpectedPages });
+
+      // 2. 파일 조회 + 이중 검증 (편집기 산출물 + 세션 일치)
+      const file = await this.getFileById(pdfFileId);
+      if (!file) {
+        throw new DomainError(ErrorCodes.FILE_NOT_FOUND, '파일을 찾을 수 없습니다');
+      }
+      if (file.metadata?.generatedBy !== 'editor') {
+        throw new DomainError(ErrorCodes.PDF_NOT_FROM_EDITOR, '편집기 산출물이 아닙니다');
+      }
+      if (file.metadata?.editSessionId !== sessionId) {
+        throw new DomainError(ErrorCodes.SESSION_FILE_MISMATCH, '세션-파일 불일치');
+      }
+
+      // 3. PDF 다운로드(스트림 → 임시파일) + 페이지 수(qpdf) — 래스터는 파일 경로가 필요하다
+      const sourceUrl = `api://${file.id}`;
+      let dl: Awaited<ReturnType<typeof downloadToTempFile>>;
+      try {
+        dl = await downloadToTempFile(sourceUrl);
+      } catch (error: unknown) {
+        throw new DomainError(ErrorCodes.FILE_DOWNLOAD_FAILED, '파일 다운로드 실패', {
+          url: sourceUrl,
+          cause: error instanceof Error ? error.message : String(error),
+        });
+      }
+      dlCleanup = dl.cleanup;
+      const meta = await extractPdfMetadataQpdf(dl.path);
+      if (meta.corrupted || meta.pageCount <= 0) {
+        throw new DomainError(ErrorCodes.PDF_LOAD_FAILED, 'PDF 로드 실패 (암호화/손상/지원불가)', {
+          cause: 'qpdf metadata corrupted/unreadable',
+        });
+      }
+      const totalPages = meta.pageCount;
+      if (totalPages !== totalExpectedPages) {
+        throw new DomainError(ErrorCodes.PAGE_COUNT_MISMATCH, '페이지 수 불일치', {
+          expected: totalExpectedPages,
+          got: totalPages,
+        });
+      }
+
+      // 4. 사진 루프 — 페이지 → JPEG
+      const storageKeyBase = `outputs/${jobId}`;
+      const outputDir = path.join(this.outputsPath, jobId);
+      await fs.mkdir(outputDir, { recursive: true });
+      const outputFiles: OutputFile[] = [];
+      for (const photo of photos) {
+        const outPath = path.join(outputDir, photo.filename);
+        const rendered = await renderPdfPageToJpeg({
+          inputPath: dl.path,
+          page: photo.page + 1,
+          dpi,
+          quality,
+          tempPngPath: path.join(jobTempDir, `photo_${photo.index}.png`),
+          outputPath: outPath,
+        });
+        if (rendered.bytes <= 0) {
+          throw new DomainError(ErrorCodes.EMPTY_OUTPUT_FILE, 'photo-jpeg 빈 산출 파일', { photoIndex: photo.index });
+        }
+        outputFiles.push({
+          type: 'photo',
+          url: `/storage/${storageKeyBase}/${photo.filename}`,
+          pageCount: 1,
+          photoIndex: photo.index,
+        });
+      }
+
+      // 5. 완료 처리 (★ 재시도 정책). photoJpeg echo 는 매니페스트·잡 result 전용.
+      const result: SynthesisResult = {
+        success: true,
+        outputFileUrl: outputFiles[0]?.url,
+        outputFiles,
+        totalPages,
+        photoJpeg: { dpi, quality, photos },
+      };
+      await this.updateJobStatusWithRetry(jobId, {
+        status: 'COMPLETED',
+        result,
+        outputFileUrl: result.outputFileUrl,
+        outputFiles,
+        queueJobId,
+      });
+      this.logger.log(
+        `Photo-jpeg job ${jobId} completed: ${outputFiles.length} photos (${totalPages} pages, ${dpi}dpi, q${quality})`,
+      );
+      return result;
+    } catch (error: unknown) {
+      const domainError =
+        error instanceof DomainError
+          ? error
+          : new DomainError(ErrorCodes.INTERNAL_ERROR, error instanceof Error ? error.message : String(error));
+      this.logger.error(
+        `Photo-jpeg job ${jobId} failed: ${domainError.code} - ${domainError.message}`,
+        error instanceof Error ? error.stack : undefined,
+      );
+      await this.settleFailedAttempt(
+        job,
+        jobId,
+        error,
+        {
+          status: 'FAILED',
+          errorCode: domainError.code,
+          errorMessage: domainError.message,
+          errorDetail: domainError.detail,
+        },
+        { mode: 'photo-jpeg', capture: false },
+      );
+      throw error;
+    } finally {
+      if (dlCleanup) await dlCleanup().catch(() => {});
+      await this.cleanupJobTempDir(jobTempDir);
+    }
+  }
+
   private async handleSheetMapSynthesis(job: Job<SheetMapSynthesisJobData>) {
     const { jobId, sessionId, pdfFileId, totalExpectedPages, sheets, output, duplexFlip } = job.data;
     const queueJobId = job.id;

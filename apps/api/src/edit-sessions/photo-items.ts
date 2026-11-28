@@ -10,7 +10,7 @@
  * 여기서는 정제된 PhotoItem 만 받는다. kind 가 'photo-print' 가 아니거나 `metadata.items` 가 없으면 빈 배열 → 시트 무변경.
  */
 import { readPhotoItems, resolvePhotoItemCount } from '@storige/types';
-import type { PhotoItem, ProductProfile, SheetSpec } from '@storige/types';
+import type { PhotoItem, PhotoJpegSpec, ProductProfile, SheetSpec } from '@storige/types';
 
 /** 시트 라벨 — 항목 순번(0부터) + 1. `formatPhotoPageLabel` 의 '사진 N' 과 같은 번호 체계. */
 export function formatPhotoSheetLabel(item: Pick<PhotoItem, 'index'>): string {
@@ -75,4 +75,72 @@ export function applyPhotoItemsToSheets(sheets: SheetSpec[], items: PhotoItem[])
     if (!item) return sheet;
     return { ...sheet, copies: item.copies, label: formatPhotoSheetLabel(item) };
   });
+}
+
+/** 사진 JPEG 기본 해상도(dpi) — 인화소 입고 표준. env PHOTO_JPEG_DPI 로 덮어쓴다(150~600). */
+export const PHOTO_JPEG_DEFAULT_DPI = 300;
+/** 사진 JPEG 기본 품질 — env PHOTO_JPEG_QUALITY 로 덮어쓴다(70~100). */
+export const PHOTO_JPEG_DEFAULT_QUALITY = 95;
+
+function readIntEnv(raw: unknown, fallback: number, min: number, max: number): number {
+  const n = Number(raw);
+  return Number.isInteger(n) && n >= min && n <= max ? n : fallback;
+}
+
+export function resolvePhotoJpegDpi(env: NodeJS.ProcessEnv = process.env): number {
+  return readIntEnv(env.PHOTO_JPEG_DPI, PHOTO_JPEG_DEFAULT_DPI, 150, 600);
+}
+
+export function resolvePhotoJpegQuality(env: NodeJS.ProcessEnv = process.env): number {
+  return readIntEnv(env.PHOTO_JPEG_QUALITY, PHOTO_JPEG_DEFAULT_QUALITY, 70, 100);
+}
+
+/** 사진인화 인화형(chemical) 세트인가 — 사진별 JPEG 출력 대상 */
+export function isChemicalPhotoPrintProfile(
+  profile: Pick<ProductProfile, 'kind' | 'photoPrint'> | null | undefined,
+): boolean {
+  return !!profile && profile.kind === 'photo-print' && profile.photoPrint?.process === 'chemical';
+}
+
+/** 파일 이름 조각 — 영숫자·하이픈만(그 밖은 '-'), 비면 'photo' */
+function safeNamePart(value: string): string {
+  const cleaned = value.replace(/[^A-Za-z0-9-]+/g, '-').replace(/^-+|-+$/g, '');
+  return cleaned.length > 0 ? cleaned.slice(0, 32) : 'photo';
+}
+
+/**
+ * 인화형 사진인화 세션 → 사진별 JPEG 명세(계약 v1.36).
+ * - chemical 은 캔버스 1장 = 사진 1장(page i = 사진 i). pageCount 장 전부를 사진으로 낸다.
+ * - 매수 = 같은 canvasIndex 항목의 copies, 항목이 없으면 프로파일 copies.min(최소 1).
+ * - 파일 이름 = `photo_<NNN>_<sizeCode>_x<copies>.jpg`(NNN = 1부터, 최소 3자리). 정렬하면 사진 순서가 된다.
+ * - chemical 이 아니거나 pageCount < 1 이면 [].
+ */
+export function buildPhotoJpegSpecs(
+  profile: Pick<ProductProfile, 'kind' | 'photoPrint'> | null | undefined,
+  items: PhotoItem[],
+  pageCount: number,
+): PhotoJpegSpec[] {
+  if (!isChemicalPhotoPrintProfile(profile) || !Number.isInteger(pageCount) || pageCount < 1) return [];
+  const photoPrint = profile!.photoPrint!;
+  const minCopies = Math.max(1, Number.isInteger(photoPrint.copies?.min) ? photoPrint.copies.min : 1);
+  const sizeCode = safeNamePart(photoPrint.sizes?.[0]?.code ?? 'photo');
+  const width = Math.max(3, String(pageCount).length);
+  const byCanvas = new Map<number, PhotoItem>();
+  for (const item of items) {
+    if (!byCanvas.has(item.canvasIndex)) byCanvas.set(item.canvasIndex, item);
+  }
+  const specs: PhotoJpegSpec[] = [];
+  for (let page = 0; page < pageCount; page++) {
+    const item = byCanvas.get(page);
+    const copies = item && Number.isInteger(item.copies) && item.copies >= 1 ? item.copies : minCopies;
+    const seq = String(page + 1).padStart(width, '0');
+    specs.push({
+      index: page,
+      page,
+      copies,
+      label: formatPhotoSheetLabel({ index: page }),
+      filename: `photo_${seq}_${sizeCode}_x${copies}.jpg`,
+    });
+  }
+  return specs;
 }

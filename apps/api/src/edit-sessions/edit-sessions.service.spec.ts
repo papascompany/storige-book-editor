@@ -69,6 +69,8 @@ describe('EditSessionsService', () => {
     // P2-c: applyPdfOutputMode 가 프로파일/pdfOutputMode 에 따라 둘 중 하나만 발행한다.
     createDuplexSplitJob: jest.fn(),
     createSheetMapJob: jest.fn(),
+    // v1.36: 사진인화 인화형(chemical) 세트 → 사진별 JPEG 잡
+    createPhotoJpegJob: jest.fn(),
   };
 
   const mockTemplateSetsService = {
@@ -2777,6 +2779,154 @@ describe('EditSessionsService', () => {
       expect(resolveDefaultBleedMm(session, { cropMarkEnabled: true, bleedMm: 1 }, {})).toBe(1);
       expect(resolveDefaultBleedMm(session, { cropMarkEnabled: true, bleedMm: 2.5, productProfile: sheetProfile }, {})).toBe(2.5);
       expect(resolveDefaultBleedMm(session, { cropMarkEnabled: true, bleedMm: 5 }, { [FLAG]: 'off' })).toBe(3);
+    });
+  });
+
+  describe('applyPdfOutputMode — 사진인화 인화형 사진별 JPEG(photo-jpeg, 계약 v1.36)', () => {
+    const SESSION_ID = 'ffffffff-ffff-4fff-8fff-ffffffffffff';
+    const COVER_FILE_ID = '99999999-9999-4999-8999-999999999999';
+    const FLAG = 'PHOTO_JPEG_OUTPUT_ENABLED';
+    const envBackup = { flag: process.env[FLAG], dpi: process.env.PHOTO_JPEG_DPI, q: process.env.PHOTO_JPEG_QUALITY };
+
+    /** 인스탁스 미니 인화형(chemical) — 캔버스 1장 = 사진 1장, output single-pdf */
+    const chemicalProfile = () => ({
+      version: 1,
+      kind: 'photo-print',
+      editorType: 'photo_chem',
+      pages: { kind: 'range', min: 1, max: 200, step: 1, labelRule: 'photo' },
+      sheet: { faces: 1, canvasLayout: 'canvas-per-sheet', binding: 'none', backRotation: 0, duplexFlip: 'short-edge' },
+      photoPrint: {
+        process: 'chemical',
+        composition: 'per-photo-free-back',
+        sizes: [{ code: 'instax-mini', widthMm: 54, heightMm: 86, minDpi: 250 }],
+        options: { border: ['none'], fit: ['paper-full', 'image-full'], finish: ['glossy', 'matte'], brightnessFix: true, dateOverlay: false, grayscale: true },
+        copies: { min: 1, max: 99 },
+        upload: { maxPhotos: 200, maxMb: 25 },
+      },
+      output: { mode: 'single-pdf' },
+    });
+
+    const photoItem = (index: number, copies: number) => ({
+      index,
+      canvasIndex: index,
+      sizeCode: 'instax-mini',
+      copies,
+      border: 'none',
+      fit: 'paper-full',
+      finish: 'glossy',
+      brightnessFix: false,
+      dateOverlay: false,
+      grayscale: false,
+      lowRes: false,
+    });
+
+    const makeSession = (o: Record<string, unknown> = {}) =>
+      ({
+        id: SESSION_ID,
+        siteId: 'site-hub',
+        templateSetId: 'ts-instax',
+        coverFileId: COVER_FILE_ID,
+        callbackUrl: null,
+        canvasData: [{ objects: [] }, { objects: [] }, { objects: [] }],
+        // items 는 위치 기준(readPhotoItems 가 index·canvasIndex 를 순서대로 다시 매김) — 3장 중 앞 2장만 항목 있음
+        metadata: { revision: 1, items: [photoItem(0, 2), photoItem(1, 5)] },
+        ...o,
+      }) as unknown as EditSessionEntity;
+
+    const run = (session: EditSessionEntity) =>
+      (service as unknown as { applyPdfOutputMode(s: EditSessionEntity): Promise<void> }).applyPdfOutputMode(session);
+
+    beforeEach(() => {
+      delete process.env[FLAG];
+      delete process.env.PHOTO_JPEG_DPI;
+      delete process.env.PHOTO_JPEG_QUALITY;
+      mockSessionRepository.save.mockImplementation(async (x: unknown) => x);
+      mockWorkerJobsService.createPhotoJpegJob.mockResolvedValue({ id: 'job-pj' });
+      mockTemplateSetsService.findOne.mockResolvedValue({ id: 'ts-instax', pdfOutputMode: 'single', productProfile: chemicalProfile() });
+    });
+
+    afterAll(() => {
+      for (const [key, value] of [[FLAG, envBackup.flag], ['PHOTO_JPEG_DPI', envBackup.dpi], ['PHOTO_JPEG_QUALITY', envBackup.q]] as const) {
+        if (value === undefined) delete process.env[key];
+        else process.env[key] = value;
+      }
+    });
+
+    it('① chemical 세트 완료 → 사진별 JPEG 잡(매수 = items, 없는 사진은 copies.min, 300dpi·q95, photo-jpeg-r<revision>)', async () => {
+      await run(makeSession());
+
+      expect(mockWorkerJobsService.createPhotoJpegJob).toHaveBeenCalledTimes(1);
+      expect(mockWorkerJobsService.createPhotoJpegJob).toHaveBeenCalledWith({
+        sessionId: SESSION_ID,
+        pdfFileId: COVER_FILE_ID,
+        photos: [
+          { index: 0, page: 0, copies: 2, label: '사진 1', filename: 'photo_001_instax-mini_x2.jpg' },
+          { index: 1, page: 1, copies: 5, label: '사진 2', filename: 'photo_002_instax-mini_x5.jpg' },
+          { index: 2, page: 2, copies: 1, label: '사진 3', filename: 'photo_003_instax-mini_x1.jpg' },
+        ],
+        dpi: 300,
+        quality: 95,
+        requestId: 'photo-jpeg-r1',
+        callbackUrl: undefined,
+        siteId: 'site-hub',
+        revision: 1,
+      });
+      expect(mockWorkerJobsService.createSheetMapJob).not.toHaveBeenCalled();
+      expect(mockWorkerJobsService.createDuplexSplitJob).not.toHaveBeenCalled();
+    });
+
+    it('② PHOTO_JPEG_DPI·PHOTO_JPEG_QUALITY 반영, 범위 밖이면 기본값', async () => {
+      process.env.PHOTO_JPEG_DPI = '400';
+      process.env.PHOTO_JPEG_QUALITY = '90';
+      await run(makeSession());
+      expect(mockWorkerJobsService.createPhotoJpegJob).toHaveBeenLastCalledWith(expect.objectContaining({ dpi: 400, quality: 90 }));
+
+      process.env.PHOTO_JPEG_DPI = '5000';
+      process.env.PHOTO_JPEG_QUALITY = 'abc';
+      await run(makeSession({ metadata: { revision: 2 } }));
+      expect(mockWorkerJobsService.createPhotoJpegJob).toHaveBeenLastCalledWith(expect.objectContaining({ dpi: 300, quality: 95 }));
+    });
+
+    it('③ 킬스위치 PHOTO_JPEG_OUTPUT_ENABLED=off → 잡 없음(편집기 단일 PDF 그대로)', async () => {
+      process.env[FLAG] = 'OFF ';
+      await run(makeSession());
+      expect(mockWorkerJobsService.createPhotoJpegJob).not.toHaveBeenCalled();
+      expect(mockWorkerJobsService.createDuplexSplitJob).not.toHaveBeenCalled();
+    });
+
+    it('④ digital(sheet-map) 사진인화 세트는 photo-jpeg 대상이 아님', async () => {
+      const digital = chemicalProfile();
+      mockTemplateSetsService.findOne.mockResolvedValue({
+        id: 'ts-instax',
+        pdfOutputMode: 'single',
+        productProfile: {
+          ...digital,
+          editorType: 'photo_digital_items',
+          pages: { kind: 'range', min: 2, max: 400, step: 2, labelRule: 'photo' },
+          sheet: { faces: 2, canvasLayout: 'canvas-pair', binding: 'none', pairing: 'same-sheet', backRotation: 0, duplexFlip: 'short-edge' },
+          photoPrint: { ...digital.photoPrint, process: 'digital', sizes: [{ code: '4x6', widthMm: 102, heightMm: 152, minDpi: 200 }] },
+          output: { mode: 'sheet-map', sheetFiles: 'per-sheet' },
+        },
+      });
+      mockWorkerJobsService.createSheetMapJob.mockResolvedValue({ id: 'job-sm' });
+      await run(makeSession({ canvasData: [{ objects: [] }, { objects: [] }] }));
+      expect(mockWorkerJobsService.createPhotoJpegJob).not.toHaveBeenCalled();
+      expect(mockWorkerJobsService.createSheetMapJob).toHaveBeenCalledTimes(1);
+    });
+
+    it('⑤ 잡 생성 실패 → 완료 유지 + production.sheetMap 에 PHOTO_JPEG_JOB_FAILED 기록', async () => {
+      mockWorkerJobsService.createPhotoJpegJob.mockRejectedValue(new Error('queue down'));
+      const session = makeSession();
+      await run(session);
+      expect((session.metadata as Record<string, any>).production?.sheetMap).toMatchObject({
+        error: 'PHOTO_JPEG_JOB_FAILED',
+        message: 'queue down',
+      });
+    });
+
+    it('⑥ coverFileId 없음 → 잡 없음', async () => {
+      await run(makeSession({ coverFileId: null }));
+      expect(mockWorkerJobsService.createPhotoJpegJob).not.toHaveBeenCalled();
     });
   });
 });

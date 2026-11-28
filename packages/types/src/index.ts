@@ -1240,6 +1240,39 @@ export interface SheetMapSynthesisJobData {
 }
 
 /**
+ * 사진인화 인화형(chemical) 사진별 JPEG 출력 — worker 합성 mode 'photo-jpeg' (계약 v1.36, 2026-11-28).
+ * 인화소(미니랩)는 PDF 가 아니라 사진별 JPEG 를 받으므로, 편집기 산출 단일 PDF 의 각 페이지(= 사진 1장)를
+ * sRGB JPEG 로 래스터한다. 매수는 파일 이름(`_x<copies>`)과 deliverables `files[].copies` 로 전달한다.
+ * 매핑(페이지·매수·이름)은 API 단독 권위 — 워커는 받은 그대로 렌더만 한다.
+ */
+export interface PhotoJpegSpec {
+  /** 사진 순번(0-base) — '사진 N' 의 N-1 */
+  index: number;
+  /** 원본 PDF 페이지(0-base) */
+  page: number;
+  /** 인화 매수(1 이상 정수) */
+  copies: number;
+  /** '사진 N' */
+  label: string;
+  /** 산출 파일 이름 — [A-Za-z0-9._-] 만, `.jpg` 로 끝남 */
+  filename: string;
+}
+
+export interface PhotoJpegSynthesisJobData {
+  jobId: string;
+  mode: 'photo-jpeg';          // ★ 필수: handleSynthesis() 분기 기준
+  sessionId: string;
+  pdfFileId: string;           // ★ 편집기 산출 단일 PDF
+  totalExpectedPages: number;  // ★ = photos.length (chemical 은 캔버스 1장 = 사진 1장)
+  photos: PhotoJpegSpec[];
+  /** 래스터 해상도(dpi) */
+  dpi: number;
+  /** JPEG 품질(1~100) */
+  quality: number;
+  callbackUrl?: string;
+}
+
+/**
  * PDF Synthesizer 내부 결과 (로컬 파일 경로)
  * Synthesizer → Processor 전달용
  */
@@ -1266,11 +1299,13 @@ export interface SynthesisLocalResult {
  *   setIndex 로 세트 순번(0-base)을 표기.
  */
 export interface OutputFile {
-  type: 'cover' | 'content' | 'pages' | 'set';
+  type: 'cover' | 'content' | 'pages' | 'set' | 'photo';
   url: string;
   pageCount?: number;
   /** duplex-split('set') 전용 — 세트 순번(0-base, 편집기 페이지 순서 기준) */
   setIndex?: number;
+  /** (additive, v1.36) photo-jpeg('photo') 전용 — 사진 순번(0-base, PhotoJpegSpec.index) */
+  photoIndex?: number;
 }
 
 /**
@@ -1293,6 +1328,12 @@ export interface SynthesisResult {
     output: 'per-sheet' | 'merged-duplex';
     duplexFlip: 'short-edge' | 'long-edge';
     sheets: SheetSpec[];
+  };
+  /** (additive, v1.36) worker mode 'photo-jpeg' 결과 echo — outputFiles 는 type 'photo'(photoIndex) 사진당 1파일 */
+  photoJpeg?: {
+    dpi: number;
+    quality: number;
+    photos: PhotoJpegSpec[];
   };
 }
 

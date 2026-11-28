@@ -71,11 +71,14 @@ export interface WebhookPayloadBase {
 
 /** 자산 산출물 참조 — separate/spread 모드 합성 결과 */
 export interface WebhookOutputFile {
-  type: 'cover' | 'content' | 'pages' | 'set';
+  /** 'photo'(additive, v1.36) = 사진인화 인화형 세트의 사진별 JPEG(photo-jpeg 잡) */
+  type: 'cover' | 'content' | 'pages' | 'set' | 'photo';
   url: string;
   pageCount?: number;
   /** duplex-split('set') 전용 — 세트 순번(0-base) */
   setIndex?: number;
+  /** (v1.36) photo-jpeg('photo') 전용 — 사진 순번(0-base) */
+  photoIndex?: number;
 }
 
 /** PDF 검증 결과 — `validation.*` */

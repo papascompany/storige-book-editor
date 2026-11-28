@@ -332,6 +332,63 @@ describe('PartnerSessionsService (P2-b 1-call 런처)', () => {
       expect(await service.getDeliverables(siteA(), SESSION_ID)).not.toHaveProperty('sheets');
     });
 
+    it('v1.36 완료 photo-jpeg 잡 — 사진별 JPEG 를 role photo(photoIndex·copies·label·filename, signed) 로 싣고 sheets 키 없음', async () => {
+      const completedAt = new Date('2026-11-28T01:00:00.000Z');
+      const photos = [
+        { index: 0, page: 0, copies: 2, label: '사진 1', filename: 'photo_001_instax-mini_x2.jpg' },
+        { index: 1, page: 1, copies: 1, label: '사진 2', filename: 'photo_002_instax-mini_x1.jpg' },
+      ];
+      findLatestPartnerVisibleSynthJob.mockResolvedValue({
+        id: 'job-pj',
+        status: WorkerJobStatus.COMPLETED,
+        result: {
+          outputFileUrl: '/storage/outputs/job-pj/photo_001_instax-mini_x2.jpg',
+          outputFiles: photos.map((p) => ({
+            type: 'photo',
+            url: `/storage/outputs/job-pj/${p.filename}`,
+            pageCount: 1,
+            photoIndex: p.index,
+          })),
+        },
+        options: { mode: 'photo-jpeg', totalExpectedPages: 2, photos, dpi: 300, quality: 95 },
+        outputFileUrl: '/storage/outputs/job-pj/photo_001_instax-mini_x2.jpg',
+        createdAt: T0,
+        completedAt,
+      });
+      issueOutputUrls.mockResolvedValue({
+        jobId: 'job-pj',
+        expiresInSec: 300,
+        files: photos.map((p) => ({
+          name: p.filename,
+          url: `/storage-signed/outputs/job-pj/${p.filename}?md5=x&expires=1800000000`,
+          expires: 1800000000,
+        })),
+      });
+
+      const view = await service.getDeliverables(siteA(), SESSION_ID);
+      expect(view.status).toBe('ready');
+      expect(view).not.toHaveProperty('sheets');
+      expect(view.files.filter((f) => f.role === 'photo')).toEqual([
+        {
+          role: 'photo',
+          jobId: 'job-pj',
+          url: '/storage-signed/outputs/job-pj/photo_001_instax-mini_x2.jpg?md5=x&expires=1800000000',
+          auth: 'signed',
+          photoIndex: 0,
+          copies: 2,
+          label: '사진 1',
+          filename: 'photo_001_instax-mini_x2.jpg',
+          generatedAt: completedAt.toISOString(),
+          expiresAt: new Date(1800000000 * 1000).toISOString(),
+        },
+        expect.objectContaining({ role: 'photo', photoIndex: 1, copies: 1, label: '사진 2', filename: 'photo_002_instax-mini_x1.jpg' }),
+      ]);
+      // 사진 파일이 있으면 outputFileUrl 단일 폴백(single)을 덧붙이지 않는다
+      expect(view.files.filter((f) => f.role === 'single' && f.auth === 'signed')).toHaveLength(0);
+      // 편집기 원본 PDF(api-key)는 그대로
+      expect(view.files[0]).toMatchObject({ role: 'single', auth: 'api-key' });
+    });
+
     it('P2-c 진행 중 sheet-map 잡 — status synthesizing 이어도 sheets 는 싣는다(파일은 없음)', async () => {
       findLatestPartnerVisibleSynthJob.mockResolvedValue({
         id: 'job-sm',

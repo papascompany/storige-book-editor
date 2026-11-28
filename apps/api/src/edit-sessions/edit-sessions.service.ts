@@ -61,12 +61,20 @@ import { restoreWindowClosed } from '../staff-edit-data/staff-delete-window';
 import { resolveSessionPageCount } from './session-page-count';
 import { deriveSheetValidationRules, resolveSessionProductProfile } from './sheet-validation-rules';
 import { SheetMapError, buildSheetMap } from './sheet-map';
-import { applyPhotoItemsToSheets, readSessionPhotoItems } from './photo-items';
+import {
+  applyPhotoItemsToSheets,
+  buildPhotoJpegSpecs,
+  isChemicalPhotoPrintProfile,
+  readSessionPhotoItems,
+  resolvePhotoJpegDpi,
+  resolvePhotoJpegQuality,
+} from './photo-items';
 import {
   isCompleteCmykConvertOn,
   isEditorContentPageRulesOn,
   isEditorSheetValidationRulesOn,
   isEditorSpreadValidationMappingOn,
+  isPhotoJpegOutputEnabled,
   isSessionJobOutputLookupOn,
   isSheetMapOutputEnabled,
   isSpreadSnapshotHardFail,
@@ -186,6 +194,14 @@ export function sheetMapRevisionRequestId(revision: number): string {
 }
 
 /**
+ * photo-jpeg 잡의 request_id — `photo-jpeg-r{revision}`(36자 이내, 계약 v1.36). sheet-map·duplex-split 과 같은 회차 카운터,
+ * 다른 접두사라 멱등 인덱스에서 충돌하지 않는다. 재완료 = 새 회차 잡.
+ */
+export function photoJpegRevisionRequestId(revision: number): string {
+  return `photo-jpeg-r${revision}`;
+}
+
+/**
  * 세션 `metadata` 는 클라이언트 자유형(얕은 병합)이지만 아래 키는 서버가 소유한다:
  *  - `launch`   : 파트너 v1 런처 스탬프(via/env/requestId/launchedAt) — deliverables/synthesize 의 사이트·env 판정 근거
  *  - `revision` : 산출 회차(complete·재합성마다 서버가 +1) — 재합성 requestId 멱등 키
@@ -259,7 +275,7 @@ export function withSheetMapFailure(
 export interface PartnerVisibleSynthJobRow {
   id: string;
   status: string;
-  result: { outputFileUrl?: string; outputFiles?: Array<{ type?: string; url?: string; pageCount?: number; setIndex?: number }> } | null;
+  result: { outputFileUrl?: string; outputFiles?: Array<{ type?: string; url?: string; pageCount?: number; setIndex?: number; photoIndex?: number }> } | null;
   outputFileUrl: string | null;
   createdAt: Date;
   completedAt: Date | null;
@@ -336,8 +352,13 @@ export class EditSessionsService {
   /**
    * sheet-map 발행 실패를 `metadata.production.sheetMap` 에 기록(로그 error). 저장 실패는 warn(무중단).
    */
-  private async recordSheetMapFailure(session: EditSessionEntity, error: unknown, scope: string): Promise<void> {
-    const code = error instanceof SheetMapError ? error.code : 'SHEET_MAP_JOB_FAILED';
+  private async recordSheetMapFailure(
+    session: EditSessionEntity,
+    error: unknown,
+    scope: string,
+    fallbackCode = 'SHEET_MAP_JOB_FAILED',
+  ): Promise<void> {
+    const code = error instanceof SheetMapError ? error.code : fallbackCode;
     const message = error instanceof Error ? error.message : String(error);
     this.logger.error(
       `[${scope}] session ${session.id}: sheet-map 발행 실패(완료는 유지, production.sheetMap=${code} 기록): ${message}`,
@@ -2023,6 +2044,53 @@ export class EditSessionsService {
    * best-effort: TemplateSet 미해결/파일부재/잡 생성 실패 시 경고만 남기고 완료는 무중단.
    * 출력 모드는 session.metadata.pdfOutputMode 에 스냅샷으로 기록(다운스트림/PHP 가독).
    */
+  /**
+   * 사진인화 인화형 세션의 사진별 JPEG 잡 발행(계약 v1.36). 실패는 완료를 막지 않고 `metadata.production.sheetMap` 에
+   * `PHOTO_JPEG_JOB_FAILED` 로 기록한다(deliverables 'failed' + errorCode — sheet-map 과 같은 노출 경로).
+   */
+  private async issuePhotoJpegJob(
+    session: EditSessionEntity,
+    profile: NonNullable<ReturnType<typeof resolveSessionProductProfile>>,
+    scope: string,
+  ): Promise<void> {
+    if (!session.coverFileId) {
+      this.logger.warn(`[${scope}] session ${session.id}: photo-jpeg 이나 coverFileId 부재 → 사진 JPEG 잡 스킵`);
+      return;
+    }
+    const revision = sessionRevisionOf(session.metadata);
+    const pageCount = resolveSessionPageCount(session);
+    try {
+      const photos = buildPhotoJpegSpecs(
+        profile,
+        readSessionPhotoItems(profile, session.metadata, pageCount),
+        pageCount,
+      );
+      if (photos.length === 0) {
+        throw new Error(`사진 JPEG 명세가 비어 있습니다(pageCount=${pageCount})`);
+      }
+      const dpi = resolvePhotoJpegDpi();
+      const quality = resolvePhotoJpegQuality();
+      const job = await this.workerJobsService.createPhotoJpegJob({
+        sessionId: session.id,
+        pdfFileId: session.coverFileId,
+        photos,
+        dpi,
+        quality,
+        requestId: photoJpegRevisionRequestId(revision),
+        callbackUrl: session.callbackUrl ?? undefined,
+        siteId: session.siteId ?? null,
+        revision,
+      });
+      this.logger.log(
+        `[${scope}] Created photo-jpeg job ${job.id} for session ${session.id} ` +
+          `(cover=${session.coverFileId}, photos=${photos.length}, dpi=${dpi}, quality=${quality})`,
+      );
+      await this.clearSheetMapFailure(session, scope);
+    } catch (e) {
+      await this.recordSheetMapFailure(session, e, scope, 'PHOTO_JPEG_JOB_FAILED');
+    }
+  }
+
   private async applyPdfOutputMode(session: EditSessionEntity): Promise<void> {
     try {
       if (!session.templateSetId) return; // 템플릿셋 미연결 → 기본(duplex-merged) 동작 유지
@@ -2052,6 +2120,21 @@ export class EditSessionsService {
         this.logger.warn(
           `[pdfOutputMode] metadata 스냅샷 저장 실패(무중단): ${(e as Error).message}`,
         );
+      }
+
+      // 사진인화 인화형(chemical) 세트 → 사진별 JPEG(photo-jpeg 잡, 계약 v1.36). 인화소는 PDF 가 아니라 JPEG 를 받는다.
+      // chemical 프로파일은 output.mode 'single-pdf' 로 검증되므로 sheet-map·duplex-split 과 겹치지 않는다.
+      // 킬스위치 PHOTO_JPEG_OUTPUT_ENABLED=off 면 종전처럼 편집기 단일 PDF 만 남는다.
+      if (isPhotoJpegOutputEnabled()) {
+        const photoProfile = resolveSessionProductProfile({
+          session,
+          templateSet,
+          warn: (m) => this.logger.warn(`[pdfOutputMode] session ${session.id}: ${m}`),
+        });
+        if (isChemicalPhotoPrintProfile(photoProfile)) {
+          await this.issuePhotoJpegJob(session, photoProfile!, 'pdfOutputMode');
+          return;
+        }
       }
 
       // 상품 프로파일 output.mode='sheet-map' 이 pdfOutputMode 보다 우선한다(시트 매핑이

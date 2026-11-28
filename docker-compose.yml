@@ -157,6 +157,12 @@ services:
       # 2026-11-21 색 처리 'cmyk' 세트의 편집 완료 시 CMYK 변환(기본 OFF). 켜면 완료가 변환을 기다리고, 실패하면 완료하지 않는다.
       #   롤백 = .env 에 COMPLETE_CMYK_CONVERT=false → api 재생성 → nginx 재시작. [FLAGS] 줄 끝 키로 확인한다.
       - COMPLETE_CMYK_CONVERT=${COMPLETE_CMYK_CONVERT:-false}
+      # 2026-11-28 사진인화 인화형(chemical) 세트의 편집 완료 시 사진별 JPEG 출력(워커 photo-jpeg 잡, 계약 v1.36, 기본 ON).
+      #   앞뒤 공백·대소문자를 무시하고 `off` 일 때만 해제(편집기 단일 PDF 만). 해상도·품질은 PHOTO_JPEG_DPI(300)·PHOTO_JPEG_QUALITY(95).
+      #   롤백 = .env 에 PHOTO_JPEG_OUTPUT_ENABLED=off → api 재생성 → nginx 재시작. [FLAGS] 줄 끝 키로 확인한다.
+      - PHOTO_JPEG_OUTPUT_ENABLED=${PHOTO_JPEG_OUTPUT_ENABLED:-on}
+      - PHOTO_JPEG_DPI=${PHOTO_JPEG_DPI:-300}
+      - PHOTO_JPEG_QUALITY=${PHOTO_JPEG_QUALITY:-95}
       # 기동 시 플래그 기대값 대조(api·worker 공통 형식, production 에서만). [FLAGS] api 줄과 같은
       #   `KEY=true|false` 토큰을 공백·쉼표로 나열한 프로필이다. .env 에서는 FLAGS_EXPECTED_API='…' 처럼
       #   작은따옴표로 감싼다. 결과는 기동 로그 `[FLAGS-CHECK] api ok|mismatch|missing|invalid` 한 줄(부팅은 막지 않음).

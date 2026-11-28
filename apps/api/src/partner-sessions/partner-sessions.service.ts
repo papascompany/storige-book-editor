@@ -1,6 +1,6 @@
 import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { ErrV1, WorkerJobStatus, resolveProductProfile, summarizeProductProfile } from '@storige/types';
-import type { PhotoItem, ProductProfile, SheetSpec } from '@storige/types';
+import type { PhotoItem, PhotoJpegSpec, ProductProfile, SheetSpec } from '@storige/types';
 import { CurrentSitePayload } from '../auth/decorators/current-site.decorator';
 import { AuthService } from '../auth/auth.service';
 import { isRemoteUrlPublic } from '../common/helpers/ssrf.helper';
@@ -269,7 +269,7 @@ export class PartnerSessionsService {
     const sheets = sheetMapSheetsOf(job);
     const files: PartnerSessionFileView[] = this.buildEditorFiles(session);
     if (job && job.status === WorkerJobStatus.COMPLETED) {
-      files.push(...(await this.buildJobFiles(site, job, sheets)));
+      files.push(...(await this.buildJobFiles(site, job, sheets, photoJpegSpecsOf(job))));
     }
 
     const view: PartnerSessionDeliverablesView = {
@@ -330,6 +330,7 @@ export class PartnerSessionsService {
     site: CurrentSitePayload,
     job: PartnerVisibleSynthJobRow,
     sheets: SheetSpec[] | null = null,
+    photos: PhotoJpegSpec[] | null = null,
   ): Promise<PartnerSessionFileView[]> {
     let signed: Array<{ name: string; url: string; expires: number }>;
     try {
@@ -345,11 +346,27 @@ export class PartnerSessionsService {
     const outputFiles = Array.isArray(job.result?.outputFiles) ? job.result.outputFiles : [];
     for (const out of outputFiles) {
       if (!out?.url) continue;
+      const entry = signedByName.get(basenameOf(out.url));
+      if (!entry) continue;
+      if (out.type === 'photo') {
+        // photo-jpeg 잡(v1.36): 사진별 JPEG — 매수·라벨은 발행 시 저장한 options.photos[photoIndex]
+        const photo = typeof out.photoIndex === 'number' ? (photos?.[out.photoIndex] ?? null) : null;
+        files.push({
+          role: 'photo',
+          jobId: job.id,
+          url: entry.url,
+          auth: 'signed',
+          ...(typeof out.photoIndex === 'number' ? { photoIndex: out.photoIndex } : {}),
+          ...(photo ? { copies: photo.copies, label: photo.label } : {}),
+          filename: basenameOf(out.url),
+          ...(generatedAt ? { generatedAt } : {}),
+          expiresAt: new Date(entry.expires * 1000).toISOString(),
+        });
+        continue;
+      }
       const role: PartnerSessionFileView['role'] | null =
         out.type === 'set' ? 'sheet' : out.type === 'pages' ? 'single' : null;
       if (!role) continue;
-      const entry = signedByName.get(basenameOf(out.url));
-      if (!entry) continue;
       const sheet = role === 'sheet' && typeof out.setIndex === 'number' ? (sheets?.[out.setIndex] ?? null) : null;
       files.push({
         role,
@@ -508,6 +525,13 @@ export function resolveSheetMapFailure(
     if (Number.isFinite(jobAt) && Number.isFinite(failedAt) && jobAt >= failedAt) return null;
   }
   return failure;
+}
+
+/** 최신 파트너 가시 합성 잡이 photo-jpeg 잡이면 발행 시 저장한 `options.photos`(배열, v1.36) — 그 밖은 null */
+export function photoJpegSpecsOf(job: PartnerVisibleSynthJobRow | null): PhotoJpegSpec[] | null {
+  const options = job?.options;
+  if (!options || options.mode !== 'photo-jpeg' || !Array.isArray(options.photos)) return null;
+  return options.photos as PhotoJpegSpec[];
 }
 
 /** 최신 파트너 가시 합성 잡이 sheet-map 잡이면 발행 시 저장한 `options.sheets`(배열) — 그 밖은 null */

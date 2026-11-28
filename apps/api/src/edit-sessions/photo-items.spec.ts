@@ -2,7 +2,16 @@
  * photo-items 순수 함수 — P2-d 사진인화(2026-10-19) 시트 매핑 copies/label 주입.
  */
 import type { PhotoItem, ProductProfile, SheetSpec } from '@storige/types';
-import { applyPhotoItemsToSheets, formatPhotoSheetLabel, readSessionPhotoItems, resolvePhotoItemLimit } from './photo-items';
+import {
+  applyPhotoItemsToSheets,
+  buildPhotoJpegSpecs,
+  formatPhotoSheetLabel,
+  isChemicalPhotoPrintProfile,
+  readSessionPhotoItems,
+  resolvePhotoItemLimit,
+  resolvePhotoJpegDpi,
+  resolvePhotoJpegQuality,
+} from './photo-items';
 import { buildSheetMap } from './sheet-map';
 
 const item = (index: number, canvasIndex: number, copies: number, o: Partial<PhotoItem> = {}): PhotoItem => ({
@@ -187,5 +196,53 @@ describe('readSessionPhotoItems', () => {
         [99, '사진 2'],
       ]);
     });
+  });
+});
+
+describe('buildPhotoJpegSpecs — 인화형 사진별 JPEG 명세(v1.36)', () => {
+  const chemical: ProductProfile = {
+    ...photoDigitalProfile,
+    editorType: 'photo_chem',
+    pages: { kind: 'range', min: 1, max: 2000, step: 1, labelRule: 'photo' },
+    sheet: { faces: 1, canvasLayout: 'canvas-per-sheet', binding: 'none', backRotation: 0, duplexFlip: 'short-edge' },
+    photoPrint: {
+      ...photoDigitalProfile.photoPrint!,
+      process: 'chemical',
+      sizes: [{ code: 'Instax Mini/54', widthMm: 54, heightMm: 86, minDpi: 250 }],
+      copies: { min: 2, max: 99 },
+    },
+    output: { mode: 'single-pdf' },
+  } as ProductProfile;
+
+  it('chemical 판정 — digital·NULL 은 아님', () => {
+    expect(isChemicalPhotoPrintProfile(chemical)).toBe(true);
+    expect(isChemicalPhotoPrintProfile(photoDigitalProfile)).toBe(false);
+    expect(isChemicalPhotoPrintProfile(null)).toBe(false);
+  });
+
+  it('쪽마다 1장 — 매수는 위치 항목, 없으면 copies.min, sizeCode 는 파일 이름 안전 문자로', () => {
+    expect(buildPhotoJpegSpecs(chemical, [item(0, 0, 3)], 2)).toEqual([
+      { index: 0, page: 0, copies: 3, label: '사진 1', filename: 'photo_001_Instax-Mini-54_x3.jpg' },
+      { index: 1, page: 1, copies: 2, label: '사진 2', filename: 'photo_002_Instax-Mini-54_x2.jpg' },
+    ]);
+  });
+
+  it('1000장 이상이면 번호 자릿수를 늘려 정렬 순서를 지킨다', () => {
+    const specs = buildPhotoJpegSpecs(chemical, [], 1000);
+    expect(specs[0].filename).toBe('photo_0001_Instax-Mini-54_x2.jpg');
+    expect(specs[999].filename).toBe('photo_1000_Instax-Mini-54_x2.jpg');
+  });
+
+  it('digital 세트·쪽 수 0 → []', () => {
+    expect(buildPhotoJpegSpecs(photoDigitalProfile, [], 4)).toEqual([]);
+    expect(buildPhotoJpegSpecs(chemical, [], 0)).toEqual([]);
+  });
+
+  it('dpi·quality env — 범위 안이면 반영, 아니면 기본 300/95', () => {
+    expect(resolvePhotoJpegDpi({} as NodeJS.ProcessEnv)).toBe(300);
+    expect(resolvePhotoJpegDpi({ PHOTO_JPEG_DPI: '320' } as NodeJS.ProcessEnv)).toBe(320);
+    expect(resolvePhotoJpegDpi({ PHOTO_JPEG_DPI: '100' } as NodeJS.ProcessEnv)).toBe(300);
+    expect(resolvePhotoJpegQuality({ PHOTO_JPEG_QUALITY: '100' } as NodeJS.ProcessEnv)).toBe(100);
+    expect(resolvePhotoJpegQuality({ PHOTO_JPEG_QUALITY: '50' } as NodeJS.ProcessEnv)).toBe(95);
   });
 });
