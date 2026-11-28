@@ -2924,6 +2924,36 @@ describe('EditSessionsService', () => {
       });
     });
 
+    it('⑦ 파트너 재합성 requestPhotoJpegResynthesis — 회차 +1, photo-jpeg-r<새 회차>, 실패 기록 지움', async () => {
+      const session = makeSession({
+        status: 'complete',
+        metadata: {
+          revision: 3,
+          launch: { via: 'partner-v1', env: 'live' },
+          items: [photoItem(0, 2)],
+          production: { sheetMap: { error: 'PHOTO_JPEG_JOB_FAILED', message: 'old', at: '2026-11-28T00:00:00.000Z' } },
+        },
+      });
+      jest.spyOn(service, 'findById').mockResolvedValue(session);
+      const r = await service.requestPhotoJpegResynthesis(SESSION_ID, { siteId: 'site-hub', env: 'live' });
+      expect(r).toEqual({ jobId: 'job-pj', revision: 4 });
+      expect(mockWorkerJobsService.createPhotoJpegJob).toHaveBeenCalledWith(
+        expect.objectContaining({ requestId: 'photo-jpeg-r4', revision: 4 }),
+      );
+      expect((session.metadata as Record<string, unknown>).production).toBeUndefined();
+    });
+
+    it('⑧ 인화형이 아닌 세션 재합성 → 400 OUTPUT_MODE_UNSUPPORTED', async () => {
+      mockTemplateSetsService.findOne.mockResolvedValue({ id: 'ts-instax', pdfOutputMode: 'single', productProfile: null });
+      jest.spyOn(service, 'findById').mockResolvedValue(
+        makeSession({ status: 'complete', metadata: { revision: 1, launch: { via: 'partner-v1', env: 'live' } } }),
+      );
+      await expect(service.requestPhotoJpegResynthesis(SESSION_ID, { siteId: 'site-hub', env: 'live' })).rejects.toMatchObject({
+        response: { code: 'OUTPUT_MODE_UNSUPPORTED' },
+      });
+      expect(mockWorkerJobsService.createPhotoJpegJob).not.toHaveBeenCalled();
+    });
+
     it('⑥ coverFileId 없음 → 잡 없음', async () => {
       await run(makeSession({ coverFileId: null }));
       expect(mockWorkerJobsService.createPhotoJpegJob).not.toHaveBeenCalled();

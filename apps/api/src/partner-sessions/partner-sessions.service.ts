@@ -1,10 +1,10 @@
-import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, Logger, NotFoundException, UnprocessableEntityException } from '@nestjs/common';
 import { ErrV1, WorkerJobStatus, resolveProductProfile, summarizeProductProfile } from '@storige/types';
 import type { PhotoItem, PhotoJpegSpec, ProductProfile, SheetSpec } from '@storige/types';
 import { CurrentSitePayload } from '../auth/decorators/current-site.decorator';
 import { AuthService } from '../auth/auth.service';
 import { isRemoteUrlPublic } from '../common/helpers/ssrf.helper';
-import { isPartnerSessionLaunchEnabled, isSheetMapOutputEnabled } from '../config/feature-flags';
+import { isPartnerSessionLaunchEnabled, isPhotoJpegOutputEnabled, isSheetMapOutputEnabled } from '../config/feature-flags';
 import {
   EditSessionsService,
   PartnerVisibleSynthJobRow,
@@ -13,7 +13,7 @@ import {
   sheetMapFailureOf,
 } from '../edit-sessions/edit-sessions.service';
 import { EditSessionEntity, SessionMode, SessionStatus } from '../edit-sessions/entities/edit-session.entity';
-import { readSessionPhotoItems } from '../edit-sessions/photo-items';
+import { isChemicalPhotoPrintProfile, readSessionPhotoItems } from '../edit-sessions/photo-items';
 import { resolveSessionPageCount } from '../edit-sessions/session-page-count';
 import { SheetMapError } from '../edit-sessions/sheet-map';
 import { PartnerApiException } from '../partner-api/http/partner-api.exceptions';
@@ -447,14 +447,15 @@ export class PartnerSessionsService {
     // ① 상품 프로파일(템플릿셋 우선, 없으면 세션 스냅샷 — buildProductView 와 같은 우선순위)
     // output.mode='sheet-map' → 시트 매핑 재합성(킬스위치 SHEET_MAP_OUTPUT_ENABLED 가 켜진 경우만)
     // ② 아니면 템플릿셋 pdfOutputMode='duplex-split' → 종전 duplex-split 재합성 ③ 아니면 422.
-    const sheetMapTarget =
-      isSheetMapOutputEnabled() &&
-      this.resolveValidatedProfile(templateSet, this.metadataOf(session), 'synthesize')?.output.mode === 'sheet-map';
-    if (!sheetMapTarget && (!templateSet || templateSet.pdfOutputMode !== 'duplex-split')) {
+    // ⓪ (v1.36) 사진인화 인화형(chemical) → 사진별 JPEG 재발행(킬스위치 PHOTO_JPEG_OUTPUT_ENABLED 가 켜진 경우만)
+    const validatedProfile = this.resolveValidatedProfile(templateSet, this.metadataOf(session), 'synthesize');
+    const photoJpegTarget = isPhotoJpegOutputEnabled() && isChemicalPhotoPrintProfile(validatedProfile);
+    const sheetMapTarget = !photoJpegTarget && isSheetMapOutputEnabled() && validatedProfile?.output.mode === 'sheet-map';
+    if (!photoJpegTarget && !sheetMapTarget && (!templateSet || templateSet.pdfOutputMode !== 'duplex-split')) {
       throw new PartnerApiException(
         ErrV1.ERR_OUTPUT_MODE_UNSUPPORTED,
         422,
-        "상품 프로파일 output.mode 가 'sheet-map' 이거나 템플릿셋 pdfOutputMode 가 'duplex-split' 인 세션만 재합성할 수 있습니다",
+        "상품 프로파일 output.mode 가 'sheet-map' 이거나 사진인화 인화형이거나 템플릿셋 pdfOutputMode 가 'duplex-split' 인 세션만 재합성할 수 있습니다",
       );
     }
 
@@ -474,6 +475,17 @@ export class PartnerSessionsService {
     }
 
     const caller = { siteId: site.siteId, env: this.resolveEnv(site) };
+    if (photoJpegTarget) {
+      try {
+        return await this.editSessionsService.requestPhotoJpegResynthesis(session.id, caller);
+      } catch (e) {
+        // 명세를 만들 수 없는 세션 구성(쪽 없음 등)은 파트너가 고칠 수 없는 상품 구성 문제 — 422.
+        if (e instanceof UnprocessableEntityException) {
+          throw new PartnerApiException(ErrV1.ERR_OUTPUT_MODE_UNSUPPORTED, 422, e.message);
+        }
+        throw e;
+      }
+    }
     if (sheetMapTarget) {
       try {
         return await this.editSessionsService.requestSheetMapResynthesis(session.id, caller);

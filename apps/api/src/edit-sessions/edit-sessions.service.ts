@@ -7,6 +7,7 @@ import {
   Inject,
   Optional,
   ServiceUnavailableException,
+  UnprocessableEntityException,
   forwardRef,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
@@ -2045,8 +2046,50 @@ export class EditSessionsService {
    * 출력 모드는 session.metadata.pdfOutputMode 에 스냅샷으로 기록(다운스트림/PHP 가독).
    */
   /**
-   * 사진인화 인화형 세션의 사진별 JPEG 잡 발행(계약 v1.36). 실패는 완료를 막지 않고 `metadata.production.sheetMap` 에
-   * `PHOTO_JPEG_JOB_FAILED` 로 기록한다(deliverables 'failed' + errorCode — sheet-map 과 같은 노출 경로).
+   * 사진인화 인화형 세션의 사진별 JPEG 잡 생성(계약 v1.36) — 실패는 그대로 던진다(호출측이 기록·변환).
+   * 편집 완료 자동 발행(issuePhotoJpegJob)과 파트너 v1 재합성(requestPhotoJpegResynthesis)이 같이 쓴다.
+   */
+  private async createPhotoJpegJobFor(
+    session: EditSessionEntity,
+    profile: NonNullable<ReturnType<typeof resolveSessionProductProfile>>,
+    revision: number,
+    scope: string,
+  ): Promise<{ id: string }> {
+    const pdfFileId = session.coverFileId;
+    if (!pdfFileId) {
+      throw new BadRequestException({ code: 'SESSION_NOT_COMPLETE', message: '편집기 산출 PDF 가 없습니다.' });
+    }
+    const pageCount = resolveSessionPageCount(session);
+    const photos = buildPhotoJpegSpecs(profile, readSessionPhotoItems(profile, session.metadata, pageCount), pageCount);
+    if (photos.length === 0) {
+      throw new UnprocessableEntityException({
+        code: 'PHOTO_JPEG_SPEC_INVALID',
+        message: `사진 JPEG 명세가 비어 있습니다(pageCount=${pageCount})`,
+      });
+    }
+    const dpi = resolvePhotoJpegDpi();
+    const quality = resolvePhotoJpegQuality();
+    const job = await this.workerJobsService.createPhotoJpegJob({
+      sessionId: session.id,
+      pdfFileId,
+      photos,
+      dpi,
+      quality,
+      requestId: photoJpegRevisionRequestId(revision),
+      callbackUrl: session.callbackUrl ?? undefined,
+      siteId: session.siteId ?? null,
+      revision,
+    });
+    this.logger.log(
+      `[${scope}] Created photo-jpeg job ${job.id} for session ${session.id} ` +
+        `(cover=${session.coverFileId}, photos=${photos.length}, dpi=${dpi}, quality=${quality}, revision=${revision})`,
+    );
+    return job;
+  }
+
+  /**
+   * 편집 완료 자동 발행. 실패는 완료를 막지 않고 `metadata.production.sheetMap` 에
+   * `PHOTO_JPEG_JOB_FAILED`(명세 오류는 `PHOTO_JPEG_SPEC_INVALID` 메시지)로 기록한다(deliverables 'failed' + errorCode — sheet-map 과 같은 노출 경로).
    */
   private async issuePhotoJpegJob(
     session: EditSessionEntity,
@@ -2057,37 +2100,53 @@ export class EditSessionsService {
       this.logger.warn(`[${scope}] session ${session.id}: photo-jpeg 이나 coverFileId 부재 → 사진 JPEG 잡 스킵`);
       return;
     }
-    const revision = sessionRevisionOf(session.metadata);
-    const pageCount = resolveSessionPageCount(session);
     try {
-      const photos = buildPhotoJpegSpecs(
-        profile,
-        readSessionPhotoItems(profile, session.metadata, pageCount),
-        pageCount,
-      );
-      if (photos.length === 0) {
-        throw new Error(`사진 JPEG 명세가 비어 있습니다(pageCount=${pageCount})`);
-      }
-      const dpi = resolvePhotoJpegDpi();
-      const quality = resolvePhotoJpegQuality();
-      const job = await this.workerJobsService.createPhotoJpegJob({
-        sessionId: session.id,
-        pdfFileId: session.coverFileId,
-        photos,
-        dpi,
-        quality,
-        requestId: photoJpegRevisionRequestId(revision),
-        callbackUrl: session.callbackUrl ?? undefined,
-        siteId: session.siteId ?? null,
-        revision,
-      });
-      this.logger.log(
-        `[${scope}] Created photo-jpeg job ${job.id} for session ${session.id} ` +
-          `(cover=${session.coverFileId}, photos=${photos.length}, dpi=${dpi}, quality=${quality})`,
-      );
+      await this.createPhotoJpegJobFor(session, profile, sessionRevisionOf(session.metadata), scope);
       await this.clearSheetMapFailure(session, scope);
     } catch (e) {
       await this.recordSheetMapFailure(session, e, scope, 'PHOTO_JPEG_JOB_FAILED');
+    }
+  }
+
+  /**
+   * 파트너 v1 synthesize — 인화형 사진인화 세션의 사진별 JPEG 재발행(계약 v1.36 보강).
+   * 프로파일 원천·스코프·회차 규칙은 requestSheetMapResynthesis 와 같다. 인화형이 아니면 400 OUTPUT_MODE_UNSUPPORTED.
+   * 실패는 production.sheetMap 에 기록한 뒤 그대로 올린다(호출측이 v1 코드로 변환).
+   */
+  async requestPhotoJpegResynthesis(
+    sessionId: string,
+    caller: { siteId: string; env: string },
+  ): Promise<{ jobId: string; revision: number }> {
+    const { session, revision } = await this.prepareResynthesis(sessionId, caller);
+    let templateSet: Awaited<ReturnType<TemplateSetsService['findOne']>> | null = null;
+    if (session.templateSetId) {
+      try {
+        templateSet = await this.templateSetsService.findOne(session.templateSetId);
+      } catch (e) {
+        this.logger.warn(
+          `[partner-v1] session ${session.id}: TemplateSet ${session.templateSetId} 조회 실패 → 세션 스냅샷 프로파일만 사용: ${(e as Error).message}`,
+        );
+      }
+    }
+    const profile = resolveSessionProductProfile({
+      session,
+      templateSet,
+      warn: (m) => this.logger.warn(`[partner-v1] session ${session.id}: ${m}`),
+    });
+    if (!isChemicalPhotoPrintProfile(profile)) {
+      throw new BadRequestException({
+        code: 'OUTPUT_MODE_UNSUPPORTED',
+        message: '사진인화 인화형 세션만 사진 JPEG 재합성을 요청할 수 있습니다.',
+        details: { sessionId },
+      });
+    }
+    try {
+      const job = await this.createPhotoJpegJobFor(session, profile!, revision, 'partner-v1');
+      await this.clearSheetMapFailure(session, 'partner-v1');
+      return { jobId: job.id, revision };
+    } catch (e) {
+      await this.recordSheetMapFailure(session, e, 'partner-v1', 'PHOTO_JPEG_JOB_FAILED');
+      throw e;
     }
   }
 

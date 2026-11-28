@@ -1785,7 +1785,7 @@ curl https://api.papascompany.co.kr/api/v1/sessions/<session-uuid>/deliverables 
 | 웹훅 | `synthesis.completed` 의 `outputFiles[]` 에 `type:'photo'`·`photoIndex`·`url`, 본문 `revision` 포함 |
 | 실패 | 잡 생성 실패는 완료를 막지 않고 `status:'failed'` + `errorCode:'PHOTO_JPEG_JOB_FAILED'`. 워커 실패는 잡 `FAILED`(`synthesis.failed`) |
 
-호스트(판매자 콘솔 등)는 `role:'photo'` 파일을 `filename` 그대로 내려받아 인화소에 넘기면 됩니다. 서명 URL 은 300초라 내려받기 직전에 deliverables 를 다시 부르세요. 3.7.6 `synthesize` 는 아직 이 세트를 재합성하지 않습니다(`422 ERR_OUTPUT_MODE_UNSUPPORTED`) — 다시 만들려면 편집을 재완료합니다(새 회차). 운영 스위치 `PHOTO_JPEG_OUTPUT_ENABLED=off` 면 종전처럼 편집기 단일 PDF 만 남습니다. digital(인쇄형, sheet-map) 사진인화 세트는 3.7.5 그대로입니다.
+호스트(판매자 콘솔 등)는 `role:'photo'` 파일을 `filename` 그대로 내려받아 인화소에 넘기면 됩니다. 서명 URL 은 300초라 내려받기 직전에 deliverables 를 다시 부르세요. JPEG 생성이 실패해도(`status:'failed'`) 편집기 원본 `role:'single'` PDF 는 그대로 남습니다. 다시 만들려면 3.7.6 `synthesize` 를 부릅니다 — 인화형 세트는 사진 JPEG 를 새 회차(`photo-jpeg-r<revision>`)로 다시 발행합니다(성공하면 실패 기록이 지워짐). 운영 스위치 `PHOTO_JPEG_OUTPUT_ENABLED=off` 면 종전처럼 편집기 단일 PDF 만 남습니다. digital(인쇄형, sheet-map) 사진인화 세트는 3.7.5 그대로입니다.
 #### 3.7.6 (선택) 재합성 — `POST /api/v1/sessions/:id/synthesize`
 
 ```bash
@@ -1794,7 +1794,7 @@ curl -X POST https://api.papascompany.co.kr/api/v1/sessions/<session-uuid>/synth
   -H "Idempotency-Key: order-12345-resynth-2"
 ```
 
-→ `201 { "jobId": "<job-uuid>", "revision": 2 }`(본문 없음). 대상은 템플릿셋 `pdfOutputMode='duplex-split'` 세트(`duplex-split-r<revision>`) 또는 프로파일 `output.mode='sheet-map'` 세트(`sheet-map-r<revision>`)이며 그 밖은 `422 ERR_OUTPUT_MODE_UNSUPPORTED`, 편집 완료 전이거나 편집기 산출 PDF 가 없으면 `409 ERR_SESSION_NOT_COMPLETE` 입니다. 최신 합성 잡이 진행 중이면 새 잡 없이 그 `jobId`·현재 `revision` 을 돌려줍니다. 완료는 `synthesis.completed`/`synthesis.failed` 웹훅(payload `revision`)이나 deliverables 폴링으로 받습니다.
+→ `201 { "jobId": "<job-uuid>", "revision": 2 }`(본문 없음). 대상은 템플릿셋 `pdfOutputMode='duplex-split'` 세트(`duplex-split-r<revision>`) 또는 프로파일 `output.mode='sheet-map'` 세트(`sheet-map-r<revision>`), v1.36 부터 사진인화 인화형 세트(`photo-jpeg-r<revision>` — 3.7.5a)이며 그 밖은 `422 ERR_OUTPUT_MODE_UNSUPPORTED`, 편집 완료 전이거나 편집기 산출 PDF 가 없으면 `409 ERR_SESSION_NOT_COMPLETE` 입니다. 최신 합성 잡이 진행 중이면 새 잡 없이 그 `jobId`·현재 `revision` 을 돌려줍니다. 완료는 `synthesis.completed`/`synthesis.failed` 웹훅(payload `revision`)이나 deliverables 폴링으로 받습니다.
 
 #### 3.7.7 오류 코드
 

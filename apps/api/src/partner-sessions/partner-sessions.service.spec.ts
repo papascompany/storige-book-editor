@@ -10,7 +10,7 @@
  *  ⑥ 킬스위치 off → 503, worker 키 → 403
  *  ⑦ EditSessionsService.requestDuplexSplitResynthesis — revision +1 저장·requestId ≤36·siteId/revision 전달
  */
-import { BadRequestException, NotFoundException } from '@nestjs/common';
+import { BadRequestException, NotFoundException, UnprocessableEntityException } from '@nestjs/common';
 import { ErrV1, WorkerJobStatus } from '@storige/types';
 import { CurrentSitePayload } from '../auth/decorators/current-site.decorator';
 import {
@@ -128,6 +128,7 @@ describe('PartnerSessionsService (P2-b 1-call 런처)', () => {
   const findLatestPartnerVisibleSynthJob = jest.fn();
   const requestDuplexSplitResynthesis = jest.fn();
   const requestSheetMapResynthesis = jest.fn();
+  const requestPhotoJpegResynthesis = jest.fn();
   const tsFindOne = jest.fn();
   const createShopSession = jest.fn();
   const issueOutputUrls = jest.fn();
@@ -143,6 +144,7 @@ describe('PartnerSessionsService (P2-b 1-call 런처)', () => {
         findLatestPartnerVisibleSynthJob,
         requestDuplexSplitResynthesis,
         requestSheetMapResynthesis,
+        requestPhotoJpegResynthesis,
       } as never,
       { findOne: tsFindOne } as never,
       { createShopSession } as never,
@@ -777,6 +779,56 @@ describe('PartnerSessionsService (P2-b 1-call 런처)', () => {
       requestDuplexSplitResynthesis.mockResolvedValue({ jobId: 'job-6', revision: 2 });
       await expect(service.synthesize(siteA(), SESSION_ID)).resolves.toEqual({ jobId: 'job-6', revision: 2 });
       expect(requestDuplexSplitResynthesis).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  // ── ④-c synthesize — v1.36 사진인화 인화형 사진별 JPEG ───────────────────
+  describe('④-c synthesize — 사진인화 인화형(chemical) 사진 JPEG 재발행 (v1.36)', () => {
+    const flagBackup = process.env.PHOTO_JPEG_OUTPUT_ENABLED;
+    const chemicalProfile = () => ({
+      version: 1,
+      kind: 'photo-print',
+      editorType: 'photo_chem',
+      pages: { kind: 'range', min: 1, max: 200, step: 1, labelRule: 'photo' },
+      sheet: { faces: 1, canvasLayout: 'canvas-per-sheet', binding: 'none', backRotation: 0, duplexFlip: 'short-edge' },
+      photoPrint: {
+        process: 'chemical',
+        composition: 'per-photo-free-back',
+        sizes: [{ code: 'instax-mini', widthMm: 54, heightMm: 86, minDpi: 250 }],
+        options: { border: ['none'], fit: ['paper-full', 'image-full'], finish: ['glossy', 'matte'], brightnessFix: true, dateOverlay: false, grayscale: true },
+        copies: { min: 1, max: 99 },
+        upload: { maxPhotos: 200, maxMb: 25 },
+      },
+      output: { mode: 'single-pdf' },
+    });
+    beforeEach(() => {
+      delete process.env.PHOTO_JPEG_OUTPUT_ENABLED;
+      requestPhotoJpegResynthesis.mockResolvedValue({ jobId: 'job-pj', revision: 4 });
+    });
+    afterAll(() => {
+      if (flagBackup === undefined) delete process.env.PHOTO_JPEG_OUTPUT_ENABLED;
+      else process.env.PHOTO_JPEG_OUTPUT_ENABLED = flagBackup;
+    });
+
+    it('chemical 세트 → requestPhotoJpegResynthesis(422 아님), 다른 재합성 경로 미호출', async () => {
+      tsFindOne.mockResolvedValue(makeTemplateSet({ pdfOutputMode: 'single', productProfile: chemicalProfile() }));
+      await expect(service.synthesize(siteA(), SESSION_ID)).resolves.toEqual({ jobId: 'job-pj', revision: 4 });
+      expect(requestPhotoJpegResynthesis).toHaveBeenCalledWith(SESSION_ID, { siteId: SITE_A, env: 'live' });
+      expect(requestSheetMapResynthesis).not.toHaveBeenCalled();
+      expect(requestDuplexSplitResynthesis).not.toHaveBeenCalled();
+    });
+
+    it('킬스위치 off → chemical 세트는 재합성 대상 아님(422 ERR_OUTPUT_MODE_UNSUPPORTED)', async () => {
+      process.env.PHOTO_JPEG_OUTPUT_ENABLED = 'off';
+      tsFindOne.mockResolvedValue(makeTemplateSet({ pdfOutputMode: 'single', productProfile: chemicalProfile() }));
+      await expectV1(service.synthesize(siteA(), SESSION_ID), ErrV1.ERR_OUTPUT_MODE_UNSUPPORTED, 422);
+      expect(requestPhotoJpegResynthesis).not.toHaveBeenCalled();
+    });
+
+    it('명세를 만들 수 없음(UnprocessableEntityException) → 422 ERR_OUTPUT_MODE_UNSUPPORTED', async () => {
+      tsFindOne.mockResolvedValue(makeTemplateSet({ pdfOutputMode: 'single', productProfile: chemicalProfile() }));
+      requestPhotoJpegResynthesis.mockRejectedValue(new UnprocessableEntityException({ code: 'PHOTO_JPEG_SPEC_INVALID', message: 'x' }));
+      await expectV1(service.synthesize(siteA(), SESSION_ID), ErrV1.ERR_OUTPUT_MODE_UNSUPPORTED, 422);
     });
   });
 
