@@ -347,14 +347,25 @@ describe('EditSessionList — 주문 연결이 아닌 세션', () => {
 
 describe('EditSessionList — 선택 삭제', () => {
   let confirmCalls: ModalFuncProps[];
+  let confirmUpdate: ReturnType<typeof vi.fn>;
 
   beforeEach(() => {
     confirmCalls = [];
+    confirmUpdate = vi.fn();
     vi.spyOn(Modal, 'confirm').mockImplementation((config: ModalFuncProps) => {
       confirmCalls.push(config);
-      return { destroy: vi.fn(), update: vi.fn() };
+      return { destroy: vi.fn(), update: confirmUpdate };
     });
   });
+
+  /** 확인 창 본문을 그려 '사전 통지했습니다' 를 체크한다(주문 연결 세션이 섞인 경우) */
+  function acknowledgeNotice(config: ModalFuncProps): void {
+    const view = renderWithAntd(<>{config.content}</>);
+    const label = within(view.container).getByText('해당 파트너에 사전 통지했습니다').closest('label');
+    const input = label?.querySelector<HTMLInputElement>('input[type="checkbox"]');
+    if (!input) throw new Error('사전 통지 체크박스가 없습니다');
+    fireEvent.click(input);
+  }
 
   function rowCheckbox(id: string): HTMLInputElement {
     const checkbox = row(id).querySelector<HTMLInputElement>('input[type="checkbox"]');
@@ -419,14 +430,23 @@ describe('EditSessionList — 선택 삭제', () => {
     expect(String(config.title)).toContain('2건');
     expect(mocks.bulkDelete).not.toHaveBeenCalled();
 
-    // 확인 창 본문 — 주문번호가 붙은 건수 경고와 48시간 복구 안내
-    renderWithAntd(<>{config.content}</>);
+    // 주문 연결 세션이 섞였으니 통지 확인 전에는 삭제 버튼이 꺼져 있고, 확인 없이 onOk 가 와도 삭제하지 않는다
+    expect(config.okButtonProps).toMatchObject({ danger: true, disabled: true });
+    await act(async () => {
+      await config.onOk?.();
+    });
+    expect(mocks.bulkDelete).not.toHaveBeenCalled();
+
+    // 확인 창 본문 — 주문번호가 붙은 건수 경고와 48시간 복구 안내, 통지 체크 → 버튼 켜짐
+    acknowledgeNotice(config);
     expect(screen.getByText('주문번호가 붙은 세션 1건이 포함되어 있습니다.')).toBeTruthy();
+    expect(screen.getByText('주문 연결 세션 id 1건')).toBeTruthy();
     expect(
       screen.getByText(
         "삭제한 세션은 48시간 동안 '삭제 리스트'에서 복구할 수 있고, 그 뒤에는 파일까지 영구 삭제됩니다.",
       ),
     ).toBeTruthy();
+    expect(confirmUpdate).toHaveBeenLastCalledWith({ okButtonProps: { danger: true, disabled: false } });
 
     await act(async () => {
       await config.onOk?.();
@@ -456,6 +476,7 @@ describe('EditSessionList — 선택 삭제', () => {
     fireEvent.click(rowCheckbox('sess-plain'));
     await waitFor(() => expect(bulkButton().disabled).toBe(false));
     fireEvent.click(bulkButton());
+    acknowledgeNotice(confirmCalls[0]);
     await act(async () => {
       await confirmCalls[0].onOk?.();
     });
@@ -465,6 +486,26 @@ describe('EditSessionList — 선택 삭제', () => {
         10,
       ),
     );
+  });
+
+  it('주문 연결 세션이 없으면 통지 체크 없이 바로 삭제할 수 있다', async () => {
+    const plainA = makeSessionItem({ id: 'sess-plain-a', memberId: 'member-plain-a', orderSeqno: null });
+    const plainB = makeSessionItem({ id: 'sess-plain-b', memberId: 'member-plain-b', orderSeqno: null });
+    mocks.listSessions.mockResolvedValue(page([plainA, plainB]));
+    mocks.bulkDelete.mockResolvedValue({ deleted: 2, failed: 0, results: [] } satisfies BulkDeleteResponse);
+    await renderList('member-plain-a');
+    fireEvent.click(rowCheckbox('sess-plain-a'));
+    fireEvent.click(rowCheckbox('sess-plain-b'));
+    await waitFor(() => expect(bulkButton().disabled).toBe(false));
+    fireEvent.click(bulkButton());
+    const config = confirmCalls[0];
+    expect(config.okButtonProps).toMatchObject({ danger: true, disabled: false });
+    renderWithAntd(<>{config.content}</>);
+    expect(screen.queryByText('해당 파트너에 사전 통지했습니다')).toBeNull();
+    await act(async () => {
+      await config.onOk?.();
+    });
+    await waitFor(() => expect(mocks.bulkDelete).toHaveBeenCalledWith(['sess-plain-a', 'sess-plain-b']));
   });
 
   it('단건 삭제 확인에도 48시간 복구 안내가 있다', async () => {

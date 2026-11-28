@@ -386,6 +386,10 @@ export function useEmbedAutoSave(config: AutoSaveConfig) {
     }
     // 미리보기 강제 상태가 서버 세션 JSON 에 영속되는 누수 방지.
     if (useSettingsStore.getState().customerPreview) return false
+    // 재편집 상태 규칙(2026-11-28): 편집완료 세션은 실제 편집(dirty)이 없으면 저장하지 않는다.
+    // 열어 보기·저장 버튼만으로 status 가 'editing' 으로 바뀌어 완료 파일이 무효로 보이는 일을 막는다.
+    // 저장할 것이 없으니 성공으로 본다(호출부의 저장 완료 알림 계약 유지).
+    if (currentSession?.status === 'complete' && !useSaveStore.getState().isDirty) return true
     // PDF 생성 창 동안 toJSON 하면 excludeFromExport 임시 플래깅 객체(printExclude/
     // moldIcon)가 세션 canvasData 에서 영구 누락 — 스킵 대신 생성 완료 후 1회 지연 실행.
     if (isAutosaveSuspended()) {

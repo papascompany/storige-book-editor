@@ -912,6 +912,9 @@ function EmbeddedEditor({
       // 복원 완료 전 dirty 마킹 차단 — 무편집 자동저장의 지오메트리 오염 방지
       initializedRef: isInitializedRef,
     })
+  // 초기화 완료 시점에 쓰는 최신 markCompleted — init effect 의존성에 넣지 않으려고 ref 로 둔다.
+  const markCompletedRef = useRef(markCompleted)
+  markCompletedRef.current = markCompleted
 
   // 브라우저 "뒤로 가기" 데이터 무결성 가드 — 경고 없이 빠져나가 작업 유실되는 것 방지.
   // 변경사항이 있으면 confirm 으로 경고 + 강제 자동저장(flush) 후 이탈, 없으면 그대로 이탈.
@@ -2041,6 +2044,10 @@ function EmbeddedEditor({
         setReady(true)
         isInitializedRef.current = true
         setIsLoading(false)
+        // 재편집 상태 규칙(2026-11-28): 편집완료 세션을 다시 열면 사용자 입력 전까지의 캔버스 이벤트
+        // (캘린더 격자·사진인화 재합성, 글꼴 재렌더 등 비동기 시스템 발)는 편집으로 세지 않는다 —
+        // 편집 완료 직후와 같은 가드. 사용자가 실제로 고쳐 저장할 때만 'editing' 이 된다.
+        if (editSession?.status === 'complete') markCompletedRef.current()
 
         // 방향 불일치 가드레일 — 호스트 주문 규격(width/height)의 방향과 로드된
         // templateSet 방향이 어긋나면(고객이 가로 선택 → 가로 dims 전달했으나 가로 templateSet
@@ -2483,6 +2490,20 @@ function EmbeddedEditor({
         }
 
         try {
+          // 재편집 상태 규칙(2026-11-28): 편집완료 세션에 실제 편집이 없으면 PATCH 하지 않는다
+          // (호스트 저장 명령만으로 'editing' 이 되지 않게). 저장 완료 알림은 현재 세션 기준으로 보낸다.
+          if (currentSession?.status === 'complete' && !useSaveStore.getState().isDirty) {
+            const unchanged: SaveResult = {
+              sessionId: currentSession.id,
+              savedAt: currentSession.updatedAt,
+              thumbnail: currentSession.coverFile?.thumbnailUrl || undefined,
+            }
+            console.log('[EmbeddedEditor] Save skipped (complete, no edits):', unchanged.sessionId)
+            onSave?.(unchanged)
+            postToParent(parentOrigin, 'editor.save', unchanged)
+            return unchanged
+          }
+
           // Get canvas data — 멀티페이지면 전 캔버스 배열(단일 캔버스로 덮어쓰기 방지).
           // allCanvas 0·1장이면 종전과 같은 단일 객체/null.
           const canvasData = collectCanvasData(useAppStore.getState().allCanvas, canvas)

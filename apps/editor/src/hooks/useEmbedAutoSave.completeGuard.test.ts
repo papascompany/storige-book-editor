@@ -202,3 +202,82 @@ describe('useEmbedAutoSave — 편집 완료 뒤 시스템 이벤트 가드(mark
     unmount()
   })
 })
+
+describe('useEmbedAutoSave — 편집완료 세션 재편집 상태 규칙(열기만 하면 완료 유지)', () => {
+  let canvas: ReturnType<typeof fakeCanvas>
+  const completeSession = { id: SESSION_ID, status: 'complete', updatedAt: '2026-11-28T00:00:00.000Z' } as any
+
+  function renderCompleteHook() {
+    return renderHook(() =>
+      useEmbedAutoSave({ sessionId: SESSION_ID, currentSession: completeSession, initializedRef: { current: true } }),
+    )
+  }
+
+  beforeEach(() => {
+    vi.useFakeTimers()
+    localStorage.clear()
+    updateMock.mockReset()
+    updateMock.mockResolvedValue({ id: SESSION_ID, status: 'editing', updatedAt: new Date().toISOString() })
+    updateGuestMock.mockReset()
+    useSaveStore.getState().reset()
+    canvas = fakeCanvas('c0')
+    setCanvases([canvas])
+    vi.spyOn(console, 'log').mockImplementation(() => {})
+    vi.spyOn(console, 'warn').mockImplementation(() => {})
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
+    vi.restoreAllMocks()
+  })
+
+  it('편집 없이 즉시 저장(저장 버튼·호스트 saveNow) → PATCH 0회, 성공으로 본다', async () => {
+    const { result, unmount } = renderCompleteHook()
+    let ok: boolean | undefined
+    await act(async () => {
+      userPointerDown() // 저장 버튼 클릭도 사용자 입력이다
+      ok = await result.current.saveNow()
+    })
+    expect(ok).toBe(true)
+    expect(updateMock).not.toHaveBeenCalled()
+    expect(updateGuestMock).not.toHaveBeenCalled()
+    unmount()
+  })
+
+  it('다시 연 직후 가드(markCompleted) 중 비동기 재합성 이벤트만 → PATCH 0회', async () => {
+    const { result, unmount } = renderCompleteHook()
+    act(() => {
+      result.current.markCompleted()
+    })
+    await act(async () => {
+      canvas.emit('object:added')
+      canvas.emit('object:modified')
+    })
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(10_000)
+    })
+    expect(updateMock).not.toHaveBeenCalled()
+    expect(useSaveStore.getState().isDirty).toBe(false)
+    unmount()
+  })
+
+  it("실제로 고치면(입력 + 캔버스 변경) 종전대로 status 'editing' 으로 저장한다", async () => {
+    const { result, unmount } = renderCompleteHook()
+    act(() => {
+      result.current.markCompleted()
+    })
+    await act(async () => {
+      userPointerDown()
+      canvas.emit('object:modified')
+    })
+    await act(async () => {
+      canvas.emit('object:modified')
+    })
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(2_500)
+    })
+    expect(updateMock).toHaveBeenCalledTimes(1)
+    expect(updateMock.mock.calls[0][1]).toMatchObject({ status: 'editing' })
+    unmount()
+  })
+})

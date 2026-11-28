@@ -13,6 +13,7 @@ import {
   Select,
   Alert,
   Modal,
+  Checkbox,
 } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import {
@@ -259,26 +260,44 @@ export const EditSessionList = () => {
   const confirmBulkDelete = (): void => {
     const targets = selectedRecords;
     if (targets.length === 0 || targets.length > BULK_DELETE_MAX) return;
-    const linkedCount = targets.filter((item) => isOrderLinked(item)).length;
-    Modal.confirm({
+    const linked = targets.filter((item) => isOrderLinked(item));
+    // 주문 연결 세션이 섞이면 단건 삭제와 같이 '사전 통지했습니다' 체크 뒤에만 삭제 버튼을 켠다(운영 안전장치).
+    let acknowledged = linked.length === 0;
+    const okButtonProps = () => ({ danger: true, disabled: !acknowledged });
+    const instance = Modal.confirm({
       title: `선택한 편집 세션 ${targets.length}건을 삭제할까요?`,
       content: (
         <Space direction="vertical" size={8}>
-          {linkedCount > 0 && (
-            <Alert
-              type="warning"
-              showIcon
-              message={`주문번호가 붙은 세션 ${linkedCount}건이 포함되어 있습니다.`}
-              description="삭제하면 해당 세션 재편집·합성이 불가합니다. 세션 id를 넣어 파트너에 미리 알리고, 삭제 뒤 [삭제 리스트]의 [통지 정보 복사]로 통지하세요."
-            />
+          {linked.length > 0 && (
+            <>
+              <Alert
+                type="warning"
+                showIcon
+                message={`주문번호가 붙은 세션 ${linked.length}건이 포함되어 있습니다.`}
+                description="삭제하면 해당 세션 재편집·합성이 불가합니다. 아래 세션 id를 넣어 파트너에 미리 알리고, 삭제 뒤 [삭제 리스트]의 [통지 정보 복사]로 통지하세요."
+              />
+              {/* 사전 통지에 넣을 세션 id — 파트너는 orderSeqno 가 아니라 세션 id 로 주문을 찾는다 */}
+              <Text type="secondary" copyable={{ text: linked.map((item) => item.id).join('\n') }}>
+                주문 연결 세션 id {linked.length}건
+              </Text>
+              <Checkbox
+                onChange={(e) => {
+                  acknowledged = e.target.checked;
+                  instance.update({ okButtonProps: okButtonProps() });
+                }}
+              >
+                해당 파트너에 사전 통지했습니다
+              </Checkbox>
+            </>
           )}
           <Text>{STAFF_DELETE_WINDOW_NOTICE}</Text>
         </Space>
       ),
       okText: '삭제',
-      okButtonProps: { danger: true },
+      okButtonProps: okButtonProps(),
       cancelText: '취소',
       onOk: () => {
+        if (!acknowledged) return;
         bulkDeleteMutation.mutate(targets.map((item) => item.id));
       },
     });
